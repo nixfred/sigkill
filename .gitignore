@@ -1,0 +1,16 @@
+# Godot 4 caches and imports
+.godot/
+.import/
+*.translation
+
+# Exports and build output
+/build/
+/dist/
+*.pck
+*.x86_64
+export_credentials.cfg
+
+# Editor and OS noise
+*.tmp
+*~
+.DS_Store

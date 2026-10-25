@@ -1,0 +1,114 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/grey_block.tscn" id="1_block"]
+[ext_resource type="PackedScene" path="res://scenes/target_dummy.tscn" id="2_dummy"]
+
+[node name="Arena" type="Node3D"]
+
+[node name="Floor" parent="." instance=ExtResource("1_block")]
+position = Vector3(0, -0.25, 0)
+size = Vector3(40.5, 0.5, 40.5)
+kind = 1
+
+[node name="WallN" parent="." instance=ExtResource("1_block")]
+position = Vector3(0, 2, -20.25)
+size = Vector3(41, 4, 0.5)
+
+[node name="WallS" parent="." instance=ExtResource("1_block")]
+position = Vector3(0, 2, 20.25)
+size = Vector3(41, 4, 0.5)
+
+[node name="WallE" parent="." instance=ExtResource("1_block")]
+position = Vector3(20.25, 2, 0)
+size = Vector3(0.5, 4, 41)
+
+[node name="WallW" parent="." instance=ExtResource("1_block")]
+position = Vector3(-20.25, 2, 0)
+size = Vector3(0.5, 4, 41)
+
+[node name="RoomFrontL" parent="." instance=ExtResource("1_block")]
+position = Vector3(-4.75, 1.75, -8)
+size = Vector3(6.5, 3.5, 0.4)
+
+[node name="RoomFrontR" parent="." instance=ExtResource("1_block")]
+position = Vector3(4.75, 1.75, -8)
+size = Vector3(6.5, 3.5, 0.4)
+
+[node name="RoomSideW" parent="." instance=ExtResource("1_block")]
+position = Vector3(-8, 1.75, -14)
+size = Vector3(0.4, 3.5, 12)
+
+[node name="RoomSideE" parent="." instance=ExtResource("1_block")]
+position = Vector3(8, 1.75, -14)
+size = Vector3(0.4, 3.5, 12)
+
+[node name="DoorPostL" parent="." instance=ExtResource("1_block")]
+position = Vector3(-1.5, 1.75, -8)
+size = Vector3(0.3, 3.5, 0.5)
+kind = 2
+
+[node name="DoorPostR" parent="." instance=ExtResource("1_block")]
+position = Vector3(1.5, 1.75, -8)
+size = Vector3(0.3, 3.5, 0.5)
+kind = 2
+
+[node name="LowWall" parent="." instance=ExtResource("1_block")]
+position = Vector3(0, 0.6, 2)
+size = Vector3(6, 1.2, 0.4)
+
+[node name="CoverL1" parent="." instance=ExtResource("1_block")]
+position = Vector3(-12, 1.5, 2)
+size = Vector3(6, 3, 0.4)
+
+[node name="CoverL2" parent="." instance=ExtResource("1_block")]
+position = Vector3(-15, 1.5, 5)
+size = Vector3(0.4, 3, 6.4)
+
+[node name="PillarA" parent="." instance=ExtResource("1_block")]
+position = Vector3(12, 2, 2)
+size = Vector3(1.5, 4, 1.5)
+kind = 2
+
+[node name="PillarB" parent="." instance=ExtResource("1_block")]
+position = Vector3(12, 2, 8)
+size = Vector3(1.5, 4, 1.5)
+kind = 2
+
+[node name="CrateA" parent="." instance=ExtResource("1_block")]
+position = Vector3(6, 0.75, 10)
+size = Vector3(1.5, 1.5, 1.5)
+kind = 3
+
+[node name="CrateB" parent="." instance=ExtResource("1_block")]
+position = Vector3(7.4, 0.5, 10.8)
+size = Vector3(1, 1, 1)
+kind = 3
+
+[node name="Platform" parent="." instance=ExtResource("1_block")]
+position = Vector3(-8, 0.5, 12)
+size = Vector3(4, 1, 4)
+kind = 2
+
+[node name="RoomLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 3, -14)
+light_color = Color(0.09, 0.72, 0.67, 1)
+light_energy = 1.4
+omni_range = 14.0
+
+[node name="Targets" type="Node3D" parent="."]
+
+[node name="DummyA" parent="Targets" instance=ExtResource("2_dummy")]
+position = Vector3(0, 0, -15)
+tag_text = "rogue.d"
+
+[node name="DummyB" parent="Targets" instance=ExtResource("2_dummy")]
+position = Vector3(-17.5, 0, 5)
+tag_text = "zombie"
+
+[node name="DummyC" parent="Targets" instance=ExtResource("2_dummy")]
+position = Vector3(12, 0, 5)
+tag_text = "<defunct>"
+
+[node name="DummyD" parent="Targets" instance=ExtResource("2_dummy")]
+position = Vector3(-8, 1, 12)
+tag_text = "runaway"

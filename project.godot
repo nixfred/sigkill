@@ -1,0 +1,32 @@
+; Engine configuration file.
+; Hand-written without the editor (Godot was not installed when this was made).
+; Opening the project in Godot 4.7 will rewrite and normalise this file; that is fine.
+
+config_version=5
+
+[application]
+
+config/name="SIGKILL"
+config/description="Native first-person shooter for Omarchy. Hunt rogue daemons in a terminal arena."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.035, 0.05, 0.055, 1)
+; TODO(icon): no icon yet. Use the official icon-only hexagon with white >_ from
+; /workspace/nixfredos/brand. Do NOT redraw the logo. Then set config/icon here.
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="player"
+3d_physics/layer_3="targets"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+environment/defaults/default_clear_color=Color(0.035, 0.05, 0.055, 1)
