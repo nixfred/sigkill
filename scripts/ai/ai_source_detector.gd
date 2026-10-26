@@ -9,6 +9,14 @@ extends RefCounted
 ##   omarchy-default-agent or omarchy-agent.
 ## - The PATH directories: whether a known agent's command exists there as a file with an
 ##   execute bit. Nothing is read from it and it is never run, not even with --version.
+## - Local model servers, on 127.0.0.1 only (LOCALHOST is a constant, never a setting): one
+##   short HTTP GET per endpoint, Ollama's /api/version and /api/tags and the OpenAI-style
+##   /v1/models. Only reachable, latency and a model COUNT are kept; model names are
+##   counted and dropped, never stored, logged or printed. Nothing is loaded, pulled,
+##   unloaded or changed, and no model setting is touched.
+##
+## Blocking: the server probes wait up to http_timeout_ms per request, so they must never
+## run on the main thread. detect() is synchronous and start() runs it on a worker thread.
 ##
 ## Every outside touchpoint is a variable below, so tests point it at fixtures. The
 ## defaults are the real ones.
@@ -32,11 +40,33 @@ const PRINTABLE_FIRST := 0x20
 const PRINTABLE_LAST := 0x7E
 ## Owner, group and other execute bits (octal 111).
 const EXECUTE_BITS := 0x49
+## The only host the detector ever connects to.
+const LOCALHOST := "127.0.0.1"
+const OLLAMA_PORT := 11434
+const OPENAI_PORT := 1234
+const OLLAMA_VERSION_PATH := "/api/version"
+const OLLAMA_MODELS_PATH := "/api/tags"
+const OPENAI_MODELS_PATH := "/v1/models"
+## Longest wait for one HTTP request, connect to last byte, in milliseconds.
+const HTTP_TIMEOUT_MS := 500
+## Largest response body read; anything longer counts as no answer.
+const HTTP_BODY_MAX_BYTES := 1048576
+const HTTP_OK := 200
+const PORT_LAST := 65535
+## Pause between polls of a connection, in microseconds.
+const POLL_SLEEP_USEC := 1000
 
 ## Omarchy's default-agent setting. Empty means the real one under the player's home.
 var agent_file_path := ""
 ## Directories searched for commands. Empty means the player's PATH.
 var path_dirs := PackedStringArray()
+## Local server ports on 127.0.0.1. The host itself cannot be changed.
+var ollama_port := OLLAMA_PORT
+var openai_port := OPENAI_PORT
+## Longest wait for one HTTP request, in milliseconds.
+var http_timeout_ms := HTTP_TIMEOUT_MS
+## Milliseconds since some fixed start, for latency and rate limits. Tests swap it.
+var clock := Callable(Time, "get_ticks_msec")
 
 
 ## Reads the default-agent setting and returns [AgentState, agent name or ""].
@@ -82,6 +112,88 @@ func find_command(command: String) -> String:
 		if FileAccess.get_unix_permissions(candidate) & EXECUTE_BITS:
 			return candidate
 	return ""
+
+
+## Ollama on localhost: {reachable, latency_ms, model_count}. Blocks up to two requests.
+func probe_ollama() -> Dictionary:
+	var version := _get_json(ollama_port, OLLAMA_VERSION_PATH)
+	if version.is_empty() or not (version["data"] is Dictionary) or not version["data"].has("version"):
+		return _no_server()
+	var out := {"reachable": true, "latency_ms": version["latency_ms"], "model_count": -1}
+	var listing := _get_json(ollama_port, OLLAMA_MODELS_PATH)
+	if not listing.is_empty() and listing["data"] is Dictionary and listing["data"].get("models") is Array:
+		out["model_count"] = (listing["data"]["models"] as Array).size()
+	return out
+
+
+## A local OpenAI-compatible server: {reachable, latency_ms, model_count}. One request.
+func probe_openai() -> Dictionary:
+	var listing := _get_json(openai_port, OPENAI_MODELS_PATH)
+	if listing.is_empty() or not (listing["data"] is Dictionary) or not (listing["data"].get("data") is Array):
+		return _no_server()
+	return {"reachable": true, "latency_ms": listing["latency_ms"], "model_count": (listing["data"]["data"] as Array).size()}
+
+
+static func _no_server() -> Dictionary:
+	return {"reachable": false, "latency_ms": -1, "model_count": -1}
+
+
+## One GET to 127.0.0.1:port, path. Returns {latency_ms, data} with the parsed JSON, or {}
+## on refusal, timeout, a status other than 200, a body over the cap or a body that is not
+## JSON. The caller takes what it counts and drops the rest.
+func _get_json(port: int, path: String) -> Dictionary:
+	if port < 1 or port > PORT_LAST:
+		return {}
+	var start: int = clock.call()
+	var deadline: int = start + http_timeout_ms
+	var client := HTTPClient.new()
+	if client.connect_to_host(LOCALHOST, port) != OK:
+		return {}
+	if not _wait_while(client, [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING], deadline):
+		return {}
+	if client.get_status() != HTTPClient.STATUS_CONNECTED:
+		client.close()
+		return {}
+	if client.request(HTTPClient.METHOD_GET, path, PackedStringArray(["Accept: application/json"])) != OK:
+		client.close()
+		return {}
+	if not _wait_while(client, [HTTPClient.STATUS_REQUESTING], deadline):
+		return {}
+	if not client.has_response() or client.get_response_code() != HTTP_OK:
+		client.close()
+		return {}
+	var latency: int = clock.call() - start
+	var body := PackedByteArray()
+	while client.get_status() == HTTPClient.STATUS_BODY:
+		client.poll()
+		var chunk := client.read_response_body_chunk()
+		if chunk.is_empty():
+			if clock.call() > deadline:
+				client.close()
+				return {}
+			OS.delay_usec(POLL_SLEEP_USEC)
+			continue
+		body.append_array(chunk)
+		if body.size() > HTTP_BODY_MAX_BYTES:
+			client.close()
+			return {}
+	client.close()
+	var json := JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		return {}
+	return {"latency_ms": latency, "data": json.data}
+
+
+## Polls the client while its status is one of `waiting`. False, with the connection
+## closed, if the deadline passes first.
+func _wait_while(client: HTTPClient, waiting: Array, deadline: int) -> bool:
+	while waiting.has(client.get_status()):
+		if clock.call() > deadline:
+			client.close()
+			return false
+		client.poll()
+		OS.delay_usec(POLL_SLEEP_USEC)
+	return true
 
 
 func _search_dirs() -> PackedStringArray:

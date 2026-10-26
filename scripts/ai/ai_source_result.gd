@@ -20,6 +20,16 @@ var agent := ""
 ## Only looked for when the agent is KNOWN; the command is never run.
 var agent_cli_present := false
 
+## Ollama on localhost: whether it answered, how fast, and how many models it lists.
+## Latency and count are -1 when unknown. Model names are never kept.
+var ollama_reachable := false
+var ollama_latency_ms := -1
+var ollama_model_count := -1
+## A local OpenAI-compatible server (LM Studio and others), the same three facts.
+var openai_reachable := false
+var openai_latency_ms := -1
+var openai_model_count := -1
+
 
 ## Every field as a plain Dictionary, for the string form and for later chunks.
 func to_dict() -> Dictionary:
@@ -28,6 +38,18 @@ func to_dict() -> Dictionary:
 			"state": AgentState.keys()[agent_state].to_lower(),
 			"name": agent,
 			"cli_present": agent_cli_present,
+		},
+		"local_servers": {
+			"ollama": {
+				"reachable": ollama_reachable,
+				"latency_ms": ollama_latency_ms,
+				"model_count": ollama_model_count,
+			},
+			"openai_compatible": {
+				"reachable": openai_reachable,
+				"latency_ms": openai_latency_ms,
+				"model_count": openai_model_count,
+			},
 		},
 	}
 
