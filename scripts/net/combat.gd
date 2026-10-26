@@ -17,8 +17,8 @@ extends RefCounted
 ## what it held, slot 1 at first. The host runs the same rules as the player's inventory
 ## from what the player tells it, so nothing about ammo is guessed: a draw (the weapon in
 ## hand from now on, ready after the swap time, any reload stopped) and a reload (refused
-## with no magazine, a full one, nothing in reserve, mid-draw or mid-reload; its rounds
-## move only when its time is up). Every believed shot spends a round. All timing is less
+## with no magazine, a full one, nothing in reserve or mid-reload; one that comes mid-draw
+## starts when the draw is done; its rounds move only when its time is up). Every believed shot spends a round. All timing is less
 ## the tolerance for jitter, so the host is never stricter than an honest player's game.
 ## A new life refills everything. Damage is worked out per pellet by the session from the
 ## weapon's falloff and applied here once per victim and shot.
@@ -99,7 +99,9 @@ func draw(id: int, life: int, weapon: String, known_life: int, now: float) -> St
 
 ## `id` started reloading `weapon`, the one in hand: "" when the host believes it, otherwise
 ## why not, counted. Refused, as the player's own inventory refuses it, for a weapon not in
-## hand, with no magazine, mid-draw, mid-reload, or with nothing to move.
+## hand, with no magazine, mid-reload, or with nothing to move. One that arrives while the
+## host still counts the draw (the draw was late on the wire, the player had waited it out)
+## is taken and starts when the draw is done: never sooner than the player's own could.
 func reload(id: int, life: int, weapon: String, known_life: int, now: float) -> String:
 	var why := _alive_in(id, life, known_life)
 	if why != "":
@@ -110,10 +112,10 @@ func reload(id: int, life: int, weapon: String, known_life: int, now: float) -> 
 	_finish_reload(s, now)
 	var def: WeaponDefScript = weapons[weapon]
 	var a: Dictionary = s["ammo"][weapon]
-	if not def.has_magazine() or s["reloading"] != "" or now < s["ready_at"] or def.reload_take(a["mag"], a["reserve"]) <= 0:
+	if not def.has_magazine() or s["reloading"] != "" or def.reload_take(a["mag"], a["reserve"]) <= 0:
 		return _drop(DROP_RELOAD)
 	s["reloading"] = weapon
-	s["reload_done_at"] = now + def.reload_s * (1.0 - tuning.fire_rate_tolerance)
+	s["reload_done_at"] = maxf(now, s["ready_at"]) + def.reload_s * (1.0 - tuning.fire_rate_tolerance)
 	return ""
 
 

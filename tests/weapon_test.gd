@@ -261,12 +261,13 @@ func _host_rule_checks() -> void:
 	r.append(c.draw(7, 0, "terminal_cannon", 0, 2.0))
 	r.append(c.reload(7, 0, "terminal_cannon", 0, 2.5))  # no magazine
 	r.append(c.draw(7, 0, "sigterm", 0, 2.6))
-	r.append(c.reload(7, 0, "sigterm", 0, 2.7))  # mid-draw (ready at 2.825)
-	r.append(c.reload(7, 0, "sigterm", 0, 2.9))
+	r.append(c.reload(7, 0, "sigterm", 0, 2.7))  # mid-draw (ready at 2.825): taken, from 2.825
+	r.append(c.reload(7, 0, "sigterm", 0, 2.9))  # already reloading
 	r.append(shoot.call("sigterm", 3.0))  # mid-reload
 	r.append(c.reload(7, 0, "sigterm", 0, 3.1))  # already reloading
-	r.append(shoot.call("sigterm", 2.9 + 1.66))
-	_check("reloads as the inventory has them: none for the cannon, none mid-draw or twice, no shot while one runs, the rounds in once its time is up (2.2 s less 25%)", r == PackedStringArray(["", "reload", "", "reload", "", "reload", "reload", ""]) and c.ammo_of(7, "sigterm") == [5, 22], "%s %s" % [r, c.ammo_of(7, "sigterm")])
+	r.append(shoot.call("sigterm", 2.825 + 1.64))  # 10 ms before it is done
+	r.append(shoot.call("sigterm", 2.825 + 1.66))
+	_check("reloads as the inventory has them: none for the cannon or twice, no shot while one runs, the rounds in once its time is up (2.2 s less 25%); one that comes mid-draw (a late draw) is taken and starts when the draw is done", r == PackedStringArray(["", "reload", "", "", "reload", "reload", "reload", "reload", ""]) and c.ammo_of(7, "sigterm") == [5, 22], "%s %s" % [r, c.ammo_of(7, "sigterm")])
 	c.reload(7, 0, "sigterm", 0, 5.0)
 	c.draw(7, 0, "terminal_cannon", 0, 5.1)
 	c.draw(7, 0, "sigterm", 0, 5.2)
@@ -305,7 +306,7 @@ func _host_rule_checks() -> void:
 	var reloading_then: bool = c.reload(7, 0, "sigterm", 0, 54.0) == "" and c.states[7]["reloading"] == "sigterm"
 	c.respawn(7)
 	_check("damage is the amount the pellets add up to (126 kills from full), never zero, NaN or negative; a new life refills, stops a reload and keeps the weapon in hand; draws from no player or a past life are refused", big == {"health": 0.0, "killed": true} and refused and reloading_then and c.ammo_of(7, "sigterm") == [6, 24] and c.states[7]["reloading"] == "" and c.drawn_by(7) == "sigterm" and dead_draw == "no_player" and past_life == "life")
-	_check("drops are counted by reason", c.drops.get("weapon", 0) == 3 and c.drops.get("rate", 0) == 1 and c.drops.get("swap", 0) == 2 and c.drops.get("reload", 0) == 5 and c.drops.get("empty", 0) == 2, str(c.drops))
+	_check("drops are counted by reason", c.drops.get("weapon", 0) == 3 and c.drops.get("rate", 0) == 1 and c.drops.get("swap", 0) == 2 and c.drops.get("reload", 0) == 6 and c.drops.get("empty", 0) == 2, str(c.drops))
 
 
 # --- Pellets and falloff. ---
@@ -688,6 +689,16 @@ func _match_checks() -> void:
 	await _frames(_frames_for(0.35))
 	var no_background := await _intent(hs, cs, cid, "sigterm", eye, up)
 	_check("over 127.0.0.1: no reload behind the host's back: SIGTERM emptied, the cannon fired for 2.5 s, SIGTERM drawn again and fired is still empty", no_background and hs.combat.drops.get("empty", 0) == 2, str(hs.combat.drops))
+	# A late draw and the reload pressed after waiting it out, arriving in one poll: the
+	# reload is taken and the rounds come when it is done, as on the joiner's screen.
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "terminal_cannon")
+	await _frames(_frames_for(0.35))
+	var reload_drops: int = hs.combat.drops.get("reload", 0)
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(0.3 + 2.2 + 0.05))
+	var bunched := await _intent(hs, cs, cid, "sigterm", eye, up, false)
+	_check("over 127.0.0.1: a draw and a reload arriving together (the draw late on the wire) still reload: the next shot is believed from a full magazine", bunched and hs.combat.drops.get("reload", 0) == reload_drops and hs.combat.ammo_of(cid, "sigterm")[0] == 5, "%s %s" % [hs.combat.drops, hs.combat.ammo_of(cid, "sigterm")])
 	# The host's own SIGTERM: the joiner draws every pellet the host drew.
 	await _settle(hp, 1.0)
 	hp.select_slot(1)
