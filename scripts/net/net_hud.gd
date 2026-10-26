@@ -322,12 +322,13 @@ func _refresh() -> void:
 	_body.add_theme_color_override("font_color", color)
 
 
-## The room code line under the hosting line, only with a live rendezvous.
+## The room code line under the hosting line, only with a live rendezvous: the code, or the
+## wait while one is being registered. After a failed registration the notice says why.
 func _room_text(s: Node) -> String:
 	if s.room_code != "":
 		var left: int = maxi(ceili(s.room_expires_s), 0)
 		return "\n" + ROOM_LINE % [s.room_code, Session.RoomCode.link(s.room_code), left / 60, left % 60]
-	if s.rendezvous_in_use().is_live():
+	if s.is_getting_room_code():
 		return "\n" + ROOM_WAIT_LINE
 	return ""
 

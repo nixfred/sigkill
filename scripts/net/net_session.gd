@@ -512,6 +512,11 @@ func is_connecting() -> bool:
 	return state == State.RESOLVING or state == State.CONNECTING or state == State.ROOM
 
 
+## True while a host's room code registration is in flight, and only then.
+func is_getting_room_code() -> bool:
+	return _room_request == "register"
+
+
 ## The port a host listens on, or 0.
 func listen_port() -> int:
 	if state != State.HOSTING or _enet == null:

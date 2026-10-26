@@ -514,11 +514,13 @@ func _error_checks() -> void:
 	await _drop(host)
 	_server.force_taken = 6
 	await _fresh_log()
-	var stubborn := _branch("Stubborn", Vector3.ZERO, _client(), false)
+	var stubborn := _branch("Stubborn", Vector3.ZERO, _client())
 	await _frames(2)
 	stubborn["session"].host(0)
+	stubborn["net_hud"].open()
 	await _until(func(): return stubborn["session"].notice != "")
 	await _frames(30)
+	var stubborn_panel: String = stubborn["net_hud"].panel_text()
 	_server.force_taken = 0
 	var gave_up: String = stubborn["session"].notice
 	var registrations := 0
@@ -526,6 +528,7 @@ func _error_checks() -> void:
 		if entry["op"] == Fake.Op.REGISTER:
 			registrations += 1
 	_check("after exactly five taken codes the host stops drawing and says so, and asks no more; it keeps hosting, and LAN join still works", stubborn["session"].room_code == "" and gave_up == Session.ROOM_NO_CODE % Session.ROOM_ALL_TAKEN and stubborn["session"].state == Session.State.HOSTING and registrations == 5 and _server.log.size() == 5, "%s; %d registrations" % [gave_up, registrations])
+	_check("after giving up, the panel shows why and no longer says a code is coming", stubborn_panel.contains(gave_up) and not stubborn_panel.contains(NetHud.ROOM_WAIT_LINE) and not stubborn["session"].is_getting_room_code(), stubborn_panel.c_escape())
 	await _drop(stubborn)
 
 
@@ -585,12 +588,18 @@ func _edge_checks() -> void:
 	# A registration whose answer is lost: given up on the timeout, and released.
 	await _fresh_log()
 	_server.mute = true
-	var lost := _branch("Lost", Vector3.ZERO, _client(), false)
+	var lost := _branch("Lost", Vector3.ZERO, _client())
 	await _frames(2)
 	lost["session"].host(0)
+	lost["net_hud"].open()
+	await _frames(2)
+	var waiting_panel: String = lost["net_hud"].panel_text()
+	var waiting: bool = lost["session"].is_getting_room_code()
 	await _until(func(): return lost["session"].notice != "")
 	await _frames(4)
 	_server.mute = false
+	var lost_panel: String = lost["net_hud"].panel_text()
+	_check("while the registration is in flight the panel says a code is coming; once it is given up, it says why instead", waiting and waiting_panel.contains(NetHud.ROOM_WAIT_LINE) and not lost_panel.contains(NetHud.ROOM_WAIT_LINE) and lost_panel.contains(lost["session"].notice) and not lost["session"].is_getting_room_code(), "%s | %s" % [waiting_panel.c_escape(), lost_panel.c_escape()])
 	var took: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
 	_check("a registration whose answer is lost: the host gives up on the timeout, says so, and releases the code", took != "" and lost["session"].notice == Session.ROOM_NO_CODE % Session.ROOM_UNREACHABLE and lost["session"].room_code == "" and not _server.rooms.has(took), "%s %s" % [lost["session"].notice, _server.log])
 	await _drop(lost)
