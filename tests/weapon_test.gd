@@ -446,23 +446,42 @@ func _solo_checks() -> void:
 	var first_shot := await _first_shot_frame(p, swap_frames + 5)
 	print("WEAPON swap: %.2f s = %d frames; with fire held from the draw, the first shot went off at frame %d" % [0.3, swap_frames, first_shot])
 	_check("no shot while SIGTERM is drawn: with fire held every frame, the first shot goes off one swap time (18 frames) after the draw", first_shot >= swap_frames - 1 and first_shot <= swap_frames + 1, "frame %d" % first_shot)
-	# Point blank at a dummy.
+	# Point blank at a dummy given a player's 100 health: only eight pellets or more (112)
+	# can derezz it in one shot, so this proves the pellets' damage, not just one ray's.
 	var dummy = main.get_node("Arena/Targets/DummyA")
+	dummy.max_health = 100.0
+	dummy.reset_for_round()
 	await _settle(p, 1.0)
 	p.respawn_at(main.to_global(Vector3(0.0, STAND_Y, -13.5)))
 	await _frames(3)
 	_aim(p, Vector3(dummy.global_position.x, p.get_node("Head/Camera").global_position.y, dummy.global_position.z))
 	inv.refill()
-	var was_alive: bool = dummy.is_hittable()
+	var was_alive: bool = dummy.is_hittable() and dummy.health() == 100.0
 	var shots_before: int = p.shots_fired
 	var hits_before: int = p.hits_landed
 	await _fire(p)
 	var beams := _count_fx("CannonBeam")
 	await process_frame
 	await process_frame
-	_check("SIGTERM point blank at a dummy: one shot, a hit, the dummy derezzes; nine tracers; the magazine down to 5 and the strip says so", was_alive and p.shots_fired == shots_before + 1 and p.hits_landed == hits_before + 1 and dummy.is_hittable() == false and beams == 9 and inv.mags[1] == 5 and inv.reserves[1] == 24 and wh.ammo_text() == "SIGTERM  5 / 24", "shots +%d hits +%d hittable %s beams %d mag %d strip %s" % [p.shots_fired - shots_before, p.hits_landed - hits_before, dummy.is_hittable(), beams, inv.mags[1], wh.ammo_text()])
+	_check("SIGTERM point blank at a 100-health dummy: one shot, a hit, the dummy derezzes (eight pellets or more landed); nine tracers; the magazine down to 5 and the strip says so", was_alive and p.shots_fired == shots_before + 1 and p.hits_landed == hits_before + 1 and dummy.is_hittable() == false and beams == 9 and inv.mags[1] == 5 and inv.reserves[1] == 24 and wh.ammo_text() == "SIGTERM  5 / 24", "shots +%d hits +%d hittable %s beams %d mag %d strip %s" % [p.shots_fired - shots_before, p.hits_landed - hits_before, dummy.is_hittable(), beams, inv.mags[1], wh.ammo_text()])
+	# The same dummy at 12 m and at 30 m, back at 100: what the player's own pellets do there.
+	var solo := {}
+	for d in [12.0, 30.0]:
+		dummy.reset_for_round()
+		await _settle(p, 0.95)
+		p.respawn_at(main.to_global(Vector3(0.0, STAND_Y, dummy.global_position.z + d)))
+		await _frames(3)
+		_aim(p, Vector3(dummy.global_position.x, p.get_node("Head/Camera").global_position.y, dummy.global_position.z))
+		await _fire(p)
+		await _frames(2)
+		solo[d] = 100.0 - dummy.health()
+	print("WEAPON solo damage on a 100-health dummy: %.2f at 12 m, %.2f at 30 m" % [solo[12.0], solo[30.0]])
+	_check("the player's own pellets on a 100-health dummy: at 12 m it takes 9.5 to 85.7 and lives, at 30 m 2.8 to 25.2", solo[12.0] >= 9.5 and solo[12.0] <= 85.7 and solo[30.0] >= 2.8 - 0.01 and solo[30.0] <= 25.2 + 0.01 and dummy.is_hittable(), str(solo))
+	dummy.max_health = 1.0
+	dummy.reset_for_round()
+	p.respawn_at(main.to_global(Vector3(0.0, STAND_Y, -13.5)))
 	# Spend the magazine, then E: the reload, timed to the frame.
-	for i in 5:
+	while inv.mags[1] > 0:
 		await _settle(p, 0.95)
 		await _fire(p)
 	var emptied: bool = inv.mags[1] == 0 and wh.ammo_text() == "SIGTERM  0 / 24" and wh.state_text() == WeaponHud.EMPTY_LINE
@@ -535,6 +554,12 @@ func _solo_checks() -> void:
 	var scene_text := FileAccess.get_file_as_string("res://scenes/player.tscn")
 	_check("the shipped player scene pins no weapon, so the arsenal alone decides the loadout: one with SIGTERM first holds SIGTERM in slot 1 and the cannon in slot 2", not scene_text.contains("weapon =") and other.inventory.slot_count() == 2 and other.inventory.defs[0].id == "sigterm" and other.inventory.defs[1].id == "terminal_cannon" and p.weapon == null)
 	other.queue_free()
+	var twin = load("res://scenes/player.tscn").instantiate()
+	twin.weapon = _sigterm
+	twin.position = Vector3(0.0, 40.0, -35.0)
+	main.add_child(twin)
+	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM, not two with their own magazines", twin.inventory.slot_count() == 1 and twin.inventory.defs[0].id == "sigterm", str(twin.inventory.defs.map(func(d): return d.id)))
+	twin.queue_free()
 	await physics_frame
 	# R in solo play: a fresh arena, a fresh inventory.
 	main.free()
@@ -741,6 +766,20 @@ func _fresh_match_checks() -> void:
 	var first_r := await _first_shot_frame(cp, 40)
 	var believed_r := await _until(func(): return hs.combat.states[cid]["last_seq"] == cs.fire_seq, 2000)
 	_check("a first roster that comes while the arena is away waits: the next arena's player starts fresh (the cannon, SIGTERM full) instead of the old SIGTERM at 2, and its first shot is believed", waited and cs.get("_weapons_synced") and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and hs.combat.drawn_by(cid) == "terminal_cannon" and first_r > 0 and believed_r and hs.combat.dropped == dropped_at_sync, "waited %s current %d mags %s believed %s" % [waited, cp.inventory.current, cp.inventory.mags, believed_r])
+	# Before its fresh start a joiner sends nothing: a SIGTERM shot then stays on its own
+	# screen, and the fresh start leaves both sides counting the same full magazine.
+	cs.set("_weapons_synced", false)
+	cp.inventory.hold(1)
+	cp.call("_show_weapon")
+	var seq_quiet: int = hs.combat.states[cid]["last_seq"]
+	var fired_quiet: int = cs.fire_seq
+	await _settle(cp, 0.2)
+	await _fire(cp)
+	await _frames(5)
+	var quiet: bool = hs.combat.states[cid]["last_seq"] == seq_quiet and cs.fire_seq == fired_quiet and cp.inventory.mags[1] == 5
+	hs._send_roster()
+	await _until(func(): return cs.get("_weapons_synced"), 2000)
+	_check("before its fresh start the joiner sends no shot (SIGTERM fired on its own screen, 5 left there, nothing counted by the host); the fresh start leaves both at 6 and 24 with the cannon", quiet and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and hs.combat.ammo_of(cid, "sigterm") == [6, 24] and hs.combat.drawn_by(cid) == "terminal_cannon", "quiet %s mags %s host %s" % [quiet, cp.inventory.mags, hs.combat.ammo_of(cid, "sigterm")])
 	await _frames(_frames_for(0.35))
 	cp.select_slot(1)
 	await _settle(cp, 0.5)

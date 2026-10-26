@@ -137,8 +137,8 @@ func _ready() -> void:
 		var weapon_issues: PackedStringArray = weapon.problems() if weapon is WeaponDefScript else PackedStringArray(["not a WeaponDef"])
 		for issue in weapon_issues:
 			push_warning("weapon tuning: " + issue + "; using the built-in defaults instead")
-		defs[0] = weapon if weapon_issues.is_empty() else WeaponDefScript.new()
-		defs = defs.filter(func(def): return def == defs[0] or def.id != defs[0].id)
+		var first: Resource = weapon if weapon_issues.is_empty() else WeaponDefScript.new()
+		defs = [first] + defs.slice(1).filter(func(def): return def.id != first.id)
 	inventory = Inventory.new(defs, _a.swap_s, _a.fiction_s)
 	_rng.randomize()
 	_pellet_rng.randomize()

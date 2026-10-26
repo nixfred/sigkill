@@ -1158,17 +1158,19 @@ func _reset_player_weapons() -> void:
 
 
 ## This player drew a weapon or started a reload: the host hears of it as of every shot.
+## A joiner sends nothing about its weapons until their fresh start (_sync_weapons): what it
+## did before the host held it is undone there on both sides.
 func _on_weapon_drawn(weapon: String) -> void:
 	if state == State.HOSTING:
 		_handle_draw(1, lives.get(my_id, 0), weapon)
-	elif state == State.JOINED and multiplayer.get_peers().has(1):
+	elif state == State.JOINED and _weapons_synced and multiplayer.get_peers().has(1):
 		_draw.rpc_id(1, lives.get(my_id, 0), weapon)
 
 
 func _on_reload_started(weapon: String) -> void:
 	if state == State.HOSTING:
 		_handle_reload(1, lives.get(my_id, 0), weapon)
-	elif state == State.JOINED and multiplayer.get_peers().has(1):
+	elif state == State.JOINED and _weapons_synced and multiplayer.get_peers().has(1):
 		_reload.rpc_id(1, lives.get(my_id, 0), weapon)
 
 
@@ -1211,6 +1213,8 @@ func _handle_reload(id: int, life: int, weapon: String) -> void:
 func _on_fire_intent(origin: Vector3, direction: Vector3, weapon: String) -> void:
 	if not is_online() or _arena == null or not is_instance_valid(_arena):
 		return
+	if state == State.JOINED and not _weapons_synced:
+		return  # the host does not count this player's weapons yet: the fresh start comes first
 	fire_seq += 1
 	var local_origin: Vector3 = _arena.to_local(origin)
 	var local_dir: Vector3 = (_arena.global_transform.basis.inverse() * direction).normalized()
