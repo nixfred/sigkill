@@ -55,7 +55,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   <tr>
     <td align="center" width="33%">🟦<br><b>Tron arena</b><br>Black void, glowing light grid, neon edges.<br><sub>✅ Built, as a greybox arena</sub></td>
     <td align="center" width="33%">📡<br><b>Signal weapons</b><br>SIGTERM shotgun, SIGHUP confusion grenade, the SIGKILL rail rifle.<br><sub>⬜ Planned from C16; the terminal cannon is built</sub></td>
-    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>🔧 In progress, M2: the detector is built (C9)</sub></td>
+    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>🔧 In progress, M2: the detector (C9) and agent adapters (C9b) are built</sub></td>
   </tr>
   <tr>
     <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.<br><sub>⬜ Planned, M3</sub></td>
@@ -64,7 +64,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   </tr>
 </table>
 
-Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. Under the hood, the AI source detector (C9) is built and tested, though nothing shows it on screen yet. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
+Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. Under the hood, the AI source detector (C9) and the guide's agent adapters (C9b) are built and tested, though nothing shows them on screen yet. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
 
 ## Story
 
@@ -122,7 +122,7 @@ Nothing in the arsenal is in progress right now: the cannon is finished and the 
 
 ## Your AI in the game
 
-> **Status: In progress** (M2). **Built:** the AI source detector (C9), with no UI and not yet wired into the game. **Planned:** agent adapters (C9b), the boot sequence (C10), the guide HUD (C11), coaching and roasts (C12). The rest of this section describes the design Fred decided in PRD 5.4.
+> **Status: In progress** (M2). **Built:** the AI source detector (C9) and the agent adapters (C9b), with no UI and not yet wired into the game. **Planned:** the boot sequence (C10), the guide HUD (C11), coaching and roasts (C12). The rest of this section describes the design Fred decided in PRD 5.4.
 
 Your guide is not a character a studio wrote. It is the coding agent you already picked in Omarchy, the same one that has been reading your diffs. SIGKILL finds it, names it on screen, and lets it talk to you while you play. Most players don't have local hardware strong enough for a good local model, so your Omarchy default agent comes first and a local model server is the fallback.
 
@@ -158,6 +158,38 @@ flowchart TD
 - **Never on the main thread.** The probes can wait up to half a second each, so `start()` runs the detection on a worker thread and the game polls `is_done()`. A detection can be cancelled, and dropping a detector mid-run cancels its worker, which stops within about a millisecond.
 
 The test, `tests/ai_detector_test.gd`, uses fakes only: the fixtures under `tests/fixtures/ai`, stub programs, and a fake model server on a random local port. No real agent is called, no real model server is reached, and the real nvidia-smi never runs.
+
+### Built: agent adapters (C9b)
+
+The guide talks to your AI through one interface, `scripts/ai/guide_adapter.gd`. Nothing calls it yet; the boot sequence (C10) and the guide HUD (C11) will. Every adapter has `is_available()`, a non-blocking `ask()` that the game then `poll()`s once a frame, and `cancel()`, and every answer has one shape: `{ok, text, error_kind, latency_ms, tokens_per_sec}`. `scripts/ai/guide_registry.gd` maps the detector's choice (C9) to an adapter: Claude Code or Codex if that is your default agent and its command is on your PATH, otherwise Ollama, then another OpenAI-compatible server, otherwise none, which means the scripted guide. The other agents Omarchy can name have no adapter yet, so they fall through to the local server the same way.
+
+- **What gets sent.** `scripts/ai/guide_request.gd` builds every request from a whitelist of game stats (shots fired, hits landed, kills, deaths, streak, targets left, accuracy, round time, weapon and mode), each checked against its type and range, plus what you typed, cut to 500 characters with control, direction-changing and invisible characters removed. Any other key is dropped, so a path, a host name or a process name cannot get in by accident. A fixed preamble tells the agent it is the in-game guide and must not use tools, read or write files, or run commands.
+- **Claude Code**, `scripts/ai/claude_adapter.gd`. The `claude` command found on your PATH, then exactly:
+
+  ```text
+  -p --tools "" --permission-mode dontAsk --permission-prompts none --strict-mcp-config
+  --safe-mode --disable-slash-commands --no-session-persistence --output-format text
+  --system-prompt <preamble> <game stats and your text>
+  ```
+
+  Print mode, every tool off, anything that would ask for permission denied, no MCP server, and no CLAUDE.md, skill, plugin, hook or custom agent loaded; the session is not saved. `--system-prompt` replaces Claude Code's default system prompt, so the default prompt's per-machine parts (working directory, environment, git status) are never sent. Never `--dangerously-skip-permissions`, `bypassPermissions`, `acceptEdits` or `--allowedTools`. Each flag and the `claude --help` line behind it is listed at the top of the file.
+- **Codex**, `scripts/ai/codex_adapter.gd`. The `codex` command found on your PATH, then exactly:
+
+  ```text
+  exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config
+  --ignore-rules --color never --disable shell_tool --disable unified_exec
+  --config include_environment_context=false
+  --cd <empty scratch folder> --output-last-message <answer file> <preamble, game stats and your text>
+  ```
+
+  A read-only sandbox, the shell tools switched off, no session files, none of your Codex config or rules files loaded, and no environment note (Codex would otherwise add its working directory, shell and date to the prompt). Never `--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, `workspace-write` or `danger-full-access`. Codex reads piped stdin to its end, so the game closes stdin at once; in Godot's pipe that also closes Codex's stdout, so the answer is read from the `--output-last-message` file, which is emptied before every launch. Each flag and the `codex exec --help` line behind it is listed at the top of the file.
+- **How an agent is launched.** `scripts/ai/guide_process.gd` is the one place the guide starts a program: the absolute path the detector found, an argument array, never a shell and never `omarchy-agent`. The prompt is a single argument. Codex's working root is an empty folder in the game's own data folder, `user://guide/workdir`, checked empty before every launch. Output is read without blocking and capped at 64 KiB; the answer is stripped of ANSI escapes and control bytes and cut to 600 characters. A request still running after 60 seconds is stopped.
+- **Stopping only its own child.** On a timeout, a cancel, or the guide being freed when the game exits, the game stops the agent process it launched itself, by that process's own PID and only while it still runs, and Godot reaps it. It never signals any other process.
+- **The local server**, `scripts/ai/local_openai_adapter.gd`. 127.0.0.1 only; any other host, even `localhost`, is refused. It uses only a model that is provably loaded already. On Ollama it asks `/api/ps`, which lists loaded models only. On an OpenAI-compatible server it asks LM Studio's own API, which says per model whether it is loaded: `/api/v1/models` (LM Studio 0.4 and later), then `/api/v0/models`. Only a chat model counts there (type `llm` or `vlm`), never a loaded embedding model. It never trusts the OpenAI-style `/v1/models` for this, because with LM Studio's just-in-time loading on, that list holds every downloaded model and a chat request for one of them loads it. If nothing is loaded, or the server cannot say, it returns `needs_consent` and sends nothing more: it never loads, pulls, deletes or unloads a model. The chat request is one `POST /v1/chat/completions` with only `model`, `messages`, `stream: false` and `max_tokens`, never `num_ctx` or `options`. The model's name lives in memory for that one request only. Tokens per second come from the server's own `usage` count, or -1 when it sends none. Its HTTP client, `scripts/ai/local_http.gd`, and JSON reader, `scripts/ai/quiet_json.gd`, are its own, capped and quiet, so nothing a server sends can make the game print.
+- **Pacing.** One request in flight per adapter, at most one start every 10 seconds, and an `ai_enabled` switch that answers `ai_off` at once. It ships off. Every number is in GuideTuning, `scripts/guide_tuning.gd` with `resources/guide.tres`.
+- **Known gaps, stated plainly.** Godot cannot set a child process's working directory, so Claude Code runs in the game's own working directory; it has no tools to look at it, and the default system prompt that would name it is replaced. The Codex feature names `shell_tool` and `unified_exec` come from third-party documentation, and the `include_environment_context` key from the field names inside the installed Codex binary, not from `--help`; if Codex rejects a feature name the call fails safely, and whether the key really silences the environment note is untested. Codex can still read your own global Codex instructions and skills; its `--help` offers no switch to stop that, and the game never reads or sends them. Ollama's `/api/ps` does not say whether a loaded model can chat, so if the first one loaded is an embedding model the answer fails instead (it still never loads anything). A local OpenAI-compatible server other than LM Studio cannot prove what is loaded, so it gets `needs_consent` until the consent step exists (C10/C11). `--ignore-user-config` also means a Codex model or provider set in your own config is not used. Nothing here has been tried against a real agent or model server yet; that needs Fred's yes.
+
+The test, `tests/guide_adapter_test.gd`, uses fakes only: stub `claude` and `codex` scripts under `tests/fixtures/ai/guide` and a fake model server on a random local port.
 
 ### Why it never uses omarchy-agent
 
@@ -308,7 +340,17 @@ sigkill/
 ├── scripts/
 │   ├── ai/
 │   │   ├── ai_source_detector.gd   Finds your AI and GPU stats: agent setting, PATH, localhost servers, /sys, nvidia-smi
-│   │   └── ai_source_result.gd     What it found: fixed words, known agent names and numbers only
+│   │   ├── ai_source_result.gd     What it found: fixed words, known agent names and numbers only
+│   │   ├── guide_adapter.gd        The guide adapter interface: ask, poll, cancel, pacing, answer cleaning
+│   │   ├── agent_adapter.gd        What the agent CLI adapters share: command check, empty scratch folder, launch
+│   │   ├── claude_adapter.gd       Claude Code in print mode, every tool off, no permission bypass
+│   │   ├── codex_adapter.gd        codex exec in a read-only sandbox, shell tools off, stdin closed
+│   │   ├── local_openai_adapter.gd The local server on 127.0.0.1: an already-loaded model only, else needs_consent
+│   │   ├── local_http.gd           Polled, capped HTTP client for 127.0.0.1
+│   │   ├── quiet_json.gd           A JSON reader that never prints, whatever it is given
+│   │   ├── guide_request.gd        The request: whitelisted game stats, cleaned typed text, the fixed preamble
+│   │   ├── guide_process.gd        The one program start: argv only, capped output, stops only its own child
+│   │   └── guide_registry.gd       Maps the detector's choice to an adapter, with fall-through
 │   ├── main.gd                 Wires targets, player, HUD and the rain driver, applies palette colours, R respawns targets
 │   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
 │   ├── controls.gd             The input map, registered in code
@@ -316,6 +358,7 @@ sigkill/
 │   ├── weapon_tuning.gd        WeaponTuning: the exposed cannon tuning, validated
 │   ├── derezz_tuning.gd        DerezzTuning: the exposed derezz and respawn tuning, validated
 │   ├── code_rain_tuning.gd     CodeRainTuning: the exposed code rain tuning, validated
+│   ├── guide_tuning.gd         GuideTuning: the guide's switch, pacing, timeouts and caps, validated
 │   ├── palette.gd              Every colour, plus the material factory
 │   ├── grey_block.gd           Builds a block's mesh, collision and material; registers for code rain; previews in the editor
 │   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
@@ -336,14 +379,17 @@ sigkill/
 │   ├── movement_tuning.tres    Default movement tuning
 │   ├── terminal_cannon.tres    Default terminal cannon tuning
 │   ├── derezz.tres             Default derezz tuning
-│   └── code_rain.tres          Default code rain tuning
+│   ├── code_rain.tres          Default code rain tuning
+│   └── guide.tres              Default guide tuning, AI off
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
 │   ├── cannon_test.gd          Headless cannon test
 │   ├── derezz_test.gd          Headless derezz test
 │   ├── code_rain_test.gd       Headless code rain test
 │   ├── ai_detector_test.gd     Headless AI detector test, fakes only
-│   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for that test, with a README.md
+│   ├── guide_adapter_test.gd   Headless guide adapter test, stubs and a fake server only
+│   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for the AI tests, with a README.md
+│       └── guide/              Stub claude and codex CLIs that record how they were launched
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
     ├── DESIGN.md               Decisions log and design notes
@@ -353,14 +399,15 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Four custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz and the code rain, each with a default instance: the player scene loads the first two, every target dummy loads the third, and the arena's rain driver loads the fourth. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
+Feel is data, not code. Five custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz, the code rain and the AI guide, each with a default instance: the player scene loads the first two, every target dummy loads the derezz tuning, the arena's rain driver loads the code rain tuning, and the guide adapters load the guide tuning. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
 - **CodeRainTuning**, `scripts/code_rain_tuning.gd` with `resources/code_rain.tres`. Groups: Reach, Fade, Glyphs, Colours. The falloff radius, the minimum and maximum intensity, the enemy cap, the fade-in and fade-out rates, column density, glyph size, fall speed range, tail length, flicker rate, brightness, head and tail colours.
 - **DerezzTuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`. Groups: Voxels, Motion, Fade, Respawn. The voxel cap and size, the share that glows red and the obsidian tint, glow brightness, burst, upward and shot-push speeds, spread, gravity, bounce, ground friction and the ground layers, the tumble range, the shortest and longest voxel life and the fade curve, the respawn delay and the regrow time.
+- **GuideTuning**, `scripts/guide_tuning.gd` with `resources/guide.tres`. Groups: Switch, Pacing, Limits. The AI on/off switch (shipped off), the shortest time between two requests, the agent and local server timeouts, the typed text, answer, agent output and local response caps, and the most tokens asked of a local model per answer.
 
-All four resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero or a fade rate of zero, the player, the dummy or the rain driver prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
+All five resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero, a fade rate of zero or a guide timeout of zero, the player, the dummy, the rain driver or the guide adapter prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -374,6 +421,7 @@ All four resources validate themselves on load with `problems()`. If a value wou
 6. **Derezz test**, `tests/derezz_test.gd`.
 7. **Code rain test**, `tests/code_rain_test.gd`.
 8. **AI detector test**, `tests/ai_detector_test.gd`.
+9. **Guide adapter test**, `tests/guide_adapter_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -384,8 +432,9 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 - **Derezz test.** The real main scene. Kills a real dummy with the real cannon and checks the state machine, collision, the voxel cap, the burst and the fade, the effect freeing itself on time, hits ignored while derezzing and while respawning, and the respawn at full health in the same spot. It also runs one seeded derezz at 30 and at 144 frames per second and requires identical voxels. It checks that the voxels follow the shot's own direction, both from a real cannon shot grazing a dummy's side and from a direct hit, and that voxels knocked off the raised platform settle on the floor below and never in mid-air. Finally it runs 20 rapid kill cycles with no leaked or orphaned nodes, and confirms every tuning resource file lists every tunable of its script.
 - **Code rain test.** The shader and tuning load and validate, then the real main scene: every block but the floor carries the rain shader and receives the tuning and the enemy slots; with no enemy the intensity is the minimum, at an enemy the maximum, at the radius nothing, and it never rises with distance; the rain fades in and out at the tuned rates, converges exactly and never overshoots; a derezzed dummy stops counting and a respawned one counts again; more enemies than the cap stay bounded, nearest to the player first; a settled arena uploads nothing. Headless Godot cannot read a shader's pixels, so the test checks GDScript mirrors of the falloff maths and the glyph hash instead; the shader itself is only known to compile.
 - **AI detector test.** Fakes only. A scan of the detector's source proves its one program start is the nvidia-smi query and its one connection goes to 127.0.0.1, and that nothing else uses it yet. Then every agent-setting case, the command check against a fake PATH (with a stub agent that fails the test if it is ever run), a fake model server that answers, lists nothing or hangs, a closed port, a fake /sys and a stub nvidia-smi whose recorded arguments must be exactly the query, the once-a-second limit, the fallback order across combinations, the worker thread, and that no result ever holds a path, a user or host name, or a model name.
+- **Guide adapter test.** Fakes only. Stub `claude` and `codex` scripts record their arguments, PID, working folder and stdin, and a fake model server on a random local port records every request. A scan of the guide's source, comments left out, proves there is no shell, no `omarchy-agent`, one program start, only guarded stops of the game's own child, and no pull, delete, `num_ctx`, `options` or `keep_alive`. Then: the request whitelist drops a seeded fake path, host name, process name and user; each agent's arguments are exactly the documented flags, with every forbidden flag absent; Codex gets the empty scratch folder and a closed stdin; ANSI escapes, control bytes and floods are cut down, and 64 KiB of padding followed by a sentinel proves nothing past the cap is ever read; a hung stub is stopped at the timeout by its own PID while a bystander stub keeps running; cancel and a guide freed mid-request stop their child; the rate limit (with a fake clock), one request in flight and AI off; the local adapter's loopback refusal, loaded model, LM Studio's loaded and unloaded models under just-in-time loading, `needs_consent` with no chat request and `/v1/models` never asked, exact request body, tokens per second, hostile, truncated and broken answers, and a server that never answers; the registry's fallback order; and that no result holds a path, a user or host name, the server address or a model name.
 
-Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, and more. Each one makes `scripts/check.sh` exit 1.
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, and more. Each one makes `scripts/check.sh` exit 1.
 
 ### The Codex bug run
 
@@ -465,13 +514,14 @@ godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/derezz_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/code_rain_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/ai_detector_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/guide_adapter_test.gd
 ```
 
 ## Safety and privacy
 
 These rules apply to every chunk, from PRD section 6, in plain language:
 
-- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; process IDs, parent process IDs and CPU and memory numbers for the Audit Trail visor; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
+- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine, with one exception: it stops the agent process it launched itself, by that process's own PID, on a timeout, a cancel or exit. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; process IDs, parent process IDs and CPU and memory numbers for the Audit Trail visor; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
 - **Two narrow exceptions, and nothing else.** First, the game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Second, for the HUD's GPU stats, it may run an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader`, never with control flags; it prefers reading /sys, and if neither works the HUD hides GPU stats. Nothing else is ever executed.
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
@@ -487,7 +537,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 |---|---|---|
 | M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
 | M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls (`3ee66b1`) | ✅ Done |
-| M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | 🔧 In progress |
+| M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | 🔧 In progress |
 | M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
