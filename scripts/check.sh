@@ -5,12 +5,12 @@
 #   scripts/check.sh <dir>    check another copy of the project (used to prove the gate can fail)
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
-# headless movement, cannon, derezz, code rain, AI detector, guide adapter and boot
-# sequence tests (tests/movement_test.gd, tests/cannon_test.gd, tests/derezz_test.gd,
+# headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence
+# and guide HUD tests (tests/movement_test.gd, tests/cannon_test.gd, tests/derezz_test.gd,
 # tests/code_rain_test.gd, tests/ai_detector_test.gd, tests/guide_adapter_test.gd,
-# tests/boot_sequence_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture
-# files, stub agent CLIs and a fake model server on 127.0.0.1. No real agent or model
-# server is ever run or reached. The main scene is the boot screen; under --headless, with
+# tests/boot_sequence_test.gd, tests/guide_hud_test.gd) at a fixed frame rate. The AI
+# tests use fakes only: fixture files, stub agent CLIs, the fakes in tests/support and a
+# fake model server on 127.0.0.1. No real agent or model server is ever run or reached. The main scene is the boot screen; under --headless, with
 # nothing handed in, it skips the AI link and goes straight to the arena, so the 300-frame
 # run makes no call and still runs the arena.
 # All steps always run, so one invocation shows everything that is wrong.
@@ -94,6 +94,7 @@ run_godot "code rain test" --fixed-fps 60 --script res://tests/code_rain_test.gd
 run_godot "AI detector test" --fixed-fps 60 --script res://tests/ai_detector_test.gd
 run_godot "guide adapter test" --fixed-fps 60 --script res://tests/guide_adapter_test.gd
 run_godot "boot sequence test" --fixed-fps 60 --script res://tests/boot_sequence_test.gd
+run_godot "guide HUD test" --fixed-fps 60 --script res://tests/guide_hud_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2
