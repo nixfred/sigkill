@@ -58,6 +58,7 @@ var _lmstudio := false
 var _ps_delay_ms := 0
 var _bad_ps := false
 var _show_fails: Array = []
+var _unload_fails := false
 
 
 func _initialize() -> void:
@@ -86,6 +87,7 @@ func _run() -> void:
 	await _demo_checks()
 	await _boot_checks()
 	await _hardening_checks()
+	await _more_hardening_checks()
 	await _cleanup()
 	print("LOAD server log (every request the fake Ollama server saw, in order):")
 	for line in _log_all:
@@ -147,6 +149,7 @@ func _server_state(models: Array, loaded: Array, mode: String = "load", late_ms:
 	_ps_delay_ms = 0
 	_bad_ps = false
 	_show_fails = []
+	_unload_fails = false
 	_requests.clear()
 	_mutex.unlock()
 
@@ -314,8 +317,11 @@ func _answer(method: String, path: String, body: String) -> PackedByteArray:
 			var asked = JSON.parse_string(body)
 			var name: String = asked.get("model", "") if asked is Dictionary else ""
 			if asked is Dictionary and asked.has("keep_alive") and int(asked["keep_alive"]) == 0:
-				_loaded.erase(name)
-				out = '{"model":"%s","done":true,"done_reason":"unload"}' % name
+				if _unload_fails:
+					status = "500 Internal Server Error"
+				else:
+					_loaded.erase(name)
+					out = '{"model":"%s","done":true,"done_reason":"unload"}' % name
 			else:
 				match _generate_mode:
 					"load":
@@ -532,7 +538,7 @@ func _source_checks() -> void:
 	_check("the loader never sends num_ctx, options, a prompt or keep_alive on a load, never pulls, deletes or uses /v1, opens no socket itself and never prints", found.is_empty(), ", ".join(found))
 	_check("the loader posts to /api/generate in exactly two places: one load with only the model, one unload with keep_alive 0", loader.count("GENERATE_PATH") == 3 and loader.count("_post(GENERATE_PATH, {\"model\": name}, deadline)") == 1 and loader.count("_send(\"POST\", GENERATE_PATH, JSON.stringify({\"model\": name, \"keep_alive\": 0}).to_utf8_buffer(), deadline, false)") == 1)
 	var link_code := _code("res://scripts/guide/guide_link.gd")
-	_check("loader jobs never overlap: a job asked for while one runs is queued, and the cancel flag is armed before each start", link_code.contains("\tif _loader_thread != null:\n\t\t_queued_job = job\n\t\t_queued_kind = kind\n\t\t_queued_id = id\n\t\treturn true\n\t_loader.arm()\n\t_loader_thread = Thread.new()"))
+	_check("loader jobs never overlap: a job asked for while one runs is queued, and the cancel flag is armed before each start", link_code.contains("\tif _loader_thread != null:\n\t\t_queued_job = job\n\t\t_queued_kind = kind\n\t\t_queued_id = id\n\t\treturn true\n\t_loader.arm()\n") and link_code.contains("\t_loader_thread = Thread.new()\n\t_running_kind = kind"))
 	var link := _code("res://scripts/guide/guide_link.gd")
 	_check("the link loads only from accept_load(), the player's Y, and starts nothing else that loads", link.count("job_load") == 1 and link.contains("func accept_load() -> bool:\n\tif load_state != \"offer\"") and link.count("print(") == 0)
 	_check("under the headless guard the loader's only port is one a test handed in", link.contains("\tif load_port > 0:\n\t\treturn load_port\n\tif _guarded or detector == null:\n\t\treturn -1"))
@@ -885,6 +891,13 @@ func _hardening_checks() -> void:
 		await process_frame
 	var none := _seen()
 	_check("Esc in the same instant as Y: no load is sent and nothing is loaded", _bodies(none, "/api/generate").is_empty() and _loaded_now().is_empty() and early.load_state == "cancelled", str(_paths(none)))
+	# That load never reached the server, so it is not watched: when another app loads the
+	# same model afterwards, the game leaves it alone.
+	_set_loaded([SMALL])
+	var t_other := Time.get_ticks_msec()
+	await _pump(early, func(): return Time.get_ticks_msec() - t_other > 1800, 4000)
+	var left_alone := _seen()
+	_check("a load that never reached the server is never watched: another app's copy of the model is left alone", _bodies(left_alone, "/api/generate").is_empty() and _loaded_now() == [SMALL] and not early.load_pending(), str(_paths(left_alone)))
 	early.shut_down(null)
 	_seen()
 	# A Y while an earlier job still runs waits its turn (here the cancelled load, not yet
@@ -939,6 +952,68 @@ func _hardening_checks() -> void:
 	await _offer_ready(thorough)
 	_check("six smaller embedding-only models are all checked and skipped; the chat model is offered", thorough.load_state == "offer" and thorough.offer_name() == SMALL and _bodies(_seen(), "/api/show").size() == 7, thorough.load_state)
 	thorough.shut_down(null)
+	_seen()
+
+
+func _more_hardening_checks() -> void:
+	# Two loads in flight: A stopped waiting and still pending, then B loaded and used.
+	_server_state(_standard_models(), [], "late", 1500)
+	var two := await _bare_link()
+	await _offer_ready(two)
+	two.accept_load()
+	await _until(func(): return _has_request("/api/generate"))
+	two.cancel_load()
+	await _pump(two, func(): return two.loader_idle() and two.load_state == "cancelled")
+	_server_tweak("_models", [_model(MEDIUM, int(4.7 * GB))])
+	_server_tweak("_generate_mode", "load")
+	await _offer_ready(two)
+	var offered_b: String = two.offer_name()
+	two.accept_load()
+	await _pump(two, func(): return two.load_state == "loaded")
+	var a_up: bool = await _pump(two, func(): return _loaded_now().has(SMALL))
+	var a_gone: bool = a_up and await _pump(two, func(): return _loaded_now() == [MEDIUM])
+	var two_sent := _seen()
+	_check("a cancelled load A and a later load B: A is unloaded when it turns up, B stays loaded and in use", offered_b == MEDIUM and a_gone and two.game_loaded_model() == MEDIUM and _bodies(two_sent, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % SMALL) and not _bodies(two_sent, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % MEDIUM), str(_bodies(two_sent, "/api/generate")))
+	two.shut_down(null)
+	_seen()
+	# An unload that fails is retried, with a growing wait, until it goes through.
+	_server_state(_standard_models(), [])
+	var retry := await _bare_link()
+	await _offer_ready(retry)
+	retry.accept_load()
+	await _pump(retry, func(): return retry.load_state == "loaded")
+	_server_tweak("_unload_fails", true)
+	_seen()
+	retry.set_consent(false)
+	# 32 s of game time, in 16 ms steps: with waits of 0.5, 1, 2, 4, 8 and 16 s that is
+	# about 7 tries. Each step also waits for a running try to end, in real time.
+	for i in 2000:
+		retry.poll(16.0)
+		while not retry.loader_idle():
+			await process_frame
+			retry.poll(0.0)
+	var failed_tries := _bodies(_seen(), "/api/generate").size()
+	_server_tweak("_unload_fails", false)
+	var retried: bool = await _pump(retry, func(): return _loaded_now().is_empty() and not retry.load_pending())
+	_seen()
+	_check("an unload that fails keeps the model marked and is retried, with a growing wait, until it goes through", failed_tries >= 5 and failed_tries <= 8 and retried and retry.game_loaded_model() == "", "%d failed tries in 32 s of game time" % failed_tries)
+	retry.shut_down(null)
+	_seen()
+	# A watched load seen loaded is kept past its window while its unload keeps failing.
+	_server_state(_standard_models(), [], "late", 300)
+	var seen_link := await _bare_link({"load_timeout_ms": 1000})
+	await _offer_ready(seen_link)
+	seen_link.accept_load()
+	await _until(func(): return _has_request("/api/generate"))
+	_server_tweak("_unload_fails", true)
+	seen_link.cancel_load()
+	var t1 := Time.get_ticks_msec()
+	await _pump(seen_link, func(): return Time.get_ticks_msec() - t1 > 2200, 3500)
+	var still_kept: bool = _loaded_now().has(SMALL) and (seen_link.load_pending() or not seen_link.loader_idle())
+	_server_tweak("_unload_fails", false)
+	var finally_gone: bool = await _pump(seen_link, func(): return _loaded_now().is_empty())
+	_check("a watched load seen loaded is kept past its 1 s window while its unload fails, then unloaded", still_kept and finally_gone, "kept %s, gone %s" % [still_kept, finally_gone])
+	seen_link.shut_down(null)
 	_seen()
 
 

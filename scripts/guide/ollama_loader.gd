@@ -21,10 +21,12 @@ extends RefCounted
 ##   no options, no num_ctx, no keep_alive. Only a model that then shows up in /api/ps is
 ##   the game's own.
 ## - Unload is one POST /api/generate with exactly {"model": name, "keep_alive": 0}, for the
-##   game's own model only, and only if /api/ps still lists it. Ownership is kept until
-##   that unload is answered or /api/ps shows the model gone. A load the game stopped
-##   waiting for (Esc, O, timeout) is watched until load_timeout_ms has passed, and
-##   unloaded if it turns up.
+##   game's own models only (owned: seen loaded after its own load), and only if /api/ps
+##   still lists it. A model marked for release stays marked, and is retried, until that
+##   unload is answered or /api/ps shows it gone. A load request that reached the server
+##   but that the game stopped waiting for (Esc, O, timeout) is watched, each on its own,
+##   for load_timeout_ms, and unloaded if it turns up; once seen loaded it is kept until
+##   unloaded or gone. A request that never reached the server is never watched.
 ## Model names stay in memory. Nothing here prints, logs or saves one.
 
 const Http = preload("res://scripts/ai/local_http.gd")
@@ -56,11 +58,20 @@ var tuning: Resource
 var outcome: Outcome = Outcome.NONE
 var offer_name := ""
 var offer_bytes := 0
-## The model this game loaded itself and has not unloaded; "" if none.
-var game_loaded := ""
-## A load the game stopped waiting for, unloaded if it turns up before watch_until.
-var watched := ""
-var watch_until := 0
+## Models this game loaded itself (seen in /api/ps after its own load) and has not
+## unloaded yet.
+var owned := PackedStringArray()
+## The owned model the guide uses now; "" if none.
+var current := ""
+## Owned models the game wants unloaded (O, a load nobody waits for any more). Each stays
+## here until its unload is answered or /api/ps shows it gone.
+var release := PackedStringArray()
+## Loads the game sent to the server and stopped waiting for (Esc, O, a timeout):
+## name -> {"until": ticks, "seen": bool}. Unloaded if they turn up. Dropped when their
+## window passes without them turning up, or once seen loaded and then gone.
+var watched := {}
+## The model the last job_load was for.
+var last_load := ""
 
 var _cancel := false
 var _mutex := Mutex.new()
@@ -89,6 +100,25 @@ func _cancelled() -> bool:
 
 func _begin_job() -> void:
 	outcome = Outcome.ERROR
+
+
+## Marks owned models for unloading: those in `names`, or every one when it is empty.
+## Main thread only, with no job running.
+func mark_release(names: PackedStringArray = PackedStringArray()) -> void:
+	for name in (owned if names.is_empty() else names):
+		if owned.has(name) and not release.has(name):
+			release.append(name)
+	if release.has(current):
+		current = ""
+
+
+## True while something is left to unload or to watch for.
+func has_pending() -> bool:
+	return not release.is_empty() or not watched.is_empty()
+
+
+func is_watching() -> bool:
+	return not watched.is_empty()
 
 
 ## Worker job: what to offer. `free_mib` is the GPU's free VRAM in MiB, or -1 if unknown.
@@ -126,10 +156,27 @@ func job_offer(free_mib: int) -> void:
 ## Worker job, after the player's Y: loads `name` unless something already loaded it.
 func job_load(name: String) -> void:
 	_begin_job()
+	last_load = name
 	var ps := _fetch(PS_PATH)
 	if not ps[0] or not listing_ok(ps[1]):
 		return  # what is loaded cannot be read, so ownership could not be proven: no load
-	if loaded_names(ps[1]).has(name):
+	var listed := loaded_names(ps[1])
+	if watched.has(name):
+		# An earlier load of this model that the game stopped waiting for: the game's own.
+		watched.erase(name)
+		if listed.has(name):
+			_own(name)
+			outcome = Outcome.LOADED
+			return
+	elif owned.has(name):
+		if listed.has(name):
+			release.erase(name)  # wanted again
+			current = name
+			outcome = Outcome.LOADED
+			return
+		owned.erase(name)  # gone since: loaded afresh below
+		release.erase(name)
+	elif listed.has(name):
 		outcome = Outcome.LOADED_NOW  # loaded by someone else before the Y: never the game's
 		return
 	if _cancelled():
@@ -137,76 +184,93 @@ func job_load(name: String) -> void:
 		return
 	var deadline := Time.get_ticks_msec() + int(tuning.load_timeout_ms)
 	var sent := _post(GENERATE_PATH, {"model": name}, deadline)
-	# From here the model may be loading because of this request.
-	watched = name
-	watch_until = Time.get_ticks_msec() + int(tuning.load_timeout_ms)
-	if sent[2] == "cancelled":
-		outcome = Outcome.CANCELLED
+	if not sent[3]:
+		# The request never reached the server: nothing can load because of it.
+		outcome = Outcome.CANCELLED if sent[2] == "cancelled" else Outcome.TIMEOUT if sent[2] == "timeout" else Outcome.ERROR
 		return
-	if sent[2] == "timeout":
-		outcome = Outcome.TIMEOUT
+	if sent[2] == "cancelled" or sent[2] == "timeout":
+		_watch(name)  # sent: it may still load
+		outcome = Outcome.CANCELLED if sent[2] == "cancelled" else Outcome.TIMEOUT
 		return
-	var after := _fetch(PS_PATH)
-	if after[0] and loaded_names(after[1]).has(name):
-		game_loaded = name
-		watched = ""
+	var after := _send("GET", PS_PATH, PackedByteArray(), Time.get_ticks_msec() + PROBE_TIMEOUT_MS, false)
+	if after[0] and listing_ok(after[1]) and loaded_names(after[1]).has(name):
+		_own(name)
 		outcome = Outcome.LOADED
 		return
+	_watch(name)  # answered but not listed (yet): watched, in case it still loads
 	outcome = Outcome.ERROR
 
 
-## Worker job: unloads the game's own model, and a watched load if it has turned up.
-func job_unload() -> void:
+func _own(name: String) -> void:
+	if not owned.has(name):
+		owned.append(name)
+	current = name
+
+
+func _watch(name: String) -> void:
+	watched[name] = {"until": Time.get_ticks_msec() + int(tuning.load_timeout_ms), "seen": false}
+
+
+## Worker job: unloads the models marked for release and any watched load that has turned
+## up. Whatever cannot be done now stays for the next run.
+func job_tidy() -> void:
 	_begin_job()
-	unload_now(Time.get_ticks_msec() + int(tuning.unload_timeout_ms), false)
+	var deadline := Time.get_ticks_msec() + int(tuning.unload_timeout_ms)
+	_release_pass(deadline)
+	_watch_pass(deadline)
 	outcome = Outcome.NONE
 
 
-## Worker job: checks once whether a load the game stopped waiting for has turned up, and
-## unloads it if so; stops watching once watch_until has passed.
-func job_watch() -> void:
-	_begin_job()
-	outcome = Outcome.NONE
-	if watched == "":
+## At the end of the session: marks every owned model for release, unloads it and any
+## watched load that has turned up, each only if /api/ps lists it, before `deadline`, then
+## forgets everything (nothing can follow). Runs on the main thread with no job running,
+## and always runs, even after a cancel.
+func unload_now(deadline: int) -> void:
+	mark_release()
+	_release_pass(deadline)
+	_watch_pass(deadline)
+	owned.clear()
+	release.clear()
+	watched.clear()
+	current = ""
+
+
+func _release_pass(deadline: int) -> void:
+	if release.is_empty():
 		return
-	var ps := _send("GET", PS_PATH, PackedByteArray(), Time.get_ticks_msec() + PROBE_TIMEOUT_MS, false)
-	if ps[0] and listing_ok(ps[1]) and loaded_names(ps[1]).has(watched):
-		if _send_unload(watched, Time.get_ticks_msec() + int(tuning.unload_timeout_ms)):
-			watched = ""
-	if watched != "" and Time.get_ticks_msec() > watch_until:
-		watched = ""
+	var ps := _send("GET", PS_PATH, PackedByteArray(), deadline, false)
+	if not (ps[0] and listing_ok(ps[1])):
+		return  # cannot tell: kept for the next run
+	var listed := loaded_names(ps[1])
+	for name in release.duplicate():
+		if not listed.has(name) or _send_unload(name, deadline):
+			release.erase(name)
+			owned.erase(name)
 
 
-## Unloads the game's own model and a watched load, each only if /api/ps lists it, before
-## `deadline`. Runs on whichever thread calls it (a worker, or the main thread at exit),
-## and always runs, even after a cancel. Ownership is dropped only once the unload was
-## answered or /api/ps no longer lists the model; a watched load not there yet stays
-## watched. `final` (the end of the session) drops everything after this one attempt,
-## since nothing can follow it.
-func unload_now(deadline: int, final: bool = true) -> void:
-	for slot in ["game_loaded", "watched"]:
-		var name: String = get(slot)
-		if name == "":
-			continue
-		var ps := _send("GET", PS_PATH, PackedByteArray(), deadline, false)
-		var known: bool = ps[0] and listing_ok(ps[1])
-		if known and loaded_names(ps[1]).has(name):
+func _watch_pass(deadline: int) -> void:
+	if watched.is_empty():
+		return
+	var ps := _send("GET", PS_PATH, PackedByteArray(), deadline, false)
+	var known: bool = ps[0] and listing_ok(ps[1])
+	var listed := loaded_names(ps[1]) if known else PackedStringArray()
+	var now := Time.get_ticks_msec()
+	for name in watched.keys():
+		var entry: Dictionary = watched[name]
+		if known and listed.has(name):
+			entry["seen"] = true
 			if _send_unload(name, deadline):
-				set(slot, "")
-		elif known and slot == "game_loaded":
-			set(slot, "")  # gone already
-		if final:
-			set(slot, "")
+				watched.erase(name)
+		elif known and entry["seen"]:
+			watched.erase(name)  # it turned up and is gone now
+		elif not entry["seen"] and now > int(entry["until"]):
+			watched.erase(name)  # never turned up in its window
 
 
 ## One unload request with exactly {"model": name, "keep_alive": 0}; true if answered.
 func _send_unload(name: String, deadline: int) -> bool:
 	var sent := _send("POST", GENERATE_PATH, JSON.stringify({"model": name, "keep_alive": 0}).to_utf8_buffer(), deadline, false)
 	return sent[2] == "done" and sent[0]
-
-
-func is_watching() -> bool:
-	return watched != ""
 
 
 ## "4.7 GB": a size the way Ollama shows it.
@@ -302,26 +366,29 @@ func _post(path: String, body: Dictionary, deadline: int) -> Array:
 
 
 ## One request, polled to its end on this thread: [ok, parsed JSON, "done" | "failed" |
-## "timeout" | "cancelled"]. ok is false for a refusal, a non-200 answer or a body that is
-## not JSON. An unload passes `cancellable` false: it always runs to its deadline.
+## "timeout" | "cancelled", sent]. ok is false for a refusal, a non-200 answer or a body
+## that is not JSON. sent is true once the whole request was written to the server. An
+## unload passes `cancellable` false: it always runs to its deadline.
 func _send(method: String, path: String, body: PackedByteArray, deadline: int, cancellable: bool = true) -> Array:
 	if cancellable and _cancelled():
-		return [false, null, "cancelled"]
+		return [false, null, "cancelled", false]
 	var http := Http.new()
 	if not http.start(port, method, path, body, deadline, RESPONSE_MAX_BYTES):
-		return [false, null, "failed"]
+		return [false, null, "failed", false]
+	var sent := false
 	while true:
 		var state := http.poll()
+		sent = sent or state == Http.State.RECEIVING or state == Http.State.DONE
 		if state == Http.State.DONE:
 			break
 		if state == Http.State.FAILED:
-			return [false, null, "timeout" if Time.get_ticks_msec() > deadline else "failed"]
+			return [false, null, "timeout" if Time.get_ticks_msec() > deadline else "failed", sent]
 		if cancellable and _cancelled():
 			http.close()
-			return [false, null, "cancelled"]
+			return [false, null, "cancelled", sent]
 		OS.delay_usec(POLL_USEC)
 	var raw = http.body()
 	if not (raw is PackedByteArray):
-		return [false, null, "done"]
+		return [false, null, "done", true]
 	var parsed := Json.parse(raw)
-	return [parsed[0], parsed[1], "done"]
+	return [parsed[0], parsed[1], "done", true]

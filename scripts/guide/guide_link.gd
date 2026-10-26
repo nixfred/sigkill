@@ -39,6 +39,8 @@ const GuideTuningScript = preload("res://scripts/guide_tuning.gd")
 
 const GUIDE_TUNING_PATH := "res://resources/guide.tres"
 const GPU_INTERVAL_FIRST_MS := 1000
+## The longest wait between two retries of an unload that keeps failing.
+const TIDY_BACKOFF_LAST_MS := 30000.0
 const ERROR_WORD_MAX := 24
 
 const DEMO_AGENT := "claude"
@@ -118,11 +120,19 @@ var _queued_kind := ""
 var _running_id := 0
 var _queued_id := 0
 var _request_id := 0
-## The loader's game_loaded, copied only once its job is joined: the main thread never
+## The loader's current model, copied only once its job is joined: the main thread never
 ## reads what a worker may be writing.
 var _game_loaded := ""
-var _unload_wanted := false
-var _watch_wait_ms := 0.0
+## Unloads asked for while a job ran, handed to the loader once it is idle: every owned
+## model (O, the end of a session), or the named ones (a load nobody waits for any more).
+var _release_all := false
+var _release_names := PackedStringArray()
+## Time until the next tidy run (release retries and watched loads), backing off while a
+## release keeps failing.
+var _tidy_wait_ms := 0.0
+var _tidy_backoff_ms := 0.0
+## How many releases were waiting when the running tidy job started.
+var _tidy_release_before := 0
 
 
 func _init() -> void:
@@ -479,6 +489,16 @@ func game_loaded_model() -> String:
 	return _game_loaded
 
 
+## True when no loader job is running.
+func loader_idle() -> bool:
+	return _loader_thread == null
+
+
+## True while the loader, idle, still has a model to unload or a sent load to watch for.
+func load_pending() -> bool:
+	return _loader != null and _loader_thread == null and _loader.has_pending()
+
+
 func _ensure_loader() -> void:
 	if _loader == null:
 		_loader = Loader.new()
@@ -495,6 +515,8 @@ func _start_loader_job(job: Callable, kind: String, id: int = 0) -> bool:
 		_queued_id = id
 		return true
 	_loader.arm()
+	if kind == "tidy":
+		_tidy_release_before = _loader.release.size()
 	_loader_thread = Thread.new()
 	_running_kind = kind
 	_running_id = id
@@ -516,11 +538,12 @@ func _request_unload() -> void:
 		if _running_kind == "load" or _running_kind == "offer":
 			_loader.cancel()
 		load_state = "cancelled"
-	_unload_wanted = true
+	_release_all = true
 
 
-## Joins a finished loader job and reads its outcome; then starts a wanted unload, or a
-## check on a load the link stopped waiting for.
+## Joins a finished loader job and reads its outcome; then hands any asked-for unloads to
+## the loader and tidies at once, or starts a queued job, or, while something is left to
+## unload or watch for, tidies again after a wait that backs off while unloads keep failing.
 func _tick_loader(ms: float) -> void:
 	if _loader == null:
 		return
@@ -529,14 +552,23 @@ func _tick_loader(ms: float) -> void:
 			return
 		_loader_thread.wait_to_finish()
 		_loader_thread = null
-		_read_outcome(_running_kind, _running_id)
+		var kind := _running_kind
+		_read_outcome(kind, _running_id)
 		_running_kind = ""
-		_game_loaded = _loader.game_loaded
-	# A wanted unload goes first, so a queued request runs against what is loaded after it.
-	if _unload_wanted:
-		_unload_wanted = false
-		if _loader.game_loaded != "" or _loader.is_watching():
-			_start_loader_job(_loader.job_unload, "unload")
+		_game_loaded = _loader.current
+		if kind == "tidy":
+			# Back off while releases keep failing; start over once one goes through.
+			var stuck := _tidy_release_before > 0 and _loader.release.size() >= _tidy_release_before
+			_tidy_backoff_ms = minf(maxf(_tidy_backoff_ms * 2.0, guide_tuning.load_watch_interval_ms), TIDY_BACKOFF_LAST_MS) if stuck else float(guide_tuning.load_watch_interval_ms)
+			_tidy_wait_ms = _tidy_backoff_ms
+	# Asked-for unloads go first, so a queued request runs against what is loaded after them.
+	if _release_all or not _release_names.is_empty():
+		_loader.mark_release(PackedStringArray() if _release_all else _release_names)
+		_release_all = false
+		_release_names = PackedStringArray()
+		_game_loaded = _loader.current
+		if _loader.has_pending():
+			_start_loader_job(_loader.job_tidy, "tidy")
 			return
 	if not _queued_job.is_null():
 		var next := _queued_job
@@ -545,11 +577,11 @@ func _tick_loader(ms: float) -> void:
 		_queued_kind = ""
 		_start_loader_job(next, kind, _queued_id)
 		return
-	if _loader.is_watching():
-		_watch_wait_ms -= ms
-		if _watch_wait_ms <= 0.0:
-			_watch_wait_ms = maxi(int(guide_tuning.load_watch_interval_ms), 500)
-			_start_loader_job(_loader.job_watch, "watch")
+	if _loader.has_pending():
+		_tidy_wait_ms -= ms
+		if _tidy_wait_ms <= 0.0:
+			_tidy_wait_ms = maxf(_tidy_backoff_ms, float(guide_tuning.load_watch_interval_ms))
+			_start_loader_job(_loader.job_tidy, "tidy")
 
 
 ## Applies a joined job's outcome, but only to the request that started it (`id`), and only
@@ -561,7 +593,7 @@ func _read_outcome(kind: String, id: int) -> void:
 	_loader.outcome = Loader.Outcome.NONE
 	var current := id == _request_id
 	if kind == "load" and outcome == Loader.Outcome.LOADED and not (current and load_state == "loading"):
-		_unload_wanted = true  # nobody waits for it any more: unload it
+		_release_names.append(_loader.last_load)  # nobody waits for it any more: unload it
 		return
 	if not current:
 		return
@@ -607,9 +639,8 @@ func _unload_for_exit() -> void:
 		_loader_thread = null
 		_read_outcome(_running_kind, _running_id)
 		_running_kind = ""
-	if _loader.game_loaded != "" or _loader.is_watching():
-		_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
-	_game_loaded = _loader.game_loaded
+	_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
+	_game_loaded = _loader.current
 
 
 ## When the link is dropped for good: also cancels the detector, and a detector whose own
