@@ -25,6 +25,11 @@ case "${SIGKILL_TEST_STUB_MODE:-ok}" in
 		done
 		;;
 	ansi) printf '\033[1;31mStay\033[0m low\r\n\001\002\033]0;fake title\007and move\n' ;;
+	padded)
+		# 64 KiB of control bytes, then text that only a reader past the cap would see.
+		head -c 65536 /dev/zero | tr '\0' '\001'
+		echo "late sentinel"
+		;;
 	fail)
 		echo "stub failure" >&2
 		exit 3

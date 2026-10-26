@@ -43,6 +43,14 @@ case "${SIGKILL_TEST_STUB_MODE:-ok}" in
 		fi
 		;;
 	ansi) answer "$(printf '\033[1;31mStay\033[0m low\r\n\001and move')" ;;
+	padded)
+		if [ -n "$out" ]; then
+			{
+				head -c 65536 /dev/zero | tr '\0' '\001'
+				printf 'late sentinel'
+			} > "$out"
+		fi
+		;;
 	epipe)
 		# The answer file first, then the same text on stdout, which the game has closed.
 		answer "Aim for the core, then strafe left."

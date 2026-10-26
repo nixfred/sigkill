@@ -29,13 +29,15 @@ const HANG_TIMEOUT_MS := 1000
 const FAKE_MODEL_WORD := "fake-model"
 const LOADED_MODEL := "fake-model-loaded:1b"
 const LISTED_MODEL := "fake-model-listed"
+const SENTINEL := "late sentinel"
 const CLAUDE_EXPECTED := ["-p", "--tools", "", "--permission-mode", "dontAsk", "--permission-prompts", "none", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands", "--no-session-persistence", "--output-format", "text", "--system-prompt"]
 const CLAUDE_FORBIDDEN := ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "bypassPermissions", "acceptEdits", "auto", "--allowedTools", "--allowed-tools", "--add-dir", "--mcp-config", "--plugin-dir", "--plugin-url", "--agents", "--continue", "--resume", "--bg", "omarchy-agent", "omarchy-agent-prompt"]
-const CODEX_EXPECTED := ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--color", "never", "--disable", "shell_tool", "--disable", "unified_exec", "--cd"]
+const CODEX_EXPECTED := ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--color", "never", "--disable", "shell_tool", "--disable", "unified_exec", "--config", "include_environment_context=false", "--cd"]
 const CODEX_FORBIDDEN := ["--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust", "--approve-for-me", "workspace-write", "danger-full-access", "--add-dir", "omarchy-agent", "omarchy-agent-prompt"]
 const GUIDE_SOURCES := ["guide_adapter.gd", "agent_adapter.gd", "claude_adapter.gd", "codex_adapter.gd", "local_openai_adapter.gd", "local_http.gd", "guide_request.gd", "guide_registry.gd", "guide_process.gd", "quiet_json.gd"]
 const NEVER_ANYWHERE := ["OS.execute(", "OS.create_process", "OS.create_instance", "OS.shell_open", "/bin/sh", "\"sh\"", "\"bash\"", "-c\"", "\"omarchy", "HTTPRequest", "HTTPClient", "JSON.parse", "JSON.new", "to_float(", "UDPServer", "TCPServer"]
-const LOCAL_NEVER := ["/api/pull", "/api/delete", "/api/generate", "/api/create", "/api/copy", "/api/push", "keep_alive", "num_ctx", "\"options\""]
+const LOCAL_NEVER := ["/api/pull", "/api/delete", "/api/generate", "/api/create", "/api/copy", "/api/push", "/load", "/unload", "\"/v1/models\"", "keep_alive", "num_ctx", "\"options\""]
+const V1_MODELS := "/v1/models"
 
 var _fails := 0
 var _checks := 0
@@ -238,7 +240,7 @@ func _safety_checks() -> void:
 	for word in LOCAL_NEVER:
 		if local.contains(word):
 			local_bad.append(word)
-	_check("the local adapter never pulls, deletes, generates or unloads, and never sends num_ctx, options or keep_alive", local_bad.is_empty(), ", ".join(local_bad))
+	_check("the local adapter never loads, pulls, deletes, generates or unloads, never lists with /v1/models, and never sends num_ctx, options or keep_alive", local_bad.is_empty(), ", ".join(local_bad))
 	_check("its one socket connects only to the constant 127.0.0.1", local.count("connect_to_host(") == 1 and local.contains("connect_to_host(Detector.LOCALHOST, port)"))
 	var users := PackedStringArray()
 	for dir in ["res://scripts", "res://scenes"]:
@@ -269,6 +271,11 @@ func _tuning_checks() -> void:
 	_check("validation refuses a per-frame interval, a zero timeout, zero caps and zero tokens", problems.size() == 5, ", ".join(problems))
 	var fallback = Claude.new("", bad)
 	_check("an adapter given bad tuning falls back to the shipped tuning", fallback.tuning().problems().is_empty())
+	var big: Resource = t.duplicate()
+	big.stdout_max_bytes = 65537
+	var late = Claude.new("", t.duplicate())
+	late.tuning().stdout_max_bytes = 1048576
+	_check("agent output over 64 KiB is refused, and a cap raised after the check is still held to 64 KiB", big.problems().size() == 1 and late.stdout_cap() == 65536 and t.stdout_max_bytes == 65536)
 
 
 func _request_checks() -> void:
@@ -346,6 +353,15 @@ func _claude_checks() -> void:
 	var flood_adapter := _agent(Claude, "claude")
 	var flood := await _ask(flood_adapter, "flood")
 	_check("a flood of output is capped and the answer cut to answer_max_chars", flood["ok"] and String(flood["text"]).length() == flood_adapter.tuning().answer_max_chars and String(flood["text"]).begins_with("flood line 0\n"))
+	var padded := await _ask(_agent(Claude, "claude"), "padded")
+	_check("Claude Code: output past 64 KiB is never read: 64 KiB of control bytes, then a sentinel, gives an empty answer", not padded["ok"] and padded["error_kind"] == "empty" and not String(padded["text"]).contains(SENTINEL), str(padded))
+	OS.set_environment("SIGKILL_TEST_STUB_MODE", "flood")
+	var process := Process.new()
+	process.start(ProjectSettings.globalize_path(STUBS).path_join("claude"), PackedStringArray(["flood"]), false, 65536)
+	var t0 := Time.get_ticks_msec()
+	while not process.poll() and Time.get_ticks_msec() - t0 < WATCHDOG_MS:
+		await process_frame
+	_check("the process helper keeps exactly the cap of a flood and says it overflowed", process.output().size() == 65536 and process.overflowed() and process.exit_code == 0, "%d bytes" % process.output().size())
 	var failed := await _ask(_agent(Claude, "claude"), "fail")
 	_check("a nonzero exit is agent_error", not failed["ok"] and failed["error_kind"] == "agent_error" and failed["pid_gone"])
 	# Timeout: only our own child is stopped. A bystander stub runs the whole time.
@@ -372,7 +388,7 @@ func _claude_checks() -> void:
 	_check("a guide dropped at game exit stops its own running agent", drop_pid > 0 and not DirAccess.dir_exists_absolute("/proc/%d" % drop_pid))
 	# Let the bystander end on its own, then reap it.
 	FileAccess.open(_release, FileAccess.WRITE).close()
-	var t0 := Time.get_ticks_msec()
+	t0 = Time.get_ticks_msec()
 	while OS.is_process_running(bystander["pid"]) and Time.get_ticks_msec() - t0 < WATCHDOG_MS:
 		OS.delay_msec(10)
 	(bystander["stdio"] as FileAccess).close()
@@ -394,6 +410,11 @@ func _codex_checks() -> void:
 		if argv.has(flag):
 			bad.append(flag)
 	_check("Codex: no full-auto, no approval or sandbox bypass, no writable sandbox, no omarchy-agent", bad.is_empty(), ", ".join(bad))
+	var configs := []
+	for i in argv.size() - 1:
+		if argv[i] == "--config" or argv[i] == "-c":
+			configs.append(argv[i + 1])
+	_check("Codex: the only config override turns off its environment note", configs == ["include_environment_context=false"], str(configs))
 	_check("Codex: --cd is the empty scratch directory and the answer file lies outside it", meta.get("cd", "") == scratch and DirAccess.get_files_at(scratch).is_empty() and not a.answer_path().begins_with(scratch))
 	_check("Codex: stdin is closed at once, so it never waits for input", meta.get("stdin", "") == "eof")
 	var epipe := await _ask(_agent(Codex, "codex"), "epipe")
@@ -407,6 +428,8 @@ func _codex_checks() -> void:
 	var flood_adapter := _agent(Codex, "codex")
 	var flood := await _ask(flood_adapter, "flood")
 	_check("a flooded answer file is read only up to the cap", flood["ok"] and String(flood["text"]).length() == flood_adapter.tuning().answer_max_chars)
+	var padded := await _ask(_agent(Codex, "codex"), "padded")
+	_check("Codex: the answer file is read only to 64 KiB: control bytes, then a sentinel, gives no answer", not padded["ok"] and padded["error_kind"] == "empty" and not String(padded["text"]).contains(SENTINEL), str(padded))
 	var hung := await _ask(_agent(Codex, "codex"), "hang")
 	_check("a hung Codex is stopped at the timeout by its own PID and reaped", hung["error_kind"] == "timeout" and hung["pid"] > 0 and hung["pid_gone"])
 
@@ -425,11 +448,32 @@ func _server_state() -> Array:
 	return state
 
 
+## The fake server's answer. LM Studio's own listings put one unloaded model first, so an
+## adapter that took the first listed model would pick the wrong one; /v1/models lists only
+## that unloaded model, as LM Studio does with just-in-time loading on.
 func _reply(mode: String, method: String, path: String) -> PackedByteArray:
 	var body := ""
-	if path == Local.LOADED_PATH:
+	var status := "200 OK"
+	var missing := "404 Not Found"
+	if path == Local.OLLAMA_PS_PATH:
 		body = '{"models":[]}' if mode == "empty" else '{"models":[{"name":"%s","model":"%s","size_vram":123}]}' % [LOADED_MODEL, LOADED_MODEL]
-	elif path == Local.MODELS_PATH:
+	elif path == Local.LMSTUDIO_V1_PATH:
+		match mode:
+			"jit":
+				body = '{"models":[{"type":"llm","key":"%s","loaded_instances":[]},{"type":"llm","key":"%s","loaded_instances":[]}]}' % [LISTED_MODEL, LOADED_MODEL]
+			"v0", "v0hostile", "generic":
+				status = missing
+			_:
+				body = '{"models":[{"type":"llm","key":"%s","loaded_instances":[]},{"type":"llm","key":"%s","loaded_instances":[{"id":"%s","config":{}}]}]}' % [LISTED_MODEL, LOADED_MODEL, LOADED_MODEL]
+	elif path == Local.LMSTUDIO_V0_PATH:
+		match mode:
+			"v0":
+				body = '{"object":"list","data":[{"id":"%s","state":"not-loaded"},{"id":"%s","state":"loaded"}]}' % [LISTED_MODEL, LOADED_MODEL]
+			"v0hostile":
+				body = '{"object":"list","data":[{"id":"%s","state":5},{"id":["x"],"state":"loaded"},{"id":7,"state":null},"loaded"]}' % LISTED_MODEL
+			_:
+				status = missing
+	elif path == V1_MODELS:
 		body = '{"object":"list","data":[{"id":"%s"}]}' % LISTED_MODEL
 	elif path == Local.CHAT_PATH and method == "POST":
 		match mode:
@@ -439,9 +483,14 @@ func _reply(mode: String, method: String, path: String) -> PackedByteArray:
 				body = "<html>busy</html>"
 			_:
 				body = '{"choices":[{"message":{"role":"assistant","content":"Strafe left \\u001b[31mnow\\u001b[0m."}}],"usage":{"prompt_tokens":40,"completion_tokens":12}}'
+	else:
+		status = missing
+	if mode == "error500":
+		status = "500 Internal Server Error"
+	if body == "" and status == "200 OK":
+		status = missing
 	var bytes := body.to_utf8_buffer()
 	var length := bytes.size() + (50 if mode == "truncated" and path == Local.CHAT_PATH else 0)
-	var status := "200 OK" if body != "" and mode != "error500" else "500 Internal Server Error"
 	var out := ("HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % [status, length]).to_utf8_buffer()
 	out.append_array(bytes)
 	return out
@@ -492,6 +541,13 @@ func _serve() -> void:
 		(e["peer"] as StreamPeerTCP).disconnect_from_host()
 
 
+func _paths(requests: Array) -> Array:
+	var out := []
+	for r in requests:
+		out.append(r["path"])
+	return out
+
+
 func _local(kind: String) -> Local:
 	var a := Local.new(_tuning())
 	a.configure(kind, Detector.LOCALHOST, _port)
@@ -506,7 +562,7 @@ func _local_checks() -> void:
 	var ok := await _ask(_local(Local.KIND_OLLAMA), "")
 	var requests: Array = _server_state()[2]
 	_check("Ollama path, an already-loaded model answers, cleaned, with tokens per second", ok["ok"] and ok["text"] == "Strafe left now." and ok["tokens_per_sec"] > 0.0, str(ok))
-	_check("Ollama path, it asks /api/ps first, then one chat request", requests.size() == 2 and requests[0]["method"] == "GET" and requests[0]["path"] == Local.LOADED_PATH and requests[1]["method"] == "POST" and requests[1]["path"] == Local.CHAT_PATH)
+	_check("Ollama path, it asks /api/ps first, then one chat request", requests.size() == 2 and requests[0]["method"] == "GET" and requests[0]["path"] == Local.OLLAMA_PS_PATH and requests[1]["method"] == "POST" and requests[1]["path"] == Local.CHAT_PATH)
 	var body: PackedByteArray = requests[1]["body"] if requests.size() == 2 else PackedByteArray()
 	var parsed := Json.parse(body)
 	var sent = parsed[1]
@@ -519,11 +575,27 @@ func _local_checks() -> void:
 	_set_mode("empty")
 	var consent := await _ask(_local(Local.KIND_OLLAMA), "")
 	var consent_requests: Array = _server_state()[2]
-	_check("nothing loaded: needs_consent, and no chat request is ever made", not consent["ok"] and consent["error_kind"] == "needs_consent" and consent_requests.size() == 1 and consent_requests[0]["path"] == Local.LOADED_PATH)
+	_check("nothing loaded: needs_consent, and no chat request is ever made", not consent["ok"] and consent["error_kind"] == "needs_consent" and consent_requests.size() == 1 and consent_requests[0]["path"] == Local.OLLAMA_PS_PATH)
 	_set_mode("loaded")
-	var openai := await _ask(_local(Local.KIND_OPENAI), "")
-	var openai_requests: Array = _server_state()[2]
-	_check("an OpenAI-compatible server is asked /v1/models and its listed model is used", openai["ok"] and openai_requests.size() == 2 and openai_requests[0]["path"] == Local.MODELS_PATH and Json.parse(openai_requests[1]["body"])[1]["model"] == LISTED_MODEL)
+	var lms := await _ask(_local(Local.KIND_OPENAI), "")
+	var lms_requests: Array = _server_state()[2]
+	_check("LM Studio 0.4+: /api/v1/models, an unloaded listed model is skipped and the loaded instance used", lms["ok"] and _paths(lms_requests) == [Local.LMSTUDIO_V1_PATH, Local.CHAT_PATH] and Json.parse(lms_requests[1]["body"])[1]["model"] == LOADED_MODEL, str(_paths(lms_requests)))
+	_set_mode("jit")
+	var jit := await _ask(_local(Local.KIND_OPENAI), "")
+	var jit_requests: Array = _server_state()[2]
+	_check("LM Studio with just-in-time loading and nothing loaded: needs_consent, no chat request, /v1/models never asked", not jit["ok"] and jit["error_kind"] == "needs_consent" and _paths(jit_requests) == [Local.LMSTUDIO_V1_PATH], str(_paths(jit_requests)))
+	_set_mode("v0")
+	var v0 := await _ask(_local(Local.KIND_OPENAI), "")
+	var v0_requests: Array = _server_state()[2]
+	_check("older LM Studio: /api/v0/models, only a model whose state is loaded", v0["ok"] and _paths(v0_requests) == [Local.LMSTUDIO_V1_PATH, Local.LMSTUDIO_V0_PATH, Local.CHAT_PATH] and Json.parse(v0_requests[2]["body"])[1]["model"] == LOADED_MODEL, str(_paths(v0_requests)))
+	_set_mode("generic")
+	var generic := await _ask(_local(Local.KIND_OPENAI), "")
+	var generic_requests: Array = _server_state()[2]
+	_check("a server that cannot say what is loaded gets needs_consent: no chat request, /v1/models never asked", not generic["ok"] and generic["error_kind"] == "needs_consent" and _paths(generic_requests) == [Local.LMSTUDIO_V1_PATH, Local.LMSTUDIO_V0_PATH], str(_paths(generic_requests)))
+	_set_mode("v0hostile")
+	var odd := await _ask(_local(Local.KIND_OPENAI), "")
+	var odd_requests: Array = _server_state()[2]
+	_check("a listing with wrongly typed ids and states is skipped quietly: needs_consent", not odd["ok"] and odd["error_kind"] == "needs_consent" and not _paths(odd_requests).has(Local.CHAT_PATH), str(_paths(odd_requests)))
 	_set_mode("hostile")
 	var hostile := await _ask(_local(Local.KIND_OLLAMA), "")
 	_check("a hostile answer (NUL escape, lone surrogate, 1e999999 tokens) is read quietly; tokens per second unknown", hostile["ok"] and hostile["tokens_per_sec"] == -1.0 and String(hostile["text"]).begins_with("zero"))

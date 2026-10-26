@@ -21,6 +21,15 @@ extends "res://scripts/ai/agent_adapter.gd"
 ##                              running `codex features list` is outside this chunk. If
 ##                              Codex rejects a name it fails, and the adapter reports an
 ##                              error: a safe failure.
+##   --config include_environment_context=false
+##                              "-c, --config <key=value>  Override a configuration value
+##                              that would otherwise be loaded from" the Codex config file:
+##                              without it Codex adds its own environment note to the
+##                              prompt (working directory, shell, date), and the working
+##                              directory's path names the player's home folder. The key
+##                              name is not in --help; it was read from the field names in
+##                              the codex-cli 0.164.0 binary, without running it, and its
+##                              effect is unverified until Fred allows a real run.
 ##   --cd <scratch dir>         "-C, --cd <DIR>  Tell the agent to use the specified
 ##                              directory as its working root": the empty directory
 ##   --output-last-message <f>  "-o, --output-last-message <FILE>  Specifies file where the
@@ -47,6 +56,7 @@ const FLAGS: PackedStringArray = [
 	"--color", "never",
 	"--disable", "shell_tool",
 	"--disable", "unified_exec",
+	"--config", "include_environment_context=false",
 ]
 
 
@@ -82,7 +92,7 @@ func _finish(process: Process) -> Dictionary:
 	var answer := ""
 	var file := FileAccess.open(answer_path(), FileAccess.READ)
 	if file != null:
-		answer = clean_answer(file.get_buffer(_t.stdout_max_bytes), _t.answer_max_chars)
+		answer = clean_answer(file.get_buffer(stdout_cap()), _t.answer_max_chars)
 		file.close()
 	if answer != "":
 		return result(true, answer, "")

@@ -75,7 +75,7 @@ func _begin(request: RefCounted) -> String:
 	if prepared != "":
 		return prepared
 	_process = Process.new()
-	if not _process.start(command_path, arguments(request, dir), closes_stdin(), _t.stdout_max_bytes):
+	if not _process.start(command_path, arguments(request, dir), closes_stdin(), stdout_cap()):
 		_process = null
 		return "launch_failed"
 	return ""
@@ -106,6 +106,12 @@ func _abort() -> void:
 	if _process != null:
 		_process.stop()
 		_process = null
+
+
+## How much of the agent's output is read: the tuning's cap, never over 64 KiB, even if the
+## tuning was changed after it was checked.
+func stdout_cap() -> int:
+	return clampi(_t.stdout_max_bytes, 1, Tuning.STDOUT_LAST_BYTES)
 
 
 ## The PID of the running child, or 0. For tests and logs of our own launch only.
