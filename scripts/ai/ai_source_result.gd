@@ -16,6 +16,9 @@ enum AgentState {
 var agent_state: AgentState = AgentState.UNSET
 ## The agent's name when agent_state is KNOWN, otherwise empty.
 var agent := ""
+## Whether that agent's command is on the player's PATH: a file there with an execute bit.
+## Only looked for when the agent is KNOWN; the command is never run.
+var agent_cli_present := false
 
 
 ## Every field as a plain Dictionary, for the string form and for later chunks.
@@ -24,6 +27,7 @@ func to_dict() -> Dictionary:
 		"agent": {
 			"state": AgentState.keys()[agent_state].to_lower(),
 			"name": agent,
+			"cli_present": agent_cli_present,
 		},
 	}
 

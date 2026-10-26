@@ -7,6 +7,8 @@ extends RefCounted
 ## - Omarchy's default-agent setting: only the first line of that one file, at most
 ##   AGENT_FILE_MAX_BYTES read. Never any other config file. It never runs
 ##   omarchy-default-agent or omarchy-agent.
+## - The PATH directories: whether a known agent's command exists there as a file with an
+##   execute bit. Nothing is read from it and it is never run, not even with --version.
 ##
 ## Every outside touchpoint is a variable below, so tests point it at fixtures. The
 ## defaults are the real ones.
@@ -28,9 +30,13 @@ const TAB := 0x09
 const CARRIAGE_RETURN := 0x0D
 const PRINTABLE_FIRST := 0x20
 const PRINTABLE_LAST := 0x7E
+## Owner, group and other execute bits (octal 111).
+const EXECUTE_BITS := 0x49
 
 ## Omarchy's default-agent setting. Empty means the real one under the player's home.
 var agent_file_path := ""
+## Directories searched for commands. Empty means the player's PATH.
+var path_dirs := PackedStringArray()
 
 
 ## Reads the default-agent setting and returns [AgentState, agent name or ""].
@@ -50,6 +56,38 @@ func read_agent() -> Array:
 	var bytes := file.get_buffer(AGENT_FILE_MAX_BYTES + 1)
 	file.close()
 	return parse_agent_line(bytes)
+
+
+## Whether a known agent's command is on the PATH: an absolute PATH entry holding a file,
+## not a directory, of that name with any execute bit. Names outside KNOWN_AGENTS are
+## refused, so nothing but a listed command name is ever looked up.
+func cli_present(agent_name: String) -> bool:
+	if not KNOWN_AGENTS.has(agent_name):
+		return false
+	return find_command(agent_name) != ""
+
+
+## The full path of a command on the PATH, or "" if it is not there. Used by this script
+## only; the path is never put in a result.
+func find_command(command: String) -> String:
+	if command.is_empty() or command.contains("/"):
+		return ""
+	for dir in _search_dirs():
+		# A relative entry, like "" or ".", would search wherever the game happens to run.
+		if not dir.is_absolute_path():
+			continue
+		var candidate := dir.path_join(command)
+		if DirAccess.dir_exists_absolute(candidate) or not FileAccess.file_exists(candidate):
+			continue
+		if FileAccess.get_unix_permissions(candidate) & EXECUTE_BITS:
+			return candidate
+	return ""
+
+
+func _search_dirs() -> PackedStringArray:
+	if not path_dirs.is_empty():
+		return path_dirs
+	return OS.get_environment("PATH").split(":", false)
 
 
 ## The setting's verdict from its raw bytes: only the first line counts, trimmed and
