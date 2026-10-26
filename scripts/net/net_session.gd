@@ -131,6 +131,9 @@ var health := {}
 var dead := {}
 var protect_left := {}
 var last_killer := {}
+## The killer's name as it was at the death, kept for the banner and the feed even after
+## that player has left.
+var last_killer_name := {}
 var respawn_left := {}
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
@@ -521,6 +524,7 @@ func _clear_players() -> void:
 	dead = {}
 	protect_left = {}
 	last_killer = {}
+	last_killer_name = {}
 	respawn_left = {}
 	lives = {}
 	_pending_spawn = Vector3.INF
@@ -613,7 +617,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	players.erase(id)
 	combat.remove_player(id)
-	for table in [health, dead, protect_left, last_killer, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
 	_send_roster()
@@ -704,7 +708,7 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 		dead[ids[i]] = deads[i] != 0
 		protect_left[ids[i]] = protects[i]
 		lives[ids[i]] = life_numbers[i]
-	for table in [health, dead, protect_left, last_killer, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, respawn_left, lives]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -895,14 +899,23 @@ func _obstructed(shooter: int, eye: Vector3, origin: Vector3) -> bool:
 	if from.distance_to(to) < 0.001:
 		return false
 	var query := PhysicsRayQueryParameters3D.create(from, to, _weapon.hit_mask | PLAYER_LAYER_MASK)
-	var exclude: Array[RID] = []
-	var own = avatars.get(shooter)
-	if own != null and is_instance_valid(own):
-		exclude.append(own.hit_rid())
-	if not combat.alive(1):
-		exclude.append(_player.get_rid())  # the host's corpse is no cover, as in the shot itself
-	query.exclude = exclude
+	query.exclude = _not_in_the_way(shooter)
 	return not _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+
+## What no shot and no cover probe may stop at: the shooter's own body, and every corpse
+## (the host's body while the host is dead, every dead avatar's hit volume: a volume is
+## switched off a frame after the death, and a second shot in the same poll must not find
+## it in between).
+func _not_in_the_way(shooter: int) -> Array[RID]:
+	var out: Array[RID] = []
+	if shooter == 1 or not combat.alive(1):
+		out.append(_player.get_rid())
+	for id in avatars:
+		var avatar = avatars[id]
+		if avatar != null and is_instance_valid(avatar) and (id == shooter or not combat.alive(id)):
+			out.append(avatar.hit_rid())
+	return out
 
 
 ## The host's own raycast for a believed shot: walls, dummies, the players' bodies, never
@@ -913,16 +926,9 @@ func _raycast(shooter: int, origin: Vector3, dir: Vector3) -> Dictionary:
 	var far := from + along * _weapon.fire_range
 	var query := PhysicsRayQueryParameters3D.create(from, far, _weapon.hit_mask | PLAYER_LAYER_MASK)
 	# Players can stand inside each other, at a shared spawn for one: a shot that starts
-	# inside an opponent still hits it. The shooter's own body is excluded below.
+	# inside an opponent still hits it. The shooter's own body and every corpse are excluded.
 	query.hit_from_inside = true
-	var exclude: Array[RID] = []
-	if shooter == 1 or not combat.alive(1):
-		exclude.append(_player.get_rid())  # the shooter's own body, or the host's corpse
-	if shooter != 1:
-		var own = avatars.get(shooter)
-		if own != null and is_instance_valid(own):
-			exclude.append(own.hit_rid())
-	query.exclude = exclude
+	query.exclude = _not_in_the_way(shooter)
 	var result: Dictionary = _player.get_world_3d().direct_space_state.intersect_ray(query)
 	if result.is_empty():
 		return {"end": _arena.to_local(far), "hit": 0}
@@ -985,6 +991,7 @@ func _apply_death(victim: int, killer: int, dir: Vector3) -> void:
 	dead[victim] = true
 	health[victim] = 0.0
 	last_killer[victim] = killer
+	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
 	respawn_left[victim] = _ct.respawn_delay_s
 	if victim == my_id:
 		if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):

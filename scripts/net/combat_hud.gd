@@ -26,7 +26,7 @@ const BORDER_WIDTH := 3
 var session: Node = null
 ## The hud.gd that owns the hit marker.
 var hud: CanvasLayer = null
-## The kill feed, newest first: {killer, victim, left}.
+## The kill feed, newest first: {killer, victim, left}, the names as they were at the kill.
 var entries: Array = []
 
 var _flash_left := 0.0
@@ -46,14 +46,34 @@ func _ready() -> void:
 
 
 func set_session(s: Node) -> void:
+	_unhook()
 	session = s
 	if s == null:
 		return
+	# Methods, never lambdas: the session outlives this HUD (R reloads the arena under a
+	# live match), and a lambda left on its signal would run on a freed HUD.
 	s.shot_confirmed.connect(_on_shot)
 	s.player_died.connect(_on_death)
-	s.player_respawned.connect(func(_id: int): _refresh())
+	s.player_respawned.connect(_on_respawn)
 	s.combat_changed.connect(_refresh)
 	s.changed.connect(_refresh)
+
+
+func _exit_tree() -> void:
+	_unhook()
+
+
+## Takes this HUD off the session's signals; the session goes on without it.
+func _unhook() -> void:
+	if session == null or not is_instance_valid(session):
+		return
+	for pair in [["shot_confirmed", _on_shot], ["player_died", _on_death], ["player_respawned", _on_respawn], ["combat_changed", _refresh], ["changed", _refresh]]:
+		if session.is_connected(pair[0], pair[1]):
+			session.disconnect(pair[0], pair[1])
+
+
+func _on_respawn(_id: int) -> void:
+	_refresh()
 
 
 func _process(delta: float) -> void:
@@ -103,7 +123,7 @@ func _on_shot(shooter: int, hit: int, _origin: Vector3, _end_point: Vector3) -> 
 func _on_death(victim: int, killer: int) -> void:
 	if session == null:
 		return
-	entries.push_front({"killer": killer, "victim": victim, "left": session.combat_tuning_in_use().kill_feed_fade_s})
+	entries.push_front({"killer": _name(killer), "victim": _name(victim), "left": session.combat_tuning_in_use().kill_feed_fade_s})
 	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
 		entries.pop_back()
 	_refresh()
@@ -129,10 +149,10 @@ func _refresh(fade: float = -1.0) -> void:
 	var dead: bool = session.dead.get(me, false)
 	var protect: float = session.protect_left.get(me, 0.0)
 	if dead:
-		var killer: int = session.last_killer.get(me, 0)
+		var killer: String = session.last_killer_name.get(me, _name(session.last_killer.get(me, 0)))
 		var left: float = session.respawn_left.get(me, 0.0)
-		_line.text = DEAD_LINE % [_name(killer), left]
-		_banner.text = BANNER % [_name(killer), left]
+		_line.text = DEAD_LINE % [killer, left]
+		_banner.text = BANNER % [killer, left]
 	else:
 		_line.text = HEALTH_LINE % roundi(session.health.get(me, 0.0)) + (PROTECT_LINE % protect if protect > 0.0 else "")
 	_line.add_theme_color_override("font_color", Palette.HOSTILE_AMBER if dead else Palette.MINT)
@@ -143,7 +163,7 @@ func _refresh(fade: float = -1.0) -> void:
 		var label: Label = _feed_labels[i]
 		if i < entries.size():
 			var entry: Dictionary = entries[i]
-			label.text = (FEED_FIRST % _name(entry["killer"])) + "\n" + (FEED_SECOND % _name(entry["victim"]))
+			label.text = (FEED_FIRST % entry["killer"]) + "\n" + (FEED_SECOND % entry["victim"])
 			var full: float = fade if fade > 0.0 else session.combat_tuning_in_use().kill_feed_fade_s
 			label.modulate = Color(1, 1, 1, clampf(entry["left"] / minf(1.0, full), 0.0, 1.0))
 			label.visible = true

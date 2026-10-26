@@ -541,6 +541,17 @@ func _forgery_checks() -> void:
 	cs._state.rpc_id(1, "junk", 0, eye, 0.0, 0.0, Vector3.ZERO)
 	await _until(func(): return hs.combat.dropped >= dropped_before + 3, 2000)
 	_check("intents and positions of the wrong types are dropped as malformed, three counted, with nothing applied", hs.combat.dropped == dropped_before + 3 and hs.combat.drops.get("no_player", 0) >= 4, str(hs.combat.drops))
+	# A corpse whose hit volume has not been switched off yet (that happens a frame after the
+	# death): a shot in that same poll must still pass through it. Here the volume is switched
+	# back on to stand in for that frame.
+	mine.get("_hit_shape").disabled = false
+	await physics_frame  # the physics space takes the shape up on its next step
+	await physics_frame
+	var corpse_dir := (mine.position - Vector3(0, 0.95, 4)).normalized()
+	var through: Dictionary = hs._raycast(1, Vector3(0, 1.65, 4), Vector3(corpse_dir.x, 0.0, corpse_dir.z).normalized())
+	mine.get("_hit_shape").disabled = true
+	await physics_frame
+	_check("a shot through a corpse whose volume is still on passes it: no hit, and the ray ends well beyond it", through["hit"] == 0 and (through["end"] - Vector3(0, 1.65, 4)).length() > (mine.position - Vector3(0, 0.95, 4)).length() + 2.0, "hit %d end %s corpse %s" % [through["hit"], through["end"], mine.position])
 	var corpse: Vector3 = mine.latest_position()
 	var old_life: int = cs.lives.get(cid, 0)
 	var back := await _until(func(): return not cs.dead.get(cid, true) and cp.alive, 3000)
@@ -648,11 +659,14 @@ func _leave_checks() -> void:
 		_aim(hp, mine.global_position + Vector3(0, 0.3, 0))
 		await _fire(hp)
 		await _frames(SHOT_FRAMES)
-	await _until(func(): return cs.dead.get(cid, false), 3000)
+	var killed_first := await _until(func(): return cs.dead.get(cid, false) and hs.dead.get(cid, false), 3000)
+	var down_first: bool = killed_first and not cp.alive and hs.combat.states[cid]["dead"]
 	cs.leave()
 	await _until(func(): return hs.players.size() == 1)
 	await _frames(90)
-	_check("a joiner leaving while dead is forgotten by the host, whose respawn timer fires on nobody; the joiner is alive again on its own", hs.players.size() == 1 and not hs.combat.has_player(cid) and hs.dead.size() == 1 and hs.health.size() == 1 and cp.alive and cs.dead.is_empty() and cs.health.is_empty())
+	_check("a joiner leaving while dead (killed first, its player disabled) is forgotten by the host, whose respawn timer fires on nobody; the joiner is alive again on its own", down_first and hs.players.size() == 1 and not hs.combat.has_player(cid) and hs.dead.size() == 1 and hs.health.size() == 1 and cp.alive and cs.dead.is_empty() and cs.health.is_empty(), "killed %s down %s" % [killed_first, down_first])
+	var feed_after: PackedStringArray = host["combat_hud"].feed_text()
+	_check("the host's kill feed still names the departed joiner", feed_after == PackedStringArray(["SIGKILL sent by Daemon-1 to Daemon-2"]), str(feed_after))
 	cs.join("127.0.0.1:%d" % hs.listen_port())
 	await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2)
 	await _frames(2)
@@ -673,6 +687,9 @@ func _leave_checks() -> void:
 	client["main"] = main2
 	client["player"] = main2.get_node("Player")
 	client["player"].assume_captured = true
+	client["hud"] = main2.get_node("Hud")
+	client["combat_hud"] = main2.get_node("Hud").combat_hud()
+	main2.get_node("Hud").guide().focus_check = func(): return false
 	cp = client["player"]
 	await _frames(2)
 	var at: Vector3 = cp.position
@@ -692,19 +709,28 @@ func _leave_checks() -> void:
 	host["main"] = hmain2
 	host["player"] = hmain2.get_node("Player")
 	host["player"].assume_captured = true
+	host["hud"] = hmain2.get_node("Hud")
+	host["combat_hud"] = hmain2.get_node("Hud").combat_hud()
+	hmain2.get_node("Hud").guide().focus_check = func(): return false
 	hp = host["player"]
 	var back_up := await _until(func(): return not hs.dead.get(1, true), 2000)
 	await _frames(2)
 	_check("the host with its arena away stays dead past the delay, and respawns at a real spawn point once the arena is back", still_dead and back_up and hp.alive and (hp.position - Vector3(0, 0.95, 10)).length() > 5.0 and hs.lives[1] == 1, "still dead %s back %s at %s" % [still_dead, back_up, hp.position])
 	# The host leaving while the joiner is dead: the joiner comes back to life on its own.
+	# The host stands 8 m from the joiner, toward the arena's centre, with a clear line.
+	var joiner_at: Vector3 = _avatar(host, cs.my_id).global_position
+	hp.respawn_at(joiner_at + Vector3(0, 0, 8.0 if joiner_at.z < 0.0 else -8.0))
+	await _frames(3)
 	for i in 4:
 		_aim(hp, _avatar(host, cs.my_id).global_position + Vector3(0, 0.3, 0))
 		await _fire(hp)
 		await _frames(SHOT_FRAMES)
-	await _until(func(): return cs.dead.get(cs.my_id, false), 3000)
+	var killed_last := await _until(func(): return cs.dead.get(cs.my_id, false) and hs.dead.get(cs.my_id, false), 3000)
+	var banner_dead: String = client["combat_hud"].banner_text()
+	var down_last: bool = killed_last and not cp.alive
 	hs.leave()
 	await _until(func(): return cs.state == Session.State.FAILED)
-	_check("the host leaving while the joiner is dead: \"host left\", the joiner alive and off", cs.error == Session.HOST_LEFT and cp.alive and cs.dead.is_empty())
+	_check("the host leaving while the joiner is dead (killed first, its banner naming the host): \"host left\", the joiner alive and off", down_last and banner_dead.begins_with("[ DEREZZED by Daemon-1 ]") and cs.error == Session.HOST_LEFT and cp.alive and cs.dead.is_empty(), "killed %s down %s banner '%s'" % [killed_last, down_last, banner_dead])
 	await _drop(client)
 	await _drop(host)
 
@@ -719,7 +745,7 @@ func _layout_checks() -> void:
 		var hud: CombatHud = host["combat_hud"]
 		host["session"].players[7] = {"slot": 2, "name": "Daemon-2"}
 		for i in 4:
-			hud.entries.push_front({"killer": 7 if i % 2 == 0 else 1, "victim": 1 if i % 2 == 0 else 7, "left": 2.0})
+			hud.entries.push_front({"killer": "Daemon-2" if i % 2 == 0 else "Daemon-1", "victim": "Daemon-1" if i % 2 == 0 else "Daemon-2", "left": 2.0})
 		host["hud"].guide()._notice("word ".repeat(60), Color.WHITE, 5000)
 		host["hud"].net_hud().toggle()
 		await _frames(3)
