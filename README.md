@@ -55,7 +55,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   <tr>
     <td align="center" width="33%">🟦<br><b>Tron arena</b><br>Black void, glowing light grid, neon edges.<br><sub>✅ Built, as a greybox arena</sub></td>
     <td align="center" width="33%">📡<br><b>Signal weapons</b><br>SIGTERM shotgun, SIGHUP confusion grenade, the SIGKILL rail rifle.<br><sub>⬜ Planned from C16; the terminal cannon is built</sub></td>
-    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>🔧 In progress, M2: the detector (C9), agent adapters (C9b) and boot screen (C10) are built</sub></td>
+    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>🔧 In progress, M2: the detector (C9), agent adapters (C9b), boot screen (C10) and guide HUD (C11) are built</sub></td>
   </tr>
   <tr>
     <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.<br><sub>⬜ Planned, M3</sub></td>
@@ -64,7 +64,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   </tr>
 </table>
 
-Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. The game opens on a boot screen (C10) that names your Omarchy default agent, asks before it is ever called, shows it answering, and reads your GPU; under it, the AI source detector (C9) and the guide's agent adapters (C9b). Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
+Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. The game opens on a boot screen (C10) that names your Omarchy default agent, asks before it is ever called, shows it answering, and reads your GPU. In the arena the guide HUD (C11) shows your AI's badge, latency and GPU, T asks it anything and O turns it on or off. Under them sit the AI source detector (C9) and the guide's agent adapters (C9b). Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
 
 ## Story
 
@@ -122,7 +122,7 @@ Nothing in the arsenal is in progress right now: the cannon is finished and the 
 
 ## Your AI in the game
 
-> **Status: In progress** (M2). **Built:** the AI source detector (C9), the agent adapters (C9b) and the boot screen that uses them (C10). **Planned:** the guide HUD (C11), coaching and roasts (C12). The rest of this section describes the design Fred decided in PRD 5.4.
+> **Status: In progress** (M2). **Built:** the AI source detector (C9), the agent adapters (C9b), the boot screen that uses them (C10) and the guide HUD in the arena (C11). **Planned:** asking before a local model is loaded (C11b), coaching and roasts (C12). The rest of this section describes the design Fred decided in PRD 5.4.
 
 Your guide is not a character a studio wrote. It is the coding agent you already picked in Omarchy, the same one that has been reading your diffs. SIGKILL finds it, names it on screen, and lets it talk to you while you play. Most players don't have local hardware strong enough for a good local model, so your Omarchy default agent comes first and a local model server is the fallback.
 
@@ -209,7 +209,7 @@ Entering the arena...
 ```
 
 - **The lines.** The agent line follows the C9 detector: your default agent by name; "not set" or "not one SIGKILL knows", said plainly; an agent whose command is missing, or that has no SIGKILL adapter yet, says so. When the C9b registry falls through to a local server: "Local model server found. Linking...". With no AI: "AI off. Scripted guide online." The GPU readout sits top right, utilisation, VRAM and temperature, read at most once a second through the C9 reader and hidden when there is no source.
-- **Asking first.** Before the first call to an agent or a local server, the screen names it, says what it gets ("only game stats and what you type"), and waits for Y to allow or N to keep the AI off. Plain keys only; a Ctrl, Alt or Super chord is ignored. `scripts/boot/guide_settings.gd` keeps the answer in the game's own data folder, `user://settings.cfg`. It counts only for that agent or server, so a different one is asked again, and a damaged file means one more question, never a call without a yes. No yes, no call: the guide's AI switch is turned on only on the screen's own copy of the guide tuning, and only after a yes. The in-game switch to change the answer later comes with the guide HUD (C11).
+- **Asking first.** Before the first call to an agent or a local server, the screen names it, says what it gets ("only game stats and what you type"), and waits for Y to allow or N to keep the AI off. Plain keys only; a Ctrl, Alt or Super chord is ignored. `scripts/boot/guide_settings.gd` keeps the answer in the game's own data folder, `user://settings.cfg`. It counts only for that agent or server, so a different one is asked again, and a damaged file means one more question, never a call without a yes. No yes, no call: the guide's AI switch is turned on only on the screen's own copy of the guide tuning, and only after a yes. In the arena, O changes it (C11).
 - **The handshake.** One request through the C9b registry and request builder, with a fixed prompt and no player data at all (its stats line reads "Game stats: none"). A "thinking" spinner runs while it waits; then the answer and its latency, plus tokens per second from a local server. A timeout or an error shows "No answer from <agent> (<reason>)." and the scripted guide. A local server with nothing loaded shows "Local model available, not loaded. Load it later from settings." and is never asked to load anything.
 - **Only SIGKILL's own words on screen.** The handshake prompt asks the AI to reply with exactly one of five fixed SIGKILL lines, such as "Online. Daemons beware.", and the screen shows SIGKILL's own copy of the line it picked, or "Link up." for anything else. So the AI shows it is answering live, but its own words, which could name a person, a machine or a model, never reach the screen. The local adapter also replaces the loaded model's name in its answers. Agent names come only from the detector's known list, and error reasons only if they are short lowercase words.
 - **The headless guard.** In any headless run, or with the `--no-ai` argument, the boot screen never makes a real detector and never asks the registry, whatever was saved, so no agent is launched and no model server is contacted. A headless run with nothing handed in goes straight to the arena, which keeps `scripts/check.sh`'s 300-frame run real-call-free while it still runs the arena. Traced with strace: no network connection at all.
@@ -218,6 +218,21 @@ Entering the arena...
 - **Seen headless only.** No window has shown it yet, and no real agent or model server has been called from it; the first real call waits for Fred's yes.
 
 The test, `tests/boot_sequence_test.gd`, uses fakes only: a spy detector, the C9 detector pointed at the fixtures and a fake model server on a random local port, and a stub adapter.
+
+### Built: guide HUD (C11)
+
+In the arena, `scripts/hud/guide_hud.gd`, built by `scripts/hud.gd`, shows that the guide is your own AI. It keeps the session's link to your AI, `scripts/guide/guide_link.gd`, which the boot screen hands over, so the boot handshake's adapter, pace and call count carry on into the arena, and an R reload keeps them too.
+
+- **Top right.** A badge: "your AI: claude" (or codex: the name from your Omarchy setting), "your AI: local" for a local model server, or "AI off". Under it, the last call's latency; tokens per second only when a local server answered and reported its own token count, never estimated; the GPU readout, at most once a second and hidden with no source; and a status line: the keys, a "thinking" spinner while your AI works, "Next ask in N s." or "Limit reached".
+- **Ask anything: T.** Opens a one-line box of up to 160 characters. While it is open the mouse is free and the game takes no input at all: no moving, jumping, firing or looking, R does not reload, and the click that would grab the mouse does nothing. Enter sends and Esc cancels; either way the mouse is captured again only if it was before and the window still has focus. What you typed goes out through the C9b request builder with a few game stats (shots, hits, accuracy, kills, targets left, round time, weapon and mode) and nothing else.
+- **Your AI's own words.** This is the one place they reach the screen, because you asked: in a panel titled "your AI (claude) says:", as plain text in a Label (BBCode or any other markup shows as typed, never parsed), with escape sequences, control and invisible characters stripped, and cut to 420 characters and 6 lines. A timeout or an error shows a fixed SIGKILL line instead. A local server with nothing loaded says "Local model available, not loaded.", keeps saying it on the status line until a model answers (T checks again), and nothing is ever loaded; asking to load one comes next, in C11b.
+- **Rate limits you can see.** One question at a time, at most one every 10 seconds (the guide tuning's minimum interval), and at most 40 AI calls in a game session, the boot handshake included. A refused T says why instead of doing nothing.
+- **AI on or off: O.** Off at once: no calls, "AI off", and the same opt-in setting the boot screen uses (`user://settings.cfg`) records the no; even if the file cannot be written, the answer holds for the session. On asks first, by name, with what it gets; Y allows, N or Esc keeps it off.
+- **The same guard and demo.** The headless guard lives in the link, so a headless run or a test never launches an agent or contacts a model server from the HUD either, whatever was saved. `godot --path . -- --demo` fills the HUD with fake values: claude, fake GPU numbers, a canned answer and its latency, with no reads, launches or network.
+- **Tuning.** Margins, panel width, text sizes, the caps, how long answers and notices stay up, the session cap, the spinner and GPU pace, the demo values and the colours are in HudTuning, `scripts/hud/hud_tuning.gd` with `resources/hud.tres`. The layout is checked to fit at 1280x720 and 960x540.
+- **Seen headless only.** No window has shown it yet, and no real agent has answered in it; that waits for Fred's yes.
+
+The test, `tests/guide_hud_test.gd`, uses fakes only (the shared ones in `tests/support/guide_fakes.gd`), and checks the input blocking in the real arena with the real player.
 
 ### Why it never uses omarchy-agent
 
@@ -242,7 +257,7 @@ The AI is opt-in on first launch, with a plain description of which agent will b
 ### Proof it's yours
 
 - **Boot sequence (C10), built:** names the agent from your own Omarchy setting, `Omarchy default agent: <agent>. Linking...`, and shows it answering live, with the latency and a live GPU readout. See [Built: boot sequence (C10)](#built-boot-sequence-c10).
-- **In-game HUD (C11):** a "your AI" badge, live response latency, tokens per second on the local fallback, and live GPU stats: utilisation, VRAM and temperature.
+- **In-game HUD (C11), built:** a "your AI" badge, the last call's latency, tokens per second on the local fallback, and live GPU stats: utilisation, VRAM and temperature. See [Built: guide HUD (C11)](#built-guide-hud-c11).
 - **GPU stats are read-only.** The game prefers reading them from /sys. Its only alternative is an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader,nounits`, never with control flags, which is the second and last thing the game may ever execute. The detector above already does exactly this. If neither works, the HUD simply hides GPU stats.
 - **Coaching (C12):** between-round coaching from your real round stats, and an opt-in roast announcer.
 
@@ -384,6 +399,11 @@ sigkill/
 │   │   ├── boot_sequence.gd        The boot screen: typed lines, opt-in, handshake, GPU readout, headless guard, demo mode
 │   │   ├── boot_tuning.gd          BootTuning: typing, pauses, spinner, GPU pace, handoff wait, sizes and colours, validated
 │   │   └── guide_settings.gd       The AI opt-in answer, kept in user://settings.cfg and read strictly
+│   ├── guide/
+│   │   └── guide_link.gd           The session's link to your AI: detection, adapter, opt-in, AI switch, GPU, headless guard
+│   ├── hud/
+│   │   ├── guide_hud.gd            The guide HUD: badge, latency, GPU, ask box on T, answers, AI toggle on O, rate limits
+│   │   └── hud_tuning.gd           HudTuning: layout, sizes, caps, timings, session cap, demo values and colours, validated
 │   ├── main.gd                 Wires targets, player, HUD and the rain driver, applies palette colours, R respawns targets
 │   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
 │   ├── controls.gd             The input map, registered in code
@@ -397,7 +417,7 @@ sigkill/
 │   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
 │   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death; self-freeing
 │   ├── code_rain_driver.gd     Feeds live enemy positions and faded weights to the code rain shader
-│   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair and hit marker
+│   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair, hit marker and the guide HUD
 │   ├── crosshair.gd            Crosshair drawn in code; kicks on every shot
 │   ├── hit_marker.gd           Diagonal hit marker, shown only on a confirmed hit
 │   ├── cannon_fx.gd            Beam, muzzle flash and light, impact flash and sparks; all self-freeing
@@ -414,7 +434,8 @@ sigkill/
 │   ├── derezz.tres             Default derezz tuning
 │   ├── code_rain.tres          Default code rain tuning
 │   ├── guide.tres              Default guide tuning, AI off
-│   └── boot.tres               Default boot screen tuning
+│   ├── boot.tres               Default boot screen tuning
+│   └── hud.tres                Default guide HUD tuning
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
 │   ├── cannon_test.gd          Headless cannon test
@@ -423,6 +444,8 @@ sigkill/
 │   ├── ai_detector_test.gd     Headless AI detector test, fakes only
 │   ├── guide_adapter_test.gd   Headless guide adapter test, stubs and a fake server only
 │   ├── boot_sequence_test.gd   Headless boot sequence test, spies, stubs and a fake server only
+│   ├── guide_hud_test.gd       Headless guide HUD test, fakes only, input blocking checked in the real arena
+│   ├── support/guide_fakes.gd  The fake detector and stub adapter the guide tests share
 │   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for the AI tests, with a README.md
 │       └── guide/              Stub claude and codex CLIs that record how they were launched
 └── docs/
@@ -434,7 +457,7 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Six custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz, the code rain, the AI guide and the boot screen, each with a default instance: the player scene loads the first two, every target dummy loads the derezz tuning, the arena's rain driver loads the code rain tuning, the guide adapters load the guide tuning, and the boot screen loads its own. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
+Feel is data, not code. Seven custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz, the code rain, the AI guide, the boot screen and the guide HUD, each with a default instance: the player scene loads the first two, every target dummy loads the derezz tuning, the arena's rain driver loads the code rain tuning, the guide adapters load the guide tuning, and the boot screen and the guide HUD load their own. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
@@ -442,8 +465,9 @@ Feel is data, not code. Six custom resources hold the exposed tuning parameters 
 - **DerezzTuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`. Groups: Voxels, Motion, Fade, Respawn. The voxel cap and size, the share that glows red and the obsidian tint, glow brightness, burst, upward and shot-push speeds, spread, gravity, bounce, ground friction and the ground layers, the tumble range, the shortest and longest voxel life and the fade curve, the respawn delay and the regrow time.
 - **GuideTuning**, `scripts/guide_tuning.gd` with `resources/guide.tres`. Groups: Switch, Pacing, Limits. The AI on/off switch (shipped off), the shortest time between two requests, the agent and local server timeouts, the typed text, answer, agent output and local response caps, and the most tokens asked of a local model per answer.
 - **BootTuning**, `scripts/boot/boot_tuning.gd` with `resources/boot.tres`. Groups: Typing, Handshake, Readout, Handoff, Text, Colours. Typing speed and the pause between lines, the spinner's pace, the demo handshake's wait and latency, the GPU interval (never under 1 second), the wait before the arena, the title, line and hint sizes, the hint's opacity, and the title, text, prompt and warning colours.
+- **HudTuning**, `scripts/hud/hud_tuning.gd` with `resources/hud.tres`. Groups: Layout, Ask, Pacing, Demo, Colours. The margin, the panel's width and the gap under it, the badge, line and answer sizes, the panel's opacity, the ask box and answer caps (160 characters; 420 characters and 6 lines), how long answers and notices stay up, the cap of 40 AI calls per session, the spinner and GPU pace (never under 1 second), the demo answer's wait and latency, and the badge, text, off and warning colours.
 
-All six resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero, a fade rate of zero, a guide timeout of zero or a typing speed of zero, the player, the dummy, the rain driver, the guide adapter or the boot screen prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
+All seven resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero, a fade rate of zero, a guide timeout of zero, a typing speed of zero or a session cap of zero, the player, the dummy, the rain driver, the guide adapter, the boot screen or the guide HUD prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -459,6 +483,7 @@ All six resources validate themselves on load with `problems()`. If a value woul
 8. **AI detector test**, `tests/ai_detector_test.gd`.
 9. **Guide adapter test**, `tests/guide_adapter_test.gd`.
 10. **Boot sequence test**, `tests/boot_sequence_test.gd`.
+11. **Guide HUD test**, `tests/guide_hud_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -470,8 +495,9 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 - **Code rain test.** The shader and tuning load and validate, then the real main scene: every block but the floor carries the rain shader and receives the tuning and the enemy slots; with no enemy the intensity is the minimum, at an enemy the maximum, at the radius nothing, and it never rises with distance; the rain fades in and out at the tuned rates, converges exactly and never overshoots; a derezzed dummy stops counting and a respawned one counts again; more enemies than the cap stay bounded, nearest to the player first; a settled arena uploads nothing. Headless Godot cannot read a shader's pixels, so the test checks GDScript mirrors of the falloff maths and the glyph hash instead; the shader itself is only known to compile.
 - **AI detector test.** Fakes only. A scan of the detector's source proves its one program start is the nvidia-smi query and its one connection goes to 127.0.0.1, and that outside scripts/ai only the boot screen uses it. Then every agent-setting case, the command check against a fake PATH (with a stub agent that fails the test if it is ever run), a fake model server that answers, lists nothing or hangs, a closed port, a fake /sys and a stub nvidia-smi whose recorded arguments must be exactly the query, the once-a-second limit, the fallback order across combinations, the worker thread, and that no result ever holds a path, a user or host name, or a model name.
 - **Guide adapter test.** Fakes only. Stub `claude` and `codex` scripts record their arguments, PID, working folder and stdin, and a fake model server on a random local port records every request. A scan of the guide's source, comments left out, proves there is no shell, no `omarchy-agent`, one program start, only guarded stops of the game's own child, and no pull, delete, `num_ctx`, `options` or `keep_alive`. Then: the request whitelist drops a seeded fake path, host name, process name and user; each agent's arguments are exactly the documented flags, with every forbidden flag absent; Codex gets the empty scratch folder and a closed stdin; ANSI escapes, control bytes and floods are cut down, and 64 KiB of padding followed by a sentinel proves nothing past the cap is ever read; a hung stub is stopped at the timeout by its own PID while a bystander stub keeps running; cancel and a guide freed mid-request stop their child; the rate limit (with a fake clock), one request in flight and AI off; the local adapter's loopback refusal, loaded model, LM Studio's loaded and unloaded models under just-in-time loading, `needs_consent` with no chat request and `/v1/models` never asked, exact request body, tokens per second, hostile, truncated and broken answers, and a server that never answers; the registry's fallback order; and that no result holds a path, a user or host name, the server address or a model name.
+- **Guide HUD test.** Fakes only. The badge for each kind of AI, latency and when tok/s shows, the GPU line and its pace, the ask box (whitelisted stats, BBCode shown as typed, escapes and control bytes stripped, the caps), fixed lines for every failure, the cooldown and the session cap on screen, the toggle and its question, the headless guard and demo mode, seeded private strings kept off every label, the layout at 1280x720 and 960x540, and in the real arena: with the box open, held keys, typed letters and a click move, jump and fire nothing, and R reloads nothing.
 
-Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, a boot screen with its headless guard removed (the fixtures' agent stub then runs and leaves its mark), and more. Each one makes `scripts/check.sh` exit 1.
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, a boot screen with its headless guard removed (the fixtures' agent stub then runs and leaves its mark), a player that ignores the ask box's input lock (it then drifts and fires while you type), and more. Each one makes `scripts/check.sh` exit 1.
 
 ### The Codex bug run
 
@@ -528,6 +554,8 @@ godot --path . -- --demo    # demo data only: nothing read from your machine, no
 godot --path . -- --no-ai   # the boot screen without any AI link
 ```
 
+In the arena, T asks your AI anything and O turns it on or off.
+
 Click into the window to grab the mouse. Esc gives it back, and so does switching away from the window.
 
 ### Controls
@@ -545,6 +573,8 @@ Bindings are registered in code in `scripts/controls.gd`, with mouse look and th
 | Esc | Release the mouse |
 | Esc or Enter, on the boot screen | Skip to the arena |
 | Y or N, on the boot screen | Allow the AI guide, or keep it off |
+| T | Ask your AI anything: a one-line box, Enter sends, Esc cancels. The game takes no input while it is open |
+| O | Turn the AI guide on or off; turning it on asks first (Y or N) |
 
 ### Running the checks
 
@@ -562,6 +592,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/code_rain_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/ai_detector_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/guide_adapter_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/boot_sequence_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/guide_hud_test.gd
 ```
 
 ## Safety and privacy
@@ -570,7 +601,7 @@ These rules apply to every chunk, from PRD section 6, in plain language:
 
 - **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine, with one exception: it stops the agent process it launched itself, by that process's own PID, on a timeout, a cancel or exit. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; process IDs, parent process IDs and CPU and memory numbers for the Audit Trail visor; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
 - **Two narrow exceptions, and nothing else.** First, the game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Second, for the HUD's GPU stats, it may run an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader`, never with control flags; it prefers reading /sys, and if neither works the HUD hides GPU stats. Nothing else is ever executed.
-- **Asked first, and never in a test.** The AI is called only after you say yes on the boot screen, for that agent or server. Headless runs and `--no-ai` never call it, whatever was saved.
+- **Asked first, and never in a test.** The AI is called only after you say yes, on the boot screen or with O in the arena, for that agent or server. Headless runs and `--no-ai` never call it, whatever was saved.
 - **One thing outside the game's own code.** The Godot engine itself, at startup, runs `xdg-user-dir DESKTOP` through `sh` and connects to the D-Bus session and system buses. It does this for any project, even an empty one (seen with strace). SIGKILL's code does neither, and this is noted for the PRD.
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
@@ -586,7 +617,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 |---|---|---|
 | M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
 | M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls (`3ee66b1`) | ✅ Done |
-| M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence (`3184454`) · C11 guide HUD · C12 coaching and roasts | 🔧 In progress |
+| M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence (`3184454`) · C11 guide HUD (`be2f220`) · C11b asking before a local model loads · C12 coaching and roasts | 🔧 In progress |
 | M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
