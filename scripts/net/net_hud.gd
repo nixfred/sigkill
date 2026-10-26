@@ -1,6 +1,6 @@
 extends Control
 ## The multiplayer panel (C13): M opens it, and inside it H hosts, J asks for an address,
-## L leaves, Esc closes. Plain keys only, counted only while the panel is up; Ctrl, Alt
+## K asks for a room code or a sigkill://join/ invite link (C15), L leaves, Esc closes. Plain keys only, counted only while the panel is up; Ctrl, Alt
 ## and Super chords are ignored. The panel sits at the top of the screen, where the
 ## round summary goes, and the round HUD holds its summary back while it is up.
 ##
@@ -9,14 +9,17 @@ extends Control
 ## screen (the panel shows it back) and goes nowhere but to the session as the address to
 ## connect to. Every message is a fixed line of SIGKILL's, with the session's own words:
 ## "couldn't reach host", "version mismatch: host 2, you 1", "host full", "host left".
-## A net line under the daemon count shows the session at a glance.
+## A net line under the daemon count shows the session at a glance. A host with a live
+## rendezvous also sees its room code and invite link; with none (the game's NullRendezvous
+## today) a code typed after K is answered "Online rooms aren't live yet. Use LAN join
+## (address)." and nothing is sent anywhere.
 
 const Session = preload("res://scripts/net/net_session.gd")
 const Palette = preload("res://scripts/palette.gd")
 
 const TITLE := "multiplayer"
 const OFF_LINE := "Play with a friend on your LAN or tailnet. One hosts, the other joins by the host's address."
-const OFF_KEYS := "[H] host on port %d   [J] join by address   [Esc] close"
+const OFF_KEYS := "[H] host on port %d   [J] join by address   [K] room code   [Esc] close"
 const HOST_LINE := "Hosting on port %d. Share your LAN or tailnet address with your friend."
 const HOST_KEYS := "[L] stop hosting   [Esc] close"
 const JOINED_LINE := "Joined %s."
@@ -24,6 +27,12 @@ const JOINED_KEYS := "[L] leave   [Esc] close"
 const CONNECTING_LINE := "Connecting to %s"
 const CONNECTING_KEYS := "[Esc] cancel"
 const BOX_TITLE := "join: the host's address, with an optional :port"
+const ROOM_BOX_TITLE := "join: a room code (6 characters) or a sigkill://join/ link"
+const ROOM_LINE := "Room code %s   invite %s   (new code in %d:%02d)"
+const ROOM_WAIT_LINE := "Getting a room code..."
+const LOOKUP_LINE := "Looking up %s"
+const NET_ROOM := "   room %s"
+const NET_LOOKUP := "net: finding room"
 const BOX_KEYS := "Enter joins   Esc cancels"
 const PLAYERS_LINE := "players %d/%d: %s"
 const NET_OFF := "net: off   M multiplayer"
@@ -51,6 +60,8 @@ var session: Node = null
 
 var _open := false
 var _typing := false
+## What the open box asks for: "address" (J) or "room" (K).
+var _box_mode := "address"
 var _was_captured := false
 var _recaptures := 0
 var _spin_s := 0.0
@@ -106,7 +117,11 @@ func _input(event: InputEvent) -> void:
 		KEY_J:
 			get_viewport().set_input_as_handled()
 			if not s.is_online() and not s.is_connecting():
-				_open_box()
+				_open_box("address")
+		KEY_K:
+			get_viewport().set_input_as_handled()
+			if not s.is_online() and not s.is_connecting():
+				_open_box("room")
 		KEY_L:
 			get_viewport().set_input_as_handled()
 			if s.is_online():
@@ -132,6 +147,12 @@ func _exit_tree() -> void:
 		guide.other_box_open = false
 	if round_hud != null and is_instance_valid(round_hud):
 		round_hud.hold_summary = false
+
+
+## The panel up, as a launch --join opens it to show what came of the join.
+func open() -> void:
+	_open = true
+	_refresh()
 
 
 ## M: the panel up or down.
@@ -181,9 +202,10 @@ func _guide_busy() -> bool:
 	return guide != null and is_instance_valid(guide) and guide.is_prompting()
 
 
-func _open_box() -> void:
+func _open_box(mode: String) -> void:
 	if _typing or _guide_busy():
 		return
+	_box_mode = mode
 	_typing = true
 	_was_captured = _mouse_captured()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -220,7 +242,10 @@ func _submit(text: String) -> void:
 	if s == null or text.strip_edges().is_empty():
 		return
 	_spin_at = 0
-	s.join(text)
+	if _box_mode == "room":
+		s.join_room(text)
+	else:
+		s.join(text)
 	_refresh()
 
 
@@ -255,11 +280,13 @@ func _refresh() -> void:
 	var cap: int = s.tuning_in_use().max_players
 	match s.state:
 		Session.State.HOSTING:
-			_line.text = NET_HOSTING % [s.listen_port(), count, cap] + (NET_NOTICE % s.notice if s.notice != "" else "")
+			_line.text = NET_HOSTING % [s.listen_port(), count, cap] + (NET_ROOM % s.room_code if s.room_code != "" else "") + (NET_NOTICE % s.notice if s.notice != "" else "")
 		Session.State.JOINED:
 			_line.text = NET_JOINED % [count, cap]
 		Session.State.RESOLVING, Session.State.CONNECTING:
 			_line.text = NET_CONNECTING
+		Session.State.ROOM:
+			_line.text = NET_LOOKUP
 		Session.State.FAILED:
 			_line.text = "net: " + s.error
 		_:
@@ -271,19 +298,19 @@ func _refresh() -> void:
 	_title.add_theme_color_override("font_color", Palette.TEAL)
 	_body.visible = not _typing
 	if _typing:
-		_title.text = BOX_TITLE
+		_title.text = ROOM_BOX_TITLE if _box_mode == "room" else BOX_TITLE
 		_keys.text = BOX_KEYS
 		return
 	var color := Palette.MINT
 	match s.state:
 		Session.State.HOSTING:
-			_body.text = (HOST_LINE % s.listen_port()) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()] + ("\n" + s.notice if s.notice != "" else "")
+			_body.text = (HOST_LINE % s.listen_port()) + _room_text(s) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()] + ("\n" + s.notice if s.notice != "" else "")
 			_keys.text = HOST_KEYS
 		Session.State.JOINED:
 			_body.text = (JOINED_LINE % s.address_text) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()]
 			_keys.text = JOINED_KEYS
-		Session.State.RESOLVING, Session.State.CONNECTING:
-			_body.text = (CONNECTING_LINE % s.address_text) + "  " + SPINNER[_spin_at]
+		Session.State.RESOLVING, Session.State.CONNECTING, Session.State.ROOM:
+			_body.text = ((LOOKUP_LINE if s.state == Session.State.ROOM else CONNECTING_LINE) % s.address_text) + "  " + SPINNER[_spin_at]
 			_keys.text = CONNECTING_KEYS
 		Session.State.FAILED:
 			_body.text = s.error
@@ -293,6 +320,16 @@ func _refresh() -> void:
 			_body.text = OFF_LINE
 			_keys.text = OFF_KEYS % s.tuning_in_use().port
 	_body.add_theme_color_override("font_color", color)
+
+
+## The room code line under the hosting line, only with a live rendezvous.
+func _room_text(s: Node) -> String:
+	if s.room_code != "":
+		var left: int = maxi(ceili(s.room_expires_s), 0)
+		return "\n" + ROOM_LINE % [s.room_code, Session.RoomCode.link(s.room_code), left / 60, left % 60]
+	if s.rendezvous_in_use().is_live():
+		return "\n" + ROOM_WAIT_LINE
+	return ""
 
 
 func _build() -> void:

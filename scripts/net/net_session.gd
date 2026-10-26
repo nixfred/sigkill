@@ -34,6 +34,13 @@ extends Node
 ## layer that nothing walks into. Dummies stay each player's own; the host's combat ray
 ## stops at one but never damages it.
 ##
+## Room codes (C15): a host with a live rendezvous (scripts/net/rendezvous_client.gd) draws
+## a code from scripts/net/room_code.gd, registers it with its game port and shows it; a
+## joiner who types a code or a sigkill://join/ link has it checked here first (a typo never
+## reaches the network), then resolved to an address and port, then joined by the C13 path.
+## The game's only rendezvous today is NullRendezvous, never live: a code gets "Online rooms
+## aren't live yet. Use LAN join (address)." and nothing is sent anywhere.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id. Nothing about the AI guide, the
@@ -42,12 +49,16 @@ extends Node
 const Tuning = preload("res://scripts/net/net_tuning.gd")
 const RemotePlayer = preload("res://scripts/net/remote_player.gd")
 const Combat = preload("res://scripts/net/combat.gd")
+const RoomCode = preload("res://scripts/net/room_code.gd")
+const NullRendezvous = preload("res://scripts/net/null_rendezvous.gd")
+const RoomTuningScript = preload("res://scripts/net/room_tuning.gd")
 const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
 const WeaponTuningScript = preload("res://scripts/weapon_tuning.gd")
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/net.tres"
 const COMBAT_TUNING_PATH := "res://resources/combat.tres"
+const ROOM_TUNING_PATH := "res://resources/room.tres"
 const WEAPON_PATH := "res://resources/terminal_cannon.tres"
 ## The physics layer the local player's body is on: a joiner's shot must be able to hit it.
 const PLAYER_LAYER_MASK := 2
@@ -87,8 +98,15 @@ const HOST_FULL := "host full"
 const HOST_LEFT := "host left"
 const BAD_ADDRESS := "not an address: type an IP or a host name, with an optional :port"
 const BAD_REPLY := "the host answered in a way this version does not understand"
+const ROOM_UNKNOWN := "no open room with code %s"
+const ROOM_EXPIRED := "room code %s has expired: ask the host for a new one"
+const ROOM_UNREACHABLE := "couldn't reach the room service"
+const ROOM_BUSY := "the room service is busy: try again in a moment"
+const ROOM_BAD_REPLY := "the room service answered in a way this version does not understand"
+const ROOM_NO_CODE := "no room code (%s): LAN join by address still works"
+const ROOM_ALL_TAKEN := "every code drawn was taken"
 
-enum State { OFF, HOSTING, RESOLVING, CONNECTING, JOINED, FAILED }
+enum State { OFF, HOSTING, RESOLVING, CONNECTING, JOINED, FAILED, ROOM }
 enum Verdict { OK, VERSION, FULL }
 
 ## Emitted on every change of state, error, roster or address.
@@ -107,6 +125,15 @@ var tuning: Resource = null
 var protocol := PROTOCOL
 ## CombatTuning; null for resources/combat.tres.
 var combat_tuning: Resource = null
+## RoomTuning; null for resources/room.tres.
+var room_tuning: Resource = null
+## The rendezvous for room codes; null: the one RoomTuning gives, today always NullRendezvous.
+## A test hands in its fake.
+var rendezvous: RefCounted = null
+## While hosting with a live rendezvous: this room's code once registered, else "".
+var room_code := ""
+## Seconds until room_code is given up and a fresh one registered.
+var room_expires_s := 0.0
 
 var state: State = State.OFF
 ## Why the last join or host attempt ended, for the screen, or "".
@@ -170,6 +197,16 @@ var _pending := {}
 ## Host: refused joiners and the grace left before they are dropped, id -> ms.
 var _refused := {}
 var _ct: CombatTuningScript
+var _rt: RoomTuningScript
+var _rv: RefCounted
+## The rendezvous request in flight ("register", "resolve" or ""), the code it is about,
+## the codes drawn so far for this room, the port registered, and the time left for it.
+var _room_request := ""
+var _room_wanted := ""
+var _room_attempts := 0
+var _room_port := 0
+var _room_left_ms := 0.0
+var _launch_checked := false
 var _weapon: WeaponTuningScript
 ## The host's clock for the fire rate, in seconds of game time.
 var _clock := 0.0
@@ -208,6 +245,8 @@ static func usable_tuning(candidate: Resource) -> Tuning:
 func _ready() -> void:
 	_t = usable_tuning(tuning)
 	_ct = usable_combat_tuning(combat_tuning)
+	_rt = usable_room_tuning(room_tuning)
+	_rv = rendezvous if rendezvous != null else rendezvous_for(_rt)
 	var shipped_weapon = load(WEAPON_PATH)
 	_weapon = shipped_weapon if shipped_weapon is WeaponTuningScript and shipped_weapon.problems().is_empty() else WeaponTuningScript.new()
 	var m := multiplayer as SceneMultiplayer
@@ -236,6 +275,34 @@ func tuning_in_use() -> Tuning:
 
 func combat_tuning_in_use() -> CombatTuningScript:
 	return _ct
+
+
+func room_tuning_in_use() -> RoomTuningScript:
+	return _rt
+
+
+func rendezvous_in_use() -> RefCounted:
+	return _rv
+
+
+## The rendezvous a RoomTuning gives: NullRendezvous for an empty relay_url, and, because no
+## network rendezvous client is built yet (docs/RELAY.md: hosting waits on Fred), for any
+## other value too. Nothing here ever opens a connection.
+static func rendezvous_for(_tuning: Resource) -> RefCounted:
+	return NullRendezvous.new()
+
+
+static func usable_room_tuning(candidate: Resource) -> RoomTuningScript:
+	if candidate is RoomTuningScript:
+		var issues: PackedStringArray = candidate.problems()
+		if issues.is_empty():
+			return candidate
+		for issue in issues:
+			push_warning("room tuning: " + issue + "; using the shipped tuning instead")
+	var shipped = load(ROOM_TUNING_PATH)
+	if shipped is RoomTuningScript and shipped.problems().is_empty():
+		return shipped
+	return RoomTuningScript.new()
 
 
 static func usable_combat_tuning(candidate: Resource) -> CombatTuningScript:
@@ -313,7 +380,56 @@ func host(port: int = -1) -> bool:
 	notice = ""
 	address_text = ""
 	state = State.HOSTING
+	if _rv.is_live():
+		_room_attempts = 0
+		_register_room()
 	changed.emit()
+	return true
+
+
+## Joins by a room code or a sigkill://join/ link: checked here first (a typo or a bad link
+## is refused at once, with nothing sent), then, with a live rendezvous, resolved to the
+## host's address and port and joined by the C13 path. With NullRendezvous: NOT_LIVE.
+func join_room(text: String) -> bool:
+	if state != State.OFF and state != State.FAILED:
+		return false
+	var parsed := RoomCode.parse_join(text)
+	if parsed.has("error"):
+		_fail(parsed["error"])
+		return false
+	if not _rv.is_live():
+		_fail(NullRendezvous.NOT_LIVE)
+		return false
+	var code: String = parsed["code"]
+	if not _rv.resolve(code, protocol):
+		_fail(ROOM_UNREACHABLE)
+		return false
+	_room_request = "resolve"
+	_room_wanted = code
+	_room_left_ms = _rt.request_timeout_ms
+	error = ""
+	notice = ""
+	players = {}
+	address_text = "room " + code
+	state = State.ROOM
+	changed.emit()
+	return true
+
+
+## The game's own command-line arguments, once per session: a --join with a room code or
+## an invite link joins that room; a bad one fails with the reason. True when there was a
+## --join at all, good or bad, so the screen can show what came of it.
+func take_launch_join(args: PackedStringArray) -> bool:
+	if _launch_checked:
+		return false
+	_launch_checked = true
+	var parsed := RoomCode.parse_args(args)
+	if parsed.is_empty():
+		return false
+	if parsed.has("error"):
+		_fail(parsed["error"])
+	else:
+		join_room(parsed["code"])
 	return true
 
 
@@ -366,7 +482,7 @@ func is_online() -> bool:
 
 
 func is_connecting() -> bool:
-	return state == State.RESOLVING or state == State.CONNECTING
+	return state == State.RESOLVING or state == State.CONNECTING or state == State.ROOM
 
 
 ## The port a host listens on, or 0.
@@ -405,8 +521,11 @@ func _physics_process(delta: float) -> void:
 			_connect_left_ms -= delta * 1000.0
 			if _connect_left_ms <= 0.0:
 				_fail(CANT_REACH)
+		State.ROOM:
+			_tick_room_lookup(delta)
 		State.HOSTING:
 			_clock += delta
+			_tick_room_code(delta)
 			_tick_refused(delta)
 			_tick_send(delta)
 			for id in combat.tick(delta):
@@ -471,6 +590,110 @@ func _tick_send(delta: float) -> void:
 	_send_state()
 
 
+# --- Room codes. ---
+
+## Draws a code and asks the rendezvous to hold it for this room's game port.
+func _register_room() -> void:
+	var code := RoomCode.generate()
+	_room_attempts += 1
+	_room_port = listen_port()
+	if not _rv.register(code, protocol, _room_port):
+		notice = ROOM_NO_CODE % ROOM_UNREACHABLE
+		return
+	_room_request = "register"
+	_room_wanted = code
+	_room_left_ms = _rt.request_timeout_ms
+
+
+func _tick_room_code(delta: float) -> void:
+	if _room_request == "register":
+		var done: Dictionary = _rv.poll()
+		if done.is_empty():
+			_room_left_ms -= delta * 1000.0
+			if _room_left_ms <= 0.0:
+				_rv.cancel()
+				_room_request = ""
+				notice = ROOM_NO_CODE % ROOM_UNREACHABLE
+				changed.emit()
+			return
+		_room_request = ""
+		if done.get("ok", false):
+			room_code = _room_wanted
+			var given := int(done.get("expires_in_s", 0))
+			room_expires_s = float(mini(given, _rt.code_ttl_s) if given > 0 else _rt.code_ttl_s)
+			notice = ""
+		elif done.get("error", "") == "taken" and _room_attempts < _rt.register_attempts:
+			_register_room()  # someone holds that one: draw another
+		else:
+			notice = ROOM_NO_CODE % _room_error_text(done)
+		changed.emit()
+	elif room_code != "":
+		room_expires_s -= delta
+		if room_expires_s <= 0.0:
+			# One live code per room: the old one is released, then a fresh one drawn.
+			_rv.close(room_code, protocol, _room_port)
+			room_code = ""
+			_room_attempts = 0
+			_register_room()
+			changed.emit()
+
+
+func _tick_room_lookup(delta: float) -> void:
+	var done: Dictionary = _rv.poll()
+	if done.is_empty():
+		_room_left_ms -= delta * 1000.0
+		if _room_left_ms <= 0.0:
+			_rv.cancel()
+			_room_request = ""
+			_fail(ROOM_UNREACHABLE)
+		return
+	_room_request = ""
+	var code := _room_wanted
+	if not done.get("ok", false):
+		_fail(_room_error_text(done))
+		return
+	var address = done.get("address", "")
+	var port = done.get("port", 0)
+	if not (address is String) or not address.is_valid_ip_address() or not (port is int) or port < 1 or port > PORT_LAST:
+		_fail(ROOM_BAD_REPLY)
+		return
+	state = State.OFF  # from here it is the C13 join, to the address the rendezvous gave
+	if join(("[%s]:%d" if address.contains(":") else "%s:%d") % [address, port]):
+		address_text = "room " + code
+
+
+## What went wrong with a rendezvous request, for the screen.
+func _room_error_text(done: Dictionary) -> String:
+	match done.get("error", ""):
+		"unknown":
+			return ROOM_UNKNOWN % _room_wanted
+		"expired":
+			return ROOM_EXPIRED % _room_wanted
+		"version":
+			return "version mismatch: host %d, you %d" % [int(done.get("host_protocol", 0)), protocol]
+		"busy":
+			return ROOM_BUSY
+		"taken":
+			return ROOM_ALL_TAKEN
+		"not_live":
+			return NullRendezvous.NOT_LIVE
+		"bad_reply":
+			return ROOM_BAD_REPLY
+	return ROOM_UNREACHABLE
+
+
+## Stops any rendezvous request and releases this room's code.
+func _end_room() -> void:
+	if _room_request != "":
+		_rv.cancel()
+	if room_code != "" and _rv.is_live():
+		_rv.close(room_code, protocol, _room_port)
+	_room_request = ""
+	room_code = ""
+	room_expires_s = 0.0
+	_room_attempts = 0
+
+
 func _connect(ip: String) -> void:
 	var enet := ENetMultiplayerPeer.new()
 	_local_port = 0
@@ -501,6 +724,7 @@ func _fail(message: String) -> void:
 
 
 func _shut_peer() -> void:
+	_end_room()
 	if _resolve_item >= 0:
 		IP.erase_resolve_item(_resolve_item)
 		_resolve_item = -1

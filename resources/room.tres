@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RoomTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/net/room_tuning.gd" id="1_room"]
+
+[resource]
+script = ExtResource("1_room")
+relay_url = ""
+code_ttl_s = 600
+request_timeout_ms = 4000
+register_attempts = 5

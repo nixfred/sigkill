@@ -10,11 +10,12 @@
 # tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
-# tests/net_test.gd, tests/combat_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
+# tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
 # Ollama for model loading) on 127.0.0.1. No real agent or model server is ever run or
-# reached. The net and combat tests run a host and joiners in this one process over ENet
-# on 127.0.0.1 only, on ports the system hands out. The main scene is the boot screen; under --headless, with
+# reached. The net, combat and room tests run a host and joiners in this one process over
+# ENet on 127.0.0.1 only, on ports the system hands out; the room test's fake rendezvous
+# is on 127.0.0.1 too. The main scene is the boot screen; under --headless, with
 # nothing handed in, it skips the AI link and goes straight to the arena, so the 300-frame
 # run makes no call and still runs the arena.
 # All steps always run, so one invocation shows everything that is wrong.
@@ -103,6 +104,7 @@ run_godot "model load test" --fixed-fps 60 --script res://tests/model_load_test.
 run_godot "round test" --fixed-fps 60 --script res://tests/round_test.gd
 run_godot "net test" --fixed-fps 60 --script res://tests/net_test.gd
 run_godot "combat test" --fixed-fps 60 --script res://tests/combat_test.gd
+run_godot "room test" --fixed-fps 60 --script res://tests/room_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

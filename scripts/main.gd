@@ -38,6 +38,10 @@ func _ready() -> void:
 	if session != null:
 		session.attach(self, _player)
 		_hud.set_net_session(session)
+		# A room code or invite link on the command line (C15), once per run: the panel opens
+		# to show what came of it.
+		if session.take_launch_join(OS.get_cmdline_user_args()):
+			_hud.net_hud().open()
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
