@@ -148,7 +148,7 @@ flowchart TD
 
 ### Why it never uses omarchy-agent
 
-Omarchy ships `omarchy-agent` and `omarchy-agent-prompt` to launch agents quickly, and they launch them with skip-approval flags so the agent can act without asking. A game must never hand an agent that kind of power. SIGKILL calls each agent's own CLI itself, with tools off and approvals on. That one restricted launch is the only thing the game is ever allowed to execute; see [Safety and privacy](#safety-and-privacy).
+Omarchy ships `omarchy-agent` and `omarchy-agent-prompt` to launch agents quickly, and they launch them with skip-approval flags so the agent can act without asking. A game must never hand an agent that kind of power. SIGKILL calls each agent's own CLI itself, with tools off and approvals on. That restricted launch is one of only two things the game may ever execute; see [Safety and privacy](#safety-and-privacy).
 
 ### What gets sent, and what never does
 
@@ -170,17 +170,18 @@ The AI is opt-in on first launch, with a plain description of which agent will b
 
 - **Boot sequence (C10):** names the agent from your own Omarchy setting, `Omarchy default agent: <agent>. Linking...`, and shows it answering live.
 - **In-game HUD (C11):** a "your AI" badge, live response latency, tokens per second on the local fallback, and live GPU stats: utilisation, VRAM and temperature.
-- **GPU stats are read-only.** The safety model allows exactly one program to be executed, your agent's CLI, so the GPU readout has to come from sources that need nothing launched. Which source is settled in C9.
+- **GPU stats are read-only.** The game prefers reading them from /sys. Its only alternative is an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader`, never with control flags, which is the second and last thing the game may ever execute. If neither works, the HUD simply hides GPU stats.
 - **Coaching (C12):** between-round coaching from your real round stats, and an opt-in roast announcer.
 
 ## Your machine is the world
 
-> **Status: Planned** (M5, plus the opener's read-only reader in C39).
+> **Status: Planned** (M5 including the Audit Trail visor in C43, plus the opener's read-only reader in C39).
 
 The later milestone that makes every copy of SIGKILL different:
 
 - **Filesystem maps.** Rooms come from your real folder tree, sized by what is in them. `node_modules` is the endless maze.
 - **Process enemies.** Real running processes become enemies: browser tabs arrive as a swarm, a pegged CPU core is a boss.
+- **Audit Trail visor (C43).** A community prompt by Albert ([@QuantaCortex](https://x.com/QuantaCortex)). A visor mode draws glowing lineage lines from each enemy back to its parent process, up the real process tree. Severing a spawn chain, by killing a parent, collapses or reshapes that part of the arena and despawns its children. It reads only process IDs, parent process IDs, names and CPU and memory numbers: never command-line arguments, open files, environment or paths, so no private file name can show. Severing is cosmetic; nothing real is signalled. The visor's HUD carries the tag "visor design: @QuantaCortex".
 - **Theme-shift levels.** Levels recoloured from your Omarchy themes, with palette-only enemies.
 - **Keybind gunplay.** Opt-in moves mapped to your real Omarchy shortcuts, with no conflicts.
 - **Voice commands.** Read from Ramblr's existing output; SIGKILL never opens the microphone itself.
@@ -189,7 +190,7 @@ The later milestone that makes every copy of SIGKILL different:
 
 The rules that make this safe, in plain words:
 
-- **Read-only, and only the outside of things:** names, sizes and counts. The opener also uses modification times and theme colours. Never file contents.
+- **Read-only, and only the outside of things:** names, sizes and counts. The Audit Trail visor adds process IDs, parent process IDs and CPU and memory numbers; the opener also uses modification times and theme colours. Never file contents, command lines, environment or paths.
 - **Cosmetic kills.** Shooting a process-named enemy despawns a game object. Nothing on your system is signalled, stopped or changed.
 - **Opt-in.** On first launch SIGKILL asks before it reads any folder or process names. Say no and every feature runs on fake data.
 - **Nothing leaves the moment.** What is read is shown live and never saved, logged or sent anywhere. Your AI gets none of it.
@@ -272,6 +273,7 @@ The project layout, from `git ls-files`. Godot also keeps a small `.uid` file ne
 sigkill/
 ├── README.md                   This page
 ├── .gitignore                  Keeps Godot's cache and build output out of git
+├── CREDITS.md                  Contributors and community prompts
 ├── project.godot               Godot 4.7 project: main scene, physics layer names, Forward+, black clear colour
 ├── scenes/
 │   ├── main.tscn               Root level: sun light, arena, player and HUD
@@ -364,6 +366,7 @@ flowchart LR
 - [`docs/PRD.md`](docs/PRD.md): what we are building, the hard safety rules, the chunk plan
 - [`docs/DESIGN.md`](docs/DESIGN.md): decisions log and design notes
 - [`docs/ENGINE.md`](docs/ENGINE.md): why Godot 4
+- [`CREDITS.md`](CREDITS.md): who made what, including community prompts
 
 ## Install and play
 
@@ -419,8 +422,8 @@ godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
 
 These rules apply to every chunk, from PRD section 6, in plain language:
 
-- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
-- **The one exception: your own AI.** The game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Nothing else is ever executed.
+- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; process IDs, parent process IDs and CPU and memory numbers for the Audit Trail visor; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
+- **Two narrow exceptions, and nothing else.** First, the game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Second, for the HUD's GPU stats, it may run an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader`, never with control flags; it prefers reading /sys, and if neither works the HUD hides GPU stats. Nothing else is ever executed.
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
 - **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc and the window's close button always work. A one-line content note and an opt-in come first, and saying no gives you the same opener on fake data.
@@ -438,16 +441,33 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M2 Your AI | C9 AI source detector · C9b agent adapters · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | ⬜ Planned |
 | M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
-| M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op | ⬜ Planned |
+| M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
 | M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+
+## Credits and community prompts
+
+SIGKILL is built in public, and the full list of who made what lives in [`CREDITS.md`](CREDITS.md).
+
+<p align="center">
+  <img src="docs/media/credits-mockup.jpg" alt="A top-style process table on a code-rain background, listing the creator, the builder, the producer and a community contributor as processes, with a kill -9 prompt below"><br>
+  <em>Mockup of the in-game credits roll, not in-game footage.</em>
+</p>
+
+**Send a prompt.** Anyone can reply to [@NixFred](https://x.com/NixFred) on X with a prompt for the game. If a prompt makes it in, its author is credited in [`CREDITS.md`](CREDITS.md) and in the in-game credits roll, and the feature it became carries a small in-game tag with their handle. Nobody is credited without their own public reply.
+
+**How a public prompt reaches the build.** Every public prompt is reviewed against the [safety rules](#safety-and-privacy) and rewritten into a chunk brief before any of it reaches the build. Raw public text is never passed in.
+
+**The first community feature.** Albert ([@QuantaCortex](https://x.com/QuantaCortex)) pitched the Audit Trail visor: trace every enemy back to its parent process, and sever the spawn chain to change the arena. ⬜ Planned (C43); see [Your machine is the world](#your-machine-is-the-world).
+
+**The credits roll.** A live `top`-style process table on the Tron grid. Every contributor is a process: their handle as the USER, their idea as the COMMAND, the CPU column climbing as their row types in with code rain. Fred is PID 1. It ends with your own kill -9 on the credits process, which derezzes the whole table into voxels. ⬜ Planned (C44).
 
 ## Screenshots
 
 Real in-game captures land once the renderer chunks are verified.
 
-Every illustration on this page is concept art and is labelled that way; the badges and the hexagon are brand marks. Real captures need a window on screen, so they wait for windowed playtests, and they will use demo data.
+Every illustration on this page is concept art or a mockup and is labelled that way; the badges and the hexagon are brand marks. Real captures need a window on screen, so they wait for windowed playtests, and they will use demo data.
 
 <p align="center">
   <img src="docs/media/nixfred-icon.svg" alt="nixfred" width="64" height="64"><br>
