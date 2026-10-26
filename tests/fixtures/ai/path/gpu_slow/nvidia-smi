@@ -1,0 +1,6 @@
+#!/bin/sh
+# Test stub for an nvidia-smi that hangs: it answers only after a second, longer than the
+# test's deadline, so the detector must give up, leave it running and start no other
+# until it has exited, then use its late answer.
+sleep 1
+echo "21, 1024, 4096, 44"

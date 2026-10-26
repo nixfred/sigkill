@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test stub for an nvidia-smi that floods its output: far more than the detector keeps,
+# so the run must count as no reading.
+i=0
+while [ "$i" -lt 2000 ]; do
+	echo "1, 2, 3, 4"
+	i=$((i + 1))
+done
