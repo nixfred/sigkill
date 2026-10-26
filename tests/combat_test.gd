@@ -25,6 +25,8 @@ const COMBAT_SOURCES := ["res://scripts/net/combat.gd", "res://scripts/net/comba
 const SOURCE_NEVER := ["OS.execute", "OS.create_process", "OS.kill", "OS.shell_open", "OS.get_environment", "OS.get_user", "OS.get_name", "execute_with_pipe", "StreamPeerTCP", "TCPServer", "HTTPRequest", "HTTPClient", "UDPServer", "PacketPeerUDP", "ENetMultiplayerPeer", "FileAccess", "DirAccess", "JSON", "var_to_bytes", "bytes_to_var", "RichTextLabel", "bbcode"]
 ## Frames between two shots from the real cannon: the 0.16 s cooldown at 60 Hz, and one more.
 const SHOT_FRAMES := 11
+## Frames between two position packets: 60 Hz physics, 20 sends a second.
+const FRAMES_PER_SEND := 3
 
 var _fails := 0
 var _checks := 0
@@ -201,9 +203,13 @@ func _body(source: String, name: String) -> String:
 	return source.substr(at, (end if end > 0 else source.length()) - at)
 
 
+## Derezz effects of players (they live beside the avatars, under Players), never a dummy's.
 func _derezz_count(side: Dictionary) -> int:
 	var n := 0
-	for node in side["main"].find_children("*", "MultiMeshInstance3D", true, false):
+	var players: Node = side["main"].get_node_or_null("Players")
+	if players == null:
+		return 0
+	for node in players.get_children():
 		if node.get_script() == DerezzFx:
 			n += 1
 	return n
@@ -251,27 +257,29 @@ func _rule_checks() -> void:
 	var eye := Vector3(0, 1.65, 10)
 	var dir := Vector3(0, 0, -1)
 	var words := PackedStringArray()
-	words.append(c.validate(7, 1, eye, dir, eye, 1.0))
-	words.append(c.validate(7, 2, eye, dir, eye, 1.05))
-	words.append(c.validate(7, 1, eye, dir, eye, 1.5))
-	words.append(c.validate(7, 2, eye + Vector3(0, 0, 3), dir, eye, 1.5))
-	words.append(c.validate(7, 2, eye, Vector3(NAN, 0, 0), eye, 1.5))
-	words.append(c.validate(7, 2, eye, Vector3(0, 0, -50), eye, 1.5))
-	words.append(c.validate(7, 2, Vector3(INF, 0, 0), dir, eye, 1.5))
-	words.append(c.validate(9, 1, eye, dir, eye, 1.5))
-	words.append(c.validate(7, 2, eye, dir, Vector3.INF, 1.5))
-	words.append(c.validate(7, 2, eye + Vector3(1.0, 0, 0), dir, eye, 1.5))
-	words.append(c.validate(7, 3, eye, dir, eye, 1.61))
-	words.append(c.validate(7, 3, eye, dir, eye, 1.63))
-	words.append(c.validate(7, 50000, eye, dir, eye, 2.0))
-	words.append(c.validate(7, 2147483647, eye, dir, eye, 2.0))
+	var attempts := [
+		[7, 1, eye, dir, eye, 1.0], [7, 2, eye, dir, eye, 1.05], [7, 1, eye, dir, eye, 1.5],
+		[7, 2, eye + Vector3(0, 0, 3), dir, eye, 1.5], [7, 2, eye, Vector3(NAN, 0, 0), eye, 1.5],
+		[7, 2, eye, Vector3(0, 0, -50), eye, 1.5], [7, 2, Vector3(INF, 0, 0), dir, eye, 1.5],
+		[9, 1, eye, dir, eye, 1.5], [7, 2, eye, dir, Vector3.INF, 1.5],
+		[7, 2, eye + Vector3(1.0, 0, 0), dir, eye, 1.5], [7, 3, eye, dir, eye, 1.61],
+		[7, 3, eye, dir, eye, 1.63], [7, 50000, eye, dir, eye, 2.0], [7, 2147483647, eye, dir, eye, 2.0],
+	]
+	for a in attempts:
+		var word: String = c.validate(a[0], a[1], a[2], a[3], a[4], a[5])
+		if word == "":
+			c.accept(a[0], a[1], a[5])  # as the session does once its own look at the shot is done
+		words.append(word)
 	_check("validate: a first shot passes; 0.05 s later is too fast; a number already believed is refused, a refused one is not burnt; an origin 3 m off, a NaN or 50-long direction, an infinite origin, an unknown shooter and an unseen eye are refused; 1 m off within the 1.5 m tolerance passes; 0.11 s later is too fast and 0.13 s later passes; a number 50000 ahead or at the cap is refused", words == PackedStringArray(["", "rate", "seq", "origin", "shape", "shape", "shape", "no_player", "origin", "", "rate", "", "seq", "seq"]), ", ".join(words))
-	_check("drops are counted in all and by reason", c.dropped == 11 and c.drops.get("rate", 0) == 2 and c.drops.get("seq", 0) == 3 and c.drops.get("shape", 0) == 3 and c.drops.get("origin", 0) == 2 and c.drops.get("no_player", 0) == 1, str(c.drops))
+	var unrecorded: bool = c.validate(7, 4, eye + Vector3(0, 0, 3), dir, eye, 3.0) == "origin" and c.states[7]["last_seq"] == 3 and c.validate(7, 4, eye, dir, eye, 3.0) == ""
+	_check("validate alone records nothing: a refused shot burns neither its number nor the clock, and accept() is what the next shot is measured from", unrecorded and c.states[7]["last_fire"] == 1.63)
+	_check("drops are counted in all and by reason", c.dropped == 12 and c.drops.get("rate", 0) == 2 and c.drops.get("seq", 0) == 3 and c.drops.get("shape", 0) == 3 and c.drops.get("origin", 0) == 3 and c.drops.get("no_player", 0) == 1, str(c.drops))
 	var hits := []
 	for i in 4:
 		hits.append(c.damage_player(1, 7))
 	_check("damage: 100 to 75, 50, 25, 0 and dead on the fourth hit, the killer credited", hits[0] == {"health": 75.0, "killed": false} and hits[2] == {"health": 25.0, "killed": false} and hits[3] == {"health": 0.0, "killed": true} and not c.alive(1) and c.states[7]["kills"] == 1 and c.states[1]["deaths"] == 1 and c.states[1]["respawn_left"] == 1.0)
 	_check("a dead player takes no more damage and cannot fire", c.damage_player(1, 7).is_empty() and c.validate(1, 1, eye, dir, eye, 5.0) == "dead")
+	c.accept(7, 4, 3.0)
 	var due := []
 	for i in 65:
 		due.append_array(c.tick(1.0 / 60.0))
@@ -447,6 +455,51 @@ func _forgery_checks() -> void:
 	await _until(func(): return hs.combat.states[cid]["last_seq"] >= 10, 2000)
 	await _frames(2)
 	_check("two intents inside the cooldown: the first is believed, the second dropped as too fast", hs.combat.states[cid]["last_seq"] == 10 and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("rate", 0) == 1 and seq_before == 1, "last seq %d drops %s" % [hs.combat.states[cid]["last_seq"], hs.combat.drops])
+	# Through cover: the joiner stands against a tall wall with the host behind it, and claims
+	# an origin on the far side, within the tolerance. The host's view of its eye cannot see
+	# that origin, so the shot is refused.
+	var hp0 = host["player"]
+	hp0.respawn_at(Vector3(4.75, 0.95, -12.0))
+	cp.respawn_at(CLIENT_OFFSET + Vector3(4.75, 0.95, -7.5))
+	await _until(func(): return (_avatar(host, cid).latest_position() - cp.position).length() < 0.05)
+	await _frames(SHOT_FRAMES)
+	var behind := Vector3(4.75, cp.eye_height() + 0.95, -8.6)
+	var eye_now: Vector3 = _avatar(host, cid).latest_position() + Vector3(0, cp.eye_height(), 0)
+	var within: bool = behind.distance_to(eye_now) <= 1.5
+	dropped_before = hs.combat.dropped
+	var health_before: float = hs.health[1]
+	cs._fire.rpc_id(1, 40, behind, Vector3(0, 0, -1))
+	await _until(func(): return hs.combat.dropped > dropped_before, 2000)
+	await _frames(2)
+	_check("an origin claimed on the far side of the wall the joiner stands against, though within the tolerance, is refused: no damage through cover", within and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("origin", 0) == 2 and hs.health[1] == health_before and hs.health[1] == 100.0, "within %s drops %s health %.0f" % [within, hs.combat.drops, hs.health[1]])
+	await _frames(SHOT_FRAMES)
+	# The same spot, an honest shot from the joiner's own cannon: the host is behind the wall,
+	# so it hits the wall, not the host. The hand-made intents above left the host expecting
+	# a number past 10, so the joiner's own counter is moved up to match.
+	cs.set("fire_seq", 11)
+	_aim(cp, CLIENT_OFFSET + Vector3(4.75, 1.65, -12.0))
+	var honest := await _shoot(cp, host, client)
+	_check("the honest shot from there is believed and stops at the wall", honest and hs.health[1] == 100.0 and hs.combat.dropped == dropped_before + 1, "believed %s health %.0f drops %s" % [honest, hs.health[1], hs.combat.drops])
+	# Overlap: the host stands inside the joiner's body and fires; a shot starting inside still hits.
+	cp.respawn_at(CLIENT_OFFSET + Vector3(0, 0.95, 10))
+	await _until(func(): return (_avatar(host, cid).latest_position() - cp.position).length() < 0.05 and (_avatar(host, cid).position - cp.position).length() < 0.05)
+	hp0.respawn_at(_avatar(host, cid).global_position)
+	hp0.rotation.y = 0.0
+	hp0.get_node("Head").rotation.x = 0.0
+	await _frames(3)
+	var inside_before: float = hs.health[cid]
+	var inside_hits: Array = [0]
+	var inside_hook := func(s: int, h: int, _o: Vector3, _e: Vector3) -> void:
+		if s == 1 and h == cid:
+			inside_hits[0] += 1
+	cs.shot_confirmed.connect(inside_hook)
+	await _fire(hp0)
+	await _until(func(): return inside_hits[0] >= 1, 2000)
+	cs.shot_confirmed.disconnect(inside_hook)
+	await _frames(1)
+	_check("a shot that starts inside an opponent's body hits it", inside_hits[0] == 1 and hs.health[cid] == inside_before - 25.0, "hits %d health %.0f -> %.0f, host last seq %d, drops %s, host at %s avatar at %s shape off %s" % [inside_hits[0], inside_before, hs.health[cid], hs.combat.states[1]["last_seq"], hs.combat.drops, hp0.position, _avatar(host, cid).position, _avatar(host, cid).get("_hit_shape").disabled])
+	hp0.respawn_at(Vector3(0, 0.95, 4))
+	await _frames(SHOT_FRAMES)
 	# From the wrong peer: an intent not from a player (no sender) is dropped.
 	dropped_before = hs.combat.dropped
 	hs._fire(12, eye, up)
@@ -483,12 +536,26 @@ func _forgery_checks() -> void:
 	var back := await _until(func(): return not cs.dead.get(cid, true) and cp.alive, 3000)
 	await _frames(2)
 	_check("the joiner respawns too, far from the host, alive on its own screen, in a new life on both sides", back and cp.alive and cs.health[cid] == 100.0 and Vector2(cp.position.x - hp.position.x, cp.position.z - hp.position.z).length() > 15.0 and cs.lives[cid] == old_life + 1 and hs.lives[cid] == old_life + 1)
-	# A position from the past life, still in flight at the respawn, cannot drag the avatar back.
+	# A position from the past life, still in flight at the respawn, cannot drag the avatar
+	# back: with the joiner's real stream paused, the host takes nothing from it.
 	await _until(func(): return mine.visible and (mine.latest_position() - cp.position).length() < 0.1)
+	var paused_player = cs.get("_player")
+	cs.set("_player", null)
+	await _frames(FRAMES_PER_SEND + 1)
 	var stale_seq: int = mine.get("_last_seq") + 1
+	var got_before: int = mine.received
+	var seq_before_stale: int = mine.get("_last_seq")
+	var samples_before: int = mine.samples.size()
 	cs._state.rpc_id(1, stale_seq, old_life, corpse, 0.0, 0.0, Vector3.ZERO)
 	await _frames(4)
-	_check("a position from the past life is ignored: the respawned avatar stays at the spawn", (mine.latest_position() - cp.position).length() < 0.1 and (mine.latest_position() - corpse).length() > 10.0, "avatar %s corpse %s" % [mine.latest_position(), corpse])
+	_check("a position from the past life is ignored with the real stream paused: the avatar takes no sample, its sequence stands, it stays at the spawn", mine.received == got_before and mine.get("_last_seq") == seq_before_stale and mine.samples.size() == samples_before and (mine.latest_position() - cp.position).length() < 0.1 and (mine.latest_position() - corpse).length() > 10.0, "received %d -> %d, avatar %s corpse %s" % [got_before, mine.received, mine.latest_position(), corpse])
+	cs.set("_player", paused_player)
+	# A player just revived, with no new position yet, still counts as a threat when a spawn is chosen.
+	mine.revive(Vector3(15, 0.95, -15))
+	mine.samples.clear()
+	var pick: Vector3 = hs._pick_spawn(1)
+	_check("spawn choice counts a just-revived opponent standing at its spawn with no position sent yet", (pick - Vector3(15, 0.95, -15)).length() > 10.0 and pick.is_finite(), "picked %s" % pick)
+	await _until(func(): return (mine.latest_position() - cp.position).length() < 0.1)
 	await _until(func(): return client["combat_hud"].feed_text().is_empty(), 4000)
 	_check("the kill feed entry fades out after its time", client["combat_hud"].feed_text().is_empty() and client["combat_hud"].entries.is_empty())
 	await _drop(client)

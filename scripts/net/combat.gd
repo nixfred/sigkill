@@ -84,8 +84,8 @@ func tick(delta: float) -> Array:
 
 
 ## "" when the host believes shot `seq` from `shooter` at `origin` along `dir`, given the
-## host's view of the shooter's eye and its clock; otherwise why not, counted. Accepting
-## records the shot's time and number.
+## host's view of the shooter's eye and its clock; otherwise why not, counted. Nothing is
+## recorded here: accept() does, once the host has also looked at the shot itself.
 func validate(shooter: int, seq: int, origin: Vector3, dir: Vector3, eye: Vector3, now: float) -> String:
 	if not states.has(shooter):
 		return _drop(DROP_NO_PLAYER)
@@ -100,9 +100,20 @@ func validate(shooter: int, seq: int, origin: Vector3, dir: Vector3, eye: Vector
 		return _drop(DROP_RATE)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
-	s["last_fire"] = now
-	s["last_seq"] = seq
 	return ""
+
+
+## Records a believed shot's time and number: the next one is measured from here.
+func accept(shooter: int, seq: int, now: float) -> void:
+	if states.has(shooter):
+		states[shooter]["last_fire"] = now
+		states[shooter]["last_seq"] = seq
+
+
+## Counts a shot that passed validate() and was then refused on what the host saw, such as
+## an origin behind cover. Nothing of it is recorded: a refused shot burns no number.
+func drop_after(reason: String) -> void:
+	_drop(reason)
 
 
 ## The weapon's damage on `victim` from `killer`: {health, killed}, or {} when the victim

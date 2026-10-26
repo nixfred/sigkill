@@ -826,6 +826,12 @@ func _handle_fire(shooter: int, seq: int, origin: Vector3, dir: Vector3) -> void
 		return
 	if combat.validate(shooter, seq, origin, dir, eye, _clock) != "":
 		return
+	# Within the tolerance is not enough: a claimed origin the host's view of the eye
+	# cannot see (behind cover it stands against) is a shot through that cover.
+	if shooter != 1 and _obstructed(shooter, eye, origin):
+		combat.drop_after(Combat.DROP_ORIGIN)
+		return
+	combat.accept(shooter, seq, _clock)
 	var ray := _raycast(shooter, origin, dir)
 	var hit: int = ray["hit"]
 	var victim_health := -1.0
@@ -846,17 +852,35 @@ func _handle_fire(shooter: int, seq: int, origin: Vector3, dir: Vector3) -> void
 
 
 ## Where the host believes `id`'s eye is, in arena space: its own camera for itself, the
-## newest received position plus the eye height for a joiner; INF when nothing is known.
+## newest received position (or the spawn it was just put at) plus the eye height for a
+## joiner; INF when nothing is known of it yet.
 func _eye_of(id: int) -> Vector3:
 	if _player == null or not is_instance_valid(_player) or _arena == null:
 		return Vector3.INF
 	if id == 1:
 		return _arena.to_local(_player.eye_position()) if _player.has_method("eye_position") else Vector3.INF
 	var avatar = avatars.get(id)
-	if avatar == null or not is_instance_valid(avatar) or avatar.samples.is_empty():
+	if avatar == null or not is_instance_valid(avatar) or not avatar.visible:
 		return Vector3.INF
 	var eye_height: float = _player.eye_height() if _player.has_method("eye_height") else 0.7
 	return avatar.latest_position() + Vector3(0.0, eye_height, 0.0)
+
+
+## True when something solid lies between the host's view of the shooter's eye and the
+## origin it claims: cover, a dummy or another player's body. The shooter's own avatar,
+## which the eye sits inside, does not count.
+func _obstructed(shooter: int, eye: Vector3, origin: Vector3) -> bool:
+	var from: Vector3 = _arena.to_global(eye)
+	var to: Vector3 = _arena.to_global(origin)
+	if from.distance_to(to) < 0.001:
+		return false
+	var query := PhysicsRayQueryParameters3D.create(from, to, _weapon.hit_mask | PLAYER_LAYER_MASK)
+	var exclude: Array[RID] = []
+	var own = avatars.get(shooter)
+	if own != null and is_instance_valid(own):
+		exclude.append(own.hit_rid())
+	query.exclude = exclude
+	return not _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 ## The host's own raycast for a believed shot: walls, dummies, the players' bodies, never
@@ -866,6 +890,9 @@ func _raycast(shooter: int, origin: Vector3, dir: Vector3) -> Dictionary:
 	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
 	var far := from + along * _weapon.fire_range
 	var query := PhysicsRayQueryParameters3D.create(from, far, _weapon.hit_mask | PLAYER_LAYER_MASK)
+	# Players can stand inside each other, at a shared spawn for one: a shot that starts
+	# inside an opponent still hits it. The shooter's own body is excluded below.
+	query.hit_from_inside = true
 	var exclude: Array[RID] = []
 	if shooter == 1 or not combat.alive(1):
 		exclude.append(_player.get_rid())  # the shooter's own body, or the host's corpse
@@ -979,8 +1006,9 @@ func _pick_spawn(id: int) -> Vector3:
 			if _player != null and is_instance_valid(_player):
 				threats.append(_player.position)
 		else:
+			# A player just put at a spawn, with no new position yet, stands there all the same.
 			var avatar = avatars.get(other)
-			if avatar != null and is_instance_valid(avatar) and not avatar.samples.is_empty():
+			if avatar != null and is_instance_valid(avatar) and avatar.visible:
 				threats.append(avatar.latest_position())
 	return Combat.farthest_spawn(spawns, threats)
 
