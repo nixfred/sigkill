@@ -485,6 +485,20 @@ func refill_weapons() -> void:
 	inventory.refill()
 
 
+## Takes the host's count for the weapon with `id` (C16): its magazine and reserve, and no
+## reload of it running here, since the host is not running one. False for a weapon not in
+## the loadout.
+func take_ammo(id: String, mag: int, reserve: int) -> bool:
+	var slot := inventory.slot_of(id)
+	if slot < 0:
+		return false
+	inventory.mags[slot] = mag
+	inventory.reserves[slot] = reserve
+	if slot == inventory.current:
+		inventory.reload_left = 0.0
+	return true
+
+
 ## Holds the weapon with `id` at once, ready (a respawn with the weapon the host says is in
 ## hand). Nothing is sent: the host already knows. False for a weapon not in the loadout.
 func hold_weapon(id: String) -> bool:

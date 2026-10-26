@@ -1198,13 +1198,39 @@ func _reload(life: Variant, weapon: Variant) -> void:
 
 
 func _handle_draw(id: int, life: int, weapon: String) -> void:
-	if state == State.HOSTING and combat != null:
-		combat.draw(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+	if state != State.HOSTING or combat == null:
+		return
+	if combat.draw(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock) == "" and combat.stopped_reload != "":
+		_send_ammo(id, combat.stopped_reload)  # its own game may have finished that reload
 
 
 func _handle_reload(id: int, life: int, weapon: String) -> void:
-	if state == State.HOSTING and combat != null:
-		combat.reload(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+	if state != State.HOSTING or combat == null:
+		return
+	var why := combat.reload(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+	if (why == Combat.DROP_RELOAD or why == Combat.DROP_WEAPON) and combat.weapons.has(weapon):
+		_send_ammo(id, weapon)  # refused here: its own game must not finish it either
+
+
+## The host's count of `id`'s magazine and reserve for `weapon`, to that player alone. The
+## host's own player needs none: nothing lies between it and the host's count.
+func _send_ammo(id: int, weapon: String) -> void:
+	if id == 1 or not players.has(id) or not multiplayer.get_peers().has(id):
+		return
+	var ammo: Array = combat.ammo_of(id, weapon)
+	_ammo.rpc_id(id, lives.get(id, 0), weapon, ammo[0], ammo[1])
+
+
+## The host's count for one of this player's weapons: this side takes it.
+@rpc("authority", "call_remote", "reliable")
+func _ammo(life: int, weapon: String, mag: int, reserve: int) -> void:
+	if state != State.JOINED or life != lives.get(my_id, 0) or not _weapons.has(weapon):
+		return
+	var def: WeaponDefScript = _weapons[weapon]
+	if not def.has_magazine() or mag < 0 or mag > def.magazine_size or (reserve != WeaponDefScript.INFINITE and (reserve < 0 or reserve > def.reserve_ammo)):
+		return
+	if _player != null and is_instance_valid(_player) and _player.has_method("take_ammo"):
+		_player.take_ammo(weapon, mag, reserve)
 
 
 ## This player fired (scripts/player.gd): the intent goes to the host, which, when this is

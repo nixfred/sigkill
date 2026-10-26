@@ -376,6 +376,7 @@ func _source_checks() -> void:
 	var player := _code("res://scripts/player.gd")
 	_check("an intent carries only the aim: _fire takes the number, life, weapon, origin and direction, nothing about pellets", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:') and player.contains("fire_intent.emit(origin, forward, _w.id)"))
 	_check("a draw and a reload reach the host as untyped, type-checked any_peer intents of a life number and a weapon id, nothing else", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _draw(life: Variant, weapon: Variant) -> void:') and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _reload(life: Variant, weapon: Variant) -> void:') and _body(session, "_draw").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and _body(session, "_reload").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and player.contains("weapon_drawn.emit(_w.id)") and player.contains("reload_started.emit(_w.id)"))
+	_check("the host's ammo count goes to one player only, as an authority RPC: a life number, a weapon id, a magazine and a reserve", session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _ammo(life: int, weapon: String, mag: int, reserve: int) -> void:') and _body(session, "_send_ammo").contains("_ammo.rpc_id(id, lives.get(id, 0), weapon, ammo[0], ammo[1])"))
 	_check("the host draws the pellets with its own generator, in _handle_fire only", session.count("pellet_directions(") == 1 and _body(session, "_handle_fire").contains("def.pellet_directions(dir, _pellets_rng)"))
 	var all := ""
 	for path in WEAPON_SOURCES:
@@ -699,6 +700,34 @@ func _match_checks() -> void:
 	await _frames(_frames_for(0.3 + 2.2 + 0.05))
 	var bunched := await _intent(hs, cs, cid, "sigterm", eye, up, false)
 	_check("over 127.0.0.1: a draw and a reload arriving together (the draw late on the wire) still reload: the next shot is believed from a full magazine", bunched and hs.combat.drops.get("reload", 0) == reload_drops and hs.combat.ammo_of(cid, "sigterm")[0] == 5, "%s %s" % [hs.combat.drops, hs.combat.ammo_of(cid, "sigterm")])
+	# A reload's message so late it arrives with the draw after it: the host stops the reload
+	# it just started, and tells the joiner its count, which the joiner's game takes (its own
+	# had finished the reload: 6 and 6), so no honest shot is refused later for it.
+	var ccp = client["player"]
+	var sig_slot: int = ccp.inventory.slot_of("sigterm")
+	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 0, "reserve": 12, "last_fire": -INF}
+	ccp.inventory.mags[sig_slot] = 6
+	ccp.inventory.reserves[sig_slot] = 6
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "terminal_cannon")
+	var told := await _until(func(): return ccp.inventory.mags[sig_slot] == 0, 2000)
+	_check("over 127.0.0.1: a reload arriving with the draw after it is stopped on the host, and the joiner takes the host's count (0 and 12, not 6 and 6)", told and hs.combat.ammo_of(cid, "sigterm") == [0, 12] and hs.combat.states[cid]["reloading"] == "" and ccp.inventory.reserves[sig_slot] == 12, "host %s joiner %d/%d" % [hs.combat.ammo_of(cid, "sigterm"), ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot]])
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(0.35))
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(2.3))
+	var repaired := await _intent(hs, cs, cid, "sigterm", eye, up, false)
+	_check("and the next reload puts both sides right: the shot after it is believed from a full magazine", repaired and hs.combat.ammo_of(cid, "sigterm") == [5, 6], str(hs.combat.ammo_of(cid, "sigterm")))
+	# A reload the host refuses (it counts the magazine full): the joiner's game stops its own
+	# and takes the host's count.
+	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 6, "reserve": 6, "last_fire": -INF}
+	ccp.inventory.hold(sig_slot)
+	ccp.inventory.mags[sig_slot] = 2
+	ccp.inventory.reload_left = 1.0
+	var refused_before: int = hs.combat.drops.get("reload", 0)
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	var settled := await _until(func(): return ccp.inventory.mags[sig_slot] == 6 and not ccp.inventory.is_reloading(), 2000)
+	_check("over 127.0.0.1: a reload the host refuses (its magazine full) is answered with the host's count: the joiner's game stops its reload and shows 6 and 6", settled and hs.combat.drops.get("reload", 0) == refused_before + 1 and ccp.inventory.reserves[sig_slot] == 6, "joiner %d/%d reloading %s" % [ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot], ccp.inventory.is_reloading()])
 	# The host's own SIGTERM: the joiner draws every pellet the host drew.
 	await _settle(hp, 1.0)
 	hp.select_slot(1)
