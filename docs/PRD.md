@@ -137,7 +137,7 @@ M4 Arsenal and modes
 - C16 Weapon framework (data-driven weapon resource, swap wheel, ammo, mods/skins slots) + SIGTERM. C17 SIGKILL rail rifle. C18 SIGSTOP bullet time. C19 Fork bomb. C20 Light-trail mode. C21 Code-rain vision. C22 Root vs user + `sudo` overcharge. C23 Spectate as top.
 - C24 `fork()` shotgun. C25 `grep` seeker. C26 `rm -rf` cannon. C27 `cron` mines. C28 `ping` sonar. C29 `chmod 000` freeze ray. C30 `pipe |` chain beam. C31 `/dev/null` black hole. C32 SIGHUP confusion grenade. C33 Unlocks, mods and light skins.
 M5 Your machine is the world (filesystem maps, process enemies, themes, etc.)
-- C43 Audit Trail visor (after process enemies exist): lineage lines, read-only PID/PPID/name/CPU only, chain-sever arena reaction, credit tag.
+- C43 Audit Trail visor (after process enemies exist): lineage lines, read-only PID/PPID/name/CPU/mem only, chain-sever arena reaction, credit tag.
 - C44 CREDITS.md + in-game top-style credits roll (demo data for captures).
 M6 Story campaign
 - C34 Story bible in docs/STORY.md (premise, characters, AI's voice, mission list) for Fred's review before any mission is built.
