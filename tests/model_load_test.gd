@@ -53,6 +53,11 @@ var _generate_mode := "load"
 var _late_ms := 0
 var _late_at := {}
 var _lmstudio := false
+## Milliseconds the fake server waits before answering /api/ps; a broken /api/ps; models
+## whose /api/show answers 500.
+var _ps_delay_ms := 0
+var _bad_ps := false
+var _show_fails: Array = []
 
 
 func _initialize() -> void:
@@ -80,6 +85,7 @@ func _run() -> void:
 	await _guard_checks()
 	await _demo_checks()
 	await _boot_checks()
+	await _hardening_checks()
 	await _cleanup()
 	print("LOAD server log (every request the fake Ollama server saw, in order):")
 	for line in _log_all:
@@ -138,7 +144,16 @@ func _server_state(models: Array, loaded: Array, mode: String = "load", late_ms:
 	_late_ms = late_ms
 	_late_at = {}
 	_lmstudio = lmstudio
+	_ps_delay_ms = 0
+	_bad_ps = false
+	_show_fails = []
 	_requests.clear()
+	_mutex.unlock()
+
+
+func _server_tweak(key: String, value) -> void:
+	_mutex.lock()
+	set(key, value)
 	_mutex.unlock()
 
 
@@ -218,7 +233,7 @@ func _serve() -> void:
 		if stop:
 			break
 		while _server.is_connection_available():
-			conns.append({"peer": _server.take_connection(), "buf": PackedByteArray(), "held": false})
+			conns.append({"peer": _server.take_connection(), "buf": PackedByteArray(), "held": false, "reply": PackedByteArray(), "due": 0})
 		for e in conns.duplicate():
 			var peer: StreamPeerTCP = e["peer"]
 			peer.poll()
@@ -226,6 +241,12 @@ func _serve() -> void:
 				conns.erase(e)
 				continue
 			if e["held"]:
+				continue
+			if not (e["reply"] as PackedByteArray).is_empty():
+				if Time.get_ticks_msec() >= e["due"]:
+					peer.put_data(e["reply"])
+					peer.disconnect_from_host()
+					conns.erase(e)
 				continue
 			var waiting := peer.get_available_bytes()
 			if waiting > 0:
@@ -250,6 +271,13 @@ func _serve() -> void:
 			if reply.is_empty():
 				e["held"] = true  # a load that never answers: the connection stays open
 				continue
+			_mutex.lock()
+			var delay := _ps_delay_ms if first[1] == "/api/ps" else 0
+			_mutex.unlock()
+			if delay > 0:
+				e["reply"] = reply
+				e["due"] = Time.get_ticks_msec() + delay
+				continue
 			peer.put_data(reply)
 			peer.disconnect_from_host()
 			conns.erase(e)
@@ -269,7 +297,7 @@ func _answer(method: String, path: String, body: String) -> PackedByteArray:
 			var items := PackedStringArray()
 			for name in _loaded:
 				items.append('{"name":"%s","model":"%s","size_vram":1}' % [name, name])
-			out = '{"models":[%s]}' % ",".join(items)
+			out = '{"models":"unreadable"}' if _bad_ps else '{"models":[%s]}' % ",".join(items)
 		"/api/tags":
 			var items := PackedStringArray()
 			for m in _models:
@@ -279,7 +307,7 @@ func _answer(method: String, path: String, body: String) -> PackedByteArray:
 			var asked = JSON.parse_string(body)
 			status = "404 Not Found"
 			for m in _models:
-				if asked is Dictionary and asked.get("model", "") == m["name"]:
+				if asked is Dictionary and asked.get("model", "") == m["name"] and not _show_fails.has(m["name"]):
 					status = "200 OK"
 					out = '{"capabilities":%s,"details":{"family":"%s"}}' % [JSON.stringify(m["capabilities"]), m["family"]]
 		"/api/generate":
@@ -502,7 +530,9 @@ func _source_checks() -> void:
 		if loader.contains(word):
 			found.append(word)
 	_check("the loader never sends num_ctx, options, a prompt or keep_alive on a load, never pulls, deletes or uses /v1, opens no socket itself and never prints", found.is_empty(), ", ".join(found))
-	_check("the loader posts to /api/generate in exactly three places: one load with only the model, two unloads with keep_alive 0", loader.count("_post(GENERATE_PATH,") == 3 and loader.count("_post(GENERATE_PATH, {\"model\": name}, deadline)") == 1 and loader.count("{\"model\": watched, \"keep_alive\": 0}") == 1 and loader.count("{\"model\": name, \"keep_alive\": 0}") == 1)
+	_check("the loader posts to /api/generate in exactly two places: one load with only the model, one unload with keep_alive 0", loader.count("GENERATE_PATH") == 3 and loader.count("_post(GENERATE_PATH, {\"model\": name}, deadline)") == 1 and loader.count("_send(\"POST\", GENERATE_PATH, JSON.stringify({\"model\": name, \"keep_alive\": 0}).to_utf8_buffer(), deadline, false)") == 1)
+	var link_code := _code("res://scripts/guide/guide_link.gd")
+	_check("loader jobs never overlap: a job asked for while one runs is queued, and the cancel flag is armed before each start", link_code.contains("\tif _loader_thread != null:\n\t\t_queued_job = job\n\t\t_queued_kind = kind\n\t\t_queued_id = id\n\t\treturn true\n\t_loader.arm()\n\t_loader_thread = Thread.new()"))
 	var link := _code("res://scripts/guide/guide_link.gd")
 	_check("the link loads only from accept_load(), the player's Y, and starts nothing else that loads", link.count("job_load") == 1 and link.contains("func accept_load() -> bool:\n\tif load_state != \"offer\"") and link.count("print(") == 0)
 	_check("under the headless guard the loader's only port is one a test handed in", link.contains("\tif load_port > 0:\n\t\treturn load_port\n\tif _guarded or detector == null:\n\t\treturn -1"))
@@ -793,6 +823,123 @@ func _boot_checks() -> void:
 		boot.free()
 		await process_frame
 		_seen()
+
+
+## Drives a link without a HUD, polling it by hand.
+func _bare_link(tweak: Dictionary = {}) -> Link:
+	var link := _link(true, true, {}, tweak)
+	await _until(func():
+		link.poll(16.0)
+		return link.is_ready())
+	link.not_loaded = true
+	return link
+
+
+func _pump(link: Link, condition: Callable, ms: int = WATCHDOG_MS) -> bool:
+	return await _until(func():
+		link.poll(16.0)
+		return condition.call(), ms)
+
+
+func _offer_ready(link: Link) -> bool:
+	link.begin_offer()
+	return await _pump(link, func(): return link.load_state != "checking")
+
+
+func _hardening_checks() -> void:
+	# O while a load is still in flight: the model turns up later and is still unloaded.
+	_server_state(_standard_models(), [], "late", 800)
+	var link := _link()
+	var hud := await _offered(link)
+	await _key(KEY_Y)
+	await _until(func(): return _has_request("/api/generate"))
+	await _key(KEY_O)
+	var turned_up: bool = await _until(func(): return _loaded_now().has(SMALL))
+	var gone: bool = await _until(func(): return _loaded_now().is_empty())
+	var sent := _seen()
+	_check("O while the load is in flight: the model turns up afterwards and is still unloaded, keep_alive 0", turned_up and gone and _bodies(sent, "/api/generate").size() == 2 and _bodies(sent, "/api/generate")[1].contains('"keep_alive":0'), str(_bodies(sent, "/api/generate")))
+	await _quit(hud)
+	_seen()
+	# The load finishes, then Esc comes before the link has joined the worker.
+	_server_state(_standard_models(), [])
+	var raced := await _bare_link()
+	await _offer_ready(raced)
+	raced.accept_load()
+	await _until(func(): return _loaded_now().has(SMALL))
+	OS.delay_msec(200)  # the worker has seen the model in /api/ps and finished, unjoined
+	raced.cancel_load()
+	var unloaded: bool = await _pump(raced, func(): return _loaded_now().is_empty() and raced.game_loaded_model() == "")
+	_check("Esc after the load finished but before the link read it: the model is still unloaded", raced.load_state == "cancelled" and unloaded, raced.load_state)
+	raced.shut_down(null)
+	_seen()
+	# A cancel that comes before the worker runs: no load is ever sent.
+	_server_state(_standard_models(), [])
+	var early := await _bare_link()
+	await _offer_ready(early)
+	_seen()
+	early.accept_load()
+	early.cancel_load()
+	await _pump(early, func(): return not early.is_loading(), 3000)
+	for i in 20:
+		early.poll(16.0)
+		await process_frame
+	var none := _seen()
+	_check("Esc in the same instant as Y: no load is sent and nothing is loaded", _bodies(none, "/api/generate").is_empty() and _loaded_now().is_empty() and early.load_state == "cancelled", str(_paths(none)))
+	early.shut_down(null)
+	_seen()
+	# A Y while an earlier job still runs waits its turn (here the cancelled load, not yet
+	# joined); that job's "cancelled" never lands on the new load.
+	_server_state(_standard_models(), [], "hang")
+	var queued := await _bare_link()
+	await _offer_ready(queued)
+	queued.accept_load()
+	await _until(func(): return _has_request("/api/generate"))
+	queued.cancel_load()
+	await _pump(queued, func(): return queued.load_state == "cancelled" and not queued.is_loading())
+	_server_tweak("_generate_mode", "load")
+	_server_tweak("_ps_delay_ms", 400)
+	await _pump(queued, func(): return _has_request("/api/ps"), 3000)
+	_seen()
+	queued.load_state = "offer"
+	var accepted := queued.accept_load()
+	var finished: bool = await _pump(queued, func(): return queued.load_state == "loaded")
+	var order_seen := _seen()
+	var order := _paths(order_seen)
+	_check("a Y while an earlier job is still unjoined is queued behind it: no thread is replaced, the old job's outcome does not touch it, and the load runs after", accepted and finished and queued.game_loaded_model() == SMALL and order.find("POST /api/generate") > 0, "%s | bodies %s | state %s owned %s" % [str(order), str(_bodies(order_seen, "/api/generate")), queued.load_state, queued.game_loaded_model()])
+	_server_tweak("_ps_delay_ms", 0)
+	queued.shut_down(null)
+	_seen()
+	# /api/ps cannot be read at the Y: ownership cannot be proven, so nothing is loaded.
+	_server_state(_standard_models(), [])
+	var blind := await _bare_link()
+	await _offer_ready(blind)
+	_server_tweak("_bad_ps", true)
+	_seen()
+	blind.accept_load()
+	await _pump(blind, func(): return not blind.is_loading())
+	var blind_sent := _seen()
+	_check("an unreadable /api/ps at the Y: no load is sent", blind.load_state == "error" and _bodies(blind_sent, "/api/generate").is_empty(), str(_paths(blind_sent)))
+	blind.shut_down(null)
+	_seen()
+	# An /api/show that fails is never taken as a yes.
+	_server_state(_standard_models(), [])
+	_server_tweak("_show_fails", [SMALL, MEDIUM])
+	var unsure := await _bare_link()
+	await _offer_ready(unsure)
+	_check("a model whose /api/show fails is never offered", unsure.load_state == "none_fits", unsure.load_state)
+	unsure.shut_down(null)
+	_seen()
+	# Many small embedding-only models before the chat model: every one is checked.
+	var many := []
+	for i in 6:
+		many.append(_model("fixture-vector-%d" % i, (i + 1) * 100000000, "llama", ["embedding"]))
+	many.append(_model(SMALL, 2 * GB))
+	_server_state(many, [])
+	var thorough := await _bare_link()
+	await _offer_ready(thorough)
+	_check("six smaller embedding-only models are all checked and skipped; the chat model is offered", thorough.load_state == "offer" and thorough.offer_name() == SMALL and _bodies(_seen(), "/api/show").size() == 7, thorough.load_state)
+	thorough.shut_down(null)
+	_seen()
 
 
 func _cleanup() -> void:

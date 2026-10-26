@@ -107,6 +107,17 @@ var _consent_known := false
 var _consent: Settings.Answer = Settings.Answer.NOT_ASKED
 var _loader: Loader
 var _loader_thread: Thread
+## A loader job waiting for the running one to be joined: jobs never overlap, and a thread
+## that has not been joined is never replaced.
+var _queued_job := Callable()
+## What the running and the queued job are ("offer", "load", "unload", "watch") and which
+## offer or load request each belongs to: a job's outcome only ever answers the request
+## that started it, never a newer one.
+var _running_kind := ""
+var _queued_kind := ""
+var _running_id := 0
+var _queued_id := 0
+var _request_id := 0
 ## The loader's game_loaded, copied only once its job is joined: the main thread never
 ## reads what a worker may be writing.
 var _game_loaded := ""
@@ -406,10 +417,10 @@ func _load_port() -> int:
 	return port if port is int else -1
 
 
-## Starts finding a model to offer (re-reading /api/ps first). False if loading is not
-## possible here or a load job is already running.
+## Starts finding a model to offer (re-reading /api/ps first), after any loader job still
+## running. False if loading is not possible here or an offer or load is under way.
 func begin_offer() -> bool:
-	if not can_offer_load() or _loader_thread != null:
+	if not can_offer_load() or is_loading():
 		return false
 	_ensure_loader()
 	load_state = "checking"
@@ -419,7 +430,8 @@ func begin_offer() -> bool:
 	var total = reading.get("vram_total_mib", -1)
 	if reading.get("available", false) and used is int and total is int and used >= 0 and total > 0:
 		free_mib = maxi(total - used, 0)
-	return _start_loader_job(_loader.job_offer.bind(free_mib))
+	_request_id += 1
+	return _start_loader_job(_loader.job_offer.bind(free_mib), "offer", _request_id)
 
 
 ## The model on offer and its size, while load_state is "offer" (or after).
@@ -436,7 +448,8 @@ func accept_load() -> bool:
 	if load_state != "offer" or _loader == null or _loader.offer_name == "":
 		return false
 	load_state = "loading"
-	return _start_loader_job(_loader.job_load.bind(_loader.offer_name))
+	_request_id += 1
+	return _start_loader_job(_loader.job_load.bind(_loader.offer_name), "load", _request_id)
 
 
 ## The player's N (or Esc) to the question: nothing is loaded.
@@ -445,10 +458,15 @@ func decline_load() -> void:
 		load_state = "declined"
 
 
-## Esc while loading: stop waiting. The load is watched and unloaded if it turns up.
+## Esc while loading: stop waiting. The load is watched and unloaded if it turns up (a
+## load still waiting for its turn is simply dropped).
 func cancel_load() -> void:
 	if load_state == "loading" and _loader != null:
-		_loader.cancel()
+		if _queued_kind == "load":
+			_queued_job = Callable()
+			_queued_kind = ""
+		elif _running_kind == "load" and _running_id == _request_id:
+			_loader.cancel()
 		load_state = "cancelled"
 
 
@@ -468,11 +486,23 @@ func _ensure_loader() -> void:
 		_loader.tuning = guide_tuning
 
 
-func _start_loader_job(job: Callable) -> bool:
+## Starts `job` on the loader's worker, or queues it behind the job still running. The
+## cancel flag is armed here, on the main thread, before the thread starts.
+func _start_loader_job(job: Callable, kind: String, id: int = 0) -> bool:
+	if _loader_thread != null:
+		_queued_job = job
+		_queued_kind = kind
+		_queued_id = id
+		return true
+	_loader.arm()
 	_loader_thread = Thread.new()
+	_running_kind = kind
+	_running_id = id
 	if _loader_thread.start(job) != OK:
 		_loader_thread = null
-		load_state = "error"
+		_running_kind = ""
+		if kind == "offer" or kind == "load":
+			load_state = "error"
 		return false
 	return true
 
@@ -480,8 +510,11 @@ func _start_loader_job(job: Callable) -> bool:
 func _request_unload() -> void:
 	if _loader == null:
 		return
+	_queued_job = Callable()
+	_queued_kind = ""
 	if load_state == "loading" or load_state == "checking":
-		_loader.cancel()
+		if _running_kind == "load" or _running_kind == "offer":
+			_loader.cancel()
 		load_state = "cancelled"
 	_unload_wanted = true
 
@@ -496,44 +529,69 @@ func _tick_loader(ms: float) -> void:
 			return
 		_loader_thread.wait_to_finish()
 		_loader_thread = null
-		_read_outcome()
+		_read_outcome(_running_kind, _running_id)
+		_running_kind = ""
 		_game_loaded = _loader.game_loaded
+	# A wanted unload goes first, so a queued request runs against what is loaded after it.
 	if _unload_wanted:
 		_unload_wanted = false
 		if _loader.game_loaded != "" or _loader.is_watching():
-			_start_loader_job(_loader.job_unload)
+			_start_loader_job(_loader.job_unload, "unload")
+			return
+	if not _queued_job.is_null():
+		var next := _queued_job
+		var kind := _queued_kind
+		_queued_job = Callable()
+		_queued_kind = ""
+		_start_loader_job(next, kind, _queued_id)
 		return
 	if _loader.is_watching():
 		_watch_wait_ms -= ms
 		if _watch_wait_ms <= 0.0:
 			_watch_wait_ms = maxi(int(guide_tuning.load_watch_interval_ms), 500)
-			_start_loader_job(_loader.job_watch)
+			_start_loader_job(_loader.job_watch, "watch")
 
 
-func _read_outcome() -> void:
-	match _loader.outcome:
-		Loader.Outcome.LOADED_NOW:
-			if load_state != "cancelled":
+## Applies a joined job's outcome, but only to the request that started it (`id`), and only
+## while that request still waits: an offer's to "checking", a load's to "loading". A newer
+## request is never overwritten by an older job. A load that succeeded after the player
+## stopped waiting for it, or after a newer request, is unloaded.
+func _read_outcome(kind: String, id: int) -> void:
+	var outcome := _loader.outcome
+	_loader.outcome = Loader.Outcome.NONE
+	var current := id == _request_id
+	if kind == "load" and outcome == Loader.Outcome.LOADED and not (current and load_state == "loading"):
+		_unload_wanted = true  # nobody waits for it any more: unload it
+		return
+	if not current:
+		return
+	if kind == "offer" and load_state == "checking":
+		match outcome:
+			Loader.Outcome.LOADED_NOW:
 				load_state = "loaded_now"
-			not_loaded = false
-		Loader.Outcome.OFFER:
-			load_state = "offer" if load_state == "checking" else load_state
-		Loader.Outcome.NONE_FITS:
-			load_state = "none_fits" if load_state == "checking" else load_state
-		Loader.Outcome.LOADED:
-			if load_state == "loading":
+				not_loaded = false
+			Loader.Outcome.OFFER:
+				load_state = "offer"
+			Loader.Outcome.NONE_FITS:
+				load_state = "none_fits"
+			Loader.Outcome.CANCELLED:
+				load_state = "cancelled"
+			_:
+				load_state = "error"
+	elif kind == "load" and load_state == "loading":
+		match outcome:
+			Loader.Outcome.LOADED:
 				load_state = "loaded"
 				not_loaded = false
-		Loader.Outcome.TIMEOUT:
-			if load_state == "loading":
+			Loader.Outcome.LOADED_NOW:
+				load_state = "loaded_now"
+				not_loaded = false
+			Loader.Outcome.TIMEOUT:
 				load_state = "timeout"
-		Loader.Outcome.CANCELLED:
-			load_state = "cancelled"
-		Loader.Outcome.ERROR:
-			if load_state == "checking" or load_state == "loading":
+			Loader.Outcome.CANCELLED:
+				load_state = "cancelled"
+			_:
 				load_state = "error"
-	if _loader.outcome != Loader.Outcome.NONE:
-		_loader.outcome = Loader.Outcome.NONE
 
 
 ## At the end of the session: stops a load job, then unloads the game's own model (and a
@@ -541,11 +599,14 @@ func _read_outcome() -> void:
 func _unload_for_exit() -> void:
 	if _loader == null:
 		return
+	_queued_job = Callable()
+	_queued_kind = ""
 	if _loader_thread != null:
 		_loader.cancel()
 		_loader_thread.wait_to_finish()
 		_loader_thread = null
-		_read_outcome()
+		_read_outcome(_running_kind, _running_id)
+		_running_kind = ""
 	if _loader.game_loaded != "" or _loader.is_watching():
 		_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
 	_game_loaded = _loader.game_loaded
