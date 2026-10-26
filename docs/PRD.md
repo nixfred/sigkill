@@ -43,7 +43,7 @@ Fast arena deathmatch (PvP) plus a solo/co-op daemon hunt (PvE), same arenas, sa
 ### 5.4 YOUR real AI as the guide (signature feature)
 The game finds the AI already running on the player's own machine and makes it their in-game guide, and proves it's real:
 - Detects local model servers read-only (Ollama at localhost:11434 /api/tags and /api/ps, LM Studio at localhost:1234 /v1/models, more later). Lists the real model names it finds.
-- Boot sequence shows it live: "Found ollama: gemma3 loaded, 9.3 GB VRAM on your RTX 5070. Linking..." using the real model name and real GPU readout (nvidia-smi or equivalent, read-only).
+- Boot sequence shows it live: "Found ollama: <model> loaded, <N> GB VRAM on your <GPU>. Linking..." using the real model name and real GPU readout (nvidia-smi or equivalent, read-only).
 - The guide talks in-game with tokens streaming visibly, a live tokens/sec and latency readout, and a "this is running on YOUR machine" badge. Player can ask it anything mid-match from a chat key and it answers with their own model.
 - It coaches from real round stats: accuracy, deaths, where you got caught. Doubles as the Larry-style roast announcer (opt-in).
 - Privacy: everything stays on the machine. Nothing is sent off-box. Opt-in on first launch, with a clear "AI off" mode that falls back to a scripted guide.
@@ -68,10 +68,12 @@ The game finds the AI already running on the player's own machine and makes it t
 ## 7. How Larry builds it
 One small chunk at a time. Each chunk: exact goal, files to touch, acceptance checks with real output, local commit, then stop and report. No chunk starts until the previous one is verified by the producer. No open-ended tasks.
 
+Every chunk ends with a Codex bug run (Fred, 2026-10-25): after Larry's own checks pass, he runs Codex CLI non-interactively in read-only/review mode on that chunk's diff (e.g. `codex exec` with a read-only sandbox, or `codex review`) asking it to hunt bugs, Godot API misuse, safety-rule violations and edge cases. Larry pastes Codex's findings verbatim-summarized, fixes real issues, re-runs the headless check, and notes any finding he rejects and why. Codex never gets write access and never pushes.
+
 ## 8. Milestones and chunk plan
 M0 Foundations
 - C1 Install Godot 4.7.2 (pacman, approved). Headless import of the project with zero errors. Fix only what breaks import.
-- C2 Add scripts/check.sh: gdparse all scripts + headless import + headless 300-frame run, exits nonzero on any error. Commit PRD.md and sync DESIGN.md.
+- C2 Add scripts/check.sh (gdparse + headless import + headless 300-frame run, nonzero on any error), first Codex bug run over everything so far, sync PRD and DESIGN.md.
 - C3 Private GitHub repo nixfred/sigkill, push main. (Private only.)
 M1 Look and feel (the "Rockstar" pass on the greybox)
 - C4 Tron environment: black void, glowing floor grid shader, neon edge shader on blocks, WorldEnvironment glow + fog.
