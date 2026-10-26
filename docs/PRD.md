@@ -64,6 +64,7 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
 ### 5.5 Your machine is the world (later milestone)
 - Filesystem maps: rooms from the player's real folder tree (names and sizes only), node_modules is the endless maze.
 - Live process enemies: real running processes become enemies (browser tabs swarm, pegged CPU core is a boss). Cosmetic only.
+- Audit Trail visor (community prompt by Albert / @QuantaCortex, 2026-10-26, accepted by Fred): a visor mode that draws glowing lineage lines from each enemy back to its parent process, up the real process tree. Severing a spawn chain (killing a parent) collapses or reshapes that part of the arena and despawns its children. Reads only PID, parent PID, process name and CPU/memory numbers. Never command-line arguments, open files, environment or paths, so no private file names can show. Severing is cosmetic in-game; nothing real is signaled.
 - Theme-shift levels using Omarchy themes; palette-only enemies.
 - Keybind gunplay mapped to real Omarchy shortcuts (opt-in, no conflicts).
 - Ramblr voice commands (read Ramblr's existing output, never open the mic).
@@ -91,9 +92,16 @@ Safety for the opener (on top of section 6):
 - Demo-data mode for every capture; trailers never show real machine data.
 - Music and SFX original (e.g. generated with ElevenLabs), no ripped audio.
 
+### 5.8 Community prompts and credits (DECIDED by Fred 2026-10-26)
+SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. The producer filters every prompt through the section 6 safety rules before it becomes a chunk brief; raw public text never goes to Larry. If a prompt makes it in, its author is credited.
+- CREDITS.md in the repo lists every contributor: name as they present it publicly, handle, the idea, and where it lives in the game.
+- In-game credits: the end-credits roll is a live `top`-style process table on the Tron grid. Every contributor is a process: PID, USER (their handle), %CPU climbing as their row arrives, COMMAND (their idea). Rows type in with code-rain, the table scrolls, Fred is PID 1 (init). The final line is the player's own kill -9 on the credits process, which derezzes the whole table into voxels, then "SIGKILL" and the hexagon.
+- Features born from a community prompt carry a small in-game tag, e.g. the Audit Trail visor HUD shows "visor design: @QuantaCortex".
+- Credits never include anyone who didn't contribute publicly, and nobody's handle goes in without their own public reply.
+
 ## 6. Hard safety rules (every chunk)
-- Never modify, delete, execute, signal or kill anything on the player's system. System features are read-only: names, sizes, counts, model names. Never file contents.
-- The ONE exception to "never execute" (Fred, 2026-10-25): the game may launch the player's own Omarchy default agent CLI in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never via omarchy-agent, and with only game stats and the player's typed text in the prompt. Nothing else is ever executed.
+- Never modify, delete, execute, signal or kill anything on the player's system. System features are read-only: names, sizes, counts, model names. Never file contents. Named exception (producer, 2026-10-26): the game may read the single-line Omarchy default-agent setting to learn which agent to use, and nothing else from that file.
+- The ONE exception to "never execute" (Fred, 2026-10-25): the game may launch the player's own Omarchy default agent CLI in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never via omarchy-agent, and with only game stats and the player's typed text in the prompt. The SECOND and last exception (producer, 2026-10-26): an optional query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader` for HUD GPU stats, never with control flags; prefer /sys reads, and hide GPU stats if neither works. Nothing else is ever executed.
 - Nothing private (real paths, hostnames, process lists, model lists) in the repo, screenshots or trailers. Demo-data mode for anything public.
 - No Ctrl+Alt hotkeys. Mouse captured only while focused, released on Esc/focus loss. No focus stealing. No GPU use when not running.
 - Local commits and private pushes only. Nothing public without Fred's yes.
@@ -129,6 +137,8 @@ M4 Arsenal and modes
 - C16 Weapon framework (data-driven weapon resource, swap wheel, ammo, mods/skins slots) + SIGTERM. C17 SIGKILL rail rifle. C18 SIGSTOP bullet time. C19 Fork bomb. C20 Light-trail mode. C21 Code-rain vision. C22 Root vs user + `sudo` overcharge. C23 Spectate as top.
 - C24 `fork()` shotgun. C25 `grep` seeker. C26 `rm -rf` cannon. C27 `cron` mines. C28 `ping` sonar. C29 `chmod 000` freeze ray. C30 `pipe |` chain beam. C31 `/dev/null` black hole. C32 SIGHUP confusion grenade. C33 Unlocks, mods and light skins.
 M5 Your machine is the world (filesystem maps, process enemies, themes, etc.)
+- C43 Audit Trail visor (after process enemies exist): lineage lines, read-only PID/PPID/name/CPU only, chain-sever arena reaction, credit tag.
+- C44 CREDITS.md + in-game top-style credits roll (demo data for captures).
 M6 Story campaign
 - C34 Story bible in docs/STORY.md (premise, characters, AI's voice, mission list) for Fred's review before any mission is built.
 - C38 Opener: fake terminal + typed lines (demo data first). C39 Opener: real-data reader (read-only names/sizes/counts/mtimes/theme, opt-in, fake-data fallback). C40 Opener: shrink-away reveal + directory-tree fall. C41 Opener: AI link beat + the copy of you. C42 Opener: kill -9 forge, first kill, title slam, music, skip logic. (Built after C10 boot and C7 derezz exist.)
