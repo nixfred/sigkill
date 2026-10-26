@@ -185,7 +185,9 @@ var lives := {}
 var _pending_spawn := Vector3.INF
 ## The weapon that respawn put in this player's hand, applied with it.
 var _pending_weapon := ""
-## Joiner: whether the first roster has come, at which this side's weapons start fresh.
+## Joiner: whether the first roster has come (the host holds this player from then on),
+## and whether this side's weapons have started fresh since, which needs a player.
+var _roster_seen := false
 var _weapons_synced := false
 ## How soon the host tries a respawn again when its own arena is absent.
 const RESPAWN_RETRY_S := 0.05
@@ -399,6 +401,7 @@ func attach(arena: Node, player: Node) -> void:
 	_attached_at = _clock
 	if player.has_method("set_alive"):
 		player.set_alive(not dead.get(my_id, false))
+	_sync_weapons()  # a first roster that came while the arena was away
 	for id in players:
 		if id != my_id:
 			_spawn_avatar(id)
@@ -846,6 +849,7 @@ func _clear_players() -> void:
 	lives = {}
 	_pending_spawn = Vector3.INF
 	_pending_weapon = ""
+	_roster_seen = false
 	_weapons_synced = false
 	_kept_inventory = null
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
@@ -1041,13 +1045,8 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 			_show_avatar_state(id)
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(not dead.get(my_id, false))
-	if not _weapons_synced:
-		# The first roster: the host holds this player now. Weapons start fresh here, and a
-		# draw of slot 1 goes to the host, so any draw sent before it held the player is undone.
-		_weapons_synced = true
-		_reset_player_weapons()
-		if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning"):
-			_on_weapon_drawn(_player.weapon_tuning().id)
+	_roster_seen = true
+	_sync_weapons()
 	changed.emit()
 	combat_changed.emit()
 
@@ -1137,6 +1136,20 @@ func _show_avatar_state(id: int) -> void:
 
 
 # --- Combat: intents in, the host's results out. ---
+
+## Joiner, once: after the first roster (the host holds this player by then) and with a
+## player here, weapons start fresh with slot 1 being drawn, and that draw goes to the host,
+## so any draw sent before it held the player is undone and both sides wait the same swap.
+## With the arena away it waits for the next one.
+func _sync_weapons() -> void:
+	if state != State.JOINED or not _roster_seen or _weapons_synced:
+		return
+	if _player == null or not is_instance_valid(_player) or not _player.has_method("reset_inventory"):
+		return
+	_weapons_synced = true
+	_player.reset_inventory(true)
+	_on_weapon_drawn(_player.weapon_tuning().id)
+
 
 ## A match starts with slot 1 drawn and every weapon full on this side, as the host counts.
 func _reset_player_weapons() -> void:

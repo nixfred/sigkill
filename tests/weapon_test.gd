@@ -525,6 +525,16 @@ func _solo_checks() -> void:
 	main.add_child(extra)
 	_check("a player given a loadout with a broken SIGTERM holds only the cannon", extra.inventory.slot_count() == 1 and extra.inventory.def().id == "terminal_cannon")
 	extra.queue_free()
+	var flipped := Arsenal.new()
+	var flipped_list: Array[Resource] = [_sigterm, _cannon]
+	flipped.loadout = flipped_list
+	var other = load("res://scenes/player.tscn").instantiate()
+	other.arsenal = flipped
+	other.position = Vector3(0.0, 40.0, -30.0)
+	main.add_child(other)
+	var scene_text := FileAccess.get_file_as_string("res://scenes/player.tscn")
+	_check("the shipped player scene pins no weapon, so the arsenal alone decides the loadout: one with SIGTERM first holds SIGTERM in slot 1 and the cannon in slot 2", not scene_text.contains("weapon =") and other.inventory.slot_count() == 2 and other.inventory.defs[0].id == "sigterm" and other.inventory.defs[1].id == "terminal_cannon" and p.weapon == null)
+	other.queue_free()
 	await physics_frame
 	# R in solo play: a fresh arena, a fresh inventory.
 	main.free()
@@ -696,12 +706,41 @@ func _fresh_match_checks() -> void:
 	await _frames(2)
 	_check("a match starts fresh on both sides: practice shots before joining (SIGTERM at %d) do not carry in; the cannon drawn, everything full, as the host counts" % practiced, joined and practiced == 4 and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and cp.inventory.reserves[1] == 24 and hs.combat.drawn_by(cid) == "terminal_cannon" and hs.combat.ammo_of(cid, "sigterm") == [6, 24])
 	# A draw the host took in before this side heard it holds the player (sent in the moment
-	# between joining and the first roster): the first roster's draw of slot 1 undoes it.
+	# between joining and the first roster): the first roster's draw of slot 1 undoes it, and
+	# this side waits out that draw too, so a shot fired as soon as the game allows is believed.
 	hs.combat.draw(cid, 0, "sigterm", 0, hs.get("_clock"))
 	cs.set("_weapons_synced", false)
+	cs.fire_seq = hs.combat.states[cid]["last_seq"]
+	cp.get_node("Head").rotation.x = 1.2
+	var dropped_at_sync: int = hs.combat.dropped
 	hs._send_roster()
-	var undone := await _until(func(): return hs.combat.drawn_by(cid) == "terminal_cannon", 2000)
-	_check("a draw the host took before this side's first roster is undone by the draw of slot 1 that roster sends: both sides on the cannon", undone and cp.inventory.current == 0)
+	var synced_now := await _until(func(): return cs.get("_weapons_synced") and cp.inventory.is_swapping(), 2000)
+	var first := await _first_shot_frame(cp, 40)
+	var believed_first := await _until(func(): return hs.combat.states[cid]["last_seq"] == cs.fire_seq, 2000)
+	_check("a draw the host took before this side's first roster is undone by the draw of slot 1 that roster sends; this side waits out the same draw, and its first shot, as soon as the game allows (frame %d), is believed" % first, synced_now and hs.combat.drawn_by(cid) == "terminal_cannon" and cp.inventory.current == 0 and first >= _frames_for(0.3) - 1 and believed_first and hs.combat.dropped == dropped_at_sync, "synced %s frame %d believed %s drops %s" % [synced_now, first, believed_first, hs.combat.drops])
+	# The first roster coming while R has the arena away: the fresh start waits for the next
+	# arena, even though that arena takes over the old player's (practice) weapons first.
+	cp.inventory.select(1)
+	cp.inventory.mags[1] = 2
+	cs.set("_weapons_synced", false)
+	cs.set("_roster_seen", false)
+	client["main"].free()
+	await _frames(2)
+	hs._send_roster()
+	await _until(func(): return cs.get("_roster_seen"), 2000)
+	var waited: bool = not cs.get("_weapons_synced")
+	var main_r = MainScene.instantiate()
+	client["branch"].add_child(main_r)
+	client["main"] = main_r
+	cp = main_r.get_node("Player")
+	cp.assume_captured = true
+	client["player"] = cp
+	await _frames(3)
+	cs.fire_seq = hs.combat.states[cid]["last_seq"]
+	cp.get_node("Head").rotation.x = 1.2
+	var first_r := await _first_shot_frame(cp, 40)
+	var believed_r := await _until(func(): return hs.combat.states[cid]["last_seq"] == cs.fire_seq, 2000)
+	_check("a first roster that comes while the arena is away waits: the next arena's player starts fresh (the cannon, SIGTERM full) instead of the old SIGTERM at 2, and its first shot is believed", waited and cs.get("_weapons_synced") and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and hs.combat.drawn_by(cid) == "terminal_cannon" and first_r > 0 and believed_r and hs.combat.dropped == dropped_at_sync, "waited %s current %d mags %s believed %s" % [waited, cp.inventory.current, cp.inventory.mags, believed_r])
 	await _frames(_frames_for(0.35))
 	cp.select_slot(1)
 	await _settle(cp, 0.5)

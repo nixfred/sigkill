@@ -44,8 +44,9 @@ signal slid
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
-## Slot 1's weapon, a WeaponDef. Leave empty for the arsenal's own slot 1, the terminal
-## cannon. A bad one is replaced by the built-in cannon.
+## A WeaponDef to put in slot 1 instead of the arsenal's own (tests). Leave empty, as the
+## shipped scene does, so the arsenal alone decides the loadout on every side. A bad one is
+## replaced by the built-in cannon; a slot further on with the same id is left out.
 @export var weapon: Resource
 ## The loadout and swap timing, an ArsenalTuning. Leave empty to use resources/arsenal.tres.
 ## A weapon in it that fails its own checks is refused and left out.
@@ -137,6 +138,7 @@ func _ready() -> void:
 		for issue in weapon_issues:
 			push_warning("weapon tuning: " + issue + "; using the built-in defaults instead")
 		defs[0] = weapon if weapon_issues.is_empty() else WeaponDefScript.new()
+		defs = defs.filter(func(def): return def == defs[0] or def.id != defs[0].id)
 	inventory = Inventory.new(defs, _a.swap_s, _a.fiction_s)
 	_rng.randomize()
 	_pellet_rng.randomize()
@@ -469,9 +471,12 @@ func reload_weapon() -> bool:
 
 
 ## A fresh loadout: slot 1 drawn, every weapon full, nothing running. The session calls it
-## when a match starts, so the host's count and the player's begin the same.
-func reset_inventory() -> void:
+## when a match starts, so the host's count and the player's begin the same. With `drawing`
+## slot 1 is still being drawn for the swap time, as on the host after a draw.
+func reset_inventory(drawing: bool = false) -> void:
 	inventory = Inventory.new(inventory.defs, _a.swap_s, _a.fiction_s)
+	if drawing:
+		inventory.swap_left = _a.swap_s
 	_show_weapon()
 
 
