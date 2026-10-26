@@ -41,7 +41,7 @@ You play the nixfred `>_` hexagon, deep inside your own machine, hunting rogue d
 - **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near. **Planned** (C8 code-rain walls, C21 code-rain vision).
 - **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage. **Planned** (C36 ruins art kit).
 
-In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with static targets.
+In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with target dummies that derezz into voxels when killed and then respawn.
 
 ### Why a big studio can't ship this
 
@@ -64,7 +64,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   </tr>
 </table>
 
-Built today: the greybox arena with the Tron look, tight movement and the terminal cannon. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
+Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, and target dummies that derezz into voxels and respawn. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
 
 ## Story
 
@@ -82,7 +82,7 @@ The campaign is told in short missions between arenas, through terminal logs you
 >
 > The first time you run SIGKILL, it notices you back.
 
-The opener runs live in the engine, never pre-rendered, and can be skipped after the first viewing. It uses your machine's real names only if you allow it on first launch, read-only; otherwise it runs on fake data. Esc and the window's close button always work. Status: Planned (C38 to C42, after the boot sequence and the derezz effect exist).
+The opener runs live in the engine, never pre-rendered, and can be skipped after the first viewing. It uses your machine's real names only if you allow it on first launch, read-only; otherwise it runs on fake data. Esc and the window's close button always work. Status: Planned (C38 to C42, after the boot sequence exists; the derezz effect it needs is built, C7).
 
 ## The arsenal
 
@@ -111,7 +111,7 @@ Nothing in the arsenal is in progress right now: the cannon is finished and the 
 
 | Ability or mode | What it does | Status |
 |---|---|---|
-| Derezz deaths | Daemons shatter into glowing voxels: the target dummies first (C7), players later. The kill feed, "SIGKILL &lt;pid&gt; sent by &lt;player&gt;", arrives with synced combat (C14) | ⬜ Planned (C7, C14) |
+| Derezz deaths | Daemons shatter into glowing voxels that burst, tumble, land and fade. Built on the target dummies, which then respawn at full health. Players derezz, and the kill feed "SIGKILL &lt;pid&gt; sent by &lt;player&gt;" arrives, with synced combat (C14) | ✅ Built on dummies (C7) · ⬜ Players and kill feed planned (C14) |
 | SIGSTOP bullet time | Short meter of Matrix slow-mo; SIGCONT resumes | ⬜ Planned (C18) |
 | Light-trail mode | Your path leaves a solid neon wall, for Tron deathmatch | ⬜ Planned (C20) |
 | Code-rain vision | See enemies through walls as glyphs; drains fast | ⬜ Planned (C21) |
@@ -208,13 +208,21 @@ The rules that make this safe, in plain words:
 
 **What is verified, and what is not.** Headless Godot still runs the shading-language front end, so `scripts/check.sh` catches shader syntax and semantic errors; deliberately broken shaders were used to prove it. During C4 a one-off probe also checked the edge-distance maths against real mesh data. What nobody has seen yet is the result on a real screen: the GPU-side compile and the actual look stay unverified until the first windowed capture.
 
-### Planned: derezz and code rain
+### Built: derezz on the target dummies
 
-- **Derezz (C7):** dummies and, later, players shatter into glowing voxels on death.
+- **The effect**, `scripts/derezz_fx.gd`. A killed dummy shatters into voxels that fill its hexagonal prism. One MultiMeshInstance3D per death holds every voxel as an instance, so there is no node and no physics body per voxel, and the count is capped, at 160 by default. Every derezz shares one voxel mesh and one unlit, over-bright material. About half the voxels glow hostile red; the rest are obsidian with a faint red tint.
+- **Motion** is scripted on the CPU at a fixed 60 Hz step, so it plays the same at any frame rate: an outward burst from the body's centre, a push along the killing shot's direction, random spread, gravity, a tumble, and a damped bounce with friction on landing. Each voxel finds the real ground below it with a downward ray that only hits the world, measured again whenever it moves sideways on the way down, so voxels knocked off the raised platform fall to the floor beneath it and voxels flying over a higher surface land on top of it. Voxels shrink and fade along a power curve, and the effect frees itself once the last one is gone.
+- **The dummy**, `scripts/target_dummy.gd`, is a small state machine. Alive: it takes hits. Derezzing: collision off, body and tag hidden, every hit ignored, and cannon shots pass straight through. Respawning: it grows back in its own spot, still not hittable. Then alive again at full health.
+- **Tuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`: the voxel cap, size and colours, the burst, push and spread, gravity, bounce, friction and the ground layers, the tumble, the lifetime and fade curve, the respawn delay and the regrow time.
+
+The kill feed is not part of this chunk; it arrives with synced combat (C14). Like the rest of the look, the derezz has only run headless so far. Under `--headless` Godot keeps no MultiMesh data to read back, so the test checks the voxel state, and through a test hook the transform and colour each frame builds from it for the MultiMesh. Whether they reach the screen, and how it looks, stays unverified until the first windowed capture.
+
+### Planned: code rain
+
 - **Code rain (C8):** a Matrix code-rain wall shader whose intensity rises when enemies are near.
-- **Code-rain vision (C21)** and **bullet time with motion trails (C18)** build on both.
+- **Code-rain vision (C21)** and **bullet time with motion trails (C18)** build on it and on the derezz.
 
-No derezz or code-rain shader exists in the repo yet.
+No code-rain shader exists in the repo yet.
 
 ### Where the look is heading
 
@@ -240,7 +248,7 @@ Fred's bar for every hostile: faceless and geometric, never cartoon monsters.
 - Bosses: giant red-hot lattice cores, the CPU core being the first.
 - Deaths: voxel derezz into glowing cubes.
 
-Today's targets are greybox hexagonal prisms with red neon edges, tagged with invented process names.
+Today's targets are greybox hexagonal prisms with red neon edges, tagged with invented process names. They already die the way daemons will: a voxel derezz (C7).
 
 ## Multiplayer (planned)
 
@@ -288,9 +296,11 @@ sigkill/
 │   ├── controls.gd             The input map, registered in code
 │   ├── movement_tuning.gd      MovementTuning: the exposed movement and camera tuning, validated
 │   ├── weapon_tuning.gd        WeaponTuning: the exposed cannon tuning, validated
+│   ├── derezz_tuning.gd        DerezzTuning: the exposed derezz and respawn tuning, validated
 │   ├── palette.gd              Every colour, plus the material factory
 │   ├── grey_block.gd           Builds a block's mesh, collision and neon material; previews in the editor
-│   ├── target_dummy.gd         Takes hits, pulses, shrinks and despawns, reports whether a hit landed
+│   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
+│   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death; self-freeing
 │   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair and hit marker
 │   ├── crosshair.gd            Crosshair drawn in code; kicks on every shot
 │   ├── hit_marker.gd           Diagonal hit marker, shown only on a confirmed hit
@@ -302,10 +312,12 @@ sigkill/
 │   └── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms
 ├── resources/
 │   ├── movement_tuning.tres    Default movement tuning
-│   └── terminal_cannon.tres    Default terminal cannon tuning
+│   ├── terminal_cannon.tres    Default terminal cannon tuning
+│   └── derezz.tres             Default derezz tuning
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
-│   └── cannon_test.gd          Headless cannon test
+│   ├── cannon_test.gd          Headless cannon test
+│   └── derezz_test.gd          Headless derezz test
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
     ├── DESIGN.md               Decisions log and design notes
@@ -315,12 +327,13 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Two custom resources hold the exposed tuning parameters for player movement, the camera and the cannon, each with a default instance the player scene loads. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' despawn timing from their own scripts.
+Feel is data, not code. Three custom resources hold the exposed tuning parameters for player movement, the camera, the cannon and the derezz, each with a default instance: the player scene loads the first two, and every target dummy loads the third. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
+- **DerezzTuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`. Groups: Voxels, Motion, Fade, Respawn. The voxel cap and size, the share that glows red and the obsidian tint, glow brightness, burst, upward and shot-push speeds, spread, gravity, bounce, ground friction and the ground layers, the tumble range, the shortest and longest voxel life and the fade curve, the respawn delay and the regrow time.
 
-Both resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, the player prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
+All three resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate or a voxel cap of zero, the player or the dummy prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -331,6 +344,7 @@ Both resources validate themselves on load with `problems()`. If a value would b
 3. **Run** the main scene for 300 frames headless.
 4. **Movement test**, `tests/movement_test.gd`.
 5. **Cannon test**, `tests/cannon_test.gd`.
+6. **Derezz test**, `tests/derezz_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -338,8 +352,9 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 
 - **Movement test.** A flat floor and the real player scene. Measures the start and the stop in frames, repeats them at 60 Hz and 120 Hz to prove nothing depends on the frame rate, and covers the slide (threshold, burst, timer, cooldown boundary, same-frame jump), slide-jump momentum, air control, head bob scaling and its toggle, the FOV kick, and the tuning fallback.
 - **Cannon test.** The real main scene. Fires at the real dummy, then the wall behind it, then the open sky, and checks the hit, the hit marker, recoil and its recovery at 60 Hz and 120 Hz, each effect's own lifetime, misses without a marker, the cooldown boundary, the pitch clamp including mouse look, the synthesised sounds, the tuning fallback, and that no orphan nodes are left behind.
+- **Derezz test.** The real main scene. Kills a real dummy with the real cannon and checks the state machine, collision, the voxel cap, the burst and the fade, the effect freeing itself on time, hits ignored while derezzing and while respawning, and the respawn at full health in the same spot. It also runs one seeded derezz at 30 and at 144 frames per second and requires identical voxels. It checks that the voxels follow the shot's own direction, both from a real cannon shot grazing a dummy's side and from a direct hit, and that voxels knocked off the raised platform settle on the floor below and never in mid-air. Finally it runs 20 rapid kill cycles with no leaked or orphaned nodes, and confirms every tuning resource file lists every tunable of its script.
 
-Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, and more. Each one makes `scripts/check.sh` exit 1.
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, and more. Each one makes `scripts/check.sh` exit 1.
 
 ### The Codex bug run
 
@@ -416,6 +431,7 @@ Exit 0 means every step passed, 1 means a problem was found, 2 means the gate it
 ```bash
 godot --headless --path . --fixed-fps 60 --script res://tests/movement_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/derezz_test.gd
 ```
 
 ## Safety and privacy
@@ -437,7 +453,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | Milestone | Chunks | Status |
 |---|---|---|
 | M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
-| M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths · C8 code-rain walls | 🔧 In progress |
+| M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls | 🔧 In progress |
 | M2 Your AI | C9 AI source detector · C9b agent adapters · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | ⬜ Planned |
 | M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
