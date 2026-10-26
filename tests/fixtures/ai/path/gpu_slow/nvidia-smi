@@ -1,6 +1,14 @@
 #!/bin/sh
-# Test stub for an nvidia-smi that hangs: it answers only after a second, longer than the
-# test's deadline, so the detector must give up, leave it running and start no other
-# until it has exited, then use its late answer.
-sleep 1
+# Test stub for an nvidia-smi that hangs: it answers only once the test creates its
+# release file (or after ten seconds, so it can never hang for good). The detector must
+# give up at its deadline, leave it running, start no other until it has exited, then
+# use its late answer.
+i=0
+while [ ! -e "$SIGKILL_TEST_SMI_RELEASE" ] && [ "$i" -lt 200 ]; do
+	sleep 0.05
+	i=$((i + 1))
+done
 echo "21, 1024, 4096, 44"
+if [ -n "$SIGKILL_TEST_SMI_DONE" ]; then
+	: > "$SIGKILL_TEST_SMI_DONE"
+fi

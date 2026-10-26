@@ -15,9 +15,11 @@ extends RefCounted
 ## - Local model servers, on 127.0.0.1 only (LOCALHOST is a constant, never a setting): one
 ##   short HTTP/1.0 GET per endpoint, Ollama's /api/version and /api/tags and the
 ##   OpenAI-style /v1/models, through a small reader of its own with a hard byte cap and a
-##   deadline checked on every step. Only reachable, latency and a model COUNT are kept;
-##   model names are counted and dropped, never stored, logged or printed. Nothing is
-##   loaded, pulled, unloaded or changed, and no model setting is touched.
+##   deadline checked on every step. The answer is checked by a JSON scanner of its own
+##   that only counts: it never decodes a string or converts a number, so model names are
+##   never even read as text, and no answer can make Godot print. Only reachable, latency
+##   and a model COUNT are kept. Nothing is loaded, pulled, unloaded or changed, and no
+##   model setting is touched.
 ## - GPU stats, read-only: a few named /sys attributes per DRM card first (gpu_busy_percent,
 ##   mem_info_vram_used, mem_info_vram_total, hwmon temp1_input), and only if none answer,
 ##   the SECOND named execute exception of PRD section 6: nvidia-smi at its fixed system
@@ -68,7 +70,13 @@ const OPENAI_MODELS_PATH := "/v1/models"
 const HTTP_TIMEOUT_MS := 500
 ## Largest whole response read, status line and headers included; longer is no answer.
 const HTTP_RESPONSE_MAX_BYTES := 1048576
-const HTTP_OK := "200"
+const HTTP_STATUS_OK := ["HTTP/1.0 200", "HTTP/1.1 200"]
+## Characters allowed in an HTTP header name (RFC 9110 token), besides letters and digits.
+const HTTP_TOKEN_EXTRA := "!#$%&'*+-.^_`|~"
+## Deepest nesting the JSON scanner follows.
+const JSON_MAX_DEPTH := 64
+## Bytes scanned between checks for cancel.
+const SCAN_CHECK_EVERY := 65536
 const PORT_LAST := 65535
 ## Pause between polls of a connection or a pipe, in microseconds.
 const POLL_SLEEP_USEC := 1000
@@ -126,7 +134,9 @@ var _result: Result
 var _job := Job.new()
 
 ## One GPU state per (sysfs root, nvidia-smi path, rate clock), shared by every detector
-## with those settings, so they read the GPU at most once per interval between them.
+## with those settings, so they read the GPU at most once per interval between them. The
+## key is an Array, so two different clock objects never share a state: a Callable's
+## string form leaves out which object it belongs to.
 static var _gpu_states := {}
 static var _gpu_states_mutex := Mutex.new()
 
@@ -163,7 +173,9 @@ class Job:
 
 
 ## The GPU rate limit and the one nvidia-smi that may be running. `mutex` guards the reading
-## and the timing; the smi_ fields belong to whichever poll holds `refreshing`.
+## and the timing; the smi_ fields belong to whichever caller holds `refreshing`. The
+## process handling lives here, not in the detector, because a detector being freed can
+## call other objects' methods but not its own.
 class GpuState:
 	extends RefCounted
 	var mutex := Mutex.new()
@@ -177,6 +189,83 @@ class GpuState:
 	var smi_stderr: FileAccess
 	var smi_output := PackedByteArray()
 	var smi_overflow := false
+	var smi_cap := 0
+	var smi_sleep_usec := 1000
+
+	## Takes over a just-started nvidia-smi.
+	func adopt(run: Dictionary, cap: int, sleep_usec: int) -> void:
+		smi_pid = run["pid"]
+		smi_stdout = run["stdio"]
+		smi_stderr = run["stderr"]
+		smi_output = PackedByteArray()
+		smi_overflow = false
+		smi_cap = cap
+		smi_sleep_usec = sleep_usec
+
+	## Reads what nvidia-smi has written, and drains and drops its stderr, until it exits,
+	## the deadline passes or `job` (if given) is cancelled. Both are checked on every pass,
+	## so even an nvidia-smi that never stops writing cannot hold the thread. Once it has
+	## exited, everything left in the pipe goes through the output cap. True once exited.
+	func pump(deadline: int, job: Object) -> bool:
+		while true:
+			var chunk := smi_stdout.get_buffer(smi_cap)
+			smi_stderr.get_buffer(smi_cap)
+			keep(chunk)
+			if chunk.is_empty() and not OS.is_process_running(smi_pid):
+				while true:
+					var rest := smi_stdout.get_buffer(smi_cap)
+					if rest.is_empty():
+						return true
+					keep(rest)
+			if Time.get_ticks_msec() > deadline or (job != null and job.is_cancelled()):
+				return false
+			if chunk.is_empty():
+				OS.delay_usec(smi_sleep_usec)
+		return false
+
+	func keep(chunk: PackedByteArray) -> void:
+		if smi_overflow or chunk.is_empty():
+			return
+		smi_output.append_array(chunk)
+		if smi_output.size() > smi_cap:
+			smi_overflow = true
+			smi_output = PackedByteArray()
+
+	## Collects an exited nvidia-smi and clears the record. Its output when it exited 0 and
+	## stayed under the cap, else "".
+	func finish() -> String:
+		var exit_code := OS.get_process_exit_code(smi_pid)
+		var output := smi_output.get_string_from_ascii()
+		var good := not smi_overflow and exit_code == 0
+		smi_stdout.close()
+		smi_stderr.close()
+		smi_pid = 0
+		smi_stdout = null
+		smi_stderr = null
+		smi_output = PackedByteArray()
+		smi_overflow = false
+		return output if good else ""
+
+	## Without waiting: if an earlier nvidia-smi has exited, collects it and returns its
+	## output ("" if it failed); null if there is none or it is still running.
+	func collect_if_done() -> Variant:
+		if smi_pid == 0 or not pump(Time.get_ticks_msec(), null):
+			return null
+		return finish()
+
+	## For a detector being freed: reaps an earlier nvidia-smi that has exited, unless a
+	## poll is busy with it.
+	func reap_if_done() -> void:
+		mutex.lock()
+		if refreshing or smi_pid == 0:
+			mutex.unlock()
+			return
+		refreshing = true
+		mutex.unlock()
+		collect_if_done()
+		mutex.lock()
+		refreshing = false
+		mutex.unlock()
 
 
 ## Runs every check and resolves the choice. Blocks for up to a few seconds when servers
@@ -287,9 +376,18 @@ func _detect_holding(_holder: RefCounted) -> Result:
 
 func _notification(what: int) -> void:
 	# A worker must be joined before its Thread is freed. Cancelled, it ends at its next step.
-	if what == NOTIFICATION_PREDELETE and _thread != null and _result == null:
+	if what != NOTIFICATION_PREDELETE:
+		return
+	if _thread != null and _result == null:
 		_job.cancel()
 		_thread.wait_to_finish()
+	# Reap an nvidia-smi that has exited since, without waiting. Only other objects' methods
+	# here: Godot cannot call this object's own methods while it is being freed.
+	_gpu_states_mutex.lock()
+	var state = _gpu_states.get([sysfs_root, nvidia_smi_path, rate_clock])
+	_gpu_states_mutex.unlock()
+	if state != null:
+		state.reap_if_done()
 
 
 ## Reads the default-agent setting and returns [AgentState, agent name or ""]. Bytes are
@@ -380,32 +478,38 @@ func find_command(command: String) -> String:
 ## Ollama on localhost: {reachable, latency_ms, model_count}. Blocks up to two requests.
 func probe_ollama() -> Dictionary:
 	var version := _get_json(ollama_port, OLLAMA_VERSION_PATH)
-	if version.is_empty() or not (version["data"] is Dictionary) or not version["data"].has("version"):
+	if version.is_empty() or _kind(version["shape"], "version") != "string":
 		return _no_server()
 	var out := {"reachable": true, "latency_ms": version["latency_ms"], "model_count": -1}
 	var listing := _get_json(ollama_port, OLLAMA_MODELS_PATH)
-	if not listing.is_empty() and listing["data"] is Dictionary and listing["data"].get("models") is Array:
-		out["model_count"] = (listing["data"]["models"] as Array).size()
+	if not listing.is_empty() and _kind(listing["shape"], "models") == "array":
+		out["model_count"] = listing["shape"]["models"]["count"]
 	return out
 
 
 ## A local OpenAI-compatible server: {reachable, latency_ms, model_count}. One request.
 func probe_openai() -> Dictionary:
 	var listing := _get_json(openai_port, OPENAI_MODELS_PATH)
-	if listing.is_empty() or not (listing["data"] is Dictionary) or not (listing["data"].get("data") is Array):
+	if listing.is_empty() or _kind(listing["shape"], "data") != "array":
 		return _no_server()
-	return {"reachable": true, "latency_ms": listing["latency_ms"], "model_count": (listing["data"]["data"] as Array).size()}
+	return {"reachable": true, "latency_ms": listing["latency_ms"], "model_count": listing["shape"]["data"]["count"]}
+
+
+static func _kind(shape: Dictionary, key: String) -> String:
+	return shape[key]["kind"] if shape.has(key) else ""
 
 
 static func _no_server() -> Dictionary:
 	return {"reachable": false, "latency_ms": -1, "model_count": -1}
 
 
-## One HTTP/1.0 GET to 127.0.0.1:port. Returns {latency_ms, data} with the parsed JSON, or
-## {} on refusal, timeout, cancel, a reset, a response over HTTP_RESPONSE_MAX_BYTES, or
-## anything parse_http_json() refuses. HTTP/1.0 means the server answers without chunking
-## and closes the connection when done, so the response ends at a clean close. Latency is
-## to the first byte of the answer.
+## One HTTP/1.0 GET to 127.0.0.1:port. Returns {latency_ms, shape} with the top level of the
+## JSON answer from json_top_level(), or {} on refusal, timeout, cancel, a reset, a
+## response over HTTP_RESPONSE_MAX_BYTES, or anything parse_http_body() or the JSON scanner
+## refuses. HTTP/1.0 means the server answers without chunking and closes the connection
+## when done, so the response ends at a clean close. Latency is to the first byte of the
+## answer. The deadline bounds the waiting on the server; checking an answer that arrived
+## in time is bounded by the size cap and stops at a cancel.
 func _get_json(port: int, path: String) -> Dictionary:
 	if port < 1 or port > PORT_LAST:
 		return {}
@@ -423,10 +527,21 @@ func _get_json(port: int, path: String) -> Dictionary:
 			peer.disconnect_from_host()
 			return {}
 		OS.delay_usec(POLL_SLEEP_USEC)
-	var request := "GET %s HTTP/1.0\r\nHost: %s:%d\r\nAccept: application/json\r\nConnection: close\r\n\r\n" % [path, LOCALHOST, port]
-	if peer.put_data(request.to_ascii_buffer()) != OK:
-		peer.disconnect_from_host()
-		return {}
+	var request := ("GET %s HTTP/1.0\r\nHost: %s:%d\r\nAccept: application/json\r\nConnection: close\r\n\r\n" % [path, LOCALHOST, port]).to_ascii_buffer()
+	# put_data() would wait for room in the socket with no deadline, so write in parts.
+	var sent := 0
+	while sent < request.size():
+		if _stop_waiting(deadline):
+			peer.disconnect_from_host()
+			return {}
+		var put: Array = peer.put_partial_data(request.slice(sent))
+		if put[0] != OK:
+			peer.disconnect_from_host()
+			return {}
+		sent += put[1]
+		if put[1] == 0:
+			OS.delay_usec(POLL_SLEEP_USEC)
+			peer.poll()
 	var raw := PackedByteArray()
 	var latency := -1
 	while true:
@@ -453,22 +568,27 @@ func _get_json(port: int, path: String) -> Dictionary:
 		if raw.size() > HTTP_RESPONSE_MAX_BYTES:
 			peer.disconnect_from_host()
 			return {}
-	var data = parse_http_json(raw)
-	if data == null:
+	var stop := _job.is_cancelled
+	var body = parse_http_body(raw, stop)
+	if body == null:
 		return {}
-	return {"latency_ms": latency, "data": data}
+	var shape = json_top_level(body, stop)
+	if shape == null:
+		return {}
+	return {"latency_ms": latency, "shape": shape}
 
 
 func _stop_waiting(deadline: int) -> bool:
 	return Time.get_ticks_msec() > deadline or _job.is_cancelled()
 
 
-## The JSON body of a whole HTTP/1.0 or 1.1 response, or null. Refused: no end of headers,
-## a header byte that is not printable ASCII, a status other than 200, a malformed header,
-## any Transfer-Encoding (an HTTP/1.0 answer is never chunked), a Content-Length that is
-## not a plain number or does not match the body, a body that is not valid UTF-8 or holds a
-## NUL, and a body that is not JSON. Nothing here prints, whatever the bytes.
-static func parse_http_json(raw: PackedByteArray) -> Variant:
+## The body of a whole HTTP/1.0 or 1.1 response, or null. Refused: no end of headers, a
+## header byte that is not printable ASCII, a CR or LF left inside a line, a status other
+## than 200, a header name that is not an HTTP token or has space before its colon, any
+## Transfer-Encoding (an HTTP/1.0 answer is never chunked), a Content-Length that is not a
+## plain number or does not match the body, and a body that is not valid UTF-8 or holds a
+## NUL. `stop` returning true abandons the check. Nothing here prints, whatever the bytes.
+static func parse_http_body(raw: PackedByteArray, stop: Callable = Callable()) -> Variant:
 	var split := _header_end(raw)
 	if split < 0:
 		return null
@@ -477,8 +597,15 @@ static func parse_http_json(raw: PackedByteArray) -> Variant:
 		if b != NEWLINE and b != CARRIAGE_RETURN and b != TAB and (b < PRINTABLE_FIRST or b > PRINTABLE_LAST):
 			return null
 	var lines := head.get_string_from_ascii().split("\r\n")
-	var status := lines[0].split(" ", false)
-	if status.size() < 2 or (status[0] != "HTTP/1.0" and status[0] != "HTTP/1.1") or status[1] != HTTP_OK:
+	for line in lines:
+		if line.contains("\n") or line.contains("\r"):
+			return null
+	var status_line := lines[0]
+	var status_ok := false
+	for prefix in HTTP_STATUS_OK:
+		if status_line.begins_with(prefix) and (status_line.length() == prefix.length() or status_line[prefix.length()] == " "):
+			status_ok = true
+	if not status_ok:
 		return null
 	var body := raw.slice(split + 4)
 	var declared := -1
@@ -486,8 +613,11 @@ static func parse_http_json(raw: PackedByteArray) -> Variant:
 		var colon := lines[i].find(":")
 		if colon <= 0:
 			return null
-		var header := lines[i].substr(0, colon).strip_edges().to_lower()
+		var header := lines[i].substr(0, colon)
+		if not _is_http_token(header):
+			return null
 		var value := lines[i].substr(colon + 1).strip_edges()
+		header = header.to_lower()
 		if header == "transfer-encoding":
 			return null
 		if header == "content-length":
@@ -497,12 +627,26 @@ static func parse_http_json(raw: PackedByteArray) -> Variant:
 			declared = length
 	if declared >= 0 and body.size() != declared:
 		return null
-	if not is_utf8_text(body):
+	if not _is_plain_ascii(body) and not is_utf8_text(body, stop):
 		return null
-	var json := JSON.new()
-	if json.parse(body.get_string_from_utf8()) != OK:
-		return null
-	return json.data
+	return body
+
+
+static func _is_http_token(name: String) -> bool:
+	if name.is_empty():
+		return false
+	for c in name:
+		var letter_or_digit := (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9")
+		if not letter_or_digit and not HTTP_TOKEN_EXTRA.contains(c):
+			return false
+	return true
+
+
+## True if every byte is ASCII and none is NUL, checked natively: the ASCII decode stops at
+## a NUL, and any byte with the high bit set grows when encoded back to UTF-8.
+static func _is_plain_ascii(bytes: PackedByteArray) -> bool:
+	var text := bytes.get_string_from_ascii()
+	return text.length() == bytes.size() and text.to_utf8_buffer().size() == bytes.size()
 
 
 ## Index of the blank line that ends the headers, or -1.
@@ -518,10 +662,15 @@ static func _header_end(raw: PackedByteArray) -> int:
 ## True if the bytes are well-formed UTF-8 with no NUL: no stray or missing continuation
 ## bytes, no overlong forms, no surrogates, nothing past U+10FFFF. Checked here, quietly,
 ## because Godot's own decoder prints an error for every bad sequence.
-static func is_utf8_text(bytes: PackedByteArray) -> bool:
+static func is_utf8_text(bytes: PackedByteArray, stop: Callable = Callable()) -> bool:
 	var i := 0
 	var size := bytes.size()
+	var next_check := SCAN_CHECK_EVERY
 	while i < size:
+		if i >= next_check:
+			next_check = i + SCAN_CHECK_EVERY
+			if stop.is_valid() and stop.call():
+				return false
 		var b := bytes[i]
 		if b == 0:
 			return false
@@ -561,6 +710,241 @@ static func is_utf8_text(bytes: PackedByteArray) -> bool:
 	return true
 
 
+## The top level of a JSON object: for each key, {kind, count}, where kind is "object",
+## "array", "string", "number" or "literal" and count is an array's element count (-1
+## otherwise). Null unless the bytes are exactly one well-formed JSON object. The scanner
+## checks structure, escapes and number syntax but never decodes a string or converts a
+## number, so model names are never read as text and nothing can make Godot print. Only
+## the top-level keys are decoded, from bytes already known to be UTF-8. `stop` returning
+## true abandons the scan.
+static func json_top_level(bytes: PackedByteArray, stop: Callable = Callable()) -> Variant:
+	var scan := JsonScan.new(bytes, stop)
+	scan.skip_space()
+	if scan.at() != JsonScan.OPEN_BRACE:
+		return null
+	var shape := {}
+	if not scan.object(1, shape):
+		return null
+	scan.skip_space()
+	if scan.failed or scan.i != scan.n:
+		return null
+	return shape
+
+
+## A one-pass JSON syntax scanner over bytes, used by json_top_level().
+class JsonScan:
+	extends RefCounted
+	const OPEN_BRACE := 0x7B
+	const CLOSE_BRACE := 0x7D
+	const OPEN_BRACKET := 0x5B
+	const CLOSE_BRACKET := 0x5D
+	const QUOTE := 0x22
+	const BACKSLASH := 0x5C
+	const COLON := 0x3A
+	const COMMA := 0x2C
+	const MINUS := 0x2D
+	const PLUS := 0x2B
+	const DOT := 0x2E
+	const ZERO := 0x30
+	const NINE := 0x39
+	const LOWER_E := 0x65
+	const UPPER_E := 0x45
+	const LOWER_U := 0x75
+	const SIMPLE_ESCAPES := [0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74]
+	const SPACE := [0x20, 0x09, 0x0A, 0x0D]
+	const MAX_DEPTH := 64
+	const CHECK_EVERY := 65536
+
+	var b: PackedByteArray
+	var n := 0
+	var i := 0
+	var failed := false
+	var last_count := -1
+	var _stop: Callable
+	var _next_check := CHECK_EVERY
+	var _next_backslash := -1
+
+	func _init(bytes: PackedByteArray, stop: Callable) -> void:
+		b = bytes
+		n = bytes.size()
+		_stop = stop
+
+	func at() -> int:
+		return b[i] if i < n else -1
+
+	func advance(count: int = 1) -> void:
+		i += count
+		if i >= _next_check:
+			_next_check = i + CHECK_EVERY
+			if _stop.is_valid() and _stop.call():
+				failed = true
+
+	func fail() -> bool:
+		failed = true
+		return false
+
+	func skip_space() -> void:
+		while i < n and SPACE.has(b[i]):
+			advance()
+
+	func digit(c: int) -> bool:
+		return c >= ZERO and c <= NINE
+
+	func hex(c: int) -> bool:
+		return digit(c) or (c >= 0x41 and c <= 0x46) or (c >= 0x61 and c <= 0x66)
+
+	## Scans one value; returns its kind, or "" on failure. last_count holds an array's size.
+	func value(depth: int) -> String:
+		if failed or depth > MAX_DEPTH:
+			fail()
+			return ""
+		skip_space()
+		var c := at()
+		if c == OPEN_BRACE:
+			return "object" if object(depth + 1, {}) else ""
+		if c == OPEN_BRACKET:
+			return "array" if array(depth + 1) else ""
+		if c == QUOTE:
+			return "string" if string_end() >= 0 else ""
+		if c == 0x74:
+			return "literal" if literal("true") else ""
+		if c == 0x66:
+			return "literal" if literal("false") else ""
+		if c == 0x6E:
+			return "literal" if literal("null") else ""
+		if c == MINUS or digit(c):
+			return "number" if number() else ""
+		fail()
+		return ""
+
+	## An object; when `record` is the top level's dictionary, each key's kind goes in it.
+	func object(depth: int, record: Dictionary) -> bool:
+		var top := depth == 1
+		advance()
+		skip_space()
+		if at() == CLOSE_BRACE:
+			advance()
+			return not failed
+		while not failed:
+			skip_space()
+			if at() != QUOTE:
+				return fail()
+			var key_start := i + 1
+			var key_end := string_end()
+			if key_end < 0:
+				return fail()
+			skip_space()
+			if at() != COLON:
+				return fail()
+			advance()
+			var kind := value(depth)
+			if kind == "":
+				return fail()
+			if top:
+				var key := b.slice(key_start, key_end).get_string_from_utf8()
+				record[key] = {"kind": kind, "count": last_count if kind == "array" else -1}
+			skip_space()
+			var c := at()
+			if c == COMMA:
+				advance()
+				continue
+			if c == CLOSE_BRACE:
+				advance()
+				return not failed
+			return fail()
+		return false
+
+	func array(depth: int) -> bool:
+		advance()
+		skip_space()
+		if at() == CLOSE_BRACKET:
+			advance()
+			last_count = 0
+			return not failed
+		var count := 0
+		while not failed:
+			if value(depth) == "":
+				return fail()
+			count += 1
+			skip_space()
+			var c := at()
+			if c == COMMA:
+				advance()
+				continue
+			if c == CLOSE_BRACKET:
+				advance()
+				last_count = count
+				return not failed
+			return fail()
+		return false
+
+	## Scans a string from its opening quote; returns the index of its closing quote, or -1.
+	## It jumps to the next quote or backslash natively; the next backslash is remembered,
+	## so a body of many plain strings is scanned once, not once per string.
+	func string_end() -> int:
+		advance()
+		while not failed:
+			var quote := b.find(QUOTE, i)
+			if quote < 0:
+				fail()
+				return -1
+			if _next_backslash < i and _next_backslash != n:
+				_next_backslash = b.find(BACKSLASH, i)
+				if _next_backslash < 0:
+					_next_backslash = n
+			if _next_backslash < quote:
+				advance(_next_backslash - i + 1)
+				var e := at()
+				if e == LOWER_U:
+					if i + 4 >= n or not (hex(b[i + 1]) and hex(b[i + 2]) and hex(b[i + 3]) and hex(b[i + 4])):
+						fail()
+						return -1
+					advance(5)
+				elif SIMPLE_ESCAPES.has(e):
+					advance()
+				else:
+					fail()
+					return -1
+				continue
+			advance(quote - i + 1)
+			return quote
+		return -1
+
+	## Number syntax only: -? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?
+	func number() -> bool:
+		if at() == MINUS:
+			advance()
+		if at() == ZERO:
+			advance()
+		elif digit(at()):
+			while digit(at()):
+				advance()
+		else:
+			return fail()
+		if at() == DOT:
+			advance()
+			if not digit(at()):
+				return fail()
+			while digit(at()):
+				advance()
+		if at() == LOWER_E or at() == UPPER_E:
+			advance()
+			if at() == PLUS or at() == MINUS:
+				advance()
+			if not digit(at()):
+				return fail()
+			while digit(at()):
+				advance()
+		return not failed
+
+	func literal(word: String) -> bool:
+		var bytes := word.to_ascii_buffer()
+		if i + bytes.size() > n or b.slice(i, i + bytes.size()) != bytes:
+			return fail()
+		advance(bytes.size())
+		return not failed
+
+
 ## A plain non-negative whole number of at most NUMBER_MAX_DIGITS digits, or -1. Anything
 ## longer could overflow, which Godot's own conversion reports as an error.
 static func whole_number(text: String) -> int:
@@ -580,24 +964,33 @@ static func whole_number(text: String) -> int:
 func poll_gpu() -> Dictionary:
 	var state := _gpu_state()
 	state.mutex.lock()
+	if state.refreshing:
+		var busy: Dictionary = state.reading.duplicate() if not state.reading.is_empty() else _no_gpu()
+		state.mutex.unlock()
+		return busy
 	var now: int = rate_clock.call()
 	var due := not state.ever_read or now - state.read_at >= GPU_POLL_MIN_INTERVAL_MS
-	if not due or state.refreshing:
-		var last: Dictionary = state.reading.duplicate() if not state.reading.is_empty() else _no_gpu()
-		state.mutex.unlock()
-		return last
-	state.ever_read = true
-	state.read_at = now
+	if due:
+		state.ever_read = true
+		state.read_at = now
 	state.refreshing = true
 	state.mutex.unlock()
-	var reading := _read_sysfs_gpu()
-	if not reading["available"]:
-		reading = _read_nvidia_smi(state)
+	var reading := {}
+	if due:
+		reading = _read_sysfs_gpu()
+		if not reading["available"]:
+			reading = _read_nvidia_smi(state)
+		elif state.smi_pid != 0:
+			_tidy_smi(state)  # /sys answers now, but an earlier nvidia-smi still needs reaping
+	elif state.smi_pid != 0:
+		reading = _tidy_smi(state)  # not due: no new start, but an earlier one may have answered
 	state.mutex.lock()
-	state.reading = reading
+	if not reading.is_empty():
+		state.reading = reading
 	state.refreshing = false
+	var last: Dictionary = state.reading.duplicate() if not state.reading.is_empty() else _no_gpu()
 	state.mutex.unlock()
-	return reading.duplicate()
+	return last
 
 
 ## How many times nvidia-smi has been started for these settings, by any detector.
@@ -610,13 +1003,21 @@ func nvidia_smi_runs() -> int:
 
 
 func _gpu_state() -> GpuState:
-	var key := "%s|%s|%s" % [sysfs_root, nvidia_smi_path, rate_clock]
+	var key := [sysfs_root, nvidia_smi_path, rate_clock]
 	_gpu_states_mutex.lock()
 	if not _gpu_states.has(key):
 		_gpu_states[key] = GpuState.new()
 	var state: GpuState = _gpu_states[key]
 	_gpu_states_mutex.unlock()
 	return state
+
+
+## Its answer if an earlier nvidia-smi has exited since, else {} with it left running.
+func _tidy_smi(state: GpuState) -> Dictionary:
+	var output = state.collect_if_done()
+	if output == null:
+		return {}
+	return parse_nvidia_smi(output) if output != "" else _no_gpu()
 
 
 static func _no_gpu() -> Dictionary:
@@ -670,9 +1071,10 @@ static func _in_range(value: int, last: int) -> int:
 ## output used once it has exited; until then no new one starts.
 func _read_nvidia_smi(state: GpuState) -> Dictionary:
 	if state.smi_pid != 0:
-		if not _pump_smi(state, Time.get_ticks_msec()):
+		var late := _tidy_smi(state)
+		if late.is_empty():
 			return state.reading.duplicate() if not state.reading.is_empty() else _no_gpu()
-		return _finish_smi(state)
+		return late
 	var path := nvidia_smi_path
 	if path.is_empty() or not path.is_absolute_path() or DirAccess.dir_exists_absolute(path):
 		return _no_gpu()
@@ -684,57 +1086,11 @@ func _read_nvidia_smi(state: GpuState) -> Dictionary:
 	state.mutex.lock()
 	state.nvidia_smi_runs += 1
 	state.mutex.unlock()
-	state.smi_pid = run["pid"]
-	state.smi_stdout = run["stdio"]
-	state.smi_stderr = run["stderr"]
-	state.smi_output = PackedByteArray()
-	state.smi_overflow = false
-	if not _pump_smi(state, Time.get_ticks_msec() + nvidia_smi_timeout_ms):
+	state.adopt(run, NVIDIA_SMI_OUTPUT_MAX_BYTES, POLL_SLEEP_USEC)
+	if not state.pump(Time.get_ticks_msec() + nvidia_smi_timeout_ms, _job):
 		return _no_gpu()  # still running: left to exit on its own, never killed
-	return _finish_smi(state)
-
-
-## Reads what nvidia-smi has written, and drains and drops its stderr, until it exits, the
-## deadline passes or the detection is cancelled. True once it has exited.
-func _pump_smi(state: GpuState, deadline: int) -> bool:
-	while true:
-		var chunk := state.smi_stdout.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES)
-		state.smi_stderr.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES)
-		_keep_smi_output(state, chunk)
-		if chunk.is_empty():
-			if not OS.is_process_running(state.smi_pid):
-				_keep_smi_output(state, state.smi_stdout.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES))
-				return true
-			if Time.get_ticks_msec() > deadline or _job.is_cancelled():
-				return false
-			OS.delay_usec(POLL_SLEEP_USEC)
-	return false
-
-
-static func _keep_smi_output(state: GpuState, chunk: PackedByteArray) -> void:
-	if state.smi_overflow or chunk.is_empty():
-		return
-	state.smi_output.append_array(chunk)
-	if state.smi_output.size() > NVIDIA_SMI_OUTPUT_MAX_BYTES:
-		state.smi_overflow = true
-		state.smi_output = PackedByteArray()
-
-
-## Collects an exited nvidia-smi's result and clears the record.
-func _finish_smi(state: GpuState) -> Dictionary:
-	var exit_code := OS.get_process_exit_code(state.smi_pid)
-	var output := state.smi_output
-	var overflow := state.smi_overflow
-	state.smi_stdout.close()
-	state.smi_stderr.close()
-	state.smi_pid = 0
-	state.smi_stdout = null
-	state.smi_stderr = null
-	state.smi_output = PackedByteArray()
-	state.smi_overflow = false
-	if overflow or exit_code != 0:
-		return _no_gpu()
-	return parse_nvidia_smi(output.get_string_from_ascii())
+	var output := state.finish()
+	return parse_nvidia_smi(output) if output != "" else _no_gpu()
 
 
 ## The first line of nvidia-smi's CSV: utilization %, memory used MiB, memory total MiB,

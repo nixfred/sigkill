@@ -11,7 +11,7 @@ this folder (`.gdignore`); the test reads it by absolute path.
   mark if it is ever run, which fails the test, since the detector must never run an
   agent. `codex` is not executable and `opencode` is a directory, so both count as absent.
 - `path/gpu/nvidia-smi`: a stub that records its arguments and prints canned readings.
-- `path/gpu_slow/nvidia-smi`: answers only after a second, so it outlasts the test's deadline.
+- `path/gpu_slow/nvidia-smi`: answers only once the test creates its release file, so it outlasts the deadline.
 - `path/gpu_flood/nvidia-smi`: prints far more than the detector keeps.
 - `path/empty/`: a PATH directory with nothing in it.
 - `sysfs/`: a fake `/sys` with one DRM card that reports nothing and one that reports busy

@@ -21,9 +21,12 @@ const WATCHDOG_MS := 3000
 const SLOW_SMI_TIMEOUT_MS := 200
 ## A long timeout for the cancel checks, so a cancel that waits for it is plain to see.
 const LONG_TIMEOUT_MS := 2000
-## How long a probe runs before the cancel checks cancel it.
-const CANCEL_AFTER_MS := 100
-const SLOW_SMI_EXIT_WAIT_MS := 1300
+## Pause between polls while the test waits on an observed state, in milliseconds.
+const WAIT_STEP_MS := 10
+## A drip server sends one byte per this many milliseconds.
+const DRIP_EVERY_MS := 20
+## Entries in the oversized but otherwise valid model list.
+const HUGE_ENTRIES := 40000
 const FULL_TAGS := '{"models":[{"name":"fake-model-alpha"},{"name":"fake-model-beta"},{"name":"fake-model-gamma"}]}'
 const FULL_V1 := '{"object":"list","data":[{"id":"fake-model-alpha"},{"id":"fake-model-beta"}]}'
 const FAKE_MODEL_WORD := "fake-model"
@@ -31,16 +34,17 @@ const FLOOD_LIMIT_BYTES := 2097152
 const FLOOD_CHUNK := 16384
 const EXPECTED_SMI_ARGS := ["--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu", "--format=csv,noheader,nounits"]
 const SCAN_DIRS := ["res://scripts", "res://scenes"]
-const FORBIDDEN_CALLS := ["OS.execute(", "OS.create_process", "OS.create_instance", "OS.shell_open", "OS.shell_show_in_file_manager", "OS.kill", "HTTPRequest", "HTTPClient", "TCPServer", "UDPServer", "PacketPeerUDP", "WebSocket", "set_unix_permissions", "FileAccess.WRITE", "DirAccess.remove", "make_dir", "\"omarchy", "find_command(NVIDIA"]
-## Server modes. Each connection keeps the mode it was accepted in.
-const MODES := ["full", "empty", "hang", "truncated", "chunked", "error500", "badutf8", "flood"]
+const FORBIDDEN_CALLS := ["OS.execute(", "OS.create_process", "OS.create_instance", "OS.shell_open", "OS.shell_show_in_file_manager", "OS.kill", "HTTPRequest", "HTTPClient", "TCPServer", "UDPServer", "PacketPeerUDP", "WebSocket", "set_unix_permissions", "FileAccess.WRITE", "DirAccess.remove", "make_dir", "\"omarchy", "find_command(NVIDIA", "JSON.new", "JSON.parse"]
 
 var _fails := 0
 var _checks := 0
 var _fx := ""
 var _tmp := ""
 var _smi_log := ""
+var _smi_release := ""
+var _smi_done := ""
 var _exec_mark := ""
+var _huge_body := PackedByteArray()
 var _results: Array = []
 var _fake_now := 0
 
@@ -52,6 +56,7 @@ var _server_thread := Thread.new()
 var _server_mutex := Mutex.new()
 var _server_stop := false
 var _server_mode := "full"
+var _accepted := 0
 var _port := 0
 var _closer_port := 0
 
@@ -94,9 +99,18 @@ func _setup() -> bool:
 		return false
 	DirAccess.make_dir_recursive_absolute(_tmp)
 	_smi_log = _tmp.path_join("smi_args.txt")
+	_smi_release = _tmp.path_join("smi_release")
+	_smi_done = _tmp.path_join("smi_done")
 	_exec_mark = _tmp.path_join("agent_exec_mark.txt")
 	OS.set_environment("SIGKILL_TEST_SMI_LOG", _smi_log)
+	OS.set_environment("SIGKILL_TEST_SMI_RELEASE", _smi_release)
+	OS.set_environment("SIGKILL_TEST_SMI_DONE", _smi_done)
 	OS.set_environment("SIGKILL_TEST_EXEC_MARK", _exec_mark)
+	# A complete, well-formed model list just over the reader's cap.
+	var entries := PackedStringArray()
+	for k in HUGE_ENTRIES:
+		entries.append('{"name":"%s-%d"}' % [FAKE_MODEL_WORD, k])
+	_huge_body = ('{"models":[%s],"data":[%s]}' % [",".join(entries), ",".join(entries)]).to_ascii_buffer()
 	if _server.listen(0, Detector.LOCALHOST) != OK or _closer.listen(0, Detector.LOCALHOST) != OK:
 		print("FAIL the fake servers could not listen on 127.0.0.1")
 		return false
@@ -114,7 +128,7 @@ func _teardown() -> void:
 	_server.stop()
 	_closer.stop()
 	# Only the files this run made, in its own fresh folder.
-	for name in ["smi_args.txt", "agent_exec_mark.txt", "unreadable_agent", "home/.config/omarchy/defaults/agent"]:
+	for name in ["smi_args.txt", "smi_release", "smi_done", "agent_exec_mark.txt", "unreadable_agent", "home/.config/omarchy/defaults/agent"]:
 		var path := _tmp.path_join(name)
 		if FileAccess.file_exists(path):
 			FileAccess.set_unix_permissions(path, 0x180)  # owner read and write, so it can go
@@ -131,11 +145,37 @@ func _set_mode(mode: String) -> void:
 	_server_mutex.unlock()
 
 
-func _mode_and_stop() -> Array:
+func _stopping() -> bool:
 	_server_mutex.lock()
-	var state := [_server_mode, _server_stop]
+	var stop := _server_stop
 	_server_mutex.unlock()
-	return state
+	return stop
+
+
+## The mode a new connection gets, read when it is accepted, and the accepted count.
+func _accept_mode() -> String:
+	_server_mutex.lock()
+	var mode := _server_mode
+	_accepted += 1
+	_server_mutex.unlock()
+	return mode
+
+
+func _accepted_count() -> int:
+	_server_mutex.lock()
+	var count := _accepted
+	_server_mutex.unlock()
+	return count
+
+
+## Waits, polling, until `ready` returns true or the watchdog passes. True if it did.
+func _wait_for(ready: Callable) -> bool:
+	var start := Time.get_ticks_msec()
+	while not ready.call():
+		if Time.get_ticks_msec() - start > WATCHDOG_MS:
+			return false
+		OS.delay_msec(WAIT_STEP_MS)
+	return true
 
 
 func _body_for(mode: String, path: String) -> PackedByteArray:
@@ -146,6 +186,8 @@ func _body_for(mode: String, path: String) -> PackedByteArray:
 			var key := "models" if path == Detector.OLLAMA_MODELS_PATH else "data"
 			if mode == "empty":
 				return ('{"%s":[]}' % key).to_ascii_buffer()
+			if mode == "huge":
+				return _huge_body
 			if mode == "badutf8":
 				var bad := ('{"%s":[{"name":"%s-' % [key, FAKE_MODEL_WORD]).to_ascii_buffer()
 				bad.append_array(PackedByteArray([0xFF, 0xFE, 0xC0, 0x80]))
@@ -183,19 +225,25 @@ func _serve() -> void:
 	var junk := PackedByteArray()
 	junk.resize(FLOOD_CHUNK)
 	junk.fill(0x61)
-	while true:
-		var state := _mode_and_stop()
-		if state[1]:
-			break
+	while not _stopping():
 		while _closer.is_connection_available():
 			_closer.take_connection().disconnect_from_host()
 		while _server.is_connection_available():
-			conns.append({"peer": _server.take_connection(), "buf": PackedByteArray(), "mode": state[0], "sent": 0, "flooding": false})
+			var peer_in := _server.take_connection()
+			conns.append({"peer": peer_in, "buf": PackedByteArray(), "mode": _accept_mode(), "sent": 0, "flooding": false, "drip": PackedByteArray(), "drip_at": 0})
 		for entry in conns.duplicate():
 			var peer: StreamPeerTCP = entry["peer"]
 			peer.poll()
 			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 				conns.erase(entry)
+				continue
+			var drip: PackedByteArray = entry["drip"]
+			if not drip.is_empty():
+				# A whole, valid answer, one byte at a time: it never arrives within the deadline.
+				if Time.get_ticks_msec() >= entry["drip_at"]:
+					peer.put_data(drip.slice(0, 1))
+					entry["drip"] = drip.slice(1)
+					entry["drip_at"] = Time.get_ticks_msec() + DRIP_EVERY_MS
 				continue
 			if entry["flooding"]:
 				# Headers that never end, until the client hangs up or the limit.
@@ -217,6 +265,9 @@ func _serve() -> void:
 			if mode == "flood":
 				peer.put_data("HTTP/1.0 200 OK\r\nX-Flood: ".to_ascii_buffer())
 				entry["flooding"] = true
+				continue
+			if mode == "drip":
+				entry["drip"] = _reply("full", text.split(" ")[1])
 				continue
 			peer.put_data(_reply(mode, text.split(" ")[1]))
 			peer.disconnect_from_host()
@@ -275,6 +326,7 @@ func _safety_checks() -> void:
 	_check("nvidia-smi comes from its fixed system path, never from the PATH", Detector.NVIDIA_SMI_PATH == "/usr/bin/nvidia-smi" and Detector.new().nvidia_smi_path == Detector.NVIDIA_SMI_PATH and _detector().nvidia_smi_path != Detector.NVIDIA_SMI_PATH)
 	_check("its one network socket connects only to the constant 127.0.0.1", source.count("StreamPeerTCP.new()") == 1 and source.count("connect_to_host(") == 1 and source.contains("peer.connect_to_host(LOCALHOST, port)") and Detector.LOCALHOST == "127.0.0.1")
 	_check("every file it opens, it opens for reading", source.count("FileAccess.open(") == 2 and source.count("FileAccess.open(path, FileAccess.READ)") == 2)
+	_check("it never hands an answer to Godot's JSON parser and decodes only top-level keys", source.count("get_string_from_utf8(") == 1 and source.contains("b.slice(key_start, key_end).get_string_from_utf8()"))
 	var users := PackedStringArray()
 	var files := PackedStringArray()
 	for dir in SCAN_DIRS:
@@ -293,12 +345,13 @@ func _http(head: String, body: PackedByteArray) -> PackedByteArray:
 	return raw
 
 
-## The response reader and number parsing on crafted bytes. None of these may print.
+## The response reader, the JSON scanner and number parsing on crafted bytes. None of these
+## may print; scripts/check.sh fails on any error line.
 func _parser_checks() -> void:
 	var ok_body := '{"data":[1,2]}'.to_ascii_buffer()
-	var with_length = Detector.parse_http_json(_http("HTTP/1.0 200 OK\r\nContent-Length: %d\r\n\r\n" % ok_body.size(), ok_body))
-	var without_length = Detector.parse_http_json(_http("HTTP/1.1 200 OK\r\nServer: fake\r\n\r\n", ok_body))
-	_check("a whole 200 answer parses, with or without Content-Length", with_length is Dictionary and without_length is Dictionary)
+	var with_length = Detector.parse_http_body(_http("HTTP/1.0 200 OK\r\nContent-Length: %d\r\n\r\n" % ok_body.size(), ok_body))
+	var without_length = Detector.parse_http_body(_http("HTTP/1.1 200 OK\r\nServer: fake\r\n\r\n", ok_body))
+	_check("a whole 200 answer gives its body, with or without Content-Length", with_length == ok_body and without_length == ok_body)
 	var refused := PackedStringArray()
 	var cases := {
 		"truncated": _http("HTTP/1.0 200 OK\r\nContent-Length: 99\r\n\r\n", ok_body),
@@ -306,11 +359,14 @@ func _parser_checks() -> void:
 		"two lengths": _http("HTTP/1.0 200 OK\r\nContent-Length: %d\r\nContent-Length: 1\r\n\r\n" % ok_body.size(), ok_body),
 		"chunked": _http("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", ok_body),
 		"not 200": _http("HTTP/1.0 404 Not Found\r\n\r\n", ok_body),
+		"2000 is not 200": _http("HTTP/1.1 2000 OK\r\n\r\n", ok_body),
 		"not http": _http("SSH-2.0-fake\r\n\r\n", ok_body),
 		"no header end": _http("HTTP/1.0 200 OK\r\nX: y\r\n", ok_body),
 		"header without colon": _http("HTTP/1.0 200 OK\r\nbroken\r\n\r\n", ok_body),
+		"space before colon": _http("HTTP/1.0 200 OK\r\nContent-Length : %d\r\n\r\n" % ok_body.size(), ok_body),
+		"space in name": _http("HTTP/1.0 200 OK\r\nBad Name: x\r\n\r\n", ok_body),
+		"bare LF in a line": _http("HTTP/1.0 200 OK\r\nX: a\nY: b\r\n\r\n", ok_body),
 		"overflowing length": _http("HTTP/1.0 200 OK\r\nContent-Length: 99999999999999999999999\r\n\r\n", ok_body),
-		"not json": _http("HTTP/1.0 200 OK\r\n\r\n", "<html>".to_ascii_buffer()),
 		"bad utf-8": _http("HTTP/1.0 200 OK\r\n\r\n", PackedByteArray([0x7B, 0x22, 0xFF, 0x22, 0x3A, 0x31, 0x7D])),
 		"nul in body": _http("HTTP/1.0 200 OK\r\n\r\n", PackedByteArray([0x7B, 0x7D, 0x00])),
 	}
@@ -319,9 +375,36 @@ func _parser_checks() -> void:
 	high_header.append_array("\r\n\r\n{}".to_ascii_buffer())
 	cases["non-ascii header"] = high_header
 	for name in cases:
-		if Detector.parse_http_json(cases[name]) != null:
+		if Detector.parse_http_body(cases[name]) != null:
 			refused.append(name)
-	_check("truncated, padded, chunked, non-200, malformed, overflowing, non-JSON, bad UTF-8 and NUL answers are all refused", refused.is_empty(), "accepted: " + ", ".join(refused))
+	_check("truncated, padded, chunked, non-200, malformed-header, overflowing, bad UTF-8 and NUL answers are all refused", refused.is_empty(), "accepted: " + ", ".join(refused))
+	var shape = Detector.json_top_level('{"version":"0.0.0-fake","models":[{"name":"a"},{"name":"b\\"q"}],"n":-1.5e3,"ok":true,"nothing":null,"deep":{"x":[[]]}}'.to_utf8_buffer())
+	_check("the JSON scanner reports each top-level key's kind and an array's count", shape is Dictionary and shape["version"]["kind"] == "string" and shape["models"]["kind"] == "array" and shape["models"]["count"] == 2 and shape["n"]["kind"] == "number" and shape["ok"]["kind"] == "literal" and shape["deep"]["kind"] == "object", str(shape))
+	# Valid JSON that Godot's own parser prints about: the scanner takes it quietly.
+	var quiet_nul = Detector.json_top_level('{"data":["\\u0000"]}'.to_ascii_buffer())
+	var quiet_exponent = Detector.json_top_level('{"data":[1e999999]}'.to_ascii_buffer())
+	_check("valid JSON with a \\u0000 escape or a huge exponent is scanned quietly", quiet_nul is Dictionary and quiet_nul["data"]["count"] == 1 and quiet_exponent is Dictionary and quiet_exponent["data"]["count"] == 1)
+	var not_json := PackedStringArray()
+	var json_cases := {
+		"an array at the top": "[1,2]",
+		"trailing garbage": '{"a":1} x',
+		"unterminated string": '{"a":"b}',
+		"bad escape": '{"a":"\\x"}',
+		"short unicode escape": '{"a":"\\u12"}',
+		"leading zero": '{"a":01}',
+		"bare dot": '{"a":1.}',
+		"trailing comma": '{"a":[1,]}',
+		"missing colon": '{"a" 1}',
+		"unquoted key": '{a:1}',
+		"misspelled literal": '{"a":tru}',
+		"html": "<html>",
+		"empty": "",
+		"too deep": '{"a":' + "[".repeat(80) + "]".repeat(80) + "}",
+	}
+	for name in json_cases:
+		if Detector.json_top_level(String(json_cases[name]).to_ascii_buffer()) != null:
+			not_json.append(name)
+	_check("the JSON scanner refuses anything but one well-formed object", not_json.is_empty(), "accepted: " + ", ".join(not_json))
 	var good_utf8 := [PackedByteArray([0x61]), PackedByteArray([0xC3, 0xA9]), PackedByteArray([0xE2, 0x82, 0xAC]), PackedByteArray([0xF0, 0x9F, 0x98, 0x80])]
 	var bad_utf8 := [PackedByteArray([0xC0, 0x80]), PackedByteArray([0xED, 0xA0, 0x80]), PackedByteArray([0xF4, 0x90, 0x80, 0x80]), PackedByteArray([0xE2, 0x82]), PackedByteArray([0x80]), PackedByteArray([0xE0, 0x80, 0x80]), PackedByteArray([0x00])]
 	var utf8_ok := true
@@ -442,6 +525,14 @@ func _server_checks() -> void:
 		if o[0]["reachable"] or v[0]["reachable"] or o[1] > WATCHDOG_MS or v[1] > WATCHDOG_MS:
 			bad_modes.append("%s (%s in %d ms, %s in %d ms)" % [mode, o[0]["reachable"], o[1], v[0]["reachable"], v[1]])
 	_check("truncated, chunked, error and endlessly flooding answers are no server, within the deadline", bad_modes.is_empty(), "; ".join(bad_modes))
+	_set_mode("huge")
+	var huge := _detector("missing", "empty", _port, _port)
+	var huge_v := _timed_probe(huge, "openai")
+	_check("a complete, valid answer over the 1 MiB cap is no server", _huge_body.size() > Detector.HTTP_RESPONSE_MAX_BYTES and not huge_v[0]["reachable"] and huge_v[1] < WATCHDOG_MS, "%d byte body, %d ms" % [_huge_body.size(), huge_v[1]])
+	_set_mode("drip")
+	var drip := _detector("missing", "empty", _port, _port)
+	var drip_v := _timed_probe(drip, "openai")
+	_check("an answer trickling in a byte at a time is no server once the deadline passes", not drip_v[0]["reachable"] and drip_v[1] >= TIMEOUT_MS and drip_v[1] < 2 * TIMEOUT_MS, "%d ms" % drip_v[1])
 	_set_mode("badutf8")
 	var bad_text := _detect(_detector("missing", "empty", _port, _port))
 	_check("a model list that is not valid UTF-8 counts nothing and prints nothing", bad_text.ollama_reachable and bad_text.ollama_model_count == -1 and not bad_text.openai_reachable and not str(bad_text).contains(FAKE_MODEL_WORD))
@@ -499,12 +590,38 @@ func _gpu_checks() -> void:
 	var still_running := slow.poll_gpu()
 	var t2 := Time.get_ticks_msec()
 	var runs_while_hung := slow.nvidia_smi_runs()
-	OS.delay_msec(SLOW_SMI_EXIT_WAIT_MS)
-	_fake_now = 42000
-	var late := slow.poll_gpu()
+	# Release the stub, then poll within the same second, so no poll is due: the late answer
+	# must still be collected.
+	var release := FileAccess.open(_smi_release, FileAccess.WRITE)
+	release.close()
+	var late := {}
+	var poll_start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - poll_start < WATCHDOG_MS:
+		late = slow.poll_gpu()
+		if late["available"]:
+			break
+		OS.delay_msec(WAIT_STEP_MS)
 	var runs_after_late := slow.nvidia_smi_runs()
 	print("AI DETECTOR hung nvidia-smi: gave up after %d ms, next poll returned in %d ms without starting another, late answer %s" % [t1 - t0, t2 - t1, late["util_percent"]])
 	_check("a hung nvidia-smi is given up at the deadline, never run twice at once, and its late answer is used", not timed_out["available"] and t1 - t0 >= SLOW_SMI_TIMEOUT_MS and t1 - t0 < WATCHDOG_MS and not still_running["available"] and t2 - t1 < SLOW_SMI_TIMEOUT_MS and runs_while_hung == 1 and late["available"] and late["util_percent"] == 21 and runs_after_late == 1)
+	# Dropping the last detector reaps an nvidia-smi that has exited since, with no poll.
+	DirAccess.remove_absolute(_smi_release)
+	DirAccess.remove_absolute(_smi_done)
+	var reaped := _detector("missing", "empty", -1, -1, "sysfs_empty", "gpu_slow")
+	reaped.rate_clock = _now
+	reaped.nvidia_smi_timeout_ms = SLOW_SMI_TIMEOUT_MS
+	_fake_now = 60000
+	reaped.poll_gpu()
+	var peer := _detector("missing", "empty", -1, -1, "sysfs_empty", "gpu_slow")
+	peer.rate_clock = _now
+	var outstanding_before: int = peer._gpu_state().smi_pid
+	var free_release := FileAccess.open(_smi_release, FileAccess.WRITE)
+	free_release.close()
+	var exited := _wait_for(func() -> bool: return FileAccess.file_exists(_smi_done))
+	OS.delay_msec(WAIT_STEP_MS * 20)  # it exits right after writing its done mark
+	reaped = null
+	var outstanding_after: int = peer._gpu_state().smi_pid
+	_check("dropping a detector reaps an nvidia-smi that has exited, with no poll needed", outstanding_before != 0 and exited and outstanding_after == 0, "pid set %s, exited %s, cleared %s" % [outstanding_before != 0, exited, outstanding_after == 0])
 	var flood := _detector("missing", "empty", -1, -1, "sysfs_empty", "gpu_flood")
 	_check("an nvidia-smi that floods its output gives no GPU", not flood.poll_gpu()["available"] and flood.nvidia_smi_runs() == 1)
 	var neither := _detector().poll_gpu()
@@ -562,8 +679,9 @@ func _async_checks() -> void:
 	# cancel() ends a detection in the middle of a probe, long before its timeout.
 	var c := _detector("missing", "empty", _port, _port)
 	c.http_timeout_ms = LONG_TIMEOUT_MS
+	var accepted_before := _accepted_count()
 	c.start()
-	OS.delay_msec(CANCEL_AFTER_MS)
+	var in_probe := _wait_for(func() -> bool: return _accepted_count() > accepted_before)
 	var cancel_start := Time.get_ticks_msec()
 	c.cancel()
 	while not c.is_done():
@@ -572,18 +690,19 @@ func _async_checks() -> void:
 	var cancelled := c.wait()
 	_results.append(cancelled)
 	print("AI DETECTOR cancel mid-probe: done %d ms after cancel(), with a %d ms timeout" % [cancel_ms, LONG_TIMEOUT_MS])
-	_check("cancel() ends a detection mid-probe, long before its timeout, still with a result", cancel_ms < LONG_TIMEOUT_MS / 2 and cancelled != null and cancelled.source_name == "ai-off", "%d ms" % cancel_ms)
+	_check("cancel() ends a detection mid-probe, long before its timeout, still with a result", in_probe and cancel_ms < LONG_TIMEOUT_MS / 2 and cancelled != null and cancelled.source_name == "ai-off", "%d ms" % cancel_ms)
 	# Dropped mid-probe: it cancels and joins its worker, which runs on its own copy.
 	var dropped := _detector("missing", "empty", _port, _port)
 	dropped.http_timeout_ms = LONG_TIMEOUT_MS
 	var job = dropped.get("_job")
+	var accepted_before_drop := _accepted_count()
 	dropped.start()
-	OS.delay_msec(CANCEL_AFTER_MS)
+	var dropped_in_probe := _wait_for(func() -> bool: return _accepted_count() > accepted_before_drop)
 	var drop_start := Time.get_ticks_msec()
 	dropped = null
 	var drop_ms := Time.get_ticks_msec() - drop_start
 	print("AI DETECTOR dropped mid-probe: cancelled and joined its worker in %d ms" % drop_ms)
-	_check("a detector dropped mid-probe cancels and joins its worker, which finishes on its own copy", drop_ms < LONG_TIMEOUT_MS / 2 and job.is_finished(), "%d ms, finished %s" % [drop_ms, job.is_finished()])
+	_check("a detector dropped mid-probe cancels and joins its worker, which finishes on its own copy", dropped_in_probe and drop_ms < LONG_TIMEOUT_MS / 2 and job.is_finished(), "%d ms, finished %s" % [drop_ms, job.is_finished()])
 	_set_mode("full")
 	# The worker and its detector share one GPU limit.
 	var shared := _detector("missing", "empty", -1, -1, "sysfs_empty", "gpu")
