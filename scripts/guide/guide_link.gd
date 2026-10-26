@@ -107,6 +107,9 @@ var _consent_known := false
 var _consent: Settings.Answer = Settings.Answer.NOT_ASKED
 var _loader: Loader
 var _loader_thread: Thread
+## The loader's game_loaded, copied only once its job is joined: the main thread never
+## reads what a worker may be writing.
+var _game_loaded := ""
 var _unload_wanted := false
 var _watch_wait_ms := 0.0
 
@@ -453,9 +456,9 @@ func is_loading() -> bool:
 	return load_state == "checking" or load_state == "loading"
 
 
-## The model the game loaded itself, or "" (for tests and the screen).
+## The model the game loaded itself, as of the last joined job, or "".
 func game_loaded_model() -> String:
-	return _loader.game_loaded if _loader != null else ""
+	return _game_loaded
 
 
 func _ensure_loader() -> void:
@@ -494,6 +497,7 @@ func _tick_loader(ms: float) -> void:
 		_loader_thread.wait_to_finish()
 		_loader_thread = null
 		_read_outcome()
+		_game_loaded = _loader.game_loaded
 	if _unload_wanted:
 		_unload_wanted = false
 		if _loader.game_loaded != "" or _loader.is_watching():
@@ -544,6 +548,7 @@ func _unload_for_exit() -> void:
 		_read_outcome()
 	if _loader.game_loaded != "" or _loader.is_watching():
 		_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
+	_game_loaded = _loader.game_loaded
 
 
 ## When the link is dropped for good: also cancels the detector, and a detector whose own

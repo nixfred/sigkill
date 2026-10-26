@@ -89,6 +89,8 @@ var detector = null
 var adapter_factory := Callable()
 ## Where the opt-in answer is kept.
 var settings_path := Settings.DEFAULT_PATH
+## A test's fake Ollama port for the link's model loader (see GuideLink.load_port).
+var load_port := -1
 ## Demo-data mode; --demo on the command line also turns it on.
 var demo := false
 ## Change to next_scene when done, leaving the link to it. Tests that only watch
@@ -124,6 +126,7 @@ func _ready() -> void:
 	_link.detector = detector
 	_link.adapter_factory = adapter_factory
 	_link.settings_path = settings_path
+	_link.load_port = load_port
 	_link.demo = demo
 	_link.gpu_interval_ms = _t.gpu_interval_ms
 	_link.start()
