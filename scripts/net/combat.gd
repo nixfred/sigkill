@@ -215,6 +215,12 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	a["last_fire"] = now
 
 
+## Puts in the rounds of `id`'s reload if its time is up: before the host reports a count.
+func settle(id: int, now: float) -> void:
+	if states.has(id):
+		_finish_reload(states[id], now)
+
+
 ## Moves a reload's rounds once its time is up.
 func _finish_reload(s: Dictionary, now: float) -> void:
 	if s["reloading"] == "" or now < s["reload_done_at"]:

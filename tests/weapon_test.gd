@@ -294,6 +294,13 @@ func _host_rule_checks() -> void:
 	var idle_draw := c.draw(7, 0, "terminal_cannon", 0, at + 10.0)
 	var instant: String = shoot.call("terminal_cannon", at + 10.05)
 	_check("no reload behind the player's back: a SIGTERM emptied, the cannon fired for 3 s, SIGTERM drawn again is still empty; and an idle player who draws still waits out the draw", background == "empty" and idle_draw == "" and instant == "swap", "%s %s" % [background, instant])
+	c.states[7]["ammo"]["sigterm"] = {"mag": 1, "reserve": 9, "last_fire": -INF}
+	c.draw(7, 0, "sigterm", 0, 44.0)
+	c.reload(7, 0, "sigterm", 0, 45.0)
+	c.settle(7, 46.0)
+	var not_yet: Array = c.ammo_of(7, "sigterm")
+	c.settle(7, 46.7)
+	_check("settle(), run before the host reports a count, puts in a reload's rounds once its time is up and not before", not_yet == [1, 9] and c.ammo_of(7, "sigterm") == [6, 4] and c.states[7]["reloading"] == "", "%s then %s" % [not_yet, c.ammo_of(7, "sigterm")])
 	c.states[7]["ammo"]["sigterm"] = {"mag": 0, "reserve": 0, "last_fire": -INF}
 	c.draw(7, 0, "sigterm", 0, 50.0)
 	_check("with nothing in reserve there is no reload and the magazine stays empty", c.reload(7, 0, "sigterm", 0, 51.0) == "reload" and shoot.call("sigterm", 52.0) == "empty")

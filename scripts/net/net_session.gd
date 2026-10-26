@@ -1241,6 +1241,7 @@ func _ack_actions(id: int) -> void:
 func _send_ammo(id: int) -> void:
 	if not multiplayer.get_peers().has(id):
 		return
+	combat.settle(id, _clock)  # a reload whose time is up counts as done
 	var ids := PackedStringArray()
 	var mags := PackedInt32Array()
 	var reserves := PackedInt32Array()
