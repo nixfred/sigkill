@@ -24,6 +24,14 @@ extends Control
 ## Rate limits: one call in flight, the guide tuning's minimum interval, and a cap on calls
 ## per game session (HudTuning.session_call_cap, the boot handshake included).
 ##
+## Loading a model (C11b): when the AI is on and the local Ollama server has nothing loaded,
+## T offers to load one instead: the link re-reads what is loaded, picks one candidate, and
+## the panel asks "Load <name> (<size>) on your local server?" with Y (load) and N or Esc
+## (keep AI off). Y loads it on a worker with a spinner; Esc stops waiting, and the link
+## unloads that model if it turns up. The answer is for this session only. Other local
+## servers get a hint to load a model in their own app. In demo-data mode L shows the same
+## question and a fake load, with no network.
+##
 ## The AI side is the session's GuideLink (scripts/guide/guide_link.gd), taken over from
 ## the boot screen, or made here when there is none, with the same headless guard and demo
 ## data. When R reloads the arena this HUD parks it for the next one; when the window is
@@ -50,6 +58,22 @@ const NO_AI_LINE := "No AI linked. The scripted guide is here."
 const LINKING_LINE := "Linking your AI..."
 const BUSY_LINE := "Your AI is still thinking."
 const NOT_LOADED_LINE := "Local model available, not loaded."
+const LOADS_ONE := "   T loads one"
+const OWN_APP := "   Load one in your local server's own app."
+const LOAD_KEYS := "[Y] load   [N] keep AI off"
+const CHECKING_LINE := "Checking which models your local server has..."
+const NONE_FITS_LINE := "No chat model on your local server fits here (under %s and your free VRAM). The scripted guide is still here."
+const LOAD_ERROR_LINE := "Could not read your local server's models. The scripted guide is still here."
+const LOADED_LINE := "Model loaded. T asks your AI."
+const LOADED_NOW_LINE := "A model is loaded on your local server now. T asks your AI."
+const LOAD_TIMEOUT_LINE := "The model did not load in time. The scripted guide is still here."
+const LOAD_FAILED_LINE := "The model did not load. The scripted guide is still here."
+const NOT_LOADING_LINE := "Model not loaded. The scripted guide is still here."
+const STOPPED_LINE := "Stopped waiting. If the model loads anyway, SIGKILL unloads it."
+const LOADING_BUSY_LINE := "Your local server is loading a model."
+const DEMO_LOAD_NAME := "demo-chat-small"
+const DEMO_LOAD_BYTES := 4700000000
+const DEMO_KEYS_LINE := "T ask your AI   O AI on/off   L demo model load"
 const DEMO_ANSWER := "Demo mode: this is where your AI answers you, in its own words."
 const SPINNER := ["|", "/", "-", "\\"]
 const WEAPON := "terminal_cannon"
@@ -87,6 +111,10 @@ var _round_s := 0.0
 var _kills := 0
 var _targets_left := -1
 var _recaptures := 0
+## The model-load question: "", "checking", "prompt" or "loading". In demo mode it runs on
+## its own timer, with no link and no network.
+var _load_ui := ""
+var _demo_load_ms := 0.0
 
 var _column: VBoxContainer
 var _badge: Label
@@ -127,7 +155,8 @@ func _process(delta: float) -> void:
 		_answer_ms_left -= ms
 	if _notice_ms_left > 0.0:
 		_notice_ms_left -= ms
-	if _asking:
+	_poll_load_ui(ms)
+	if _asking or _load_ui == "checking" or _load_ui == "loading":
 		_spin_ms += ms
 		if _spin_ms >= _t.spinner_frame_ms:
 			_spin_ms = 0.0
@@ -160,6 +189,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key.keycode == KEY_ESCAPE:
 			_consent_prompt = false  # not handled: Esc still frees the mouse as usual
 			_notice("AI stays off.", _t.off_color)
+		return
+	if _load_ui == "prompt":
+		if key.keycode == KEY_Y:
+			get_viewport().set_input_as_handled()
+			_answer_load(true)
+		elif key.keycode == KEY_N:
+			get_viewport().set_input_as_handled()
+			_answer_load(false)
+		elif key.keycode == KEY_ESCAPE:
+			_answer_load(false)  # not handled: Esc still frees the mouse as usual
+		return
+	if _load_ui == "loading" and key.keycode == KEY_ESCAPE:
+		_stop_waiting()
+		return
+	if demo and _load_ui == "" and key.keycode == KEY_L:
+		get_viewport().set_input_as_handled()
+		_start_demo_offer()
 		return
 	if event.is_action_pressed("ask_ai", false, true):
 		get_viewport().set_input_as_handled()
@@ -276,9 +322,16 @@ func recaptures() -> int:
 	return _recaptures
 
 
-## Opens the ask box, or says why not.
+## Opens the ask box, or says why not; or, with nothing loaded on the local Ollama server,
+## offers to load a model.
 func open_ask() -> void:
-	if _typing or _consent_prompt:
+	if _typing or _consent_prompt or _load_ui == "prompt":
+		return
+	if _load_ui == "checking" or _load_ui == "loading":
+		_notice(LOADING_BUSY_LINE, _t.off_color)
+		return
+	if not demo and _link.is_ready() and _link.ai_on() and _link.not_loaded and _link.can_offer_load() and not _link.is_busy():
+		_start_offer()
 		return
 	var reason := _refusal()
 	if reason != "":
@@ -317,6 +370,7 @@ func toggle_ai() -> void:
 		return
 	if _link.ai_on():
 		_asking = false
+		_load_ui = ""
 		var saved := _link.set_consent(false)
 		_notice("AI off. Your AI will not be called." if saved else "AI off for now. It could not be saved, so the boot screen will ask again.", _t.off_color)
 		return
@@ -329,6 +383,92 @@ func toggle_ai() -> void:
 	_body.add_theme_color_override("font_color", _t.off_color)
 	_body.visible = true
 	_refresh()
+
+
+func _start_offer() -> void:
+	if not _link.begin_offer():
+		_notice(LOAD_ERROR_LINE, _t.warn_color)
+		return
+	_load_ui = "checking"
+	_spin_at = 0
+	_notice(CHECKING_LINE, _t.text_color, _t.answer_ms)
+
+
+func _start_demo_offer() -> void:
+	_load_ui = "prompt"
+	_show_load_prompt(DEMO_LOAD_NAME, Link.Loader.size_text(DEMO_LOAD_BYTES))
+
+
+func _show_load_prompt(name: String, size: String) -> void:
+	_answer_ms_left = 0.0
+	_notice_ms_left = 0.0
+	_title.text = NOTICE_TITLE
+	_title.add_theme_color_override("font_color", _t.off_color)
+	_body.text = "Load %s (%s) on your local server?\n%s" % [name, size, LOAD_KEYS]
+	_body.add_theme_color_override("font_color", _t.off_color)
+	_body.visible = true
+	_refresh()
+
+
+func _answer_load(load_it: bool) -> void:
+	if not load_it:
+		_load_ui = ""
+		if not demo:
+			_link.decline_load()
+		_notice(NOT_LOADING_LINE, _t.off_color)
+		return
+	_load_ui = "loading"
+	_spin_at = 0
+	if demo:
+		_demo_load_ms = _t.demo_load_ms
+		_notice("Loading %s on your local server..." % DEMO_LOAD_NAME, _t.text_color, _t.answer_ms)
+		return
+	if not _link.accept_load():
+		_load_ui = ""
+		_notice(LOAD_FAILED_LINE, _t.warn_color)
+		return
+	_notice("Loading %s on your local server..." % _link.offer_name(), _t.text_color, _t.answer_ms)
+
+
+func _stop_waiting() -> void:
+	_load_ui = ""
+	if not demo:
+		_link.cancel_load()
+	_notice(STOPPED_LINE, _t.off_color)
+
+
+## Follows the load question as the link's worker answers it.
+func _poll_load_ui(ms: float) -> void:
+	if _load_ui == "" or _load_ui == "prompt":
+		return
+	if demo:
+		if _load_ui == "loading":
+			_demo_load_ms -= ms
+			if _demo_load_ms <= 0.0:
+				_load_ui = ""
+				_notice(LOADED_LINE, _t.badge_color)
+		return
+	match _link.load_state:
+		"offer":
+			if _load_ui == "checking":
+				_load_ui = "prompt"
+				_show_load_prompt(_link.offer_name(), _link.offer_size_text())
+		"loaded_now":
+			_load_ui = ""
+			_notice(LOADED_NOW_LINE, _t.badge_color)
+		"none_fits":
+			_load_ui = ""
+			_notice(NONE_FITS_LINE % Link.Loader.size_text(_link.guide_tuning.max_load_bytes), _t.off_color, _t.answer_ms)
+		"loaded":
+			_load_ui = ""
+			_notice(LOADED_LINE, _t.badge_color)
+		"timeout":
+			_load_ui = ""
+			_notice(LOAD_TIMEOUT_LINE, _t.warn_color, _t.answer_ms)
+		"error":
+			var was_loading := _load_ui == "loading"
+			_load_ui = ""
+			_notice(LOAD_FAILED_LINE if was_loading else LOAD_ERROR_LINE, _t.warn_color, _t.answer_ms)
 
 
 func _answer_consent(allowed: bool) -> void:
@@ -524,14 +664,25 @@ func _refresh() -> void:
 		_status.text = "thinking  %s   waiting for your AI" % SPINNER[_spin_at]
 	elif _consent_prompt:
 		_status.text = CONSENT_KEYS
+	elif _load_ui == "prompt":
+		_status.text = LOAD_KEYS
+	elif _load_ui == "checking":
+		_status.text = "checking your local server  %s" % SPINNER[_spin_at]
+	elif _load_ui == "loading":
+		_status.text = "loading model  %s   Esc stops waiting" % SPINNER[_spin_at]
 	else:
 		var reason := _refusal()
-		var line := KEYS_LINE if reason == "" else reason
+		var line := (DEMO_KEYS_LINE if demo else KEYS_LINE) if reason == "" else reason
 		if _link.not_loaded:
-			# Stays up until a later call is answered, next to any cooldown or limit.
-			line = NOT_LOADED_LINE + ("   " + reason if reason != "" else "")
+			# Stays up until a later call is answered or a model is loaded, with the way to
+			# load one, next to any cooldown or limit.
+			var hint := _link.load_hint()
+			if hint == "loadable" and _link.ai_on():
+				line = NOT_LOADED_LINE + LOADS_ONE
+			else:
+				line = NOT_LOADED_LINE + (OWN_APP if hint == "own_app" else "") + ("   " + reason if reason != "" else "")
 		_status.text = line
-	_panel.visible = _typing or _consent_prompt or _answer_ms_left > 0.0 or _notice_ms_left > 0.0
+	_panel.visible = _typing or _consent_prompt or _load_ui != "" or _answer_ms_left > 0.0 or _notice_ms_left > 0.0
 
 
 func _build() -> void:

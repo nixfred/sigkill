@@ -1,9 +1,10 @@
 class_name GuideTuning
 extends Resource
 ## Every number that shapes how the game talks to the player's AI guide: the on/off switch,
-## pacing, timeouts and size caps. The default instance is resources/guide.tres; the guide
-## adapters in scripts/ai read only from this resource. Units are milliseconds, characters
-## and bytes.
+## pacing, timeouts, size caps, and the limits for loading a model on the player's Ollama
+## server after their yes (C11b). The default instance is resources/guide.tres; the guide
+## adapters in scripts/ai and scripts/guide/ollama_loader.gd read only from this resource.
+## Units are milliseconds, characters, bytes and MiB.
 
 @export_group("Switch")
 ## Whether the guide may call an AI at all. Off until the player opts in (the first-launch
@@ -30,6 +31,19 @@ extends Resource
 ## Most tokens asked of a local model per answer.
 @export var local_max_tokens: int = 200
 
+@export_group("Model loading")
+## Largest model the game offers to load on the player's Ollama server, in bytes (8 GiB).
+@export var max_load_bytes: int = 8589934592
+## When the GPU's free VRAM is known, a model must fit under it minus this much, in MiB.
+@export var vram_margin_mib: int = 1024
+## Longest a load may take after the player's Y before the game stops waiting.
+@export var load_timeout_ms: int = 120000
+## Longest the game waits at exit to unload the model it loaded.
+@export var unload_timeout_ms: int = 2000
+## After a load the game stopped waiting for, how often it checks whether that model
+## turned up after all, so it can unload it.
+@export var load_watch_interval_ms: int = 2000
+
 const MIN_INTERVAL_FLOOR_MS := 1000
 const INTERVAL_LAST_MS := 3600000
 const TIMEOUT_FLOOR_MS := 1000
@@ -41,6 +55,13 @@ const OUTPUT_LAST_BYTES := 1048576
 ## The hard ceiling on an agent's output: 64 KiB, whatever the tuning says.
 const STDOUT_LAST_BYTES := 65536
 const MAX_TOKENS_LAST := 2048
+const LOAD_BYTES_FIRST := 268435456
+const LOAD_BYTES_LAST := 1099511627776
+const MARGIN_LAST_MIB := 65536
+const UNLOAD_FIRST_MS := 100
+const UNLOAD_LAST_MS := 10000
+const WATCH_FIRST_MS := 500
+const WATCH_LAST_MS := 60000
 
 
 ## Everything wrong with these values, or empty when they are safe to use.
@@ -62,4 +83,14 @@ func problems() -> PackedStringArray:
 		out.append("local_response_max_bytes must be between %d and %d" % [OUTPUT_FLOOR_BYTES, OUTPUT_LAST_BYTES])
 	if local_max_tokens < 1 or local_max_tokens > MAX_TOKENS_LAST:
 		out.append("local_max_tokens must be between 1 and %d" % MAX_TOKENS_LAST)
+	if max_load_bytes < LOAD_BYTES_FIRST or max_load_bytes > LOAD_BYTES_LAST:
+		out.append("max_load_bytes must be between %d and %d" % [LOAD_BYTES_FIRST, LOAD_BYTES_LAST])
+	if vram_margin_mib < 0 or vram_margin_mib > MARGIN_LAST_MIB:
+		out.append("vram_margin_mib must be between 0 and %d" % MARGIN_LAST_MIB)
+	if load_timeout_ms < TIMEOUT_FLOOR_MS or load_timeout_ms > TIMEOUT_LAST_MS:
+		out.append("load_timeout_ms must be between %d and %d" % [TIMEOUT_FLOOR_MS, TIMEOUT_LAST_MS])
+	if unload_timeout_ms < UNLOAD_FIRST_MS or unload_timeout_ms > UNLOAD_LAST_MS:
+		out.append("unload_timeout_ms must be between %d and %d" % [UNLOAD_FIRST_MS, UNLOAD_LAST_MS])
+	if load_watch_interval_ms < WATCH_FIRST_MS or load_watch_interval_ms > WATCH_LAST_MS:
+		out.append("load_watch_interval_ms must be between %d and %d" % [WATCH_FIRST_MS, WATCH_LAST_MS])
 	return out

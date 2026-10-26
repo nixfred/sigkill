@@ -17,7 +17,8 @@ extends Control
 ## The prompt asks the AI to answer with one of SIGKILL's own HANDSHAKE_LINES; the screen
 ## shows SIGKILL's copy of the line it picked, or "Link up." for anything else, so the AI's
 ## own words, which could name a person, a machine or a model, never reach the screen.
-## A local server with nothing loaded is never asked to load anything.
+## A local server with nothing loaded is never asked to load anything here; for Ollama the
+## arena's HUD asks the player first (C11b).
 ##
 ## Headless guard (hard rule, kept by the link): in any headless run, or with the user
 ## argument --no-ai, no real detector is made and the registry is never asked, whatever was
@@ -50,7 +51,11 @@ const TITLE := "SIGKILL boot"
 const HINT := "Esc or Enter: skip to the arena"
 const SCRIPTED_LINE := "AI off. Scripted guide online."
 const LOCAL_LINE := "Local model server found. Linking..."
-const NOT_LOADED_LINE := "Local model available, not loaded. Load it later from settings."
+const NOT_LOADED_LINE := "Local model available, not loaded."
+## What follows NOT_LOADED_LINE: for Ollama, the arena's HUD offers to load one (C11b);
+## another local server loads models in its own app.
+const LOAD_IN_ARENA := " Press T in the arena to load one."
+const LOAD_IN_OWN_APP := " Load one in your local server's own app."
 const CONSENT_KEYS := "[Y] allow   [N] keep AI off"
 const LEAVING_LINE := "Entering the arena..."
 const LINK_UP := "Link up."
@@ -454,7 +459,9 @@ func _link_done(done: Dictionary) -> void:
 		return
 	var kind := Link.error_word(done.get("error_kind", ""))
 	if kind == "needs_consent":
-		_say(NOT_LOADED_LINE, _t.warn_color)
+		_link.not_loaded = true
+		var hint := _link.load_hint()
+		_say(NOT_LOADED_LINE + (LOAD_IN_ARENA if hint == "loadable" else LOAD_IN_OWN_APP if hint == "own_app" else ""), _t.warn_color)
 	else:
 		_say("No answer from %s (%s)." % [_who, kind], _t.warn_color)
 	_scripted()

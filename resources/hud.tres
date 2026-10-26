@@ -21,6 +21,7 @@ spinner_frame_ms = 90
 gpu_interval_ms = 1000
 demo_answer_ms = 900
 demo_latency_ms = 842
+demo_load_ms = 1500
 badge_color = Color(0.098039216, 0.82745098, 0.77254902, 1)
 text_color = Color(0.490196078, 1.0, 0.811764706, 1)
 off_color = Color(1.0, 0.690196078, 0.0, 1)

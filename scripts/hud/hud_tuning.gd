@@ -50,6 +50,8 @@ const Palette = preload("res://scripts/palette.gd")
 @export var demo_answer_ms: int = 900
 ## Demo-data mode only: the latency shown for it.
 @export var demo_latency_ms: int = 842
+## Demo-data mode only: how long the fake model load takes.
+@export var demo_load_ms: int = 1500
 
 @export_group("Colours")
 ## The badge while an AI is linked.
@@ -112,7 +114,7 @@ func problems() -> PackedStringArray:
 		out.append("spinner_frame_ms must be between %d and %d" % [SPINNER_FIRST_MS, SPINNER_LAST_MS])
 	if gpu_interval_ms < GPU_FIRST_MS or gpu_interval_ms > GPU_LAST_MS:
 		out.append("gpu_interval_ms must be between %d and %d" % [GPU_FIRST_MS, GPU_LAST_MS])
-	for field in ["demo_answer_ms", "demo_latency_ms"]:
+	for field in ["demo_answer_ms", "demo_latency_ms", "demo_load_ms"]:
 		var value: int = get(field)
 		if value < 0 or value > DEMO_LAST_MS:
 			out.append("%s must be between 0 and %d" % [field, DEMO_LAST_MS])

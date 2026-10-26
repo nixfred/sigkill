@@ -22,8 +22,17 @@ extends RefCounted
 ## The AI is called only with the player's yes for that source (scripts/boot/
 ## guide_settings.gd keeps it in user://settings.cfg), and the guide tuning's ai_enabled
 ## switch is set only on this link's own copy, in ask(), right before the one call.
+##
+## Model loading (C11b), for an Ollama server only, through scripts/guide/ollama_loader.gd
+## on a worker: begin_offer() finds one candidate (or a model loaded by now), and only
+## accept_load(), the player's Y, loads it. The answer to that question is for this session
+## only and never saved. The link unloads the model the game loaded itself when the AI is
+## turned off (set_consent(false)) and when it is shut down at the end of the session, and
+## watches a load it stopped waiting for so it can unload it if it turns up. Under the
+## headless guard the only server it may load on is a port a test handed in (load_port).
 
 const Settings = preload("res://scripts/boot/guide_settings.gd")
+const Loader = preload("res://scripts/guide/ollama_loader.gd")
 const Detector = preload("res://scripts/ai/ai_source_detector.gd")
 const Found = preload("res://scripts/ai/ai_source_result.gd")
 const GuideTuningScript = preload("res://scripts/guide_tuning.gd")
@@ -54,6 +63,9 @@ var settings_path := Settings.DEFAULT_PATH
 var demo := false
 ## Time between two GPU readings; never under GPU_INTERVAL_FIRST_MS.
 var gpu_interval_ms := GPU_INTERVAL_FIRST_MS
+## A test's fake Ollama port to load models on. Under the headless guard this is the only
+## server a link may ever load on; -1 means none there, and the detector's port otherwise.
+var load_port := -1
 
 ## What the detector found, once it has: null when there was nothing to ask (the headless
 ## guard with no detector, or a detector that gave no answer).
@@ -70,9 +82,13 @@ var choose_failed := false
 var last_call := {}
 ## Calls this session that reached the adapter.
 var calls := 0
-## True once a local server said it has nothing loaded, until a later call is answered:
-## "available, not loaded". Nothing is ever loaded.
+## True once a local server said it has nothing loaded, until a later call is answered or
+## a model is loaded: "available, not loaded".
 var not_loaded := false
+## Where the model-load question stands: "" (nothing asked), "checking", "offer" (waiting
+## for the player's Y or N), "loading", "loaded", "loaded_now" (a model was loaded by
+## something else), "none_fits", "declined", "cancelled", "timeout" or "error".
+var load_state := ""
 ## GPU readings started this session.
 var gpu_reads := 0
 
@@ -89,6 +105,10 @@ var _demo_on := true
 ## with set_consent(), so a caller asking every frame never touches the disk.
 var _consent_known := false
 var _consent: Settings.Answer = Settings.Answer.NOT_ASKED
+var _loader: Loader
+var _loader_thread: Thread
+var _unload_wanted := false
+var _watch_wait_ms := 0.0
 
 
 func _init() -> void:
@@ -167,6 +187,7 @@ func poll(delta_ms: float) -> void:
 		State.CHOOSING:
 			_poll_choosing()
 	_tick_gpu(delta_ms)
+	_tick_loader(delta_ms)
 
 
 func _choose() -> void:
@@ -231,6 +252,7 @@ func set_consent(allowed: bool) -> bool:
 	if not allowed:
 		cancel_call()
 		guide_tuning.ai_enabled = false
+		_request_unload()
 	# The answer counts for this session even if it cannot be saved; then it is asked again
 	# next time.
 	_consent = Settings.Answer.ALLOWED if allowed else Settings.Answer.DECLINED
@@ -356,12 +378,181 @@ func pause(root: Node, deferred: bool = false) -> void:
 	_adopt(leftovers, root, deferred)
 
 
+## True when the game may offer to load a model: the adapter is a local Ollama server, a
+## port to load on is known (under the headless guard only a test's), and not demo data.
+func can_offer_load() -> bool:
+	return not demo and adapter != null and adapter.source_name() == "ollama" and _load_port() > 0
+
+
+## How the screens hint at loading a model: "loadable", "own_app" (another local server:
+## the player loads one in its own app) or "".
+func load_hint() -> String:
+	if adapter == null or not is_local():
+		return ""
+	if can_offer_load():
+		return "loadable"
+	return "own_app" if adapter.source_name() != "ollama" else ""
+
+
+func _load_port() -> int:
+	if load_port > 0:
+		return load_port
+	if _guarded or detector == null:
+		return -1
+	var port = detector.get("ollama_port")
+	return port if port is int else -1
+
+
+## Starts finding a model to offer (re-reading /api/ps first). False if loading is not
+## possible here or a load job is already running.
+func begin_offer() -> bool:
+	if not can_offer_load() or _loader_thread != null:
+		return false
+	_ensure_loader()
+	load_state = "checking"
+	var reading := gpu_reading()
+	var free_mib := -1
+	var used = reading.get("vram_used_mib", -1)
+	var total = reading.get("vram_total_mib", -1)
+	if reading.get("available", false) and used is int and total is int and used >= 0 and total > 0:
+		free_mib = maxi(total - used, 0)
+	return _start_loader_job(_loader.job_offer.bind(free_mib))
+
+
+## The model on offer and its size, while load_state is "offer" (or after).
+func offer_name() -> String:
+	return _loader.offer_name if _loader != null else ""
+
+
+func offer_size_text() -> String:
+	return Loader.size_text(_loader.offer_bytes) if _loader != null else ""
+
+
+## The player's Y: loads the model on offer. False if nothing is on offer.
+func accept_load() -> bool:
+	if load_state != "offer" or _loader == null or _loader.offer_name == "":
+		return false
+	load_state = "loading"
+	return _start_loader_job(_loader.job_load.bind(_loader.offer_name))
+
+
+## The player's N (or Esc) to the question: nothing is loaded.
+func decline_load() -> void:
+	if load_state == "offer":
+		load_state = "declined"
+
+
+## Esc while loading: stop waiting. The load is watched and unloaded if it turns up.
+func cancel_load() -> void:
+	if load_state == "loading" and _loader != null:
+		_loader.cancel()
+		load_state = "cancelled"
+
+
+func is_loading() -> bool:
+	return load_state == "checking" or load_state == "loading"
+
+
+## The model the game loaded itself, or "" (for tests and the screen).
+func game_loaded_model() -> String:
+	return _loader.game_loaded if _loader != null else ""
+
+
+func _ensure_loader() -> void:
+	if _loader == null:
+		_loader = Loader.new()
+		_loader.port = _load_port()
+		_loader.tuning = guide_tuning
+
+
+func _start_loader_job(job: Callable) -> bool:
+	_loader_thread = Thread.new()
+	if _loader_thread.start(job) != OK:
+		_loader_thread = null
+		load_state = "error"
+		return false
+	return true
+
+
+func _request_unload() -> void:
+	if _loader == null:
+		return
+	if load_state == "loading" or load_state == "checking":
+		_loader.cancel()
+		load_state = "cancelled"
+	_unload_wanted = true
+
+
+## Joins a finished loader job and reads its outcome; then starts a wanted unload, or a
+## check on a load the link stopped waiting for.
+func _tick_loader(ms: float) -> void:
+	if _loader == null:
+		return
+	if _loader_thread != null:
+		if _loader_thread.is_alive():
+			return
+		_loader_thread.wait_to_finish()
+		_loader_thread = null
+		_read_outcome()
+	if _unload_wanted:
+		_unload_wanted = false
+		if _loader.game_loaded != "" or _loader.is_watching():
+			_start_loader_job(_loader.job_unload)
+		return
+	if _loader.is_watching():
+		_watch_wait_ms -= ms
+		if _watch_wait_ms <= 0.0:
+			_watch_wait_ms = maxi(int(guide_tuning.load_watch_interval_ms), 500)
+			_start_loader_job(_loader.job_watch)
+
+
+func _read_outcome() -> void:
+	match _loader.outcome:
+		Loader.Outcome.LOADED_NOW:
+			if load_state != "cancelled":
+				load_state = "loaded_now"
+			not_loaded = false
+		Loader.Outcome.OFFER:
+			load_state = "offer" if load_state == "checking" else load_state
+		Loader.Outcome.NONE_FITS:
+			load_state = "none_fits" if load_state == "checking" else load_state
+		Loader.Outcome.LOADED:
+			if load_state == "loading":
+				load_state = "loaded"
+				not_loaded = false
+		Loader.Outcome.TIMEOUT:
+			if load_state == "loading":
+				load_state = "timeout"
+		Loader.Outcome.CANCELLED:
+			load_state = "cancelled"
+		Loader.Outcome.ERROR:
+			if load_state == "checking" or load_state == "loading":
+				load_state = "error"
+	if _loader.outcome != Loader.Outcome.NONE:
+		_loader.outcome = Loader.Outcome.NONE
+
+
+## At the end of the session: stops a load job, then unloads the game's own model (and a
+## watched load that has turned up) right here, within unload_timeout_ms.
+func _unload_for_exit() -> void:
+	if _loader == null:
+		return
+	if _loader_thread != null:
+		_loader.cancel()
+		_loader_thread.wait_to_finish()
+		_loader_thread = null
+		_read_outcome()
+	if _loader.game_loaded != "" or _loader.is_watching():
+		_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
+
+
 ## When the link is dropped for good: also cancels the detector, and a detector whose own
 ## worker is still busy goes to the Leftovers node too. With no root (the game is quitting,
 ## or the owner was freed without a tree) every worker is joined right here; the C9 reader
 ## gives up at a cancel, so that is about a millisecond unless the filesystem hangs.
 func shut_down(root: Node) -> void:
 	cancel_call()
+	_unload_for_exit()
 	if detector != null and detector.has_method("cancel"):
 		detector.cancel()
 	var leftovers := Leftovers.new()
