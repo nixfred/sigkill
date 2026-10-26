@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="CodeRainTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/code_rain_tuning.gd" id="1_code_rain"]
+
+[resource]
+script = ExtResource("1_code_rain")
+falloff_radius = 8.0
+min_intensity = 0.0
+max_intensity = 1.0
+max_enemies_sampled = 8
+fade_in_rate = 2.0
+fade_out_rate = 1.0
+column_density = 0.6
+glyph_size = 0.25
+fall_speed_min = 3.0
+fall_speed_max = 9.0
+tail_length = 12.0
+flicker_rate = 6.0
+rain_energy = 3.0
+head_color = Color(0.784313725, 1.0, 0.815686275, 1)
+tail_color = Color(0.0, 1.0, 0.254901961, 1)

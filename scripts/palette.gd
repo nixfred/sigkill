@@ -17,6 +17,9 @@ const MINT := Color(0.490196078, 1.0, 0.811764706)  # #7dffcf player side highli
 const HOSTILE_RED := Color(1.0, 0.2, 0.333333333)  # #ff3355 hostile neon
 const HOSTILE_AMBER := Color(1.0, 0.690196078, 0.0)  # #ffb000 hostile highlight
 const FLASH := Color(1.0, 1.0, 1.0)  # #ffffff kill flash and hit-marker pop
+# Matrix register: green code rain where reality is thin. Nothing else is green.
+const MATRIX_GREEN := Color(0.0, 1.0, 0.254901961)  # #00ff41 code rain tails
+const MATRIX_HEAD := Color(0.784313725, 1.0, 0.815686275)  # #c8ffd0 the leading glyph of each stream
 
 # Look tunables. Lengths are in metres, energies multiply the emission colour.
 const EDGE_WIDTH := 0.04
