@@ -3,6 +3,9 @@ extends RefCounted
 ## default agent first, then a local model server, then the scripted guide with "AI off".
 ## No UI, and not wired into any scene yet; the boot screen (C10) will use it.
 ##
+## Use: var d := AiSourceDetector.new(); d.start(); then each frame, once d.is_done(),
+## var result := d.wait(). Or call d.detect() directly on a thread of your own.
+##
 ## What it touches, and nothing else (PRD section 6):
 ## - Omarchy's default-agent setting: only the first line of that one file, at most
 ##   AGENT_FILE_MAX_BYTES read. Never any other config file. It never runs
@@ -105,11 +108,87 @@ var nvidia_smi_timeout_ms := NVIDIA_SMI_TIMEOUT_MS
 ## and latency always use real time, so a stopped test clock can never stall a probe.
 var rate_clock := Callable(Time, "get_ticks_msec")
 
+var _thread: Thread
+var _result: Result
 var _gpu := {}
 var _gpu_read_at := 0
 var _gpu_ever_read := false
 var _gpu_mutex := Mutex.new()
 var _nvidia_smi_runs := 0
+
+
+## Runs every check and resolves the choice. Blocks for up to a few seconds when servers
+## time out, so call it from a worker thread, or use start().
+func detect() -> Result:
+	var result := Result.new()
+	var agent := read_agent()
+	result.agent_state = agent[0]
+	result.agent = agent[1]
+	if result.agent_state == Result.AgentState.KNOWN:
+		result.agent_cli_present = cli_present(result.agent)
+	var ollama := probe_ollama()
+	result.ollama_reachable = ollama["reachable"]
+	result.ollama_latency_ms = ollama["latency_ms"]
+	result.ollama_model_count = ollama["model_count"]
+	var openai := probe_openai()
+	result.openai_reachable = openai["reachable"]
+	result.openai_latency_ms = openai["latency_ms"]
+	result.openai_model_count = openai["model_count"]
+	result.set_gpu(poll_gpu())
+	resolve(result)
+	return result
+
+
+## Sets result.source and result.source_name in the PRD 5.4 order: a KNOWN agent whose
+## command is on the PATH; else Ollama, else an OpenAI-compatible server, each only if it
+## answered and lists at least one model, since a server with none cannot answer; else
+## the scripted guide with "AI off". Unknown and unset agents fall through.
+static func resolve(result: Result) -> void:
+	if result.agent_state == Result.AgentState.KNOWN and result.agent_cli_present:
+		result.source = Result.Source.AGENT
+		result.source_name = result.agent
+	elif result.ollama_reachable and result.ollama_model_count > 0:
+		result.source = Result.Source.LOCAL_SERVER
+		result.source_name = "ollama"
+	elif result.openai_reachable and result.openai_model_count > 0:
+		result.source = Result.Source.LOCAL_SERVER
+		result.source_name = "openai-compatible"
+	else:
+		result.source = Result.Source.SCRIPTED
+		result.source_name = "ai-off"
+
+
+## Starts detect() on a worker thread, so the main loop never waits on a probe. Once only.
+func start() -> Error:
+	if _thread != null:
+		return ERR_ALREADY_IN_USE
+	var thread := Thread.new()
+	var err := thread.start(detect)
+	if err == OK:
+		_thread = thread
+	return err
+
+
+## True once the worker started by start() has finished, and from then on.
+func is_done() -> bool:
+	return _thread != null and not _thread.is_alive()
+
+
+## The worker's result, the same object every call. Waits for it if it is still running,
+## so call it once is_done() is true. Null if start() never succeeded.
+func wait() -> Result:
+	if _thread == null:
+		return null
+	# Godot's Thread.is_started() turns false once joined, so the joined result is kept here.
+	if _result == null:
+		_result = _thread.wait_to_finish()
+	return _result
+
+
+func _notification(what: int) -> void:
+	# A worker must be joined before its Thread is freed. Probes end within their timeouts.
+	if what == NOTIFICATION_PREDELETE and _thread != null and _thread.is_started() and _result == null:
+		_thread.wait_to_finish()
 
 
 ## Reads the default-agent setting and returns [AgentState, agent name or ""].

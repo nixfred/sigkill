@@ -12,6 +12,17 @@ enum AgentState {
 	UNKNOWN,  ## set, but to something the detector does not know; the value is not kept
 }
 
+## Which AI the guide will use, in the PRD 5.4 fallback order.
+enum Source {
+	AGENT,  ## the player's Omarchy default agent: KNOWN and its command on the PATH
+	LOCAL_SERVER,  ## a local model server on 127.0.0.1 listing at least one model
+	SCRIPTED,  ## no AI: the scripted guide, with "AI off"
+}
+
+## The choice, and its name: the agent's name, "ollama", "openai-compatible" or "ai-off".
+var source: Source = Source.SCRIPTED
+var source_name := "ai-off"
+
 ## Omarchy default-agent setting.
 var agent_state: AgentState = AgentState.UNSET
 ## The agent's name when agent_state is KNOWN, otherwise empty.
@@ -54,6 +65,10 @@ func set_gpu(reading: Dictionary) -> void:
 ## Every field as a plain Dictionary, for the string form and for later chunks.
 func to_dict() -> Dictionary:
 	return {
+		"source": {
+			"kind": Source.keys()[source].to_lower(),
+			"name": source_name,
+		},
 		"agent": {
 			"state": AgentState.keys()[agent_state].to_lower(),
 			"name": agent,
