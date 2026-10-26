@@ -61,6 +61,7 @@ const SPINNER := ["|", "/", "-", "\\"]
 ## model tag gets on screen; an answer with anything else shows LINK_UP instead.
 const SCREEN_PUNCTUATION := " .,!?'-()"
 const ERROR_WORD_MAX := 24
+const ELLIPSIS := "..."
 
 const DEMO_AGENT := "claude"
 const DEMO_ANSWER := "Link up. Daemons detected. Let's go hunting."
@@ -244,8 +245,8 @@ static func usable_tuning(candidate: Resource) -> Resource:
 
 
 ## The first line of `answer` if it is safe to show: letters, spaces and plain punctuation
-## only, and a dot only at the end of a sentence (so no host.name or file.ext), cut to
-## `max_chars` at a word. "" when it holds anything else.
+## only, and a dot only at the end of a sentence (so no host.name or file.ext), cut at a
+## word to at most `max_chars`, ellipsis included. "" when it holds anything else.
 static func screen_line(answer: String, max_chars: int) -> String:
 	var first := answer.strip_edges().get_slice("\n", 0).strip_edges()
 	if first.is_empty():
@@ -258,9 +259,14 @@ static func screen_line(answer: String, max_chars: int) -> String:
 		if first[i] == "." and i + 1 < first.length() and not (first[i + 1] == " " or first[i + 1] == "."):
 			return ""
 	if first.length() > max_chars:
-		var cut := first.substr(0, max_chars)
-		var space := cut.rfind(" ")
-		first = (cut.substr(0, space) if space > 0 else cut).strip_edges() + "..."
+		# The ellipsis counts against the cap; a word that would be cut is dropped whole.
+		var room := max_chars - ELLIPSIS.length()
+		var cut := first.substr(0, room)
+		if first[room] != " ":
+			var space := cut.rfind(" ")
+			if space > 0:
+				cut = cut.substr(0, space)
+		first = cut.strip_edges() + ELLIPSIS
 	return first
 
 
