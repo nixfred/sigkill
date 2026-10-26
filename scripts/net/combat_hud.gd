@@ -1,8 +1,9 @@
 extends Control
 ## What synced combat (C14) shows this player: a line under the net line with their health,
 ## spawn protection or death and the respawn countdown; a kill feed at the bottom right,
-## the last few kills in SIGKILL's words ("SIGKILL sent by Daemon-2" / "to Daemon-1"),
-## each fading out; a flash of hostile red when they are hit; a mint border while they are
+## the last few kills in SIGKILL's words, naming the weapon's signal ("SIGKILL sent by
+## Daemon-2" / "to Daemon-1" for the cannon, "SIGTERM sent by ..." for SIGTERM, C16), each
+## fading out; a flash of hostile red when they are hit; a mint border while they are
 ## freshly spawned and safe; and a centred banner while they are dead. The hit marker for a
 ## confirmed hit is the C6 one, through hud.gd. Everything here follows the host's confirmed
 ## results, which arrive through the session's signals; nothing is guessed locally.
@@ -15,7 +16,9 @@ const HEALTH_LINE := "health %d"
 const PROTECT_LINE := "   spawn protection %.1f s"
 const DEAD_LINE := "DEREZZED by %s   respawn in %.1f s"
 const BANNER := "[ DEREZZED by %s ]\n\nrespawn in %.1f s"
-const FEED_FIRST := "SIGKILL sent by %s"
+const FEED_FIRST := "%s sent by %s"
+## The cannon's signal: the feed's word when the weapon is not known.
+const DEFAULT_WORD := "SIGKILL"
 const FEED_SECOND := "to %s"
 const FEED_FONT := 13
 ## Room below the feed for the hint line and the weapon strip (C16).
@@ -27,7 +30,8 @@ const BORDER_WIDTH := 3
 var session: Node = null
 ## The hud.gd that owns the hit marker.
 var hud: CanvasLayer = null
-## The kill feed, newest first: {killer, victim, left}, the names as they were at the kill.
+## The kill feed, newest first: {killer, victim, word, left}, the names and the weapon's
+## signal as they were at the kill.
 var entries: Array = []
 
 var _flash_left := 0.0
@@ -126,7 +130,8 @@ func _on_shot(shooter: int, hit: int, _origin: Vector3, _end_point: Vector3) -> 
 func _on_death(victim: int, killer: int) -> void:
 	if session == null:
 		return
-	entries.push_front({"killer": _name(killer), "victim": _name(victim), "left": session.combat_tuning_in_use().kill_feed_fade_s})
+	var word: String = session.last_kill_word.get(victim, "")
+	entries.push_front({"killer": _name(killer), "victim": _name(victim), "word": word if word != "" else DEFAULT_WORD, "left": session.combat_tuning_in_use().kill_feed_fade_s})
 	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
 		entries.pop_back()
 	_refresh()
@@ -170,7 +175,7 @@ func _refresh(fade: float = -1.0) -> void:
 		var label: Label = _feed_labels[i]
 		if i < entries.size():
 			var entry: Dictionary = entries[i]
-			label.text = (FEED_FIRST % entry["killer"]) + "\n" + (FEED_SECOND % entry["victim"])
+			label.text = (FEED_FIRST % [entry.get("word", DEFAULT_WORD), entry["killer"]]) + "\n" + (FEED_SECOND % entry["victim"])
 			var full: float = fade if fade > 0.0 else session.combat_tuning_in_use().kill_feed_fade_s
 			label.modulate = Color(1, 1, 1, clampf(entry["left"] / minf(1.0, full), 0.0, 1.0))
 			label.visible = true

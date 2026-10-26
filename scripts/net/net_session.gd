@@ -25,14 +25,19 @@ extends Node
 ## R reload of the arena keeps the connection; the new arena attaches and avatars return.
 ##
 ## Combat (C14) runs on the same session with the host as the one authority
-## (scripts/net/combat.gd): a player sends only the intent to fire (shot number, origin,
-## direction); the host validates it, raycasts in its own world against walls, dummies and
-## the players' bodies, applies the one weapon's damage, and tells everyone the result
-## (the shot with its end point and the victim's health, a death, a respawn). The host's
-## own shots go through exactly the same path. Joiners never apply damage or decide a
-## kill; they display what the host sent. Remote avatars carry a hit volume on the targets
-## layer that nothing walks into. Dummies stay each player's own; the host's combat ray
-## stops at one but never damages it.
+## (scripts/net/combat.gd): a player sends only the intent to fire (shot number, life,
+## weapon id, origin, aim); the host validates it (the weapon held, its fire interval, the
+## swap time, its magazine), draws a pellet weapon's pellets itself from the aim with its
+## own generator (C16: a joiner never chooses where pellets go), raycasts each in its own
+## world against walls, dummies and the players' bodies, applies each pellet's damage after
+## its falloff, and tells everyone the result (the shot with every pellet's end point, who
+## was hit and their health, a death with the weapon, a respawn). The host's own shots go
+## through exactly the same path. Joiners never apply damage or decide a kill; they display
+## what the host sent, and their own tracers are a guess drawn before the host answers.
+## Remote avatars carry a hit volume on the targets layer that nothing walks into. Dummies
+## stay each player's own; the host's combat ray stops at one but never damages it. During
+## a match an R reload of the arena hands the new player the weapons and ammo the old one
+## had, so it never refills a magazine.
 ##
 ## Room codes (C15): a host with a live rendezvous (scripts/net/rendezvous_client.gd) draws
 ## a code from scripts/net/room_code.gd, registers it with its game port and shows it; a
@@ -53,20 +58,23 @@ const RoomCode = preload("res://scripts/net/room_code.gd")
 const NullRendezvous = preload("res://scripts/net/null_rendezvous.gd")
 const RoomTuningScript = preload("res://scripts/net/room_tuning.gd")
 const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
-const WeaponTuningScript = preload("res://scripts/weapon_tuning.gd")
+const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/net.tres"
 const COMBAT_TUNING_PATH := "res://resources/combat.tres"
 const ROOM_TUNING_PATH := "res://resources/room.tres"
-const WEAPON_PATH := "res://resources/terminal_cannon.tres"
+const ARSENAL_PATH := "res://resources/arsenal.tres"
+## The longest weapon id an intent may carry.
+const WEAPON_ID_LAST := 32
 ## The physics layer the local player's body is on: a joiner's shot must be able to hit it.
 const PLAYER_LAYER_MASK := 2
 const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 2
+const PROTOCOL := 3
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -164,6 +172,8 @@ var last_killer := {}
 ## The killer's name as it was at the death, kept for the banner and the feed even after
 ## that player has left.
 var last_killer_name := {}
+## The signal the killing weapon sends, for the feed: "SIGKILL" for the cannon (C16).
+var last_kill_word := {}
 var respawn_left := {}
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
@@ -213,7 +223,15 @@ var _launch_checked := false
 ## A --join taken before this node was ready (the arena makes the session a frame late):
 ## the parsed result, applied in _ready.
 var _launch_pending := {}
-var _weapon: WeaponTuningScript
+## The arsenal every player holds (C16): id -> WeaponDef, and the swap time.
+var _weapons := {}
+var _weapon_list: Array = []
+var _swap_s := 0.3
+## The host's own generator for pellets: a joiner never picks where its pellets go.
+var _pellets_rng := RandomNumberGenerator.new()
+## During a match: the weapons and ammo of the player whose arena went away (an R reload),
+## handed to the next player that attaches.
+var _kept_inventory: RefCounted = null
 ## The host's clock for the fire rate, in seconds of game time.
 var _clock := 0.0
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
@@ -257,8 +275,12 @@ func _ready() -> void:
 		var pending := _launch_pending
 		_launch_pending = {}
 		_apply_launch(pending)
-	var shipped_weapon = load(WEAPON_PATH)
-	_weapon = shipped_weapon if shipped_weapon is WeaponTuningScript and shipped_weapon.problems().is_empty() else WeaponTuningScript.new()
+	var shipped_arsenal = load(ARSENAL_PATH)
+	_weapon_list = ArsenalScript.usable_loadout(shipped_arsenal)
+	for def in _weapon_list:
+		_weapons[def.id] = def
+	_swap_s = ArsenalScript.usable_timing(shipped_arsenal).swap_s
+	_pellets_rng.randomize()
 	var m := multiplayer as SceneMultiplayer
 	if m == null:
 		return
@@ -353,6 +375,9 @@ func attach(arena: Node, player: Node) -> void:
 		arena.tree_exiting.connect(_on_arena_exit)
 	if player.has_signal("fire_intent") and not player.fire_intent.is_connected(_on_fire_intent):
 		player.fire_intent.connect(_on_fire_intent)
+	if is_online() and _kept_inventory != null and player.has_method("adopt_inventory"):
+		player.adopt_inventory(_kept_inventory)  # an R reload mid-match keeps the ammo
+	_kept_inventory = null
 	if _pending_spawn.is_finite() and player.has_method("respawn_at"):
 		player.respawn_at(arena.to_global(_pending_spawn))  # the host chose this while the arena was away
 	_pending_spawn = Vector3.INF
@@ -365,6 +390,8 @@ func attach(arena: Node, player: Node) -> void:
 
 
 func _on_arena_exit() -> void:
+	if is_online() and _player != null and is_instance_valid(_player):
+		_kept_inventory = _player.get("inventory")
 	_arena = null
 	_player = null
 	_players_node = null
@@ -393,7 +420,7 @@ func host(port: int = -1) -> bool:
 	_seq = 0
 	fire_seq = 0
 	_clock = 0.0
-	combat = Combat.new(_ct, _weapon.fire_cooldown, _weapon.damage)
+	combat = Combat.new(_ct, _weapon_list, _swap_s)
 	combat.add_player(1)
 	_mirror_from_combat()
 	error = ""
@@ -798,9 +825,11 @@ func _clear_players() -> void:
 	protect_left = {}
 	last_killer = {}
 	last_killer_name = {}
+	last_kill_word = {}
 	respawn_left = {}
 	lives = {}
 	_pending_spawn = Vector3.INF
+	_kept_inventory = null
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -890,7 +919,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	players.erase(id)
 	combat.remove_player(id)
-	for table in [health, dead, protect_left, last_killer, last_killer_name, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
 	_send_roster()
@@ -981,7 +1010,7 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 		dead[ids[i]] = deads[i] != 0
 		protect_left[ids[i]] = protects[i]
 		lives[ids[i]] = life_numbers[i]
-	for table in [health, dead, protect_left, last_killer, last_killer_name, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, respawn_left, lives]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -1084,9 +1113,10 @@ func _show_avatar_state(id: int) -> void:
 
 # --- Combat: intents in, the host's results out. ---
 
-## This player's cannon fired (scripts/player.gd): the intent goes to the host, which, when
-## this is the host, is the same validation every other shot gets.
-func _on_fire_intent(origin: Vector3, direction: Vector3, _weapon: String = "") -> void:
+## This player fired (scripts/player.gd): the intent goes to the host, which, when this is
+## the host, is the same validation every other shot gets. Only the aim goes: the host
+## draws a pellet weapon's pellets itself.
+func _on_fire_intent(origin: Vector3, direction: Vector3, weapon: String) -> void:
 	if not is_online() or _arena == null or not is_instance_valid(_arena):
 		return
 	fire_seq += 1
@@ -1094,58 +1124,68 @@ func _on_fire_intent(origin: Vector3, direction: Vector3, _weapon: String = "") 
 	var local_dir: Vector3 = (_arena.global_transform.basis.inverse() * direction).normalized()
 	var life: int = lives.get(my_id, 0)
 	if state == State.HOSTING:
-		_handle_fire(1, fire_seq, life, local_origin, local_dir)
+		_handle_fire(1, fire_seq, life, weapon, local_origin, local_dir)
 	elif multiplayer.get_peers().has(1):
-		_fire.rpc_id(1, fire_seq, life, local_origin, local_dir)
+		_fire.rpc_id(1, fire_seq, life, weapon, local_origin, local_dir)
 
 
 ## A joiner's intent to fire, to the host. Untyped on purpose: a packet of the wrong types
 ## is dropped and counted here, never an engine error.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire(seq: Variant, life: Variant, origin: Variant, dir: Variant) -> void:
+func _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:
 	if state != State.HOSTING or combat == null:
 		return
-	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
-		combat.validate(0, 0, 0, Vector3.ZERO, Vector3.ZERO, Vector3.INF, 0, _clock)  # counted: no such shot
+	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
+		combat.validate(0, 0, 0, "", Vector3.ZERO, Vector3.ZERO, Vector3.INF, 0, _clock)  # counted: no such shot
 		return
-	_handle_fire(multiplayer.get_remote_sender_id(), seq, life, origin, dir)
+	_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)
 
 
-## The one authority path: validate, raycast in the host's world, apply, tell everyone.
-func _handle_fire(shooter: int, seq: int, life: int, origin: Vector3, dir: Vector3) -> void:
+## The one authority path: validate, draw the pellets, raycast each in the host's world,
+## apply, tell everyone.
+func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vector3, dir: Vector3) -> void:
 	if state != State.HOSTING or combat == null:
 		return
 	if not players.has(shooter):
-		combat.validate(0, seq, life, origin, dir, Vector3.INF, 0, _clock)  # counted: no such player
+		combat.validate(0, seq, life, weapon, origin, dir, Vector3.INF, 0, _clock)  # counted: no such player
 		return
 	var eye := _eye_of(shooter)
 	if not eye.is_finite():
-		combat.validate(0, seq, life, origin, dir, eye, 0, _clock)  # counted: nothing of it is known yet
+		combat.validate(0, seq, life, weapon, origin, dir, eye, 0, _clock)  # counted: nothing of it is known yet
 		return
-	if combat.validate(shooter, seq, life, origin, dir, eye, lives.get(shooter, 0), _clock) != "":
+	if combat.validate(shooter, seq, life, weapon, origin, dir, eye, lives.get(shooter, 0), _clock) != "":
 		return
+	var def: WeaponDefScript = combat.weapons[weapon]
 	# Within the tolerance is not enough: a claimed origin the host's view of the eye
 	# cannot see (behind cover it stands against) is a shot through that cover.
-	if shooter != 1 and _obstructed(shooter, eye, origin):
+	if shooter != 1 and _obstructed(shooter, eye, origin, def.hit_mask):
 		combat.drop_after(Combat.DROP_ORIGIN)
 		return
-	combat.accept(shooter, seq, _clock)
-	var ray := _raycast(shooter, origin, dir)
-	var hit: int = ray["hit"]
-	var victim_health := -1.0
-	var killed := false
-	if hit != 0:
-		var outcome := combat.damage_player(hit, shooter)
+	combat.accept(shooter, seq, weapon, _clock)
+	# Every pellet's damage after its falloff, added up per player it struck.
+	var ends := PackedVector3Array()
+	var struck := {}
+	for pellet in def.pellet_directions(dir, _pellets_rng):
+		var ray := _raycast(shooter, origin, pellet, def)
+		ends.append(ray["end"])
+		if ray["hit"] != 0:
+			struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
+	var hits := PackedInt32Array()
+	var healths := PackedFloat32Array()
+	var killed := PackedInt32Array()
+	for victim in struck:
+		var outcome := combat.damage_player(victim, shooter, struck[victim])
 		if outcome.is_empty():
-			hit = 0  # dead or protected: the shot landed on nothing that counts
-		else:
-			victim_health = outcome["health"]
-			killed = outcome["killed"]
+			continue  # dead or protected: the pellets landed on nothing that counts
+		hits.append(victim)
+		healths.append(outcome["health"])
+		if outcome["killed"]:
+			killed.append(victim)
 	# The death is told after the shot, so the mirror learns of it then: the avatar must
 	# play its derezz, not be hidden first by the health update.
-	_broadcast_shot(shooter, origin, ray["end"], hit, victim_health)
-	if killed:
-		_broadcast_death(hit, shooter, dir)
+	_broadcast_shot(shooter, weapon, origin, ends, hits, healths)
+	for victim in killed:
+		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
 
 
@@ -1167,12 +1207,12 @@ func _eye_of(id: int) -> Vector3:
 ## True when something solid lies between the host's view of the shooter's eye and the
 ## origin it claims: cover, a dummy or another player's body. The shooter's own avatar,
 ## which the eye sits inside, does not count.
-func _obstructed(shooter: int, eye: Vector3, origin: Vector3) -> bool:
+func _obstructed(shooter: int, eye: Vector3, origin: Vector3, mask: int) -> bool:
 	var from: Vector3 = _arena.to_global(eye)
 	var to: Vector3 = _arena.to_global(origin)
 	if from.distance_to(to) < 0.001:
 		return false
-	var query := PhysicsRayQueryParameters3D.create(from, to, _weapon.hit_mask | PLAYER_LAYER_MASK)
+	var query := PhysicsRayQueryParameters3D.create(from, to, mask | PLAYER_LAYER_MASK)
 	query.exclude = _not_in_the_way(shooter)
 	return not _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
@@ -1192,20 +1232,21 @@ func _not_in_the_way(shooter: int) -> Array[RID]:
 	return out
 
 
-## The host's own raycast for a believed shot: walls, dummies, the players' bodies, never
-## the shooter's own. {end, hit}: the end point in arena space and the player hit, or 0.
-func _raycast(shooter: int, origin: Vector3, dir: Vector3) -> Dictionary:
+## The host's own raycast for one pellet of a believed shot of weapon `def`: walls,
+## dummies, the players' bodies, never the shooter's own. {end, hit, distance}: the end
+## point in arena space, the player hit or 0, and how far the pellet flew.
+func _raycast(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> Dictionary:
 	var from: Vector3 = _arena.to_global(origin)
 	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
-	var far := from + along * _weapon.fire_range
-	var query := PhysicsRayQueryParameters3D.create(from, far, _weapon.hit_mask | PLAYER_LAYER_MASK)
+	var far := from + along * def.fire_range
+	var query := PhysicsRayQueryParameters3D.create(from, far, def.hit_mask | PLAYER_LAYER_MASK)
 	# Players can stand inside each other, at a shared spawn for one: a shot that starts
 	# inside an opponent still hits it. The shooter's own body and every corpse are excluded.
 	query.hit_from_inside = true
 	query.exclude = _not_in_the_way(shooter)
 	var result: Dictionary = _player.get_world_3d().direct_space_state.intersect_ray(query)
 	if result.is_empty():
-		return {"end": _arena.to_local(far), "hit": 0}
+		return {"end": _arena.to_local(far), "hit": 0, "distance": def.fire_range}
 	var collider = result["collider"]
 	var hit := 0
 	if collider == _player and shooter != 1 and combat.has_player(1):
@@ -1214,58 +1255,71 @@ func _raycast(shooter: int, origin: Vector3, dir: Vector3) -> Dictionary:
 		var id: int = collider.get_meta(PLAYER_ID_META, 0)
 		if id != shooter and combat.has_player(id):
 			hit = id
-	return {"end": _arena.to_local(result["position"]), "hit": hit}
+	var flown: float = from.distance_to(result["position"])
+	return {"end": _arena.to_local(result["position"]), "hit": hit, "distance": flown}
 
 
-func _broadcast_shot(shooter: int, origin: Vector3, end_point: Vector3, hit: int, victim_health: float) -> void:
-	_apply_shot(shooter, origin, end_point, hit, victim_health)
+func _broadcast_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
+	_apply_shot(shooter, weapon, origin, ends, hits, healths)
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_shot.rpc_id(id, shooter, origin, end_point, hit, victim_health)
+			_shot.rpc_id(id, shooter, weapon, origin, ends, hits, healths)
 
 
-## A shot the host believed: who fired, where it went, whom it hit and their health now.
+## A shot the host believed: who fired which weapon, where each pellet went, whom it hit
+## and their health now.
 @rpc("authority", "call_remote", "reliable")
-func _shot(shooter: int, origin: Vector3, end_point: Vector3, hit: int, victim_health: float) -> void:
-	if state != State.JOINED or not players.has(shooter) or not origin.is_finite() or not end_point.is_finite():
+func _shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
+	if state != State.JOINED or not players.has(shooter) or not _weapons.has(weapon) or not origin.is_finite():
 		return
-	if hit != 0 and (not players.has(hit) or not is_finite(victim_health) or victim_health < 0.0 or victim_health > _ct.max_health):
+	if ends.is_empty() or ends.size() > _weapons[weapon].pellet_count or hits.size() != healths.size() or hits.size() > players.size():
 		return
-	_apply_shot(shooter, origin, end_point, hit, victim_health)
+	for end in ends:
+		if not end.is_finite():
+			return
+	for i in hits.size():
+		if not players.has(hits[i]) or not is_finite(healths[i]) or healths[i] < 0.0 or healths[i] > _ct.max_health:
+			return
+	_apply_shot(shooter, weapon, origin, ends, hits, healths)
 
 
-func _apply_shot(shooter: int, origin: Vector3, end_point: Vector3, hit: int, victim_health: float) -> void:
-	if hit != 0 and victim_health >= 0.0:
-		health[hit] = victim_health
-		_show_avatar_state(hit)
+func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
+	for i in hits.size():
+		health[hits[i]] = healths[i]
+		_show_avatar_state(hits[i])
 	if shooter != my_id and _arena != null and is_instance_valid(_arena):
-		CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end_point), _weapon)
-	shot_confirmed.emit(shooter, hit, origin, end_point)
+		for end in ends:
+			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
+	if hits.is_empty():
+		shot_confirmed.emit(shooter, 0, origin, ends[0])
+	for hit in hits:
+		shot_confirmed.emit(shooter, hit, origin, ends[0])
 	combat_changed.emit()
 
 
-func _broadcast_death(victim: int, killer: int, dir: Vector3) -> void:
-	_apply_death(victim, killer, dir)
+func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
+	_apply_death(victim, killer, dir, weapon)
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_death.rpc_id(id, victim, killer, dir)
+			_death.rpc_id(id, victim, killer, dir, weapon)
 
 
-## A player went down, from the host.
+## A player went down, from the host, and to which weapon.
 @rpc("authority", "call_remote", "reliable")
-func _death(victim: int, killer: int, dir: Vector3) -> void:
-	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite():
+func _death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
+	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not _weapons.has(weapon):
 		return
-	_apply_death(victim, killer, dir)
+	_apply_death(victim, killer, dir, weapon)
 
 
-func _apply_death(victim: int, killer: int, dir: Vector3) -> void:
+func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
 	dead[victim] = true
 	health[victim] = 0.0
 	last_killer[victim] = killer
 	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
+	last_kill_word[victim] = _weapons[weapon].kill_word if _weapons.has(weapon) else ""
 	respawn_left[victim] = _ct.respawn_delay_s
 	if victim == my_id:
 		if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):

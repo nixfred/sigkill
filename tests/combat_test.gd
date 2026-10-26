@@ -172,6 +172,11 @@ func _shoot(player: Node, host: Dictionary, client: Dictionary) -> bool:
 	return ok and host["session"].combat.states.values().reduce(func(acc, s): return acc + s["last_seq"], 0) > before
 
 
+## The terminal cannon's WeaponDef, for the session helpers that take the weapon (C16).
+func _cannon() -> Resource:
+	return load("res://resources/terminal_cannon.tres")
+
+
 func _code(path: String) -> String:
 	var out := PackedStringArray()
 	for line in FileAccess.get_file_as_string(path).split("\n"):
@@ -241,9 +246,9 @@ func _source_checks() -> void:
 	_check("the combat module starts no program, reads no file, asks the system nothing, opens no socket of its own and parses no rich text", found.is_empty(), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
 	var handle := _body(session, "_handle_fire")
-	_check("damage is applied in one place, the host's _handle_fire, after validate() and the host's own raycast; joiners never call it", session.count("damage_player(") == 1 and handle.contains("combat.validate(shooter, seq, life, origin, dir, eye, lives.get(shooter, 0), _clock) != \"\"") and handle.contains("_raycast(shooter, origin, dir)") and handle.contains("combat.damage_player(hit, shooter)") and handle.begins_with("\nfunc _handle_fire") and handle.contains("if state != State.HOSTING or combat == null"))
-	_check("the host's own shot takes the same path as a joiner's: _on_fire_intent hands it to _handle_fire, a joiner's intent arrives through the any_peer _fire RPC into _handle_fire", _body(session, "_on_fire_intent").contains("_handle_fire(1, fire_seq, life, local_origin, local_dir)") and _body(session, "_fire").contains("_handle_fire(multiplayer.get_remote_sender_id(), seq, life, origin, dir)") and session.count("_handle_fire(") == 3)
-	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire, untyped and type-checked, is the only any_peer one besides _state", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, origin: Variant, dir: Variant)') and _body(session, "_fire").contains("typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
+	_check("damage is applied in one place, the host's _handle_fire, after validate() and the host's own raycast; joiners never call it", session.count("damage_player(") == 1 and handle.contains("combat.validate(shooter, seq, life, weapon, origin, dir, eye, lives.get(shooter, 0), _clock) != \"\"") and handle.contains("_raycast(shooter, origin, pellet, def)") and handle.contains("combat.damage_player(victim, shooter, struck[victim])") and handle.begins_with("\nfunc _handle_fire") and handle.contains("if state != State.HOSTING or combat == null"))
+	_check("the host's own shot takes the same path as a joiner's: _on_fire_intent hands it to _handle_fire, a joiner's intent arrives through the any_peer _fire RPC into _handle_fire", _body(session, "_on_fire_intent").contains("_handle_fire(1, fire_seq, life, weapon, local_origin, local_dir)") and _body(session, "_fire").contains("_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)") and session.count("_handle_fire(") == 3)
+	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire, untyped and type-checked, is the only any_peer one besides _state", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant)') and _body(session, "_fire").contains("typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
 	var hud := _code("res://scripts/net/combat_hud.gd")
 	_check("the HUD shows only confirmed results: the hit marker and the flash come from shot_confirmed, the feed from player_died, never from the local cannon", hud.contains("s.shot_confirmed.connect(_on_shot)") and hud.contains("s.player_died.connect(_on_death)") and not hud.contains("shot_fired") and hud.count("confirm_hit()") == 1)
 	var names := _code("res://scripts/net/net_session.gd")
@@ -251,7 +256,7 @@ func _source_checks() -> void:
 
 
 func _rule_checks() -> void:
-	var c := Combat.new(_combat_tuning(), 0.16, 25.0)
+	var c := Combat.new(_combat_tuning(), [load("res://resources/terminal_cannon.tres")])
 	c.add_player(1)
 	c.add_player(7)
 	var eye := Vector3(0, 1.65, 10)
@@ -266,29 +271,29 @@ func _rule_checks() -> void:
 		[7, 3, eye, dir, eye, 1.63], [7, 50000, eye, dir, eye, 2.0], [7, 2147483647, eye, dir, eye, 2.0],
 	]
 	for a in attempts:
-		var word: String = c.validate(a[0], a[1], 0, a[2], a[3], a[4], 0, a[5])
+		var word: String = c.validate(a[0], a[1], 0, "terminal_cannon", a[2], a[3], a[4], 0, a[5])
 		if word == "":
-			c.accept(a[0], a[1], a[5])  # as the session does once its own look at the shot is done
+			c.accept(a[0], a[1], "terminal_cannon", a[5])  # as the session does once its own look at the shot is done
 		words.append(word)
 	_check("validate: a first shot passes; 0.05 s later is too fast; a number already believed is refused, a refused one is not burnt; an origin 3 m off, a NaN or 50-long direction, an infinite origin, an unknown shooter and an unseen eye are refused; 1 m off within the 1.5 m tolerance passes; 0.11 s later is too fast and 0.13 s later passes; a number 50000 ahead or at the cap is refused", words == PackedStringArray(["", "rate", "seq", "origin", "shape", "shape", "shape", "no_player", "origin", "", "rate", "", "seq", "seq"]), ", ".join(words))
-	var unrecorded: bool = c.validate(7, 4, 0, eye + Vector3(0, 0, 3), dir, eye, 0, 3.0) == "origin" and c.states[7]["last_seq"] == 3 and c.validate(7, 4, 0, eye, dir, eye, 0, 3.0) == ""
-	_check("a shot from a past life is refused as such, before its number is looked at", c.validate(7, 4, 0, eye, dir, eye, 1, 3.0) == "life" and c.validate(7, 4, 1, eye, dir, eye, 1, 3.0) == "")
+	var unrecorded: bool = c.validate(7, 4, 0, "terminal_cannon", eye + Vector3(0, 0, 3), dir, eye, 0, 3.0) == "origin" and c.states[7]["last_seq"] == 3 and c.validate(7, 4, 0, "terminal_cannon", eye, dir, eye, 0, 3.0) == ""
+	_check("a shot from a past life is refused as such, before its number is looked at", c.validate(7, 4, 0, "terminal_cannon", eye, dir, eye, 1, 3.0) == "life" and c.validate(7, 4, 1, "terminal_cannon", eye, dir, eye, 1, 3.0) == "")
 	_check("validate alone records nothing: a refused shot burns neither its number nor the clock, and accept() is what the next shot is measured from", unrecorded and c.states[7]["last_fire"] == 1.63)
 	_check("drops are counted in all and by reason", c.dropped == 13 and c.drops.get("rate", 0) == 2 and c.drops.get("seq", 0) == 3 and c.drops.get("shape", 0) == 3 and c.drops.get("origin", 0) == 3 and c.drops.get("no_player", 0) == 1 and c.drops.get("life", 0) == 1, str(c.drops))
 	var hits := []
 	for i in 4:
-		hits.append(c.damage_player(1, 7))
+		hits.append(c.damage_player(1, 7, 25.0))
 	_check("damage: 100 to 75, 50, 25, 0 and dead on the fourth hit, the killer credited", hits[0] == {"health": 75.0, "killed": false} and hits[2] == {"health": 25.0, "killed": false} and hits[3] == {"health": 0.0, "killed": true} and not c.alive(1) and c.states[7]["kills"] == 1 and c.states[1]["deaths"] == 1 and c.states[1]["respawn_left"] == 1.0)
-	_check("a dead player takes no more damage and cannot fire", c.damage_player(1, 7).is_empty() and c.validate(1, 1, 0, eye, dir, eye, 0, 5.0) == "dead")
-	c.accept(7, 4, 3.0)
+	_check("a dead player takes no more damage and cannot fire", c.damage_player(1, 7, 25.0).is_empty() and c.validate(1, 1, 0, "terminal_cannon", eye, dir, eye, 0, 5.0) == "dead")
+	c.accept(7, 4, "terminal_cannon", 3.0)
 	var due := []
 	for i in 65:
 		due.append_array(c.tick(1.0 / 60.0))
 	c.respawn(1)
-	var shielded: bool = c.alive(1) and c.health_of(1) == 100.0 and c.protected(1) and c.damage_player(1, 7).is_empty()
+	var shielded: bool = c.alive(1) and c.health_of(1) == 100.0 and c.protected(1) and c.damage_player(1, 7, 25.0).is_empty()
 	for i in 31:
 		c.tick(1.0 / 60.0)
-	_check("the respawn comes due after the delay; respawning restores full health, alive and protected, and protection blocks damage until it runs out", due == [1] and shielded and not c.protected(1) and c.damage_player(1, 7) == {"health": 75.0, "killed": false}, "due %s shielded %s protected after %s" % [due, shielded, c.protected(1)])
+	_check("the respawn comes due after the delay; respawning restores full health, alive and protected, and protection blocks damage until it runs out", due == [1] and shielded and not c.protected(1) and c.damage_player(1, 7, 25.0) == {"health": 75.0, "killed": false}, "due %s shielded %s protected after %s" % [due, shielded, c.protected(1)])
 	var spawns := [Vector3(0, 0, 10), Vector3(-15, 0, 15), Vector3(15, 0, -15)]
 	_check("the spawn farthest from the nearest threat wins; no threats give the first; no spawns give INF", Combat.farthest_spawn(spawns, [Vector3(0, 0, 10)]) == Vector3(15, 0, -15) and Combat.farthest_spawn(spawns, [Vector3(15, 0, -15), Vector3(0, 0, 10)]) == Vector3(-15, 0, 15) and Combat.farthest_spawn(spawns, []) == Vector3(0, 0, 10) and Combat.farthest_spawn([], [Vector3.ZERO]) == Vector3.INF)
 	_check("rules: a unit direction within 1%, an origin within the tolerance, a shot at 75% of the cooldown", Combat.dir_ok(Vector3(0, 0, -1.009)) and not Combat.dir_ok(Vector3(0, 0, -1.02)) and Combat.origin_ok(Vector3(1, 0, 0), Vector3.ZERO, 1.0) and not Combat.origin_ok(Vector3(1.01, 0, 0), Vector3.ZERO, 1.0) and Combat.rate_ok(0.12, 0.0, 0.16, 0.25) and not Combat.rate_ok(0.119, 0.0, 0.16, 0.25))
@@ -365,8 +370,8 @@ func _match_checks() -> void:
 	cs.shot_confirmed.disconnect(end_hook)
 	_check("the dead host's body stops no shot: a ray through the corpse ends far beyond it", not ends.is_empty() and ends[-1].z < 0.0 and (ends[-1] - cp.position).length() > 15.0, "end %s" % (ends[-1] if not ends.is_empty() else Vector3.INF))
 	var corpse_at: Vector3 = hp.position
-	var through_corpse: bool = hs._obstructed(cid, corpse_at + Vector3(0, 0.7, 0.6), corpse_at + Vector3(0, 0.7, -0.6))
-	var through_wall: bool = hs._obstructed(cid, Vector3(4.75, 1.65, -7.5), Vector3(4.75, 1.65, -8.6))
+	var through_corpse: bool = hs._obstructed(cid, corpse_at + Vector3(0, 0.7, 0.6), corpse_at + Vector3(0, 0.7, -0.6), _cannon().hit_mask)
+	var through_wall: bool = hs._obstructed(cid, Vector3(4.75, 1.65, -7.5), Vector3(4.75, 1.65, -8.6), _cannon().hit_mask)
 	_check("the cover probe sees no cover in the dead host's body, and still sees the wall", not through_corpse and through_wall)
 	# The dead host cannot fire.
 	var seq_before: int = hs.combat.states[1]["last_seq"]
@@ -430,7 +435,7 @@ func _forgery_checks() -> void:
 	var eye: Vector3 = _avatar(host, cid).latest_position() + Vector3(0, cp.eye_height(), 0)
 	var up := Vector3.UP
 	# One believed shot straight up first, so the joiner has a number to be ahead of.
-	cs._fire.rpc_id(1, 1, cs.lives.get(cid, 0), eye, up)
+	cs._fire.rpc_id(1, 1, cs.lives.get(cid, 0), "terminal_cannon", eye, up)
 	await _until(func(): return hs.combat.states[cid]["last_seq"] == 1, 2000)
 	await _frames(10)
 	var bad := [
@@ -449,7 +454,7 @@ func _forgery_checks() -> void:
 	for item in bad:
 		var dropped_before: int = hs.combat.dropped
 		var health_before: Dictionary = hs.health.duplicate()
-		cs._fire.rpc_id(1, item[1], cs.lives.get(cid, 0), item[2], item[3])
+		cs._fire.rpc_id(1, item[1], cs.lives.get(cid, 0), "terminal_cannon", item[2], item[3])
 		var counted := await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 		if not counted or hs.combat.dropped != dropped_before + 1 or hs.combat.drops.get(item[4], 0) < 1 or hs.health != health_before:
 			wrong.append("%s: dropped %d -> %d (%s), health %s" % [item[0], dropped_before, hs.combat.dropped, hs.combat.drops, hs.health])
@@ -461,8 +466,8 @@ func _forgery_checks() -> void:
 	await _frames(10)
 	var dropped_before: int = hs.combat.dropped
 	var seq_before: int = hs.combat.states[cid]["last_seq"]
-	cs._fire.rpc_id(1, 10, cs.lives.get(cid, 0), eye, up)
-	cs._fire.rpc_id(1, 11, cs.lives.get(cid, 0), eye, up)
+	cs._fire.rpc_id(1, 10, cs.lives.get(cid, 0), "terminal_cannon", eye, up)
+	cs._fire.rpc_id(1, 11, cs.lives.get(cid, 0), "terminal_cannon", eye, up)
 	await _until(func(): return hs.combat.states[cid]["last_seq"] >= 10, 2000)
 	await _frames(2)
 	_check("two intents inside the cooldown: the first is believed, the second dropped as too fast", hs.combat.states[cid]["last_seq"] == 10 and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("rate", 0) == 1 and seq_before == 1, "last seq %d drops %s" % [hs.combat.states[cid]["last_seq"], hs.combat.drops])
@@ -479,7 +484,7 @@ func _forgery_checks() -> void:
 	var within: bool = behind.distance_to(eye_now) <= 1.5
 	dropped_before = hs.combat.dropped
 	var health_before: float = hs.health[1]
-	cs._fire.rpc_id(1, 40, cs.lives.get(cid, 0), behind, Vector3(0, 0, -1))
+	cs._fire.rpc_id(1, 40, cs.lives.get(cid, 0), "terminal_cannon", behind, Vector3(0, 0, -1))
 	await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 	await _frames(2)
 	_check("an origin claimed on the far side of the wall the joiner stands against, though within the tolerance, is refused: no damage through cover", within and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("origin", 0) == 2 and hs.health[1] == health_before and hs.health[1] == 100.0, "within %s drops %s health %.0f" % [within, hs.combat.drops, hs.health[1]])
@@ -527,7 +532,7 @@ func _forgery_checks() -> void:
 	await _until(func(): return (_avatar(host, cid).latest_position() - cp.position).length() < 0.05)
 	# From the wrong peer: an intent not from a player (no sender) is dropped.
 	dropped_before = hs.combat.dropped
-	hs._fire(12, 0, eye, up)
+	hs._fire(12, 0, "terminal_cannon", eye, up)
 	_check("an intent from no player is dropped", hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("no_player", 0) >= 1)
 	# A dead shooter: the host derezzes the joiner, then the joiner's intents are refused.
 	var hp = host["player"]
@@ -542,7 +547,7 @@ func _forgery_checks() -> void:
 	var died := await _until(func(): return cs.dead.get(cid, false) and hs.dead.get(cid, false), 3000)
 	await _frames(2)
 	dropped_before = hs.combat.dropped
-	cs._fire.rpc_id(1, 20, cs.lives.get(cid, 0), eye, up)
+	cs._fire.rpc_id(1, 20, cs.lives.get(cid, 0), "terminal_cannon", eye, up)
 	await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 	var shots_before: int = cp.shots_fired
 	await _fire(cp)
@@ -550,10 +555,10 @@ func _forgery_checks() -> void:
 	_check("the host derezzes the joiner through the same path, with the derezz effect on the host's own screen; a dead joiner's intent is dropped as dead, its own cannon stays silent and its screen says who got it", died and _derezz_count(host) == 1 and mine.dead and not cp.alive and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("dead", 0) == 1 and cp.shots_fired == shots_before and client["combat_hud"].line_text().begins_with("DEREZZED by Daemon-1") and client["combat_hud"].feed_text() == PackedStringArray(["SIGKILL sent by Daemon-1 to Daemon-2"]), "alive %s derezz %d drops %s line '%s'" % [cp.alive, _derezz_count(host), hs.combat.drops, client["combat_hud"].line_text()])
 	# Wrong types from a joiner: dropped and counted, never an engine error.
 	dropped_before = hs.combat.dropped
-	cs._fire.rpc_id(1, "junk", cs.lives.get(cid, 0), Vector3.ZERO, up)
-	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), "junk", up)
-	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), eye, 7)
-	cs._fire.rpc_id(1, 30, "junk", eye, up)
+	cs._fire.rpc_id(1, "junk", cs.lives.get(cid, 0), "terminal_cannon", Vector3.ZERO, up)
+	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), "terminal_cannon", "junk", up)
+	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), "terminal_cannon", eye, 7)
+	cs._fire.rpc_id(1, 30, "junk", "terminal_cannon", eye, up)
 	cs._state.rpc_id(1, "junk", 0, eye, 0.0, 0.0, Vector3.ZERO)
 	await _until(func(): return hs.combat.dropped >= dropped_before + 4, 2000)
 	_check("intents and positions of the wrong types are dropped as malformed, four counted, with nothing applied", hs.combat.dropped == dropped_before + 4 and hs.combat.drops.get("no_player", 0) >= 5, str(hs.combat.drops))
@@ -564,7 +569,7 @@ func _forgery_checks() -> void:
 	await physics_frame  # the physics space takes the shape up on its next step
 	await physics_frame
 	var corpse_dir := (mine.position - Vector3(0, 0.95, 4)).normalized()
-	var through: Dictionary = hs._raycast(1, Vector3(0, 1.65, 4), Vector3(corpse_dir.x, 0.0, corpse_dir.z).normalized())
+	var through: Dictionary = hs._raycast(1, Vector3(0, 1.65, 4), Vector3(corpse_dir.x, 0.0, corpse_dir.z).normalized(), _cannon())
 	mine.get("_hit_shape").disabled = true
 	await physics_frame
 	_check("a shot through a corpse whose volume is still on passes it: no hit, and the ray ends well beyond it", through["hit"] == 0 and (through["end"] - Vector3(0, 1.65, 4)).length() > (mine.position - Vector3(0, 0.95, 4)).length() + 2.0, "hit %d end %s corpse %s" % [through["hit"], through["end"], mine.position])
@@ -579,7 +584,7 @@ func _forgery_checks() -> void:
 	var past_health: Dictionary = hs.health.duplicate()
 	await _until(func(): return mine.visible and (mine.latest_position() - cp.position).length() < 0.1)
 	var past_eye: Vector3 = mine.latest_position() + Vector3(0, cp.eye_height(), 0)
-	cs._fire.rpc_id(1, hs.combat.states[cid]["last_seq"] + 1, old_life, past_eye, up)
+	cs._fire.rpc_id(1, hs.combat.states[cid]["last_seq"] + 1, old_life, "terminal_cannon", past_eye, up)
 	await _until(func(): return hs.combat.dropped > past_before, 2000)
 	_check("an intent from the shooter's past life is dropped as such, nothing applied", hs.combat.dropped == past_before + 1 and hs.combat.drops.get("life", 0) == 1 and hs.health == past_health, str(hs.combat.drops))
 	# A position from the past life, still in flight at the respawn, cannot drag the avatar
