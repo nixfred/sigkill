@@ -58,13 +58,13 @@ A studio game has to be the same on every machine. SIGKILL is different on every
     <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>✅ Built, M2: detector (C9), adapters (C9b), boot screen (C10), guide HUD (C11), model loading (C11b), round coaching and roasts (C12)</sub></td>
   </tr>
   <tr>
-    <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.<br><sub>⬜ Planned, M3</sub></td>
+    <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.<br><sub>🔧 In progress, M3: LAN and tailnet play is built (C13); combat (C14) and room codes (C15) next</sub></td>
     <td align="center">🟢<br><b>Code-rain vision</b><br>See daemons through walls as Matrix glyphs.<br><sub>⬜ Planned, C21</sub></td>
     <td align="center">🐧<br><b>Native linux binary</b><br>Godot 4 on Vulkan, built for Omarchy and Hyprland.<br><sub>✅ Runs from source; packaged builds planned</sub></td>
   </tr>
 </table>
 
-Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. The game opens on a boot screen (C10) that names your Omarchy default agent, asks before it is ever called, shows it answering, and reads your GPU. In the arena the guide HUD (C11) shows your AI's badge, latency and GPU, T asks it anything and O turns it on or off; with a local Ollama server that has nothing loaded, T offers to load a model, only with your yes, and SIGKILL unloads it again (C11b). Rounds run for 90 seconds of play, then a 12-second break shows the round's numbers and one line about them from your AI: a tip, or with B a roast of your play; the callouts during a round come from the game itself (C12). Under them sit the AI source detector (C9) and the guide's agent adapters (C9b). Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
+Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. The game opens on a boot screen (C10) that names your Omarchy default agent, asks before it is ever called, shows it answering, and reads your GPU. In the arena the guide HUD (C11) shows your AI's badge, latency and GPU, T asks it anything and O turns it on or off; with a local Ollama server that has nothing loaded, T offers to load a model, only with your yes, and SIGKILL unloads it again (C11b). Rounds run for 90 seconds of play, then a 12-second break shows the round's numbers and one line about them from your AI: a tip, or with B a roast of your play; the callouts during a round come from the game itself (C12). Two players on the same LAN or tailnet can play together: one presses M then H to host, the other joins by the host's address, and each sees the other move (C13). Under them sit the AI source detector (C9) and the guide's agent adapters (C9b). Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
 
 ## Story
 
@@ -372,11 +372,11 @@ Fred's bar for every hostile: faceless and geometric, never cartoon monsters.
 
 Today's targets are greybox hexagonal prisms with red neon edges, tagged with invented process names. They already die the way daemons will: a voxel derezz (C7).
 
-## Multiplayer (planned)
+## Multiplayer
 
-> **Status: Planned** (M3: C13, C14, C15). No networking code exists yet.
+> **Status: In progress** (M3). **Built:** LAN and tailnet play, host and join by address (C13). **Planned:** synced combat (C14), room codes and invite links (C15).
 
-Multiplayer has to just work: join by a 6-character room code or a `sigkill://` invite link, with no port forwarding.
+Multiplayer has to just work: join by a 6-character room code or a `sigkill://` invite link, with no port forwarding. Today it works the direct way, on your own network.
 
 ```mermaid
 flowchart LR
@@ -387,11 +387,27 @@ flowchart LR
     M -.->|"fallback relay"| B
 ```
 
-- **LAN and tailnet mode (C13):** instant play between machines on the same network, host and join by address.
+- **LAN and tailnet mode (C13), built:** instant play between machines on the same network, host and join by address. See [Built: LAN and tailnet play (C13)](#built-lan-and-tailnet-play-c13) and [Playing on a LAN or tailnet](#playing-on-a-lan-or-tailnet).
 - **Synced combat (C14):** shooting, damage, respawn and the kill feed.
 - **Room codes and invite links (C15):** peer-to-peer over the internet with NAT punch-through, plus a tiny matchmaking and relay service for "find me an opponent" and as a fallback.
 - **Built on Godot's high-level multiplayer:** ENet for direct play and WebRTC data channels for punch-through.
 - **Hosting cost is Fred's call** before anything is deployed; nothing runs on a server today.
+
+### Built: LAN and tailnet play (C13)
+
+One player hosts, another joins by the host's address, and the two see each other move. Everything that touches the network is in `scripts/net/`, and the only socket the game ever opens is the one ENet socket you ask for by hosting or joining.
+
+- **Host and join: M.** The multiplayer panel opens on M. H hosts on the tuning's UDP port, 9009, on every interface of your machine. J opens an address box: the host's IP or host name, with an optional `:port` (`<host-ip>`, `<host-ip>:9009`, `host.example`, `[<v6>]:9009`); while it is open the mouse is free and the game takes no input, Enter joins, Esc cancels. L leaves (a host sends everyone away), Esc closes the panel. The panel's keys count only while it is up, never with Ctrl, Alt or Super, and nothing else in the game uses M. A net line under the daemon count says where you stand: "net: off   M multiplayer", "net: hosting :9009   players 1/2", "net: joined   players 2/2", or the error.
+- **The handshake.** A joiner sends the game's protocol version and its shown name before anything else, as Godot's own authentication step; the host answers with its version and a verdict and only completes the connection for a match with room. Refused joiners see why: "version mismatch: host 2, you 1" or "host full", and the host's own screen says it refused one and why. A host that is not there gives "couldn't reach host" after 5 seconds (SIGKILL keeps its own clock; ENet alone would wait far longer for a closed port), "host left" when the host goes, "port 9009 is in use" when it cannot host, "not an address" at once for anything that is not one. The game never hangs: a connect in progress is cancelled by Esc, and a bad address, a closed port or a dropped peer only ever produce one of these lines.
+- **Who is in charge.** The host owns the session: the roster (ids, slots and names, "player 1", "player 2") goes from the host to every joiner on every change, and nothing travels between joiners except through the host's own code (Godot's relay is switched off). Each player owns its own movement for now; C14 revisits authority for shooting.
+- **Movement.** Twenty times a second, never per frame, each player sends its position, body yaw, view pitch and velocity: a joiner to the host, the host to everyone. The other player is a teal hexagonal prism with a mint visor and a name tag, built in code from the palette; it is drawn 100 ms behind the newest position and glides between the two positions around that moment (keeping as many positions as that delay needs), keeps going on its last velocity for at most 200 ms when positions stop coming, and never jumps. Every packet is checked before it moves anything: finite numbers, inside the world, a yaw within one turn, a possible pitch and speed, and a sequence number in range and newer but not absurdly far ahead (the first one after a reload or a rejoin sets the baseline), so one bad packet can never freeze the stream behind it. Remote players have no collision yet; shooting them is C14.
+- **Over the wire, ever:** the protocol version, slots and ids, the shown name (a placeholder, never your user or host name), positions, angles and velocities. Nothing about your AI, your settings, paths, processes or the machine. Your AI guide stays on your own machine; nothing about it is networked.
+- **Solo play is untouched.** With nobody hosting or joining, the session sits off on Godot's offline peer: no socket, nothing sent, no avatar.
+- **The arena reloads under it.** The session lives beside the arena, so R keeps the connection; the new arena picks it up and the other player's avatar comes back.
+- **Tuning.** The port, the bind address, the player cap (2), the shown name, the connect and peer timeouts, the send rate and the interpolation delay are in NetTuning, `scripts/net/net_tuning.gd` with `resources/net.tres`.
+- **Seen headless only.** Two real machines on a LAN or a tailnet have not played yet, and no window has shown the panel or an avatar; that waits for Fred's yes.
+
+The test, `tests/net_test.gd`, runs a host and joiners inside one process, each in its own branch of the tree with its own multiplayer instance and real arena, over ENet on 127.0.0.1 on ports the system hands out.
 
 ## Architecture
 
@@ -442,6 +458,11 @@ sigkill/
 │   │   ├── round_stats.gd          One round's numbers from the game's signals, under the whitelisted round keys
 │   │   ├── round_announcer.gd      The round's end: one call through the link, or SIGKILL's own line; plain text only
 │   │   └── announcer_tuning.gd     AnnouncerTuning: round and break lengths, callout pace, the 240 cap, layout, validated
+│   ├── net/
+│   │   ├── net_session.gd          The one owner of the ENet socket: host, join, the handshake, the roster, state packets
+│   │   ├── remote_player.gd        Another player's avatar: teal prism, visor, name tag, snapshot interpolation
+│   │   ├── net_hud.gd              The multiplayer panel on M: H host, J join with the address box, L leave; the net line
+│   │   └── net_tuning.gd           NetTuning: port, bind address, player cap, name, timeouts, send rate, validated
 │   ├── main.gd                 Wires targets, player, HUD and the rain driver, applies palette colours, R respawns targets
 │   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
 │   ├── controls.gd             The input map, registered in code
@@ -455,7 +476,7 @@ sigkill/
 │   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
 │   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death; self-freeing
 │   ├── code_rain_driver.gd     Feeds live enemy positions and faded weights to the code rain shader
-│   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair, hit marker, guide and round HUDs
+│   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair, hit marker, guide, round and net HUDs
 │   ├── crosshair.gd            Crosshair drawn in code; kicks on every shot
 │   ├── hit_marker.gd           Diagonal hit marker, shown only on a confirmed hit
 │   ├── cannon_fx.gd            Beam, muzzle flash and light, impact flash and sparks; all self-freeing
@@ -474,7 +495,8 @@ sigkill/
 │   ├── guide.tres              Default guide tuning, AI off
 │   ├── boot.tres               Default boot screen tuning
 │   ├── hud.tres                Default guide HUD tuning
-│   └── announcer.tres          Default round and announcer tuning
+│   ├── announcer.tres          Default round and announcer tuning
+│   └── net.tres                Default LAN and tailnet tuning
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
 │   ├── cannon_test.gd          Headless cannon test
@@ -486,6 +508,7 @@ sigkill/
 │   ├── guide_hud_test.gd       Headless guide HUD test, fakes only, input blocking checked in the real arena
 │   ├── model_load_test.gd      Headless model load test against a fake Ollama server with fake model names
 │   ├── round_test.gd           Headless round test: the real arena's round numbers, one call per round end, stub adapter only
+│   ├── net_test.gd             Headless net test: a host and joiners in one process over ENet on 127.0.0.1
 │   ├── support/guide_fakes.gd  The fake detector and stub adapter the guide tests share
 │   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for the AI tests, with a README.md
 │       └── guide/              Stub claude and codex CLIs that record how they were launched
@@ -498,7 +521,7 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Eight custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz, the code rain, the AI guide, the boot screen, the guide HUD and the rounds, each with a default instance: the player scene loads the first two, every target dummy loads the derezz tuning, the arena's rain driver loads the code rain tuning, the guide adapters load the guide tuning, and the boot screen, the guide HUD and the round HUD load their own. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
+Feel is data, not code. Nine custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz, the code rain, the AI guide, the boot screen, the guide HUD, the rounds and LAN play, each with a default instance: the player scene loads the first two, every target dummy loads the derezz tuning, the arena's rain driver loads the code rain tuning, the guide adapters load the guide tuning, the boot screen, the guide HUD and the round HUD load their own, and the net session loads its own. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
@@ -508,8 +531,9 @@ Feel is data, not code. Eight custom resources hold the exposed tuning parameter
 - **BootTuning**, `scripts/boot/boot_tuning.gd` with `resources/boot.tres`. Groups: Typing, Handshake, Readout, Handoff, Text, Colours. Typing speed and the pause between lines, the spinner's pace, the demo handshake's wait and latency, the GPU interval (never under 1 second), the wait before the arena, the title, line and hint sizes, the hint's opacity, and the title, text, prompt and warning colours.
 - **HudTuning**, `scripts/hud/hud_tuning.gd` with `resources/hud.tres`. Groups: Layout, Ask, Pacing, Demo, Colours. The margin, the panel's width and the gap under it, the badge, line and answer sizes, the panel's opacity, the ask box and answer caps (160 characters; 420 characters and 6 lines), how long answers and notices stay up, the cap of 40 AI calls per session, the spinner and GPU pace (never under 1 second), the demo answer's wait and latency, the demo model load's wait, and the badge, text, off and warning colours.
 - **AnnouncerTuning**, `scripts/round/announcer_tuning.gd` with `resources/announcer.tres`. Groups: Round, Callouts, Announcer, Layout. The round length (90 s) and the break (12 s), the shortest gap between callouts (4 s) and how long one shows, the hits-in-a-row and misses-in-a-row thresholds, the cap on the end-of-round line (240 characters, never more), and the round line, callout and summary panel sizes and placement.
+- **NetTuning**, `scripts/net/net_tuning.gd` with `resources/net.tres`. Groups: Host, Player, Timing. The UDP port (9009) and the bind address (every interface), the player cap (2), the shown name ("player"), the connect timeout (5 s) and the peer timeout (8 s), the send rate (20 a second), the interpolation delay (100 ms) and the extrapolation cap (200 ms).
 
-All eight resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero, a fade rate of zero, a guide timeout of zero, a typing speed of zero or a session cap of zero, the player, the dummy, the rain driver, the guide adapter, the boot screen, the guide HUD or the round HUD prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
+All nine resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero, a fade rate of zero, a guide timeout of zero, a typing speed of zero or a session cap of zero, the player, the dummy, the rain driver, the guide adapter, the boot screen, the guide HUD, the round HUD or the net session prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -528,6 +552,7 @@ All eight resources validate themselves on load with `problems()`. If a value wo
 11. **Guide HUD test**, `tests/guide_hud_test.gd`.
 12. **Model load test**, `tests/model_load_test.gd`.
 13. **Round test**, `tests/round_test.gd`.
+14. **Net test**, `tests/net_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -542,8 +567,9 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 - **Guide HUD test.** Fakes only. The badge for each kind of AI, latency and when tok/s shows, the GPU line and its pace, the ask box (whitelisted stats, BBCode shown as typed, escapes and control bytes stripped, the caps), fixed lines for every failure, the cooldown and the session cap on screen, the toggle and its question, the headless guard and demo mode, seeded private strings kept off every label, the layout at 1280x720 and 960x540, and in the real arena: with the box open, held keys, typed letters and a click move, jump and fire nothing, and R reloads nothing.
 - **Model load test.** A stateful fake Ollama server with fake model names, logging every request. The candidate rules (embedding models, the cap, free VRAM minus the margin, smallest first); N and Esc send nothing; Y sends one load whose body is exactly the model; one unload with keep_alive 0 at the end of the session, on O, and after a stopped load turns up; a load that never finishes times out to the scripted guide; a model loaded by now skips the question; a model loaded before the Y is never loaded or unloaded by the game; other servers never get a load call; the headless guard sends nothing even with Y pressed; demo mode stays off the network; the boot screen's hints.
 - **Round test.** Fakes only: the stub adapter with a fake clock, settings in a temporary folder. A scripted round in the real arena with the real cannon (2 shots, 1 hit, 50%, 1 process down, the first down on the round clock, a jump, a slide and the distance run) and one through the collector alone (streaks, misses, the first down); the request carries exactly the 11 round keys as numbers, with seeded names, paths and process lists dropped, and the coach or roast instruction reaches all three adapters; exactly one call per round end, none for the same round twice; no call with the AI off, a call in flight, in the cooldown, at the session cap or under the headless guard, each with SIGKILL's labelled line; a timeout and an empty answer get SIGKILL's line; a hostile answer shows as plain text under 240 characters; a late answer is stopped and dropped and the next round starts on time; a T call started after the round's call was stopped is never polled or stopped by the round; a six-line answer to T waits out the break, and the longest notice, the AI question and the ask box fit under the summary; the roast switch is off by default, saved next to the opt-in, kept by it and read back; callouts fire from game events at most once per 4 s and never call the AI; the demo panel; the layout at both sizes.
+- **Net test.** A host and joiners in this one process, each in its own branch of the tree with its own multiplayer instance and real arena (the joiner's arena 1000 m away, so the two physics worlds never touch), over ENet on 127.0.0.1 on ports the system hands out. A scan of the net module proves it starts no program, reads no file, asks the system nothing, opens no other kind of socket and decodes no objects, with Godot's relay off and exactly three RPCs; addresses parse and bad ones are refused; the hello and reply round-trip and junk parses to nothing; impossible state packets are refused. Then solo play (an off session on the offline peer, nothing sent, the player moves as before); host and join with the roster and the avatars; the host's scripted run seen by the joiner 100 ms behind, within a send interval, with no jumps, settling on the host's spot, yaw and pitch too; 20 sends a second; the joiner's run seen by the host; the joiner leaving seen by the host; a second join; the arena replaced under a live session; the host leaving seen by the joiner; a version mismatch and a full host refused with their reasons; a closed port given up on the connect timeout while the game runs on; a bad address, a cancelled connect and a busy port; a host name looked up and joined; hostile packets over the wire (a yaw of 1e300, a NaN position, an impossible speed, a far-ahead sequence number, the largest integer, zero) refused with the avatar watched every frame and the real stream still flowing; a rejoin and an arena reload with the sender's counter long past the jump bound; a 1000 ms delay still glides with the samples it needs; the joiner's socket bound to 127.0.0.1; the host's own notice of a refused join; the panel's keys in the real HUD; the layout at both sizes.
 
-Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, a boot screen with its headless guard removed (the fixtures' agent stub then runs and leaves its mark), a player that ignores the ask box's input lock (it then drifts and fires while you type), a loader that ignores what was loaded when you said Y (it then loads and unloads someone else's model), a round announcer that skips the link's gate (it then calls with the AI off, mid-call, in the cooldown, at the cap and under the headless guard), one that forgets which call is its own (it then takes T's answer and stops T's call), a guide HUD that ignores the break's hold (the panels then overlap at 960x540), and more. Each one makes `scripts/check.sh` exit 1.
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, a boot screen with its headless guard removed (the fixtures' agent stub then runs and leaves its mark), a player that ignores the ask box's input lock (it then drifts and fires while you type), a loader that ignores what was loaded when you said Y (it then loads and unloads someone else's model), a round announcer that skips the link's gate (it then calls with the AI off, mid-call, in the cooldown, at the cap and under the headless guard), one that forgets which call is its own (it then takes T's answer and stops T's call), a guide HUD that ignores the break's hold (the panels then overlap at 960x540), a net test told to expect 60 sends a second, a session that lets a yaw of 1e300 through (the avatar's rotation then goes infinite for a few frames), an avatar that accepts any newer sequence number (one far-ahead packet then freezes it 2.9 m behind), one that keeps only twelve positions (a 1000 ms delay then jumps and lags 3 m), one with no baseline for a fresh avatar (invisible after a reload), and more. Each one makes `scripts/check.sh` exit 1.
 
 ### The Codex bug run
 
@@ -600,7 +626,18 @@ godot --path . -- --demo    # demo data only: nothing read from your machine, no
 godot --path . -- --no-ai   # the boot screen without any AI link
 ```
 
-In the arena, T asks your AI anything, O turns it on or off, and B turns the roast announcer on or off.
+In the arena, T asks your AI anything, O turns it on or off, B turns the roast announcer on or off, and M opens the multiplayer panel.
+
+### Playing on a LAN or tailnet
+
+Two machines, both running SIGKILL from source, on the same network or the same tailnet.
+
+1. **The host** presses M, then H. The panel says "Hosting on port 9009".
+2. **The host shares an address** the friend can reach: the machine's LAN IP (`ip -4 addr` shows it), or on a tailnet its tailnet IP or MagicDNS name. The README calls it `<host-ip>` or `host.example`; never type a real one into the repo.
+3. **The friend** presses M, then J, types `<host-ip>` (or `<host-ip>:9009` if the host changed the port, or `host.example`), and presses Enter. Within a moment both panels show "players 2/2".
+4. Either side presses L to leave.
+
+SIGKILL uses one UDP port, 9009 by default (`resources/net.tres`), on every interface of the host's machine. **Firewall:** Omarchy ships with ufw on and incoming traffic denied, so the host allows the port once, for LAN and tailnet alike: `sudo ufw allow 9009/udp`. SIGKILL never changes your firewall itself. Only the two of you are on the wire: there is no discovery, no relay and no server of anyone's. Room codes and invite links for play across the internet are C15, not built yet.
 
 Click into the window to grab the mouse. Esc gives it back, and so does switching away from the window.
 
@@ -624,6 +661,8 @@ Bindings are registered in code in `scripts/controls.gd`, with mouse look and th
 | Y or N, when the HUD asks to load a model | Load it on your local Ollama server, or keep the AI off; Esc stops waiting for a load |
 | L, in demo mode only | Show the model-load question with a fake model and a fake load |
 | B | Turn the roast announcer on or off: at a round's end your AI roasts your play instead of coaching it. Off by default, saved for next time |
+| M | Open or close the multiplayer panel |
+| H, J, L, in the multiplayer panel | Host on port 9009; join by the host's address (a one-line box: Enter joins, Esc cancels, the game takes no input while it is open); leave |
 
 ### Running the checks
 
@@ -644,6 +683,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/boot_sequence_test
 godot --headless --path . --fixed-fps 60 --script res://tests/guide_hud_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/model_load_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/round_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/net_test.gd
 ```
 
 ## Safety and privacy
@@ -655,6 +695,7 @@ These rules apply to every chunk, from PRD section 6, in plain language:
 - **Asked first, and never in a test.** The AI is called only after you say yes, on the boot screen or with O in the arena, for that agent or server. A model is loaded on your local Ollama server only after a second, separate yes in the arena, never saved, and only with a body of exactly `{"model": "<name>"}`; SIGKILL unloads only a model it loaded itself and that was not already loaded when you said yes, on O and at the end of the session, and never touches any other model or any shared setting. Between rounds it gets only that round's numbers, at most once per round, within the same pace and session cap. Headless runs and `--no-ai` never call it, whatever was saved.
 - **One thing outside the game's own code.** The Godot engine itself, at startup, runs `xdg-user-dir DESKTOP` through `sh` and connects to the D-Bus session and system buses. It does this for any project, even an empty one (seen with strace). SIGKILL's code does neither, and this is noted for the PRD.
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
+- **One socket, yours.** The only network connection the game makes is the ENet socket you open by hosting or joining (UDP 9009 by default), to the address you typed. No discovery, no broadcast, no relay, no server of anyone's. Over it go only the protocol version, player slots and ids, a placeholder name, positions, angles and velocities: never paths, host or user names, process lists, settings or anything your AI said.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
 - **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc and the window's close button always work. A one-line content note and an opt-in come first, and saying no gives you the same opener on fake data.
 - **Original art and audio.** Today's sounds are synthesised in code, and the repository contains no audio files. Concept art is always labelled as concept art.
@@ -669,7 +710,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
 | M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls (`3ee66b1`) | ✅ Done |
 | M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence (`3184454`) · C11 guide HUD (`be2f220`) · C11b local model-load consent (`1fc87b7`) · C12 coaching and roasts (`e72c644`) | ✅ Done |
-| M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
+| M3 Multiplayer | C13 LAN and tailnet (`6a83ae0`) · C14 synced combat (next) · C15 room codes, invite links and relay | 🔧 In progress |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
 | M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
