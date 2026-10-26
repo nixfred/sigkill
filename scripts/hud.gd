@@ -61,7 +61,7 @@ func _make_label(parent: Control, font_size: int) -> Label:
 	label.add_theme_font_override("font", Palette.mono_font())
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", Palette.MINT)
-	label.add_theme_color_override("font_outline_color", Palette.BG)
+	label.add_theme_color_override("font_outline_color", Palette.VOID)
 	label.add_theme_constant_override("outline_size", 4)
 	parent.add_child(label)
 	return label

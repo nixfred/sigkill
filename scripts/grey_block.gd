@@ -35,7 +35,7 @@ func _refresh() -> void:
 	var box := BoxMesh.new()
 	box.size = size
 	_mesh_instance.mesh = box
-	_mesh_instance.material_override = Palette.surface(kind)
+	_mesh_instance.material_override = Palette.surface(kind, size)
 	var shape := BoxShape3D.new()
 	shape.size = size
 	_shape_node.shape = shape

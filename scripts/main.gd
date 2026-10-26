@@ -3,6 +3,7 @@ extends Node3D
 ## and handles "respawn all targets" (reloads the scene).
 
 const Controls = preload("res://scripts/controls.gd")
+const Palette = preload("res://scripts/palette.gd")
 
 var _remaining := 0
 var _total := 0
@@ -17,6 +18,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_apply_palette_to_environment()
 	var dummies := get_tree().get_nodes_in_group("targets")
 	_total = dummies.size()
 	_remaining = _total
@@ -24,6 +26,19 @@ func _ready() -> void:
 		dummy.connect("downed", _on_target_downed)
 	_player.shot_fired.connect(_on_shot_fired)
 	_hud.set_targets(_remaining, _total)
+
+
+## The arena scene stores approximate colours so the editor previews the look.
+## palette.gd is the single source, so the exact values are applied here at runtime.
+func _apply_palette_to_environment() -> void:
+	var world_env := find_child("WorldEnvironment", true, false) as WorldEnvironment
+	if world_env == null or world_env.environment == null:
+		push_error("main: no WorldEnvironment with an Environment found")
+		return
+	var env := world_env.environment
+	env.background_color = Palette.VOID
+	env.ambient_light_color = Palette.TEAL
+	env.fog_light_color = Palette.VOID
 
 
 func _unhandled_input(event: InputEvent) -> void:

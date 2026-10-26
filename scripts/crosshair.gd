@@ -30,7 +30,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var center := size * 0.5
 	var t := _ping / PING_SECONDS
-	var col := Palette.MINT.lerp(Color.WHITE, t)
+	var col := Palette.MINT.lerp(Palette.FLASH, t)
 	var inner := GAP + 5.0 * t
 	var outer := inner + ARM
 	draw_line(center + Vector2(inner, 0.0), center + Vector2(outer, 0.0), col, 2.0)
