@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="MovementTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/movement_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+walk_speed = 7.0
+ground_accel = 60.0
+ground_friction = 36.0
+gravity_scale = 1.5
+jump_velocity = 6.0
+air_control = 0.3
+air_drag = 0.5
+slide_min_speed = 4.5
+slide_boost = 4.5
+slide_max_speed = 12.0
+slide_friction = 10.0
+slide_end_speed = 3.5
+slide_max_duration = 0.9
+slide_cooldown = 0.5
+slide_jump_max_speed = 10.0
+slide_head_height = 0.15
+stand_head_height = 0.7
+head_height_smoothing = 14.0
+mouse_sensitivity = 0.0022
+pitch_limit_degrees = 89.0
+base_fov = 80.0
+fov_speed_kick = 6.0
+fov_full_speed = 11.0
+fov_slide_kick = 4.0
+fov_max_kick = 9.0
+fov_smoothing = 8.0
+head_bob_enabled = true
+bob_frequency = 1.8
+bob_vertical = 0.03
+bob_lateral = 0.015
+bob_lateral_ratio = 0.5
+bob_smoothing = 10.0
+fall_respawn_height = -30.0

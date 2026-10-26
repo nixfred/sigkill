@@ -4,7 +4,8 @@ extends RefCounted
 ## Actions are registered in code so every binding lives in one readable place.
 ## Physical keycodes are used, so WASD stays put on any keyboard layout.
 ## Rules: no Ctrl/Alt/Super chords anywhere (those belong to the desktop and to
-## Fred's dictation tool). Esc releases the mouse.
+## Fred's dictation tool). Esc releases the mouse. C slides, so crouch-style keys
+## never need a modifier.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -16,6 +17,7 @@ static func ensure() -> void:
 	_key("move_left", [KEY_A, KEY_LEFT])
 	_key("move_right", [KEY_D, KEY_RIGHT])
 	_key("jump", [KEY_SPACE])
+	_key("slide", [KEY_C])
 	_key("release_mouse", [KEY_ESCAPE])
 	_key("reset_arena", [KEY_R])
 	_mouse("fire", MOUSE_BUTTON_LEFT)

@@ -76,6 +76,7 @@ Bindings are registered in code in `scripts/controls.gd`, with mouse look and th
 | W / A / S / D, or the arrow keys | Move |
 | Mouse | Look |
 | Space | Jump |
+| C | Slide, when running fast on the ground. Jump during a slide to keep its speed |
 | Left click | Fire the terminal cannon (the first click only grabs the mouse) |
 | R | Respawn all targets |
 | Esc | Release the mouse |
