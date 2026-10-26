@@ -1098,11 +1098,20 @@ func _last_hardening_checks() -> void:
 	quitting.set_consent(false)
 	await _pump(quitting, func(): return not quitting.loader_idle(), 2000)
 	await _until(func(): return _has_request("/api/generate") and _seen_unload_attempt(SMALL))
+	# The background unload is hung on the fake server. A cancel must end that worker at
+	# once, keeping the unfinished release for later.
+	var hung_loader = quitting.get("_loader")
+	var t_cancel := Time.get_ticks_msec()
+	hung_loader.cancel()
+	var stopped: bool = await _pump(quitting, func(): return quitting.loader_idle(), 2000)
+	var cancel_ms := Time.get_ticks_msec() - t_cancel
+	var kept := quitting.load_pending()
+	_check("a cancel ends a background unload that hangs at once, and keeps the release pending", stopped and cancel_ms < 150 and kept, "%d ms, pending %s" % [cancel_ms, kept])
 	var t_quit := Time.get_ticks_msec()
 	quitting.shut_down(null)
 	var quit_ms := Time.get_ticks_msec() - t_quit
-	print("LOAD quit: shutting down during a hanging unload took %d ms (exit budget 600 ms)" % quit_ms)
-	_check("quitting while a background unload hangs: the job stops at the cancel, and the exit stays within its one budget", quit_ms < 900, "%d ms" % quit_ms)
+	print("LOAD quit: a cancelled hanging unload ended in %d ms; the exit unload then took %d ms (exit budget 600 ms)" % [cancel_ms, quit_ms])
+	_check("the exit unload stays within its one budget", quit_ms < 800, "%d ms" % quit_ms)
 	_server_tweak("_hang_unload_for", [])
 	_set_loaded([])
 	_seen()
