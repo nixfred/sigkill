@@ -34,24 +34,30 @@ const ACCENT_EDGE_ENERGY := 2.6
 const CRATE_EDGE_ENERGY := 1.6
 const HOSTILE_ENERGY := 3.0
 
+# Shader names under res://shaders/.
+const NEON_EDGE_SHADER := "neon_edge"
+const CODE_RAIN_SHADER := "code_rain"
+
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
 static var _mono: SystemFont
 
 
 ## Greybox surface for a block of the given size. Floors share one world-space grid material.
-## Every other kind gets its own material so the edge shader knows the block's size.
+## Every other kind gets its own material so the edge shader knows the block's size. Those
+## use the code rain shader: the neon edge look, plus Matrix rain near enemies, which
+## scripts/code_rain_driver.gd switches on. Until it does, the rain is off.
 static func surface(kind: int, size: Vector3 = Vector3.ONE) -> ShaderMaterial:
 	var mat: ShaderMaterial
 	match kind:
 		Surface.FLOOR:
 			mat = _floor_material()
 		Surface.ACCENT:
-			mat = _neon_material(size, MINT, ACCENT_EDGE_ENERGY)
+			mat = _neon_material(CODE_RAIN_SHADER, size, MINT, ACCENT_EDGE_ENERGY)
 		Surface.CRATE:
-			mat = _neon_material(size, TEAL, CRATE_EDGE_ENERGY)
+			mat = _neon_material(CODE_RAIN_SHADER, size, TEAL, CRATE_EDGE_ENERGY)
 		_:
-			mat = _neon_material(size, TEAL, WALL_EDGE_ENERGY)
+			mat = _neon_material(CODE_RAIN_SHADER, size, TEAL, WALL_EDGE_ENERGY)
 	return mat
 
 
@@ -59,7 +65,7 @@ static func surface(kind: int, size: Vector3 = Vector3.ONE) -> ShaderMaterial:
 ## radius is the circumradius of the CylinderMesh, height its full height.
 static func hostile_material(radius: float, height: float) -> ShaderMaterial:
 	var apothem := radius * 0.8660254  # regular hexagon: radius * cos(30 degrees)
-	var mat := _neon_material(Vector3(apothem * 2.0, height, 0.0), HOSTILE_RED, HOSTILE_ENERGY)
+	var mat := _neon_material(NEON_EDGE_SHADER, Vector3(apothem * 2.0, height, 0.0), HOSTILE_RED, HOSTILE_ENERGY)
 	mat.set_shader_parameter("hex_prism", true)
 	return mat
 
@@ -128,9 +134,9 @@ static func _floor_material() -> ShaderMaterial:
 	return _floor_material_cache
 
 
-static func _neon_material(size: Vector3, edge: Color, energy: float) -> ShaderMaterial:
+static func _neon_material(shader_name: String, size: Vector3, edge: Color, energy: float) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
-	mat.shader = _shader("neon_edge")
+	mat.shader = _shader(shader_name)
 	mat.set_shader_parameter("face_color", BASE)
 	mat.set_shader_parameter("edge_color", edge)
 	mat.set_shader_parameter("edge_width", EDGE_WIDTH)

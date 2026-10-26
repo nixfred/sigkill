@@ -68,7 +68,7 @@ func problems() -> PackedStringArray:
 	if falloff_radius <= 0.0:
 		out.append("falloff_radius must be above 0")
 	if min_intensity > 1.0 or max_intensity > 1.0 or min_intensity > max_intensity:
-		out.append("min_intensity and max_intensity must be between 0 and 1, min not above max")
+		out.append("min_intensity and max_intensity must be between 0 and 1, the minimum not above the maximum")
 	if max_enemies_sampled < 1 or max_enemies_sampled > MAX_ENEMIES:
 		out.append("max_enemies_sampled must be between 1 and %d" % MAX_ENEMIES)
 	if fade_in_rate <= 0.0 or fade_out_rate <= 0.0:
