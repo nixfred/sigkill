@@ -8,6 +8,7 @@ const HitMarker = preload("res://scripts/hit_marker.gd")
 const GuideHud = preload("res://scripts/hud/guide_hud.gd")
 const RoundHud = preload("res://scripts/round/round_hud.gd")
 const NetHud = preload("res://scripts/net/net_hud.gd")
+const CombatHud = preload("res://scripts/net/combat_hud.gd")
 
 const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off   M net"
 
@@ -18,6 +19,7 @@ var _hit_marker  # untyped on purpose: calls show_hit() from hit_marker.gd
 var _guide: GuideHud
 var _round: RoundHud
 var _net: NetHud
+var _combat: CombatHud
 
 
 func _ready() -> void:
@@ -67,6 +69,11 @@ func _ready() -> void:
 	_net.round_hud = _round
 	root.add_child(_net)
 
+	_combat = CombatHud.new()
+	_combat.name = "CombatHud"
+	_combat.hud = self
+	root.add_child(_combat)
+
 
 func _process(_delta: float) -> void:
 	# The break's summary panel takes the middle of the screen; a click still engages.
@@ -89,9 +96,19 @@ func set_player(player: Node) -> void:
 	_net.player = player
 
 
-## The session beside the arena, for the multiplayer panel.
+## The session beside the arena, for the multiplayer panel and the combat HUD.
 func set_net_session(session: Node) -> void:
 	_net.session = session
+	_combat.set_session(session)
+
+
+func combat_hud() -> CombatHud:
+	return _combat
+
+
+## The host confirmed a hit by this player: the C6 hit marker, nothing else.
+func confirm_hit() -> void:
+	_hit_marker.show_hit()
 
 
 func net_hud() -> NetHud:

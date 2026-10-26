@@ -23,6 +23,9 @@ const DEFAULT_WEAPON_PATH := "res://resources/terminal_cannon.tres"
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
+## Emitted with each shot's origin and direction in world space: the intent the host of a
+## LAN session validates (C14). Local effects never wait for it.
+signal fire_intent(origin: Vector3, direction: Vector3)
 ## Emitted when a jump starts, from the ground or out of a slide. Round stats count it.
 signal jumped
 ## Emitted when a slide starts. Round stats count it.
@@ -43,6 +46,9 @@ var input_blocked := false
 ## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
 ## read keyboard and mouse input as if it were captured. Never set by the game.
 var assume_captured := false
+## False while derezzed in a LAN match (C14): no movement, no fire, no cannon in view. The
+## session sets it from the host's word and clears it at the respawn.
+var alive := true
 
 var _t: Tuning
 var _w: Weapon
@@ -207,7 +213,7 @@ func _captured() -> bool:
 
 
 func _read_player_input() -> void:
-	if input_blocked or not _captured():
+	if input_blocked or not alive or not _captured():
 		_move_input = Vector2.ZERO
 		_jump_pressed = false
 		_slide_pressed = false
@@ -336,12 +342,42 @@ func _smoothing(rate: float, delta: float) -> float:
 
 
 func _respawn() -> void:
+	respawn_at(_spawn.origin)
 	global_transform = _spawn
+
+
+## Put down at `pos` with everything at rest; the view keeps its direction.
+func respawn_at(pos: Vector3) -> void:
+	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
 	_slide_cooldown_left = 0.0
 	_air_speed_cap = 0.0
 	_recoil = Vector2.ZERO
+	_fire_queued = false
+
+
+## Alive or derezzed (C14). Derezzed: no input counts and the cannon is out of view.
+func set_alive(on: bool) -> void:
+	alive = on
+	if _viewmodel != null:
+		_viewmodel.visible = on
+	if not on:
+		_move_input = Vector2.ZERO
+		_jump_pressed = false
+		_slide_pressed = false
+		_fire_pressed = false
+		_fire_queued = false
+
+
+## Where the eyes are, in world space, right now.
+func eye_position() -> Vector3:
+	return _camera.global_position
+
+
+## How far above the body's origin the eyes sit when standing.
+func eye_height() -> float:
+	return _t.stand_head_height
 
 
 func _release_mouse() -> void:
@@ -364,7 +400,7 @@ func _step_weapon(delta: float) -> void:
 	_viewmodel_kick = lerpf(_viewmodel_kick, 0.0, _smoothing(_w.viewmodel_recovery, delta))
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
-	if _fire_pressed and _cooldown_left <= 0.0:
+	if _fire_pressed and _cooldown_left <= 0.0 and alive:
 		_fire()
 		_apply_recoil()
 	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, 0.0, _w.viewmodel_kick_back * _viewmodel_kick)
@@ -401,6 +437,7 @@ func _fire() -> void:
 		hits_landed += 1
 		_hit_sfx.play()
 	shot_fired.emit(hit_target)
+	fire_intent.emit(origin, forward)
 
 
 ## Puts the recoil on the camera, clamped so aim plus recoil stays within the pitch limit.

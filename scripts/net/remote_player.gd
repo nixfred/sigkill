@@ -8,8 +8,20 @@ extends Node3D
 ## one, gliding between the two samples around that moment. When positions stop coming
 ## it keeps going on the last velocity for at most `extrapolate_max_ms`, then holds still.
 ## Hidden until the first position arrives.
+##
+## Combat (C14): a hit volume on the targets layer, which rays hit and nothing walks into
+## (players collide with the world layer only), carrying the player's id for the host's
+## raycast. die() plays the derezz effect (the dummies' own) and hides the avatar; revive()
+## brings it back at the spawn. While protected, the body's edges glow mint instead of teal.
 
 const Palette = preload("res://scripts/palette.gd")
+const DerezzFx = preload("res://scripts/derezz_fx.gd")
+const DerezzTuning = preload("res://scripts/derezz_tuning.gd")
+const DEREZZ_PATH := "res://resources/derezz.tres"
+## The targets physics layer (3), the dummies' layer: hit by the cannon, walked through.
+const HIT_LAYER := 4
+const HIT_RADIUS := 0.4
+const HIT_HEIGHT := 1.8
 
 const BODY_RADIUS := 0.4
 const BODY_HEIGHT := 1.5
@@ -30,12 +42,27 @@ const SEQ_JUMP_LAST := 10000
 const SEQ_LAST := 2147483647
 ## A sample's shape: {t, pos, yaw, pitch, vel}.
 
-## Shown above the body.
+## The id the host knows this player by; the hit volume carries it for the raycast.
+var player_id := 0:
+	set(value):
+		player_id = value
+		if _hit != null:
+			_hit.set_meta("player_id", value)
+## Shown above the body, with the health.
 var player_name := "player":
 	set(value):
 		player_name = value
-		if _tag != null:
-			_tag.text = value
+		_retag()
+var health := 100.0:
+	set(value):
+		health = value
+		_retag()
+var dead := false
+var protected := false:
+	set(value):
+		protected = value
+		if _body != null:
+			(_body.material_override as ShaderMaterial).set_shader_parameter("edge_color", Palette.MINT if value else Palette.TEAL)
 ## Seconds the avatar is drawn behind the newest sample.
 var interp_delay_s := 0.1
 ## Longest it moves on its last velocity with no new sample.
@@ -52,6 +79,8 @@ var _body: MeshInstance3D
 var _head: Node3D
 var _visor: MeshInstance3D
 var _tag: Label3D
+var _hit: StaticBody3D
+var _hit_shape: CollisionShape3D
 
 
 func _ready() -> void:
@@ -91,6 +120,19 @@ func _ready() -> void:
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tag.position.y = TAG_HEIGHT
 	add_child(_tag)
+	_retag()
+	_hit = StaticBody3D.new()
+	_hit.name = "Hit"
+	_hit.collision_layer = HIT_LAYER
+	_hit.collision_mask = 0
+	_hit.set_meta("player_id", player_id)
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = HIT_RADIUS
+	capsule.height = HIT_HEIGHT
+	_hit_shape = CollisionShape3D.new()
+	_hit_shape.shape = capsule
+	_hit.add_child(_hit_shape)
+	add_child(_hit)
 	visible = false
 
 
@@ -141,6 +183,63 @@ func _apply(pos: Vector3, yaw: float, pitch: float) -> void:
 
 func view_pitch() -> float:
 	return _head.rotation.x
+
+
+## The newest received position, or where the avatar stands.
+func latest_position() -> Vector3:
+	return samples[-1]["pos"] if not samples.is_empty() else position
+
+
+func hit_rid() -> RID:
+	return _hit.get_rid()
+
+
+## Down: the derezz plays where the body stood, pushed along the killing shot, and the
+## avatar hides until revive(). The effect lives beside the avatar, so it outlives nothing
+## it should not.
+func die(shot_dir: Vector3) -> void:
+	if dead:
+		return
+	dead = true
+	_body.visible = false
+	_head.visible = false
+	_tag.visible = false
+	_hit_shape.set_deferred("disabled", true)
+	var d = load(DEREZZ_PATH)
+	if not (d is DerezzTuning) or not d.problems().is_empty():
+		d = DerezzTuning.new()
+	var fx := DerezzFx.new()
+	get_parent().add_child(fx)
+	var along := Vector3(shot_dir.x, 0.0, shot_dir.z)
+	fx.start(global_position + Vector3(0.0, -FEET, 0.0), BODY_RADIUS, BODY_HEIGHT, along.normalized() if not along.is_zero_approx() else Vector3.FORWARD, d)
+
+
+## Down as far as this side knows, with no shot to show: hidden, no effect.
+func hide_dead() -> void:
+	if dead:
+		return
+	dead = true
+	_body.visible = false
+	_head.visible = false
+	_tag.visible = false
+	_hit_shape.set_deferred("disabled", true)
+
+
+## Back at `pos`: shown, hittable, with no stale positions to glide from.
+func revive(pos: Vector3) -> void:
+	dead = false
+	samples.clear()
+	_apply(pos, rotation.y, 0.0)
+	_body.visible = true
+	_head.visible = true
+	_tag.visible = true
+	_hit_shape.set_deferred("disabled", false)
+	visible = true
+
+
+func _retag() -> void:
+	if _tag != null:
+		_tag.text = "%s  %d" % [player_name, roundi(health)]
 
 
 ## Drops samples older than the one just before the drawn moment, and bounds the buffer.

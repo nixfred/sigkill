@@ -212,8 +212,8 @@ func _source_checks() -> void:
 	var session := _code("res://scripts/net/net_session.gd")
 	_check("its only sockets are the one ENet peer a host or a joiner makes and the port probes that bind and close at once", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 2 and session.count("probe.bind(") == 2 and session.count("probe.close()") == 2 and session.count("create_server(") == 1 and session.count("create_client(") == 1 and all.count("create_server(") == 1 and all.count("create_client(") == 1)
 	_check("Godot's relay stays off and objects are never decoded: nothing moves between players without the host's code", session.contains("m.server_relay = false") and session.contains("m.allow_object_decoding = false"))
-	_check("three RPCs, all with numbers, names and ids only: the roster from the host, state to the host, state from the host", session.count("@rpc(") == 3 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray)') and session.contains('@rpc("any_peer", "call_remote", "unreliable_ordered")\nfunc _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)') and session.contains('@rpc("authority", "call_remote", "unreliable_ordered")\nfunc _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)'))
-	_check("what is sent about a player is its position, body yaw, view pitch and velocity, read from the player node and nothing else", session.contains("var pos: Vector3 = _player.position") and session.contains("var yaw: float = _player.rotation.y") and session.contains("_player.view_pitch()") and session.contains("_player.velocity") and session.count(".rpc_id(") == 4 and session.count(".rpc(") == 0)
+	_check("seven RPCs, all with numbers, names and ids only: the roster from the host, state to the host, state from the host, and the combat four (C14)", session.count("@rpc(") == 7 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray)') and session.contains('@rpc("any_peer", "call_remote", "unreliable_ordered")\nfunc _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)') and session.contains('@rpc("authority", "call_remote", "unreliable_ordered")\nfunc _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)'))
+	_check("what is sent about a player is its position, body yaw, view pitch and velocity, read from the player node and nothing else", session.contains("var pos: Vector3 = _player.position") and session.contains("var yaw: float = _player.rotation.y") and session.contains("_player.view_pitch()") and session.contains("_player.velocity") and session.count(".rpc_id(") == 8 and session.count(".rpc(") == 0)
 	var keys := FileAccess.get_file_as_string("res://scripts/controls.gd")
 	var users := PackedStringArray()
 	for action in InputMap.get_actions():
@@ -244,21 +244,21 @@ func _helper_checks() -> void:
 	_check("addresses: ip, ip:port, name, name:port, bare v6, [v6]:port parse; spaces, bad ports, bad names and anything else are refused", wrong.is_empty(), "; ".join(wrong))
 	var hello := Session.hello_bytes(7, "player")
 	var parsed := Session.parse_hello(hello)
-	var reply := Session.reply_bytes(7, Session.Verdict.OK, 2, "player 2")
+	var reply := Session.reply_bytes(7, Session.Verdict.OK, 2, "Daemon-2")
 	var rparsed := Session.parse_reply(reply)
-	_check("the hello and the reply round-trip: version, name, verdict, slot", hello.size() == 11 and parsed == {"version": 7, "name": "player"} and rparsed == {"version": 7, "verdict": Session.Verdict.OK, "slot": 2, "name": "player 2"} and Session.parse_reply(Session.reply_bytes(7, Session.Verdict.FULL, 0, "")) == {"version": 7, "verdict": Session.Verdict.FULL, "slot": 0, "name": ""})
+	_check("the hello and the reply round-trip: version, name, verdict, slot", hello.size() == 11 and parsed == {"version": 7, "name": "player"} and rparsed == {"version": 7, "verdict": Session.Verdict.OK, "slot": 2, "name": "Daemon-2"} and Session.parse_reply(Session.reply_bytes(7, Session.Verdict.FULL, 0, "")) == {"version": 7, "verdict": Session.Verdict.FULL, "slot": 0, "name": ""})
 	var junk := PackedStringArray()
 	for data in [PackedByteArray(), PackedByteArray([0x53]), PackedByteArray([0x58, 0x4B, 0, 1, 0]), PackedByteArray([0x53, 0x4B, 0, 1, 3, 0x61]), PackedByteArray([0x53, 0x4B, 0, 1, 0, 0x61]), "SK garbage of some length".to_ascii_buffer()]:
 		if not Session.parse_hello(data).is_empty():
 			junk.append("hello " + str(data))
 		if not Session.parse_reply(data).is_empty():
 			junk.append("reply " + str(data))
-	var ok_no_slot := Session.reply_bytes(1, Session.Verdict.OK, 0, "player 2")
+	var ok_no_slot := Session.reply_bytes(1, Session.Verdict.OK, 0, "Daemon-2")
 	var ok_bad_name := Session.reply_bytes(1, Session.Verdict.OK, 2, "")
 	var ctrl_name := Session.hello_bytes(1, "x")
 	ctrl_name.set(5, 0x07)
 	_check("junk, short, wrong-magic and wrong-length packets parse to nothing; an ok reply needs a slot and a shown name; a name with a control byte becomes the placeholder", junk.is_empty() and Session.parse_reply(ok_no_slot).is_empty() and Session.parse_reply(ok_bad_name).is_empty() and Session.parse_hello(ctrl_name) == {"version": 1, "name": "player"}, ", ".join(junk))
-	_check("names: a shown name is kept, the placeholder or a name the game cannot show becomes player <slot>", Session.assigned_name("spike", 2) == "spike" and Session.assigned_name("player", 2) == "player 2" and Session.assigned_name("", 1) == "player 1" and Session.assigned_name("x".repeat(40), 3) == "player 3" and Session.assigned_name("aéb", 2) == "player 2")
+	_check("names: a shown name is kept, the placeholder or a name the game cannot show becomes Daemon-<slot>", Session.assigned_name("spike", 2) == "spike" and Session.assigned_name("player", 2) == "Daemon-2" and Session.assigned_name("", 1) == "Daemon-1" and Session.assigned_name("x".repeat(40), 3) == "Daemon-3" and Session.assigned_name("a" + char(0xE9) + "b", 2) == "Daemon-2")
 	_check("sequence numbers: 1 up to 2^31 - 1 count, 0, negatives and 2^63 - 1 do not; a first sample sets the baseline whatever its number, then only newer and at most 10000 ahead", Session.seq_sane(1) and Session.seq_sane(2147483646) and not Session.seq_sane(0) and not Session.seq_sane(-1) and not Session.seq_sane(2147483647) and not Session.seq_sane(9223372036854775807) and RemotePlayer.seq_ok(15000, -1) and RemotePlayer.seq_ok(5, 4) and not RemotePlayer.seq_ok(4, 4) and not RemotePlayer.seq_ok(20000, 4) and not RemotePlayer.seq_ok(9223372036854775807, -1) and not RemotePlayer.seq_ok(9223372036854775807, 5))
 	var v := Vector3(1, 2, 3)
 	_check("state packets with NaN, infinity, a position beyond the world, a yaw past a full turn, a pitch past straight up or an impossible speed are refused", Session.sane(v, 0.5, -0.5, v) and Session.sane(v, -TAU, PI * 0.5, v) and not Session.sane(Vector3(NAN, 0, 0), 0.0, 0.0, v) and not Session.sane(v, INF, 0.0, v) and not Session.sane(v, 1e300, 0.0, v) and not Session.sane(v, 7.0, 0.0, v) and not Session.sane(v, 0.0, 2.0, v) and not Session.sane(Vector3(20000, 0, 0), 0.0, 0.0, v) and not Session.sane(v, 0.0, 0.0, Vector3(500, 0, 0)))
@@ -301,7 +301,7 @@ func _session_checks() -> void:
 	await _frames(2)
 	var hosted: bool = host["session"].host(0)
 	var port: int = host["session"].listen_port()
-	_check("host(0) opens a port the system hands out on 127.0.0.1 and lists player 1", hosted and port > 0 and host["session"].state == Session.State.HOSTING and host["session"].players == {1: {"slot": 1, "name": "player 1"}}, "port %d" % port)
+	_check("host(0) opens a port the system hands out on 127.0.0.1 and lists Daemon-1", hosted and port > 0 and host["session"].state == Session.State.HOSTING and host["session"].players == {1: {"slot": 1, "name": "Daemon-1"}}, "port %d" % port)
 	var t0 := Time.get_ticks_msec()
 	var started: bool = client["session"].join("127.0.0.1:%d" % port)
 	var joined := await _joined(host, client)
@@ -312,8 +312,8 @@ func _session_checks() -> void:
 	print("NET join: joined %s in %d ms real; host players %s; joiner players %s" % [joined, took, hs.players, cs.players])
 	var client_enet = cs.get("_enet")
 	_check("the joiner's socket is bound to the tuning's bind address, 127.0.0.1, on a port the system handed out for it", client_enet != null and cs.get("_local_port") > 0 and client_enet.host.get_local_port() == cs.get("_local_port"), "local port %d, bound %d" % [cs.get("_local_port"), client_enet.host.get_local_port() if client_enet != null else -1])
-	_check("the joiner connects, passes the handshake and both sides agree on the roster: player 1 (host) and player 2", started and joined and client_id != 1 and hs.players.has(client_id) and hs.players[client_id] == {"slot": 2, "name": "player 2"} and cs.players == hs.players and cs.my_name() == "player 2" and hs.roster_text() == "player 1 (you), player 2" and cs.roster_text() == "player 1, player 2 (you)")
-	_check("each side shows the other's avatar, named, under the arena's Players node, hidden until it moves", _avatar(host, client_id) is RemotePlayer and _avatar(client, 1) is RemotePlayer and _avatar(client, 1).player_name == "player 1" and _avatar(host, client_id).player_name == "player 2" and _avatar(client, 1).get_parent() == client["main"].get_node("Players"))
+	_check("the joiner connects, passes the handshake and both sides agree on the roster: Daemon-1 (host) and Daemon-2", started and joined and client_id != 1 and hs.players.has(client_id) and hs.players[client_id] == {"slot": 2, "name": "Daemon-2"} and cs.players == hs.players and cs.my_name() == "Daemon-2" and hs.roster_text() == "Daemon-1 (you), Daemon-2" and cs.roster_text() == "Daemon-1, Daemon-2 (you)")
+	_check("each side shows the other's avatar, named, under the arena's Players node, hidden until it moves", _avatar(host, client_id) is RemotePlayer and _avatar(client, 1) is RemotePlayer and _avatar(client, 1).player_name == "Daemon-1" and _avatar(host, client_id).player_name == "Daemon-2" and _avatar(client, 1).get_parent() == client["main"].get_node("Players"))
 	# The host's player runs forward; the joiner's avatar of it follows, smoothly, behind.
 	var hp = host["player"]
 	var avatar: RemotePlayer = _avatar(client, 1)
@@ -420,7 +420,7 @@ func _session_checks() -> void:
 	# The joiner leaves: the host sees it at once.
 	cs.leave()
 	var seen := await _until(func(): return hs.players.size() == 1 and hs.avatars.is_empty())
-	_check("the joiner leaving is seen by the host: the roster shrinks to player 1, its avatar is gone, the host keeps hosting", seen and cs.state == Session.State.OFF and hs.state == Session.State.HOSTING and not is_instance_valid(back) or (seen and back.is_queued_for_deletion()), "host players %s" % hs.players)
+	_check("the joiner leaving is seen by the host: the roster shrinks to Daemon-1, its avatar is gone, the host keeps hosting", seen and cs.state == Session.State.OFF and hs.state == Session.State.HOSTING and not is_instance_valid(back) or (seen and back.is_queued_for_deletion()), "host players %s" % hs.players)
 	await _frames(2)
 	# A second join after leaving, with both counters high: the joiner's own starts over, the
 	# host's is taken as the baseline.
@@ -430,7 +430,7 @@ func _session_checks() -> void:
 	var again := await _joined(host, client)
 	var again_avatar: RemotePlayer = _avatar(client, 1)
 	var seen_again := await _until(func(): return again_avatar != null and again_avatar.visible and _avatar(host, cs.my_id) != null and _avatar(host, cs.my_id).visible)
-	_check("the same joiner can join again after leaving, as player 2 once more, and both avatars show despite the old counters", again and cs.my_name() == "player 2" and seen_again and cs.get("_seq") < 1000 and again_avatar.get("_last_seq") > 30000, "joiner seq %d, host avatar last %d" % [cs.get("_seq"), again_avatar.get("_last_seq") if again_avatar != null else -1])
+	_check("the same joiner can join again after leaving, as Daemon-2 once more, and both avatars show despite the old counters", again and cs.my_name() == "Daemon-2" and seen_again and cs.get("_seq") < 1000 and again_avatar.get("_last_seq") > 30000, "joiner seq %d, host avatar last %d" % [cs.get("_seq"), again_avatar.get("_last_seq") if again_avatar != null else -1])
 	# The joiner's arena is replaced (what R does): the session stays, the avatar comes back,
 	# even with the host's counter long past the jump bound.
 	hs.set("_seq", 50000)
@@ -548,7 +548,7 @@ func _hud_checks() -> void:
 	await _frames(2)
 	var port: int = host["session"].listen_port()
 	print("NET HUD host panel:\n", hh.panel_text())
-	_check("M opens the panel; Ctrl+H does nothing; H hosts on the tuning's port, and the panel and the net line say so", opened and ctrl_ignored and host["session"].state == Session.State.HOSTING and port == tuning.port and hh.panel_text().begins_with("multiplayer\nHosting on port %d." % port) and hh.panel_text().contains("players 1/2: player 1 (you)") and hh.panel_text().ends_with(NetHud.HOST_KEYS) and hh.line_text() == NetHud.NET_HOSTING % [port, 1, 2], hh.panel_text().c_escape())
+	_check("M opens the panel; Ctrl+H does nothing; H hosts on the tuning's port, and the panel and the net line say so", opened and ctrl_ignored and host["session"].state == Session.State.HOSTING and port == tuning.port and hh.panel_text().begins_with("multiplayer\nHosting on port %d." % port) and hh.panel_text().contains("players 1/2: Daemon-1 (you)") and hh.panel_text().ends_with(NetHud.HOST_KEYS) and hh.line_text() == NetHud.NET_HOSTING % [port, 1, 2], hh.panel_text().c_escape())
 	_check("the round summary waits while the panel is up", host["hud"].round_hud().hold_summary)
 	await _key(KEY_ESCAPE)
 	_check("Esc closes the panel and the summary may show again", not hh.is_open() and not host["hud"].round_hud().hold_summary and host["session"].state == Session.State.HOSTING)
@@ -575,7 +575,7 @@ func _hud_checks() -> void:
 	await _frames(2)
 	print("NET HUD joiner panel:\n", ch.panel_text())
 	_check("J opens the address box: the mouse is free, the player takes no input, T, O and B are just letters in it; Enter joins", box_open and letters == "tob" and guide_quiet and client["hud"].guide().session_link().roast_on() == roast_before and typed == "127.0.0.1:%d" % port and joined and not ch.is_typing() and not cp.input_blocked and not guide.other_box_open and ch.is_open(), "box %s letters '%s' quiet %s typed '%s' joined %s" % [box_open, letters, guide_quiet, typed, joined])
-	_check("the joiner's panel and both net lines show the session", ch.panel_text().contains("Joined 127.0.0.1:%d.\nplayers 2/2: player 1, player 2 (you)" % port) and ch.panel_text().ends_with(NetHud.JOINED_KEYS) and ch.line_text() == NetHud.NET_JOINED % [2, 2] and hh.line_text() == NetHud.NET_HOSTING % [port, 2, 2], ch.panel_text().c_escape())
+	_check("the joiner's panel and both net lines show the session", ch.panel_text().contains("Joined 127.0.0.1:%d.\nplayers 2/2: Daemon-1, Daemon-2 (you)" % port) and ch.panel_text().ends_with(NetHud.JOINED_KEYS) and ch.line_text() == NetHud.NET_JOINED % [2, 2] and hh.line_text() == NetHud.NET_HOSTING % [port, 2, 2], ch.panel_text().c_escape())
 	await _key(KEY_L, 0x6C)
 	var left := await _until(func(): return host["session"].players.size() == 1)
 	await _frames(2)

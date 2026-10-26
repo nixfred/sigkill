@@ -12,7 +12,7 @@ extends Resource
 ## Hitscan reach, in metres.
 @export var fire_range: float = 120.0
 ## Damage per hit. Target dummies have 1 health.
-@export var damage: float = 1.0
+@export var damage: float = 25.0
 ## Physics layers the shot can hit: world and targets.
 @export_flags_3d_physics var hit_mask: int = 5
 

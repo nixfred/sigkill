@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CombatTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/net/combat_tuning.gd" id="1_combat"]
+
+[resource]
+script = ExtResource("1_combat")
+max_health = 100.0
+respawn_delay_s = 3.0
+spawn_protection_s = 2.0
+fire_rate_tolerance = 0.25
+origin_tolerance_m = 1.5
+kill_feed_length = 4
+kill_feed_fade_s = 6.0
+damage_flash_s = 0.25
