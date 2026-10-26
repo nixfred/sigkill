@@ -70,6 +70,9 @@ var choose_failed := false
 var last_call := {}
 ## Calls this session that reached the adapter.
 var calls := 0
+## True once a local server said it has nothing loaded, until a later call is answered:
+## "available, not loaded". Nothing is ever loaded.
+var not_loaded := false
 ## GPU readings started this session.
 var gpu_reads := 0
 
@@ -82,6 +85,10 @@ var _gpu_reading := {}
 var _gpu_wait_ms := 0.0
 var _demo_ticks := 0
 var _demo_on := true
+## The opt-in answer for the adapter, read from the settings file once and kept in step
+## with set_consent(), so a caller asking every frame never touches the disk.
+var _consent_known := false
+var _consent: Settings.Answer = Settings.Answer.NOT_ASKED
 
 
 func _init() -> void:
@@ -202,7 +209,10 @@ func consent() -> Settings.Answer:
 		return Settings.Answer.ALLOWED if _demo_on else Settings.Answer.DECLINED
 	if adapter == null:
 		return Settings.Answer.NOT_ASKED
-	return Settings.answer_for(adapter.source_name(), settings_path)
+	if not _consent_known:
+		_consent = Settings.answer_for(adapter.source_name(), settings_path)
+		_consent_known = true
+	return _consent
 
 
 ## True when a call may be made: an adapter and the player's yes for it (demo: its switch).
@@ -221,6 +231,10 @@ func set_consent(allowed: bool) -> bool:
 	if not allowed:
 		cancel_call()
 		guide_tuning.ai_enabled = false
+	# The answer counts for this session even if it cannot be saved; then it is asked again
+	# next time.
+	_consent = Settings.Answer.ALLOWED if allowed else Settings.Answer.DECLINED
+	_consent_known = true
 	return Settings.save(adapter.source_name(), allowed, settings_path)
 
 
@@ -268,6 +282,10 @@ func poll_call() -> Dictionary:
 			"latency_ms": int(done.get("latency_ms", -1)),
 			"tokens_per_sec": float(done.get("tokens_per_sec", -1.0)),
 		}
+		if last_call["ok"]:
+			not_loaded = false
+		elif last_call["error_kind"] == "needs_consent":
+			not_loaded = true
 	return done
 
 

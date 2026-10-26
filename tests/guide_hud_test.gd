@@ -484,12 +484,43 @@ func _failure_checks() -> void:
 	_check("a stub that never answers: the spinner runs, then the guide timeout gives the fixed line, never a hang", spun and done and hung.panel_text().contains("(timeout)") and waited >= 1000 and waited < WATCHDOG_MS, "%d ms" % waited)
 	await _drop(hung)
 	Settings.save("ollama", true, _tmp.path_join("fail-local.cfg"))
-	var empty := _hud(_link(_fake(_found(Found.AgentState.UNSET, "", false, 1)), {"name": "local", "kind": "ollama", "mode": "needs_consent"}, "fail-local.cfg"))
+	var empty_holder := {}
+	var empty := _hud(_link(_fake(_found(Found.AgentState.UNSET, "", false, 1)), {"name": "local", "kind": "ollama", "mode": "needs_consent"}, "fail-local.cfg", empty_holder))
 	await _ready_hud(empty)
 	await _ask(empty, "help")
 	await _answered(empty)
 	_check("a local server with nothing loaded says so and loads nothing", empty.panel_text() == "SIGKILL\n" + GuideHud.NOT_LOADED_LINE)
+	_fake_now += 60000
+	await _until(func(): return empty.panel_text() == "")
+	await process_frame
+	_check("\"available, not loaded\" stays on the status line after the panel is gone", empty.panel_text() == "" and empty.status_text() == GuideHud.NOT_LOADED_LINE and empty.badge_text() == "your AI: local", empty.status_text())
+	empty_holder["stub"].mode = "ok"
+	await _ask(empty, "again")
+	await _answered(empty)
+	_check("T checks again, and once a model answers the line goes", empty.status_text() != GuideHud.NOT_LOADED_LINE and empty.panel_text().begins_with("your AI (local) says:"), empty.status_text())
 	await _drop(empty)
+	# The boot handshake's "not loaded" carries into the arena on the same link.
+	var carried := _link(_fake(_found(Found.AgentState.UNSET, "", false, 1)), {"name": "local", "kind": "ollama"}, "fail-local.cfg")
+	carried.not_loaded = true
+	var shown := _hud(carried)
+	await _ready_hud(shown)
+	await process_frame
+	_check("a not-loaded answer from the boot handshake shows in the arena", shown.status_text() == GuideHud.NOT_LOADED_LINE)
+	await _drop(shown)
+	# A save that fails still holds for the session: off stays off, on stays on.
+	var unsaved := Link.new()
+	unsaved.detector = _fake(_found(Found.AgentState.KNOWN, "claude", true))
+	unsaved.settings_path = "not-a-usable-path.cfg"
+	unsaved.adapter_factory = func(_f, _d, guide_tuning: Resource): return Fakes.StubAdapter.new(guide_tuning)
+	unsaved.start()
+	await _until(func():
+		unsaved.poll(16.0)
+		return unsaved.is_ready())
+	var saved_on := unsaved.set_consent(true)
+	var on_now := unsaved.ai_on()
+	var saved_off := unsaved.set_consent(false)
+	_check("an answer that cannot be saved still holds for the session: on, then off", not saved_on and on_now and not saved_off and not unsaved.ai_on() and unsaved.ask(Request.build({}, "x", 10))["error_kind"] == "ai_off")
+	unsaved.shut_down(null)
 
 
 func _rate_checks() -> void:
@@ -542,6 +573,9 @@ func _toggle_checks() -> void:
 	_check("Ctrl+Y does not answer the question", hud.is_asking_consent() and Settings.answer_for("claude", path) == Settings.Answer.DECLINED)
 	await _key(KEY_N)
 	_check("N keeps it off", not hud.is_asking_consent() and hud.badge_text() == "AI off" and Settings.answer_for("claude", path) == Settings.Answer.DECLINED)
+	await _key(KEY_O)
+	await _key(KEY_ESCAPE)
+	_check("Esc dismisses the question: it stays off, nothing saved", not hud.is_asking_consent() and hud.badge_text() == "AI off" and hud.panel_text() == "SIGKILL\nAI stays off." and Settings.answer_for("claude", path) == Settings.Answer.DECLINED)
 	await _key(KEY_O)
 	await _key(KEY_Y)
 	_check("Y turns it on: saved, badge back to the agent", hud.badge_text() == "your AI: claude" and Settings.answer_for("claude", path) == Settings.Answer.ALLOWED)
@@ -673,11 +707,14 @@ func _layout_checks() -> void:
 		for i in 3:
 			await process_frame
 		var answer_out := _outside(main)
+		_fake_now += 60000  # past the cooldown, so T really opens the box
+		await process_frame
 		await _key(KEY_T)
 		for i in 3:
 			await process_frame
 		var typing_out := _outside(main)
-		_check("at %dx%d every HUD label sits inside the screen, with a long answer and with the ask box open" % [size.x, size.y], answer_out[0] >= 6 and answer_out[1].is_empty() and typing_out[0] >= 6 and typing_out[1].is_empty(), "%s | %s" % [", ".join(answer_out[1]), ", ".join(typing_out[1])])
+		var box_shown: bool = hud.is_typing() and typing_out[2]
+		_check("at %dx%d every HUD label sits inside the screen, with a long answer and with the ask box open" % [size.x, size.y], answer_out[0] >= 6 and answer_out[1].is_empty() and box_shown and typing_out[0] >= 6 and typing_out[1].is_empty(), "box %s; %s | %s" % [box_shown, ", ".join(answer_out[1]), ", ".join(typing_out[1])])
 		await _key(KEY_ESCAPE)
 		main.free()
 		Link.take_parked()
@@ -688,6 +725,7 @@ func _layout_checks() -> void:
 func _outside(main: Node) -> Array:
 	var screen := Rect2(Vector2.ZERO, Vector2(root.size))
 	var shown := 0
+	var box := false
 	var outside := PackedStringArray()
 	for control in main.find_children("*", "Control", true, false):
 		if not (control is Label or control is LineEdit) or not control.is_visible_in_tree():
@@ -695,9 +733,10 @@ func _outside(main: Node) -> Array:
 		if control is Label and control.text.is_empty():
 			continue
 		shown += 1
+		box = box or control is LineEdit
 		if not screen.encloses(control.get_global_rect()):
 			outside.append("%s %s" % [(control.text if control is Label else "ask box").left(20), control.get_global_rect()])
-	return [shown, outside]
+	return [shown, outside, box]
 
 
 func _arena_checks() -> void:

@@ -157,6 +157,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key.keycode == KEY_Y or key.keycode == KEY_N:
 			get_viewport().set_input_as_handled()
 			_answer_consent(key.keycode == KEY_Y)
+		elif key.keycode == KEY_ESCAPE:
+			_consent_prompt = false  # not handled: Esc still frees the mouse as usual
+			_notice("AI stays off.", _t.off_color)
 		return
 	if event.is_action_pressed("ask_ai", false, true):
 		get_viewport().set_input_as_handled()
@@ -523,6 +526,8 @@ func _refresh() -> void:
 		_status.text = CONSENT_KEYS
 	else:
 		var reason := _refusal()
+		if reason == "" and _link.not_loaded:
+			reason = NOT_LOADED_LINE  # stays up until a later call is answered; T checks again
 		_status.text = KEYS_LINE if reason == "" else reason
 	_panel.visible = _typing or _consent_prompt or _answer_ms_left > 0.0 or _notice_ms_left > 0.0
 
