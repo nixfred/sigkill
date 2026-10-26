@@ -244,12 +244,19 @@ func _safety_checks() -> void:
 	_check("the local adapter never loads, pulls, deletes, generates or unloads, never lists with /v1/models, and never sends num_ctx, options or keep_alive", local_bad.is_empty(), ", ".join(local_bad))
 	_check("its one socket connects only to the constant 127.0.0.1", local.count("connect_to_host(") == 1 and local.contains("connect_to_host(Detector.LOCALHOST, port)"))
 	var users := PackedStringArray()
-	for dir in ["res://scripts", "res://scenes"]:
+	var dirs := ["res://scripts", "res://scenes"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		if dir == "res://scripts/ai":
+			continue
+		for sub in DirAccess.get_directories_at(dir):
+			dirs.append(dir.path_join(sub))
 		for file in DirAccess.get_files_at(dir):
 			var text := FileAccess.get_file_as_string(dir.path_join(file))
 			if (file.ends_with(".gd") or file.ends_with(".tscn")) and file != "guide_tuning.gd" and (text.contains("scripts/ai/") or text.contains("guide_tuning")):
-				users.append(file)
-	_check("nothing outside scripts/ai uses the guide yet: it is not wired into any scene", users.is_empty(), ", ".join(users))
+				users.append(dir.path_join(file))
+	users.sort()
+	_check("outside scripts/ai only the boot screen (C10) uses the guide", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd"], ", ".join(users))
 
 
 func _tuning_checks() -> void:

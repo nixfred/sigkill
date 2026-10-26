@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BootTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/boot/boot_tuning.gd" id="1_boot"]
+
+[resource]
+script = ExtResource("1_boot")
+chars_per_second = 90.0
+line_pause_ms = 180
+spinner_frame_ms = 90
+answer_max_chars = 72
+demo_link_ms = 900
+demo_latency_ms = 842
+gpu_interval_ms = 1000
+auto_continue_ms = 1600
+title_font_size = 30
+line_font_size = 20
+hint_font_size = 14
+hint_alpha = 0.7
+title_color = Color(0.098039216, 0.82745098, 0.77254902, 1)
+text_color = Color(0.490196078, 1.0, 0.811764706, 1)
+prompt_color = Color(1.0, 0.690196078, 0.0, 1)
+warn_color = Color(1.0, 0.2, 0.333333333, 1)

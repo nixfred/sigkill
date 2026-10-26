@@ -8,7 +8,7 @@ config_version=5
 
 config/name="SIGKILL"
 config/description="Native first-person shooter for Omarchy. Hunt rogue daemons in a terminal arena."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0, 0, 0, 1)

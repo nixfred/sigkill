@@ -357,7 +357,8 @@ func _safety_checks() -> void:
 			continue
 		if FileAccess.get_file_as_string(file).contains("scripts/ai/"):
 			users.append(file)
-	_check("nothing outside scripts/ai uses the detector yet: it is not wired into any scene", users.is_empty(), ", ".join(users))
+	users.sort()
+	_check("outside scripts/ai only the boot screen (C10) uses the detector", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd"], ", ".join(users))
 
 
 func _http(head: String, body: PackedByteArray) -> PackedByteArray:
