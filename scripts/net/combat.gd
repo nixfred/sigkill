@@ -7,20 +7,21 @@ extends RefCounted
 ## outcome here. A joiner never has one: it only displays what the host sends.
 ##
 ## A shot is dropped, counted and never answered when: the shooter is not a player, is
-## dead, repeats or skips too far in its own shot numbering, names a weapon it does not
-## hold, sends a direction that is not a unit vector or an origin that is not finite, fires
-## that weapon sooner than its fire interval allows, switches weapons between two shots
-## sooner than the swap time allows (both less a tolerance for jitter), fires an empty
-## magazine, or claims an origin farther from the host's view of its eye than the tolerance.
+## dead, repeats or skips too far in its own shot numbering, names a weapon other than the
+## one it holds, sends a direction that is not a unit vector or an origin that is not
+## finite, fires before the weapon it drew is ready, while it reloads, sooner than the
+## weapon's fire interval allows, from an empty magazine, or claims an origin farther from
+## the host's view of its eye than the tolerance.
 ##
-## Weapons (C16): every player holds the arsenal's loadout, so "holds" means the weapon is
-## in it. The host keeps each player's magazine and reserve per weapon and counts a round
-## off for every shot it believes. No reload message is trusted or needed: a weapon that
-## has rested for its reload time (less the tolerance) since its last believed shot is
-## credited a reload when it next fires, which is never less than a real reload gives, and
-## a magazine emptied faster than that is empty. A new life refills everything. Damage is
-## worked out per pellet by the session from the weapon's falloff and applied here once
-## per victim and shot.
+## Weapons (C16): every player carries the arsenal's loadout and starts each life holding
+## what it held, slot 1 at first. The host runs the same rules as the player's inventory
+## from what the player tells it, so nothing about ammo is guessed: a draw (the weapon in
+## hand from now on, ready after the swap time, any reload stopped) and a reload (refused
+## with no magazine, a full one, nothing in reserve, mid-draw or mid-reload; its rounds
+## move only when its time is up). Every believed shot spends a round. All timing is less
+## the tolerance for jitter, so the host is never stricter than an honest player's game.
+## A new life refills everything. Damage is worked out per pellet by the session from the
+## weapon's falloff and applied here once per victim and shot.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -39,31 +40,80 @@ const DROP_ORIGIN := "origin"
 const DROP_LIFE := "life"
 const DROP_WEAPON := "weapon"
 const DROP_SWAP := "swap"
+const DROP_RELOAD := "reload"
 const DROP_EMPTY := "empty"
 
 var tuning: Tuning
-## The weapons every player holds, id -> WeaponDef, and the arsenal's swap time.
+## The weapons every player carries, id -> WeaponDef, the one each starts with (slot 1),
+## and the arsenal's swap time.
 var weapons := {}
+var first_weapon := ""
 var swap_s := 0.3
 ## Every player the host knows, id -> {health, dead, respawn_left, protect_left,
-## last_fire, last_weapon, last_seq, kills, deaths, ammo}; ammo is weapon id -> {mag,
-## reserve, last_fire}.
+## last_fire, last_seq, kills, deaths, drawn, ready_at, reloading, reload_done_at, ammo};
+## drawn is the weapon in hand, ready_at when its draw is done, reloading the weapon being
+## reloaded ("" for none) and reload_done_at when its rounds go in; ammo is weapon id ->
+## {mag, reserve, last_fire}. Times are the host's clock.
 var states := {}
 ## Shots dropped, in all and by reason.
 var dropped := 0
 var drops := {}
 
 
-## `weapon_defs`: the arsenal's usable WeaponDefs; `swap_seconds`: its swap time.
+## `weapon_defs`: the arsenal's usable WeaponDefs in slot order; `swap_seconds`: its swap time.
 func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3) -> void:
 	tuning = combat_tuning
 	swap_s = swap_seconds
 	for def in weapon_defs:
 		weapons[def.id] = def
+	first_weapon = weapon_defs[0].id if not weapon_defs.is_empty() else ""
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_weapon": "", "last_seq": 0, "kills": 0, "deaths": 0, "ammo": _full_ammo()}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo()}
+
+
+## The weapon `id` holds, as the host knows it.
+func drawn_by(id: int) -> String:
+	return states[id]["drawn"] if states.has(id) else ""
+
+
+## `shooter` started drawing `weapon` in its life `life`: "" when the host believes it,
+## otherwise why not, counted. The weapon is in hand from now on and ready after the swap
+## time; a reload stops. Drawing the weapon already in hand changes nothing.
+func draw(id: int, life: int, weapon: String, known_life: int, now: float) -> String:
+	var why := _alive_in(id, life, known_life)
+	if why != "":
+		return why
+	if not weapons.has(weapon):
+		return _drop(DROP_WEAPON)
+	var s: Dictionary = states[id]
+	if weapon == s["drawn"]:
+		return ""
+	s["drawn"] = weapon
+	s["ready_at"] = now + swap_s * (1.0 - tuning.fire_rate_tolerance)
+	s["reloading"] = ""
+	return ""
+
+
+## `id` started reloading `weapon`, the one in hand: "" when the host believes it, otherwise
+## why not, counted. Refused, as the player's own inventory refuses it, for a weapon not in
+## hand, with no magazine, mid-draw, mid-reload, or with nothing to move.
+func reload(id: int, life: int, weapon: String, known_life: int, now: float) -> String:
+	var why := _alive_in(id, life, known_life)
+	if why != "":
+		return why
+	var s: Dictionary = states[id]
+	if not weapons.has(weapon) or weapon != s["drawn"]:
+		return _drop(DROP_WEAPON)
+	_finish_reload(s, now)
+	var def: WeaponDefScript = weapons[weapon]
+	var a: Dictionary = s["ammo"][weapon]
+	if not def.has_magazine() or s["reloading"] != "" or now < s["ready_at"] or def.reload_take(a["mag"], a["reserve"]) <= 0:
+		return _drop(DROP_RELOAD)
+	s["reloading"] = weapon
+	s["reload_done_at"] = now + def.reload_s * (1.0 - tuning.fire_rate_tolerance)
+	return ""
 
 
 ## Rounds in the magazine and in reserve `id` has for `weapon` right now, as the host counts
@@ -125,52 +175,62 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_LIFE)
 	if not seq_ok(seq, s["last_seq"]):
 		return _drop(DROP_SEQ)
-	if not weapons.has(weapon):
+	if not weapons.has(weapon) or weapon != s["drawn"]:
 		return _drop(DROP_WEAPON)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
 		return _drop(DROP_SHAPE)
+	if now < s["ready_at"]:
+		return _drop(DROP_SWAP)
 	var def: WeaponDefScript = weapons[weapon]
+	if s["reloading"] == weapon and now < s["reload_done_at"]:
+		return _drop(DROP_RELOAD)
 	var a: Dictionary = s["ammo"][weapon]
 	if not rate_ok(now, a["last_fire"], def.fire_cooldown, tuning.fire_rate_tolerance):
 		return _drop(DROP_RATE)
-	if s["last_weapon"] != "" and s["last_weapon"] != weapon and not rate_ok(now, s["last_fire"], swap_s, tuning.fire_rate_tolerance):
-		return _drop(DROP_SWAP)
-	if def.has_magazine() and _rested(def, a, now)[0] <= 0:
+	if def.has_magazine() and a["mag"] + (def.reload_take(a["mag"], a["reserve"]) if s["reloading"] == weapon else 0) <= 0:
 		return _drop(DROP_EMPTY)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
 	return ""
 
 
-## Records a believed shot's time, number and weapon, and spends its round (after any
-## reload its rest has earned): the next shot is measured from here.
+## Records a believed shot's time and number and spends its round (after a reload whose
+## time is up): the next shot is measured from here.
 func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	if not states.has(shooter) or not weapons.has(weapon):
 		return
 	var s: Dictionary = states[shooter]
+	_finish_reload(s, now)
 	s["last_fire"] = now
 	s["last_seq"] = seq
-	s["last_weapon"] = weapon
-	var def: WeaponDefScript = weapons[weapon]
 	var a: Dictionary = s["ammo"][weapon]
-	if def.has_magazine():
-		var after := _rested(def, a, now)
-		a["mag"] = after[0] - 1
-		a["reserve"] = after[1]
+	if weapons[weapon].has_magazine():
+		a["mag"] = maxi(a["mag"] - 1, 0)
 	a["last_fire"] = now
 
 
-## [mag, reserve] once a reload is credited to a weapon that has rested for its reload
-## time, less the tolerance, since its last believed shot; unchanged otherwise.
-func _rested(def: WeaponDefScript, a: Dictionary, now: float) -> Array:
-	var mag: int = a["mag"]
-	var reserve: int = a["reserve"]
-	if now - a["last_fire"] >= def.reload_s * (1.0 - tuning.fire_rate_tolerance):
-		var take := def.reload_take(mag, reserve)
-		mag += take
-		if reserve != WeaponDefScript.INFINITE:
-			reserve -= take
-	return [mag, reserve]
+## Moves a reload's rounds once its time is up.
+func _finish_reload(s: Dictionary, now: float) -> void:
+	if s["reloading"] == "" or now < s["reload_done_at"]:
+		return
+	var def: WeaponDefScript = weapons[s["reloading"]]
+	var a: Dictionary = s["ammo"][s["reloading"]]
+	var take := def.reload_take(a["mag"], a["reserve"])
+	a["mag"] += take
+	if a["reserve"] != WeaponDefScript.INFINITE:
+		a["reserve"] -= take
+	s["reloading"] = ""
+
+
+## "" for a living player in the life the host knows it is in; otherwise why not, counted.
+func _alive_in(id: int, life: int, known_life: int) -> String:
+	if not states.has(id):
+		return _drop(DROP_NO_PLAYER)
+	if states[id]["dead"]:
+		return _drop(DROP_DEAD)
+	if life != known_life:
+		return _drop(DROP_LIFE)
+	return ""
 
 
 ## Every weapon's magazine and reserve full, as at a new life.
@@ -224,6 +284,8 @@ func respawn(id: int) -> void:
 	s["respawn_left"] = 0.0
 	s["protect_left"] = tuning.spawn_protection_s
 	s["ammo"] = _full_ammo()
+	s["reloading"] = ""
+	s["ready_at"] = -INF
 
 
 func _drop(reason: String) -> String:

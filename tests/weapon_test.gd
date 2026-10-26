@@ -67,6 +67,7 @@ func _run() -> void:
 	_source_checks()
 	await _solo_checks()
 	await _match_checks()
+	await _fresh_match_checks()
 	await _layout_checks()
 	await _cleanup()
 	print("WEAPON: %d checks" % _checks)
@@ -239,41 +240,67 @@ func _host_rule_checks() -> void:
 	c.add_player(7)
 	var eye := Vector3(0, 1.65, 10)
 	var dir := Vector3(0, 0, -1)
+	var seq := [0]
+	var shoot := func(weapon: String, now: float) -> String:
+		seq[0] += 1
+		var word := c.validate(7, seq[0], 0, weapon, eye, dir, eye, 0, now)
+		if word == "":
+			c.accept(7, seq[0], weapon, now)
+		return word
 	var words := PackedStringArray()
-	var shots := [["rm_rf", 1.0], ["sigterm", 1.0], ["sigterm", 1.5], ["sigterm", 1.7], ["terminal_cannon", 1.75], ["terminal_cannon", 2.0], ["terminal_cannon", 2.2]]
-	var seq := 0
-	for shot in shots:
-		seq += 1
-		var word := c.validate(7, seq, 0, shot[0], eye, dir, eye, 0, shot[1])
-		if word == "":
-			c.accept(7, seq, shot[0], shot[1])
-		words.append(word)
-	_check("the host's rules: an unknown weapon dropped, SIGTERM's 0.9 s pump enforced (less the 25% tolerance), a switch sooner than the swap time dropped, each weapon's own interval", words == PackedStringArray(["weapon", "", "rate", "", "swap", "", ""]) and c.ammo_of(7, "sigterm") == [4, 24], str(words))
-	c.add_player(8)
-	var times := []
-	var at := 0.0
-	for i in 7:
-		at += 0.75
-		times.append(at)
-	var dry := PackedStringArray()
-	seq = 0
-	for when in times:
-		seq += 1
-		var word := c.validate(8, seq, 0, "sigterm", eye, dir, eye, 0, when)
-		if word == "":
-			c.accept(8, seq, "sigterm", when)
-		dry.append(word)
-	var after_rest := c.validate(8, 8, 0, "sigterm", eye, dir, eye, 0, at + 1.7)
-	c.accept(8, 8, "sigterm", at + 1.7)
-	_check("a magazine fired dry with no rest is empty for the host; a rest of the reload time earns the reload", dry == PackedStringArray(["", "", "", "", "", "", "empty"]) and after_rest == "" and c.ammo_of(8, "sigterm") == [5, 18], "%s then %s %s" % [dry, after_rest, c.ammo_of(8, "sigterm")])
-	c.states[8]["ammo"]["sigterm"] = {"mag": 0, "reserve": 0, "last_fire": -INF}
-	_check("with nothing in reserve no rest helps: empty", c.validate(8, 9, 0, "sigterm", eye, dir, eye, 0, 100.0) == "empty")
+	words.append(shoot.call("sigterm", 1.0))  # never drawn: not in hand
+	words.append(shoot.call("rm_rf", 1.0))  # no such weapon
+	words.append(c.draw(7, 0, "sigterm", 0, 1.0))
+	words.append(shoot.call("sigterm", 1.1))  # still being drawn (ready at 1.225)
+	words.append(shoot.call("sigterm", 1.25))
+	words.append(shoot.call("sigterm", 1.5))  # the pump: 0.675 s at least
+	words.append(shoot.call("sigterm", 1.95))
+	words.append(shoot.call("terminal_cannon", 2.0))  # the cannon is not in hand
+	_check("the host's rules: a weapon never drawn or unknown is not in hand, a fresh draw is not ready for the swap time, SIGTERM's pump is enforced (less the 25% tolerance)", c.drawn_by(7) == "sigterm" and words == PackedStringArray(["weapon", "weapon", "", "swap", "", "rate", "", "weapon"]) and c.ammo_of(7, "sigterm") == [4, 24], str(words))
+	var r := PackedStringArray()
+	r.append(c.draw(7, 0, "terminal_cannon", 0, 2.0))
+	r.append(c.reload(7, 0, "terminal_cannon", 0, 2.5))  # no magazine
+	r.append(c.draw(7, 0, "sigterm", 0, 2.6))
+	r.append(c.reload(7, 0, "sigterm", 0, 2.7))  # mid-draw (ready at 2.825)
+	r.append(c.reload(7, 0, "sigterm", 0, 2.9))
+	r.append(shoot.call("sigterm", 3.0))  # mid-reload
+	r.append(c.reload(7, 0, "sigterm", 0, 3.1))  # already reloading
+	r.append(shoot.call("sigterm", 2.9 + 1.66))
+	_check("reloads as the inventory has them: none for the cannon, none mid-draw or twice, no shot while one runs, the rounds in once its time is up (2.2 s less 25%)", r == PackedStringArray(["", "reload", "", "reload", "", "reload", "reload", ""]) and c.ammo_of(7, "sigterm") == [5, 22], "%s %s" % [r, c.ammo_of(7, "sigterm")])
+	c.reload(7, 0, "sigterm", 0, 5.0)
+	c.draw(7, 0, "terminal_cannon", 0, 5.1)
+	c.draw(7, 0, "sigterm", 0, 5.2)
+	var after_stop: String = shoot.call("sigterm", 7.5)
+	_check("drawing another weapon stops a reload: its rounds never go in", after_stop == "" and c.ammo_of(7, "sigterm") == [4, 22], str(c.ammo_of(7, "sigterm")))
+	# The cheat: empty SIGTERM, fire the cannon a while, come back: no reload happened.
+	var at := 8.5
+	while c.ammo_of(7, "sigterm")[0] > 0 and at < 30.0:
+		shoot.call("sigterm", at)
+		at += 0.7
+	c.draw(7, 0, "terminal_cannon", 0, at)
+	at += 0.3
+	for i in 20:
+		shoot.call("terminal_cannon", at)
+		at += 0.17
+	c.draw(7, 0, "sigterm", 0, at)
+	at += 0.3
+	var background: String = shoot.call("sigterm", at)
+	var idle_draw := c.draw(7, 0, "terminal_cannon", 0, at + 10.0)
+	var instant: String = shoot.call("terminal_cannon", at + 10.05)
+	_check("no reload behind the player's back: a SIGTERM emptied, the cannon fired for 3 s, SIGTERM drawn again is still empty; and an idle player who draws still waits out the draw", background == "empty" and idle_draw == "" and instant == "swap", "%s %s" % [background, instant])
+	c.states[7]["ammo"]["sigterm"] = {"mag": 0, "reserve": 0, "last_fire": -INF}
+	c.draw(7, 0, "sigterm", 0, 50.0)
+	_check("with nothing in reserve there is no reload and the magazine stays empty", c.reload(7, 0, "sigterm", 0, 51.0) == "reload" and shoot.call("sigterm", 52.0) == "empty")
+	var dead_draw := c.draw(9, 0, "sigterm", 0, 1.0)
+	var past_life := c.draw(7, 0, "terminal_cannon", 1, 53.0)
 	c.add_player(9)
 	var big := c.damage_player(9, 7, 126.0)
 	var refused := c.damage_player(7, 9, 0.0).is_empty() and c.damage_player(7, 9, NAN).is_empty() and c.damage_player(7, 9, -5.0).is_empty()
-	c.respawn(8)
-	_check("damage is the amount the pellets add up to (126 kills from full), never zero, NaN or negative; a new life refills the host's count", big == {"health": 0.0, "killed": true} and refused and c.ammo_of(8, "sigterm") == [6, 24])
-	_check("drops are counted by reason", c.drops.get("weapon", 0) == 1 and c.drops.get("rate", 0) == 1 and c.drops.get("swap", 0) == 1 and c.drops.get("empty", 0) == 2, str(c.drops))
+	c.states[7]["ammo"]["sigterm"] = {"mag": 2, "reserve": 10, "last_fire": -INF}
+	var reloading_then: bool = c.reload(7, 0, "sigterm", 0, 54.0) == "" and c.states[7]["reloading"] == "sigterm"
+	c.respawn(7)
+	_check("damage is the amount the pellets add up to (126 kills from full), never zero, NaN or negative; a new life refills, stops a reload and keeps the weapon in hand; draws from no player or a past life are refused", big == {"health": 0.0, "killed": true} and refused and reloading_then and c.ammo_of(7, "sigterm") == [6, 24] and c.states[7]["reloading"] == "" and c.drawn_by(7) == "sigterm" and dead_draw == "no_player" and past_life == "life")
+	_check("drops are counted by reason", c.drops.get("weapon", 0) == 3 and c.drops.get("rate", 0) == 1 and c.drops.get("swap", 0) == 2 and c.drops.get("reload", 0) == 5 and c.drops.get("empty", 0) == 2, str(c.drops))
 
 
 # --- Pellets and falloff. ---
@@ -334,6 +361,7 @@ func _source_checks() -> void:
 	var session := _code("res://scripts/net/net_session.gd")
 	var player := _code("res://scripts/player.gd")
 	_check("an intent carries only the aim: _fire takes the number, life, weapon, origin and direction, nothing about pellets", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:') and player.contains("fire_intent.emit(origin, forward, _w.id)"))
+	_check("a draw and a reload reach the host as untyped, type-checked any_peer intents of a life number and a weapon id, nothing else", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _draw(life: Variant, weapon: Variant) -> void:') and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _reload(life: Variant, weapon: Variant) -> void:') and _body(session, "_draw").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and _body(session, "_reload").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and player.contains("weapon_drawn.emit(_w.id)") and player.contains("reload_started.emit(_w.id)"))
 	_check("the host draws the pellets with its own generator, in _handle_fire only", session.count("pellet_directions(") == 1 and _body(session, "_handle_fire").contains("def.pellet_directions(dir, _pellets_rng)"))
 	var all := ""
 	for path in WEAPON_SOURCES:
@@ -508,26 +536,33 @@ func _match_checks() -> void:
 	var hs: Session = host["session"]
 	var cs: Session = client["session"]
 	var hp = host["player"]
-	var cp = client["player"]
 	var cid: int = cs.my_id
 	hs.get("_pellets_rng").seed = 11
-	_check("joined, both sides at full health", joined and hs.health[1] == 100.0 and cs.health[1] == 100.0)
+	_check("joined, both sides at full health, the host counting the joiner with the cannon in hand", joined and hs.health[1] == 100.0 and cs.health[1] == 100.0 and hs.combat.drawn_by(cid) == "terminal_cannon")
 	# The joiner stands at the west end of the clear line; the host 1.5 m east of it.
-	cp.respawn_at(client["main"].to_global(Vector3(SHOOTER_X, STAND_Y, LINE_Z)))
+	client["player"].respawn_at(client["main"].to_global(Vector3(SHOOTER_X, STAND_Y, LINE_Z)))
 	hp.respawn_at(host["main"].to_global(Vector3(SHOOTER_X + 1.5, STAND_Y, LINE_Z)))
 	var expected_eye := Vector3(SHOOTER_X, STAND_Y + hp.eye_height(), LINE_Z)
 	var synced := await _until(func(): return hs._eye_of(cid).distance_to(expected_eye) < 0.05)
 	var eye: Vector3 = hs._eye_of(cid)
 	_check("the host sees the joiner at the west end of the line", synced, str(eye))
-	# Forgeries first: an unknown weapon, and a weapon id that is not text.
+	# Forgeries first: an unknown weapon, a weapon id that is not text, SIGTERM never drawn.
 	var dropped := await _intent(hs, cs, cid, "rm_rf", eye, Vector3(1, 0, 0))
 	var weapon_drop: bool = dropped and hs.combat.drops.get("weapon", 0) == 1 and hs.health[1] == 100.0
 	var before: int = hs.combat.dropped
 	cs._fire.rpc_id(1, hs.combat.states[cid]["last_seq"] + 1, cs.lives.get(cid, 0), 7, eye, Vector3(1, 0, 0))
-	var typed := await _until(func(): return hs.combat.dropped > before, 2000)
-	_check("over 127.0.0.1: an intent naming a weapon the joiner does not hold is dropped as such; one whose weapon is not text is dropped as malformed; nothing applied", weapon_drop and typed and hs.health[1] == 100.0, str(hs.combat.drops))
-	# Point blank: one SIGTERM shot derezzes the host, and the feed names SIGTERM.
+	cs._draw.rpc_id(1, "junk", "sigterm")
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), 9)
+	var typed := await _until(func(): return hs.combat.dropped >= before + 3, 2000)
 	var to_host := (Vector3(SHOOTER_X + 1.5, BODY_Y, LINE_Z) - eye).normalized()
+	var undrawn := await _intent(hs, cs, cid, "sigterm", eye, to_host)
+	_check("over 127.0.0.1: a weapon the joiner does not carry, and SIGTERM it never drew, are dropped as not in hand; a fire, draw or reload with a weapon or life that is not the right type is dropped as malformed; nothing applied", weapon_drop and typed and undrawn and hs.combat.drops.get("weapon", 0) == 2 and hs.combat.drops.get("no_player", 0) == 3 and hs.health[1] == 100.0 and hs.combat.drawn_by(cid) == "terminal_cannon", str(hs.combat.drops))
+	# The draw: SIGTERM is in hand from the draw, ready after the swap time.
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	var too_soon := await _intent(hs, cs, cid, "sigterm", eye, to_host)
+	_check("over 127.0.0.1: SIGTERM fired straight after its draw is dropped as still being drawn", too_soon and hs.combat.drawn_by(cid) == "sigterm" and hs.combat.drops.get("swap", 0) == 1 and hs.health[1] == 100.0, str(hs.combat.drops))
+	await _frames(_frames_for(0.35))
+	# Point blank: one SIGTERM shot derezzes the host, and the feed names SIGTERM.
 	var believed := await _intent(hs, cs, cid, "sigterm", eye, to_host, false)
 	await _until(func(): return cs.dead.get(1, false), 2000)
 	await _frames(2)
@@ -540,15 +575,20 @@ func _match_checks() -> void:
 	await _back_at(hs, hp, host, SHOOTER_X + 12.0)
 	var mid_hits := PackedFloat32Array()
 	var to_mid := (Vector3(SHOOTER_X + 12.0, BODY_Y, LINE_Z) - eye).normalized()
+	await _settle_net(hs, cid, "sigterm")
 	var health_was: float = hs.health[1]
 	await _intent(hs, cs, cid, "sigterm", eye, to_mid, false)
 	await _frames(2)
 	mid_hits.append(health_was - hs.health[1])
 	var fast := await _intent(hs, cs, cid, "sigterm", eye, to_mid)
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "terminal_cannon")
 	var switch := await _intent(hs, cs, cid, "terminal_cannon", eye, to_mid)
-	_check("over 127.0.0.1: SIGTERM again before its pump has cycled is dropped as too fast; the cannon straight after is dropped as switched too fast", fast and switch and hs.combat.drops.get("rate", 0) == 1 and hs.combat.drops.get("swap", 0) == 1, str(hs.combat.drops))
+	_check("over 127.0.0.1: SIGTERM again before its pump has cycled is dropped as too fast; the cannon fired straight after drawing it is dropped as still being drawn", fast and switch and hs.combat.drops.get("rate", 0) == 1 and hs.combat.drops.get("swap", 0) == 2, str(hs.combat.drops))
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(0.35))
 	var shots_to_kill := 1
 	while not hs.dead.get(1, false) and shots_to_kill < 14:
+		await _net_round(hs, cs, cid)
 		await _settle_net(hs, cid, "sigterm")
 		health_was = hs.health[1]
 		await _intent(hs, cs, cid, "sigterm", eye, to_mid, false)
@@ -557,9 +597,9 @@ func _match_checks() -> void:
 		shots_to_kill += 1
 	print("WEAPON mid range (12 m): damage per shot %s, %d shots to derezz" % [mid_hits, shots_to_kill])
 	_check("mid range (12 m): every shot hurts (the straight pellet at least, 9.5) but none can kill alone (85.7 at most); it takes several", mid_hits[0] >= 9.5 and mid_hits[0] <= 85.7 and hs.dead.get(1, false) and shots_to_kill >= 2 and Array(mid_hits.slice(0, mid_hits.size() - 1)).all(func(x): return x >= 9.5 and x <= 85.7), str(mid_hits))
-	# Long range: 30 m, the far end of the line, after a rest that earns a reload.
+	# Long range: 30 m, the far end of the line, after a reload the host is told of.
 	await _back_at(hs, hp, host, SHOOTER_X + 30.0)
-	await _rest_net(hs, cid, "sigterm")
+	await _net_reload(hs, cs, cid)
 	var to_far := (Vector3(SHOOTER_X + 30.0, BODY_Y, LINE_Z) - eye).normalized()
 	var far_hits := PackedFloat32Array()
 	for i in 3:
@@ -570,19 +610,36 @@ func _match_checks() -> void:
 		far_hits.append(health_was - hs.health[1])
 	print("WEAPON long range (30 m): damage per shot %s" % far_hits)
 	_check("long range (30 m) is weak: every shot lands the straight pellet (2.8) and none does more than 25.2", far_hits.size() == 3 and Array(far_hits).all(func(x): return x >= 2.8 - 0.01 and x <= 25.2 + 0.01) and not hs.dead.get(1, false), str(far_hits))
-	# An empty magazine over the wire: shots 0.75 s apart (pump cycled, no rest) until dry.
-	await _settle_net(hs, cid, "sigterm")
+	# An empty magazine over the wire, a reload the host is told of, and no reload behind
+	# its back.
 	var up := Vector3(0, 1, 0)
 	var spent := 0
 	while hs.combat.ammo_of(cid, "sigterm")[0] > 0 and spent < 8:
+		await _settle_net(hs, cid, "sigterm")
 		await _intent(hs, cs, cid, "sigterm", eye, up, false)
-		await _frames(45)
 		spent += 1
+	await _settle_net(hs, cid, "sigterm")
 	var empty := await _intent(hs, cs, cid, "sigterm", eye, up)
 	var reserve_was: int = hs.combat.ammo_of(cid, "sigterm")[1]
-	await _frames(ceili(2.2 * 60.0))
-	var rested := await _intent(hs, cs, cid, "sigterm", eye, up, false)
-	_check("over 127.0.0.1: SIGTERM fired dry with no rest is dropped as an empty magazine; after a reload's rest the next shot is believed and the reload counted from the reserve", empty and hs.combat.drops.get("empty", 0) == 1 and rested and hs.combat.ammo_of(cid, "sigterm") == [5, reserve_was - 6], "%s %s" % [hs.combat.drops, hs.combat.ammo_of(cid, "sigterm")])
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(1.0))
+	var mid_reload := await _intent(hs, cs, cid, "sigterm", eye, up)
+	await _frames(_frames_for(1.3))
+	var after_reload := await _intent(hs, cs, cid, "sigterm", eye, up, false)
+	_check("over 127.0.0.1: SIGTERM fired dry is dropped as an empty magazine; after the joiner's reload starts a shot 1 s in is dropped as mid-reload; once the reload's time is up the shot is believed with the rounds counted from the reserve", empty and mid_reload and after_reload and hs.combat.drops.get("empty", 0) == 1 and hs.combat.drops.get("reload", 0) == 1 and hs.combat.ammo_of(cid, "sigterm") == [5, reserve_was - 6], "%s %s" % [hs.combat.drops, hs.combat.ammo_of(cid, "sigterm")])
+	while hs.combat.ammo_of(cid, "sigterm")[0] > 0 and spent < 16:
+		await _settle_net(hs, cid, "sigterm")
+		await _intent(hs, cs, cid, "sigterm", eye, up, false)
+		spent += 1
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "terminal_cannon")
+	await _frames(_frames_for(0.35))
+	for i in 15:
+		await _intent(hs, cs, cid, "terminal_cannon", eye, up, false)
+		await _frames(_frames_for(0.17))
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(0.35))
+	var no_background := await _intent(hs, cs, cid, "sigterm", eye, up)
+	_check("over 127.0.0.1: no reload behind the host's back: SIGTERM emptied, the cannon fired for 2.5 s, SIGTERM drawn again and fired is still empty", no_background and hs.combat.drops.get("empty", 0) == 2, str(hs.combat.drops))
 	# The host's own SIGTERM: the joiner draws every pellet the host drew.
 	await _settle(hp, 1.0)
 	hp.select_slot(1)
@@ -598,27 +655,77 @@ func _match_checks() -> void:
 	await _until(func(): return seen[0] >= 1, 2000)
 	var remote_beams := _count_fx_under(client["main"], "CannonBeam")
 	cs.shot_confirmed.disconnect(hook)
-	_check("the host's own SIGTERM goes through the same path: the joiner draws all nine of the host's pellets", seen[0] == 1 and remote_beams == 9 and hs.combat.ammo_of(1, "sigterm") == [5, 24], "beams %d" % remote_beams)
-	# An R reload mid-match keeps the ammo.
-	await _settle(cp, 1.0)
+	_check("the host's own draw and SIGTERM go through the same path: SIGTERM in hand on the host's count, and the joiner draws all nine of the host's pellets", seen[0] == 1 and remote_beams == 9 and hs.combat.drawn_by(1) == "sigterm" and hs.combat.ammo_of(1, "sigterm") == [5, 24], "beams %d" % remote_beams)
+	await _drop(client)
+	await _drop(host)
+
+
+## A fresh match with real players only: practice ammo does not carry in, real shots are
+## believed and counted the same on both sides, an R reload keeps the weapons, and a respawn
+## that lands while the arena is away still refills.
+func _fresh_match_checks() -> void:
+	var host := _branch("Host2", Vector3.ZERO)
+	var client := _branch("Client2", CLIENT_OFFSET)
+	await _frames(2)
+	var cp = client["player"]
 	cp.select_slot(1)
 	await _settle(cp, 0.5)
-	cp.rotation.y = 0.0
 	cp.get_node("Head").rotation.x = 1.2
 	await _fire(cp)
 	await _settle(cp, 0.95)
 	await _fire(cp)
-	var mags_before: int = cp.inventory.mags[1]
-	var old_main = client["main"]
-	old_main.free()
+	var practiced: int = cp.inventory.mags[1]
+	var joined := await _join(host, client)
+	var hs: Session = host["session"]
+	var cs: Session = client["session"]
+	var hp = host["player"]
+	var cid: int = cs.my_id
+	await _frames(2)
+	_check("a match starts fresh on both sides: practice shots before joining (SIGTERM at %d) do not carry in; the cannon drawn, everything full, as the host counts" % practiced, joined and practiced == 4 and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and cp.inventory.reserves[1] == 24 and hs.combat.drawn_by(cid) == "terminal_cannon" and hs.combat.ammo_of(cid, "sigterm") == [6, 24])
+	cp.select_slot(1)
+	await _settle(cp, 0.5)
+	cp.get_node("Head").rotation.x = 1.2
+	var seq_before: int = hs.combat.states[cid]["last_seq"]
+	await _fire(cp)
+	await _settle(cp, 0.95)
+	await _fire(cp)
+	await _until(func(): return hs.combat.states[cid]["last_seq"] == seq_before + 2, 2000)
+	_check("real shots from the joiner's SIGTERM are believed, and the host counts the same magazine as the joiner (4 and 24)", hs.combat.states[cid]["last_seq"] == seq_before + 2 and hs.combat.drawn_by(cid) == "sigterm" and hs.combat.ammo_of(cid, "sigterm") == [4, 24] and cp.inventory.mags[1] == 4 and hs.combat.dropped == 0, "%s %s drops %s" % [hs.combat.ammo_of(cid, "sigterm"), cp.inventory.mags[1], hs.combat.drops])
+	# R mid-match: the new arena's player takes over the weapons and ammo.
+	client["main"].free()
 	await _frames(3)
 	var main2 = MainScene.instantiate()
 	client["branch"].add_child(main2)
 	client["main"] = main2
-	client["player"] = main2.get_node("Player")
+	cp = main2.get_node("Player")
+	cp.assume_captured = true
+	client["player"] = cp
 	await _frames(3)
-	var kept = main2.get_node("Player").inventory
-	_check("an R reload mid-match keeps the weapons and ammo: SIGTERM still drawn, still %d of 6" % mags_before, mags_before == 4 and kept.current == 1 and kept.mags[1] == 4 and kept.reserves[1] == 24 and main2.get_node("Hud").weapon_hud().ammo_text() == "SIGTERM  4 / 24", "%d %d %d" % [mags_before, kept.current, kept.mags[1]])
+	var kept_ok: bool = cp.inventory.current == 1 and cp.inventory.mags[1] == 4 and cp.inventory.reserves[1] == 24 and main2.get_node("Hud").weapon_hud().ammo_text() == "SIGTERM  4 / 24"
+	cp.get_node("Head").rotation.x = 1.2
+	await _settle(cp, 0.95)
+	await _fire(cp)
+	await _until(func(): return hs.combat.states[cid]["last_seq"] == seq_before + 3, 2000)
+	_check("an R reload mid-match keeps SIGTERM drawn at 4 and 24, and the next real shot is believed: 3 on both sides", kept_ok and hs.combat.states[cid]["last_seq"] == seq_before + 3 and hs.combat.ammo_of(cid, "sigterm") == [3, 24] and cp.inventory.mags[1] == 3 and hs.combat.dropped == 0, "%s %s" % [hs.combat.ammo_of(cid, "sigterm"), cp.inventory.mags[1]])
+	# The host derezzes the joiner point blank, and the joiner's arena is away for the respawn.
+	cp.respawn_at(main2.to_global(Vector3(SHOOTER_X, STAND_Y, LINE_Z)))
+	hp.respawn_at(host["main"].to_global(Vector3(SHOOTER_X + 1.5, STAND_Y, LINE_Z)))
+	await _until(func(): return hs._eye_of(cid).distance_to(Vector3(SHOOTER_X, STAND_Y + hp.eye_height(), LINE_Z)) < 0.05)
+	hp.select_slot(1)
+	await _settle(hp, 0.5)
+	var avatar = hs.avatars.get(cid)
+	_aim(hp, avatar.global_position)
+	await _fire(hp)
+	var killed := await _until(func(): return cs.dead.get(cid, false), 2000)
+	main2.free()
+	await _until(func(): return not cs.dead.get(cid, true), 4000)
+	await _frames(2)
+	var main3 = MainScene.instantiate()
+	client["branch"].add_child(main3)
+	client["main"] = main3
+	await _frames(3)
+	var back = main3.get_node("Player")
+	_check("a respawn that lands while the joiner's arena is away still refills: the next arena's player is alive with SIGTERM drawn and full, as the host counts", killed and back.alive and back.inventory.current == 1 and back.inventory.mags[1] == 6 and back.inventory.reserves[1] == 24 and hs.combat.ammo_of(cid, "sigterm") == [6, 24], "killed %s alive %s mags %s" % [killed, back.alive, back.inventory.mags])
 	await _drop(client)
 	await _drop(host)
 
@@ -753,13 +860,20 @@ func _settle_net(hs: Session, cid: int, weapon: String) -> void:
 		await _frames(ceili(left * 60.0))
 
 
-## Waits until the host would credit the joiner's SIGTERM a reload (1.8 s of rest, more
-## than the 2.2 s less 25% it needs).
-func _rest_net(hs: Session, cid: int, weapon: String) -> void:
-	var last: float = hs.combat.states[cid]["ammo"][weapon]["last_fire"]
-	var left: float = 1.8 - (hs.get("_clock") - last)
-	if left > 0.0:
-		await _frames(ceili(left * 60.0))
+## The joiner reloads SIGTERM as the host is told (a forged reload message, the joiner's
+## own life), when it has room and rounds, and the reload's time is waited out.
+func _net_reload(hs: Session, cs: Session, cid: int) -> void:
+	var ammo: Array = hs.combat.ammo_of(cid, "sigterm")
+	if ammo[0] >= 6 or ammo[1] == 0:
+		return
+	cs._reload.rpc_id(1, cs.lives.get(cid, 0), "sigterm")
+	await _frames(_frames_for(2.3))
+
+
+## A reload first when the host counts SIGTERM's magazine empty.
+func _net_round(hs: Session, cs: Session, cid: int) -> void:
+	if hs.combat.ammo_of(cid, "sigterm")[0] <= 0:
+		await _net_reload(hs, cs, cid)
 
 
 ## The host back alive, out of its protection, and put `x` along the line from the shooter.

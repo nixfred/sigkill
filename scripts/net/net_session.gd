@@ -30,7 +30,9 @@ extends Node
 ## swap time, its magazine), draws a pellet weapon's pellets itself from the aim with its
 ## own generator (C16: a joiner never chooses where pellets go), raycasts each in its own
 ## world against walls, dummies and the players' bodies, applies each pellet's damage after
-## its falloff, and tells everyone the result (the shot with every pellet's end point, who
+## its falloff, and tells everyone the result. A player also tells the host when it draws a
+## weapon and when it starts a reload, so the host keeps the same rules as its inventory;
+## both sides start a match with slot 1 drawn and every weapon full (the shot with every pellet's end point, who
 ## was hit and their health, a death with the weapon, a respawn). The host's own shots go
 ## through exactly the same path. Joiners never apply damage or decide a kill; they display
 ## what the host sent, and their own tracers are a guess drawn before the host answers.
@@ -375,11 +377,17 @@ func attach(arena: Node, player: Node) -> void:
 		arena.tree_exiting.connect(_on_arena_exit)
 	if player.has_signal("fire_intent") and not player.fire_intent.is_connected(_on_fire_intent):
 		player.fire_intent.connect(_on_fire_intent)
+	if player.has_signal("weapon_drawn") and not player.weapon_drawn.is_connected(_on_weapon_drawn):
+		player.weapon_drawn.connect(_on_weapon_drawn)
+	if player.has_signal("reload_started") and not player.reload_started.is_connected(_on_reload_started):
+		player.reload_started.connect(_on_reload_started)
 	if is_online() and _kept_inventory != null and player.has_method("adopt_inventory"):
 		player.adopt_inventory(_kept_inventory)  # an R reload mid-match keeps the ammo
 	_kept_inventory = null
 	if _pending_spawn.is_finite() and player.has_method("respawn_at"):
 		player.respawn_at(arena.to_global(_pending_spawn))  # the host chose this while the arena was away
+		if player.has_method("refill_weapons"):
+			player.refill_weapons()  # and refilled every weapon, as a respawn does
 	_pending_spawn = Vector3.INF
 	_attached_at = _clock
 	if player.has_method("set_alive"):
@@ -422,6 +430,7 @@ func host(port: int = -1) -> bool:
 	_clock = 0.0
 	combat = Combat.new(_ct, _weapon_list, _swap_s)
 	combat.add_player(1)
+	_reset_player_weapons()
 	_mirror_from_combat()
 	error = ""
 	notice = ""
@@ -933,6 +942,7 @@ func _on_connected() -> void:
 	_set_peer_timeout(1)
 	state = State.JOINED
 	error = ""
+	_reset_player_weapons()
 	changed.emit()
 
 
@@ -1112,6 +1122,60 @@ func _show_avatar_state(id: int) -> void:
 
 
 # --- Combat: intents in, the host's results out. ---
+
+## A match starts with slot 1 drawn and every weapon full on this side, as the host counts.
+func _reset_player_weapons() -> void:
+	if _player != null and is_instance_valid(_player) and _player.has_method("reset_inventory"):
+		_player.reset_inventory()
+
+
+## This player drew a weapon or started a reload: the host hears of it as of every shot.
+func _on_weapon_drawn(weapon: String) -> void:
+	if state == State.HOSTING:
+		_handle_draw(1, lives.get(my_id, 0), weapon)
+	elif state == State.JOINED and multiplayer.get_peers().has(1):
+		_draw.rpc_id(1, lives.get(my_id, 0), weapon)
+
+
+func _on_reload_started(weapon: String) -> void:
+	if state == State.HOSTING:
+		_handle_reload(1, lives.get(my_id, 0), weapon)
+	elif state == State.JOINED and multiplayer.get_peers().has(1):
+		_reload.rpc_id(1, lives.get(my_id, 0), weapon)
+
+
+## A joiner drew a weapon, to the host. Untyped like _fire: wrong types are counted, never
+## an engine error.
+@rpc("any_peer", "call_remote", "reliable")
+func _draw(life: Variant, weapon: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING:
+		combat.draw(0, 0, "", 0, _clock)  # counted: no such draw
+		return
+	_handle_draw(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+
+
+## A joiner started a reload, to the host.
+@rpc("any_peer", "call_remote", "reliable")
+func _reload(life: Variant, weapon: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING:
+		combat.reload(0, 0, "", 0, _clock)  # counted: no such reload
+		return
+	_handle_reload(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+
+
+func _handle_draw(id: int, life: int, weapon: String) -> void:
+	if state == State.HOSTING and combat != null:
+		combat.draw(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+
+
+func _handle_reload(id: int, life: int, weapon: String) -> void:
+	if state == State.HOSTING and combat != null:
+		combat.reload(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+
 
 ## This player fired (scripts/player.gd): the intent goes to the host, which, when this is
 ## the host, is the same validation every other shot gets. Only the aim goes: the host

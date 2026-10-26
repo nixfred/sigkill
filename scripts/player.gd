@@ -33,6 +33,10 @@ signal shot_fired(hit_target: bool)
 ## the host of a LAN session validates (C14, C16). The host draws a pellet weapon's pellets
 ## itself. Local effects never wait for it.
 signal fire_intent(origin: Vector3, direction: Vector3, weapon: String)
+## Emitted when a weapon is drawn and when a reload starts, with the weapon's id: in a LAN
+## session the host keeps the same rules from them (C16).
+signal weapon_drawn(weapon: String)
+signal reload_started(weapon: String)
 ## Emitted when a jump starts, from the ground or out of a slide. Round stats count it.
 signal jumped
 ## Emitted when a slide starts. Round stats count it.
@@ -442,6 +446,7 @@ func select_slot(slot: int) -> bool:
 	if not alive or not inventory.select(slot):
 		return false
 	_show_weapon()
+	weapon_drawn.emit(_w.id)
 	return true
 
 
@@ -457,7 +462,22 @@ func swap_to_last() -> bool:
 
 ## Reloads the drawn weapon: E. False when there is nothing to reload or it cannot now.
 func reload_weapon() -> bool:
-	return alive and inventory.reload()
+	if not alive or not inventory.reload():
+		return false
+	reload_started.emit(_w.id)
+	return true
+
+
+## A fresh loadout: slot 1 drawn, every weapon full, nothing running. The session calls it
+## when a match starts, so the host's count and the player's begin the same.
+func reset_inventory() -> void:
+	inventory = Inventory.new(inventory.defs, _a.swap_s, _a.fiction_s)
+	_show_weapon()
+
+
+## Every weapon full again, the drawn one kept: a respawn that came while this arena was away.
+func refill_weapons() -> void:
+	inventory.refill()
 
 
 ## Takes over `other`'s weapons and their state, when it holds the same loadout: the session
@@ -485,9 +505,13 @@ func _step_weapon(delta: float) -> void:
 	_viewmodel_kick = lerpf(_viewmodel_kick, 0.0, _smoothing(_w.viewmodel_recovery, delta))
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
-	if _fire_pressed and alive and inventory.try_fire() == "":
-		_fire()
-		_apply_recoil()
+	if _fire_pressed and alive:
+		var why := inventory.try_fire()
+		if why == "":
+			_fire()
+			_apply_recoil()
+		elif why == Inventory.BLOCK_EMPTY:
+			reload_started.emit(_w.id)  # fire on an empty magazine started a reload
 	# A weapon being drawn rises from below; one being reloaded tips over and back.
 	var drop := _a.swap_drop_m * (1.0 - inventory.swap_progress())
 	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, -drop, _w.viewmodel_kick_back * _viewmodel_kick)
