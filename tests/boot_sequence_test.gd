@@ -187,6 +187,7 @@ func _run() -> void:
 	await _privacy_checks()
 	await _layout_checks()
 	await _exit_checks()
+	await _leave_checks()
 	await _handoff_checks()
 	await _cleanup_screens()
 	print("BOOT: %d checks" % _checks)
@@ -354,11 +355,13 @@ func _boot(detector, spec, settings: String, extra: Dictionary = {}) -> Dictiona
 			state["factory_calls"] += 1
 			if spec.is_empty():
 				return null
+			if spec.has("slow_ms"):
+				OS.delay_msec(spec["slow_ms"])  # a slow PATH lookup, on the adapter worker
 			var stub := StubAdapter.new(guide_tuning)
 			for key in spec:
 				if key == "timeout_ms":
 					guide_tuning.agent_timeout_ms = spec[key]
-				else:
+				elif key != "slow_ms":
 					stub.set(key, spec[key])
 			state["stub"] = stub
 			return stub
@@ -731,6 +734,32 @@ func _exit_checks() -> void:
 	var took := Time.get_ticks_msec() - t0
 	print("BOOT exit: a screen freed during a 3000 ms GPU reading was gone in %d ms" % took)
 	_check("a screen freed mid GPU reading cancels the reader and joins its worker at once, not after the reading", busy and took < 1000 and slow.cancels >= 1 and slow.running() == 0, "%d ms" % took)
+
+
+func _leftovers() -> int:
+	var n := 0
+	for child in root.get_children():
+		if child.get_script() == Boot.Leftovers:
+			n += 1
+	return n
+
+
+func _leave_checks() -> void:
+	_save("leave.cfg", "claude", true)
+	var s := _boot(_fake(_found(Found.AgentState.KNOWN, "claude", true)), {"name": "claude", "slow_ms": 2000}, "leave.cfg")
+	var choosing: bool = await _until(func(): return s["boot"].is_choosing())
+	var t0 := Time.get_ticks_msec()
+	await _press(KEY_ENTER)
+	var left: bool = await _until(func(): return s["done"], 1500)
+	var took := Time.get_ticks_msec() - t0
+	var t1 := Time.get_ticks_msec()
+	s["boot"].free()
+	var freed := Time.get_ticks_msec() - t1
+	var pending := _leftovers()
+	print("BOOT leave: Enter during a 2000 ms adapter lookup left in %d ms, freed in %d ms, %d worker handed on" % [took, freed, pending])
+	_check("Enter while the adapter is still being chosen leaves at once and frees at once; the worker is handed on", choosing and left and s["skipped"] and took < 1000 and freed < 300 and pending == 1, "%d ms, %d ms, %d" % [took, freed, pending])
+	var joined: bool = await _until(func(): return _leftovers() == 0, 5000)
+	_check("the handed-on worker is joined once the slow lookup ends, and its late adapter is never asked", joined and s["factory_calls"] == 1 and s["stub"] != null and s["stub"].ask_calls == 0)
 
 
 func _handoff_checks() -> void:

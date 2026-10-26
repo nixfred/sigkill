@@ -8,8 +8,12 @@ extends Control
 ## the adapter is chosen on a worker too (the registry looks the agent's command up along
 ## the PATH), each GPU reading runs on a short worker thread of its own (nvidia-smi can take
 ## a second), and the handshake adapter is polled once a frame. The arena loads in the
-## background. Leaving cancels the detector and joins every worker, which takes about a
-## millisecond, since the C9 reader gives up at a cancel.
+## background. Leaving never waits on a worker either: it cancels the detector and hands
+## anything still running (the detector, the adapter worker, a GPU reading) to a small
+## Leftovers node that outlives the screen and joins each one once it has finished. Only
+## when the game itself quits are workers joined on the spot, since a running thread must
+## not outlive the engine; the C9 reader gives up at a cancel, so that is about a
+## millisecond unless the filesystem itself hangs.
 ##
 ## The AI is called only with the player's yes. Before the first call to a source, the
 ## screen names it and says what it gets, and waits for Y (allow) or N (keep AI off); the
@@ -200,6 +204,9 @@ func _exit_tree() -> void:
 	_stop_link()
 	# Cancel first: the C9 reader then gives up at once, so the joins below take about a
 	# millisecond even with an nvidia-smi still running (it is left to exit on its own).
+	# Workers left here were not handed to a Leftovers node (the game is quitting, or the
+	# screen was freed without leaving), so they are joined now: a thread must not
+	# outlive its owner.
 	if detector != null and detector.has_method("cancel"):
 		detector.cancel()
 	for worker in [_gpu_thread, _adapter_thread]:
@@ -251,6 +258,10 @@ func adapter() -> Variant:
 
 func is_guarded() -> bool:
 	return _guarded
+
+
+func is_choosing() -> bool:
+	return _phase == Phase.CHOOSING
 
 
 func is_waiting_for_consent() -> bool:
@@ -413,8 +424,11 @@ func _route() -> void:
 	_adapter_job.guarded = _guarded
 	_adapter_thread = Thread.new()
 	if _adapter_thread.start(_adapter_job.run) != OK:
+		# Never on the main thread: no worker means no adapter, and the scripted guide.
 		_adapter_thread = null
-		_adapter_job.run()
+		_adapter_job.adapter = null
+		_skip_reason = "no worker thread"
+		_adapter_job.failed = true
 	_phase = Phase.CHOOSING
 
 
@@ -426,10 +440,11 @@ func _poll_choosing() -> void:
 		_adapter_thread.wait_to_finish()
 		_adapter_thread = null
 	_adapter = _adapter_job.adapter
+	var failed := _adapter_job.failed
 	_adapter_job = null
 	_say(_agent_line())
 	if _adapter == null:
-		if _guarded and _found.source != Found.Source.SCRIPTED:
+		if failed or (_guarded and _found.source != Found.Source.SCRIPTED):
 			_say("AI link skipped: %s." % _skip_reason, _t.warn_color)
 		_scripted()
 		return
@@ -644,12 +659,34 @@ func _leave(skipped: bool) -> void:
 	_skipped = skipped
 	_stop_link()
 	_spinner.visible = false
+	_hand_over_workers()
 	finished.emit(skipped)
 	if not hand_off or next_scene == "":
 		_phase = Phase.DONE
 		return
 	_phase = Phase.LEAVING
 	_finish_leaving()
+
+
+## Leaving never waits: the detector is cancelled, and whatever is still running goes to a
+## Leftovers node under the root that joins it once it has ended.
+func _hand_over_workers() -> void:
+	if detector != null and detector.has_method("cancel"):
+		detector.cancel()
+	var leftovers := Leftovers.new()
+	if _adapter_thread != null:
+		leftovers.keep(_adapter_thread, _adapter_job)
+		_adapter_thread = null
+		_adapter_job = null
+	if _gpu_thread != null:
+		leftovers.keep(_gpu_thread, detector)
+		_gpu_thread = null
+	if detector != null and detector.has_method("is_done") and not detector.is_done():
+		leftovers.keep(null, detector)  # its own worker; dropping it would join it here
+	if leftovers.is_empty() or not is_inside_tree():
+		leftovers.free()
+		return
+	get_tree().root.add_child(leftovers)
 
 
 func _finish_leaving() -> void:
@@ -668,6 +705,46 @@ func _finish_leaving() -> void:
 	get_tree().change_scene_to_file(next_scene)
 
 
+## Holds workers the boot screen left running, and joins each one once it has ended (or
+## drops a detector once its own worker is done), then frees itself. If the game quits
+## first, it joins what is left right there.
+class Leftovers:
+	extends Node
+	var _threads: Array = []
+	var _held: Array = []
+
+	func keep(thread: Thread, held) -> void:
+		_threads.append(thread)
+		_held.append(held)
+
+	func is_empty() -> bool:
+		return _threads.is_empty()
+
+	func count() -> int:
+		return _threads.size()
+
+	func _process(_delta: float) -> void:
+		for i in range(_threads.size() - 1, -1, -1):
+			var thread: Thread = _threads[i]
+			if thread != null:
+				if thread.is_alive():
+					continue
+				thread.wait_to_finish()
+			elif _held[i] != null and not _held[i].is_done():
+				continue
+			_threads.remove_at(i)
+			_held.remove_at(i)
+		if _threads.is_empty():
+			queue_free()
+
+	func _exit_tree() -> void:
+		for thread in _threads:
+			if thread != null and thread.is_started():
+				thread.wait_to_finish()
+		_threads.clear()
+		_held.clear()
+
+
 ## Chooses the handshake adapter off the main thread: a test's factory if one was handed
 ## in; otherwise, unless the headless guard is on, the C9b registry, which looks the agent's
 ## command up along the PATH. The screen holds the job until its thread is joined.
@@ -680,6 +757,7 @@ class AdapterJob:
 	var tuning: Resource
 	var guarded := false
 	var adapter = null
+	var failed := false
 
 	func run() -> void:
 		if not factory.is_null():
