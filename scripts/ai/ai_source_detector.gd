@@ -110,11 +110,18 @@ var rate_clock := Callable(Time, "get_ticks_msec")
 
 var _thread: Thread
 var _result: Result
-var _gpu := {}
-var _gpu_read_at := 0
-var _gpu_ever_read := false
-var _gpu_mutex := Mutex.new()
-var _nvidia_smi_runs := 0
+var _gpu := GpuState.new()
+
+
+## The GPU rate limit's state, shared between a detector and the worker copy start() makes,
+## so the two together still read the GPU at most once per GPU_POLL_MIN_INTERVAL_MS.
+class GpuState:
+	extends RefCounted
+	var reading := {}
+	var read_at := 0
+	var ever_read := false
+	var nvidia_smi_runs := 0
+	var mutex := Mutex.new()
 
 
 ## Runs every check and resolves the choice. Blocks for up to a few seconds when servers
@@ -159,11 +166,15 @@ static func resolve(result: Result) -> void:
 
 
 ## Starts detect() on a worker thread, so the main loop never waits on a probe. Once only.
+## The worker runs on a copy of this detector's settings that it holds itself and that
+## holds nothing back, so this detector can be dropped at any time: it then joins the
+## worker first, which ends within the probe timeouts.
 func start() -> Error:
 	if _thread != null:
 		return ERR_ALREADY_IN_USE
+	var worker := _worker_copy()
 	var thread := Thread.new()
-	var err := thread.start(detect)
+	var err := thread.start(worker._detect_holding.bind(worker))
 	if err == OK:
 		_thread = thread
 	return err
@@ -183,6 +194,28 @@ func wait() -> Result:
 	if _result == null:
 		_result = _thread.wait_to_finish()
 	return _result
+
+
+## Same settings and the same GPU rate-limit state, nothing else.
+func _worker_copy() -> RefCounted:
+	var copy = get_script().new()
+	copy.agent_file_path = agent_file_path
+	copy.path_dirs = path_dirs.duplicate()
+	copy.ollama_port = ollama_port
+	copy.openai_port = openai_port
+	copy.http_timeout_ms = http_timeout_ms
+	copy.sysfs_root = sysfs_root
+	copy.nvidia_smi_path = nvidia_smi_path
+	copy.nvidia_smi_timeout_ms = nvidia_smi_timeout_ms
+	copy.rate_clock = rate_clock
+	copy._gpu = _gpu
+	return copy
+
+
+## The worker's entry. `_holder` is this same object, bound into the thread's callable so
+## the thread keeps it alive for as long as it runs.
+func _detect_holding(_holder: RefCounted) -> Result:
+	return detect()
 
 
 func _notification(what: int) -> void:
@@ -323,22 +356,22 @@ func _wait_while(client: HTTPClient, waiting: Array, deadline: int) -> bool:
 ## /sys first; nvidia-smi only when /sys gives nothing. Safe to call from any one thread at
 ## a time; a mutex keeps two callers from reading at once.
 func poll_gpu() -> Dictionary:
-	_gpu_mutex.lock()
+	_gpu.mutex.lock()
 	var now: int = rate_clock.call()
-	if not _gpu_ever_read or now - _gpu_read_at >= GPU_POLL_MIN_INTERVAL_MS:
-		_gpu_ever_read = true
-		_gpu_read_at = now
-		_gpu = _read_sysfs_gpu()
-		if not _gpu["available"]:
-			_gpu = _read_nvidia_smi()
-	var reading := _gpu.duplicate()
-	_gpu_mutex.unlock()
+	if not _gpu.ever_read or now - _gpu.read_at >= GPU_POLL_MIN_INTERVAL_MS:
+		_gpu.ever_read = true
+		_gpu.read_at = now
+		_gpu.reading = _read_sysfs_gpu()
+		if not _gpu.reading["available"]:
+			_gpu.reading = _read_nvidia_smi()
+	var reading: Dictionary = _gpu.reading.duplicate()
+	_gpu.mutex.unlock()
 	return reading
 
 
-## How many times nvidia-smi has been started by this detector.
+## How many times nvidia-smi has been started by this detector and its worker.
 func nvidia_smi_runs() -> int:
-	return _nvidia_smi_runs
+	return _gpu.nvidia_smi_runs
 
 
 static func _no_gpu() -> Dictionary:
@@ -396,7 +429,7 @@ func _read_nvidia_smi() -> Dictionary:
 	var run := OS.execute_with_pipe(path, NVIDIA_SMI_ARGS, false)
 	if run.is_empty():
 		return _no_gpu()
-	_nvidia_smi_runs += 1
+	_gpu.nvidia_smi_runs += 1
 	var stdout: FileAccess = run["stdio"]
 	var stderr: FileAccess = run["stderr"]
 	var pid: int = run["pid"]

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test stub agent CLI. The AI source detector must NEVER execute an agent CLI; it only
+# checks that this file exists and is executable. If it ever runs, it leaves a mark that
+# tests/ai_detector_test.gd fails on.
+if [ -n "$SIGKILL_TEST_EXEC_MARK" ]; then
+	echo "agent stub executed" >> "$SIGKILL_TEST_EXEC_MARK"
+fi
+exit 1

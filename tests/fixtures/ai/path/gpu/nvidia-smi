@@ -1,0 +1,12 @@
+#!/bin/sh
+# Test stub for nvidia-smi. Records its arguments, one per line and a "--" after each run,
+# so tests/ai_detector_test.gd can prove the detector passes the exact query-only arguments
+# and respects its rate limit. Then prints canned, obviously fake readings for two GPUs.
+if [ -n "$SIGKILL_TEST_SMI_LOG" ]; then
+	for arg in "$@"; do
+		printf '%s\n' "$arg" >> "$SIGKILL_TEST_SMI_LOG"
+	done
+	echo "--" >> "$SIGKILL_TEST_SMI_LOG"
+fi
+echo "63, 3072, 12282, 58"
+echo "11, 100, 200, 30"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Test stub: present on PATH but not executable, so the detector must report it absent.
+exit 1
