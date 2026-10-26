@@ -174,6 +174,16 @@ func _seen() -> Array:
 	return out
 
 
+## True once the fake server has seen an unload request for `name`, without clearing.
+func _seen_unload_attempt(name: String) -> bool:
+	_mutex.lock()
+	var found := false
+	for r in _requests:
+		found = found or (r["path"] == "/api/generate" and r["body"].contains('"keep_alive":0') and r["body"].contains(name))
+	_mutex.unlock()
+	return found
+
+
 ## True once the fake server has seen a request to `path`, without clearing the log.
 func _has_request(path: String) -> bool:
 	_mutex.lock()
@@ -544,7 +554,7 @@ func _source_checks() -> void:
 		if loader.contains(word):
 			found.append(word)
 	_check("the loader never sends num_ctx, options, a prompt or keep_alive on a load, never pulls, deletes or uses /v1, opens no socket itself and never prints", found.is_empty(), ", ".join(found))
-	_check("the loader posts to /api/generate in exactly two places: one load with only the model, one unload with keep_alive 0", loader.count("GENERATE_PATH") == 3 and loader.count("_post(GENERATE_PATH, {\"model\": name}, deadline)") == 1 and loader.count("_send(\"POST\", GENERATE_PATH, JSON.stringify({\"model\": name, \"keep_alive\": 0}).to_utf8_buffer(), deadline, false)") == 1)
+	_check("the loader posts to /api/generate in exactly two places: one load with only the model, one unload with keep_alive 0", loader.count("GENERATE_PATH") == 3 and loader.count("_post(GENERATE_PATH, {\"model\": name}, deadline)") == 1 and loader.count("_send(\"POST\", GENERATE_PATH, JSON.stringify({\"model\": name, \"keep_alive\": 0}).to_utf8_buffer(), deadline, cancellable)") == 1)
 	var link_code := _code("res://scripts/guide/guide_link.gd")
 	_check("loader jobs never overlap: a job asked for while one runs is queued, and the cancel flag is armed before each start", link_code.contains("\tif _loader_thread != null:\n\t\t_queued_job = job\n\t\t_queued_kind = kind\n\t\t_queued_id = id\n\t\treturn true\n\t_loader.arm()\n") and link_code.contains("\t_loader_thread = Thread.new()\n\t_running_kind = kind"))
 	var link := _code("res://scripts/guide/guide_link.gd")
@@ -1037,12 +1047,20 @@ func _last_hardening_checks() -> void:
 	await _pump(again, func(): return again.loader_idle() and again.load_state == "cancelled")
 	await _offer_ready(again)
 	var offered_again: String = again.offer_name()
+	# Cancel at the one point that matters: after the second attempt's /api/ps has run (and
+	# it has reached the watched-model branch), right before its load would be sent.
+	var loader = again.get("_loader")
+	var hooked := [false]
+	loader.test_before_load = func():
+		hooked[0] = true
+		loader.cancel()
 	again.accept_load()
-	again.cancel_load()
+	await _pump(again, func(): return again.loader_idle() and again.load_state == "cancelled")
+	loader.test_before_load = Callable()
 	var appeared: bool = await _pump(again, func(): return _loaded_now().has(SMALL))
 	var cleared: bool = appeared and await _pump(again, func(): return _loaded_now().is_empty())
 	var again_sent := _seen()
-	_check("a watched load accepted again and cancelled before sending keeps its first watch: unloaded when it turns up", offered_again == SMALL and cleared and _bodies(again_sent, "/api/generate").count('{"model":"%s"}' % SMALL) == 1 and _bodies(again_sent, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % SMALL), str(_bodies(again_sent, "/api/generate")))
+	_check("a watched load accepted again and cancelled right before sending (after its /api/ps) keeps its first watch: unloaded when it turns up", hooked[0] and offered_again == SMALL and cleared and _bodies(again_sent, "/api/generate").count('{"model":"%s"}' % SMALL) == 1 and _bodies(again_sent, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % SMALL), str(_bodies(again_sent, "/api/generate")))
 	again.shut_down(null)
 	_seen()
 	# One unload that hangs (B) does not keep another (a pending load A) from being done.
@@ -1069,6 +1087,24 @@ func _last_hardening_checks() -> void:
 	var b_gone: bool = await _pump(stuck, func(): return _loaded_now().is_empty() and not stuck.load_pending())
 	_check("and once B's unload is answered, B goes too", b_gone, str(_loaded_now()))
 	stuck.shut_down(null)
+	_seen()
+	# Quitting while a background unload hangs stays within one exit budget.
+	_server_state(_standard_models(), [])
+	var quitting := await _bare_link({"unload_timeout_ms": 600})
+	await _offer_ready(quitting)
+	quitting.accept_load()
+	await _pump(quitting, func(): return quitting.load_state == "loaded")
+	_server_tweak("_hang_unload_for", [SMALL])
+	quitting.set_consent(false)
+	await _pump(quitting, func(): return not quitting.loader_idle(), 2000)
+	await _until(func(): return _has_request("/api/generate") and _seen_unload_attempt(SMALL))
+	var t_quit := Time.get_ticks_msec()
+	quitting.shut_down(null)
+	var quit_ms := Time.get_ticks_msec() - t_quit
+	print("LOAD quit: shutting down during a hanging unload took %d ms (exit budget 600 ms)" % quit_ms)
+	_check("quitting while a background unload hangs: the job stops at the cancel, and the exit stays within its one budget", quit_ms < 900, "%d ms" % quit_ms)
+	_server_tweak("_hang_unload_for", [])
+	_set_loaded([])
 	_seen()
 
 

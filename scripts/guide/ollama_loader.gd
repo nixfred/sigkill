@@ -72,6 +72,9 @@ var release := PackedStringArray()
 var watched := {}
 ## The model the last job_load was for.
 var last_load := ""
+## Test hook: called on the worker right before a load request would be sent, so a test
+## can cancel at exactly that point. Never set by the game.
+var test_before_load := Callable()
 
 var _cancel := false
 var _mutex := Mutex.new()
@@ -179,6 +182,8 @@ func job_load(name: String) -> void:
 	elif listed.has(name):
 		outcome = Outcome.LOADED_NOW  # loaded by someone else before the Y: never the game's
 		return
+	if not test_before_load.is_null():
+		test_before_load.call()
 	if _cancelled():
 		outcome = Outcome.CANCELLED
 		return
@@ -192,7 +197,7 @@ func job_load(name: String) -> void:
 		_watch(name)  # sent: it may still load
 		outcome = Outcome.CANCELLED if sent[2] == "cancelled" else Outcome.TIMEOUT
 		return
-	var after := _send("GET", PS_PATH, PackedByteArray(), Time.get_ticks_msec() + PROBE_TIMEOUT_MS, false)
+	var after := _fetch(PS_PATH)  # a cancel here leaves it watched, and the exit still finds it
 	if after[0] and listing_ok(after[1]) and loaded_names(after[1]).has(name):
 		_own(name)
 		outcome = Outcome.LOADED
@@ -214,12 +219,13 @@ func _watch(name: String) -> void:
 
 ## Worker job: unloads any watched load that has turned up, then the models marked for
 ## release. Every request has its own deadline, so one unload that hangs cannot use up the
-## time for the others; whatever cannot be done now stays for the next run, and the
+## time for the others, and a cancel (the end of the session) stops the job between and
+## during requests; whatever is not done stays for the next run or the exit, and the
 ## release list is rotated so the next run starts with a different model.
 func job_tidy() -> void:
 	_begin_job()
-	_watch_pass(-1)
-	_release_pass(-1)
+	_watch_pass(-1, true)
+	_release_pass(-1, true)
 	if release.size() > 1:
 		release.append(release[0])
 		release.remove_at(0)
@@ -232,8 +238,8 @@ func job_tidy() -> void:
 ## running, and always runs, even after a cancel.
 func unload_now(deadline: int) -> void:
 	mark_release()
-	_watch_pass(deadline)
-	_release_pass(deadline)
+	_watch_pass(deadline, false)
+	_release_pass(deadline, false)
 	owned.clear()
 	release.clear()
 	watched.clear()
@@ -242,32 +248,37 @@ func unload_now(deadline: int) -> void:
 
 ## `deadline` < 0: each request gets its own (PROBE_TIMEOUT_MS to read /api/ps,
 ## unload_timeout_ms per unload); otherwise everything shares it (the end of the session).
-func _release_pass(deadline: int) -> void:
+## `cancellable`: a background run stops at a cancel and keeps what it did not finish.
+func _release_pass(deadline: int, cancellable: bool) -> void:
 	if release.is_empty():
 		return
-	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), false)
+	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), cancellable)
 	if not (ps[0] and listing_ok(ps[1])):
 		return  # cannot tell: kept for the next run
 	var listed := loaded_names(ps[1])
 	for name in release.duplicate():
-		if not listed.has(name) or _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms))):
+		if cancellable and _cancelled():
+			return
+		if not listed.has(name) or _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms)), cancellable):
 			release.erase(name)
 			owned.erase(name)
 
 
-func _watch_pass(deadline: int) -> void:
+func _watch_pass(deadline: int, cancellable: bool) -> void:
 	if watched.is_empty():
 		return
-	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), false)
+	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), cancellable)
 	if not (ps[0] and listing_ok(ps[1])):
 		return  # cannot tell: nothing expires on a check that did not happen
 	var listed := loaded_names(ps[1])
 	var now := Time.get_ticks_msec()
 	for name in watched.keys():
+		if cancellable and _cancelled():
+			return
 		var entry: Dictionary = watched[name]
 		if listed.has(name):
 			entry["seen"] = true
-			if _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms))):
+			if _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms)), cancellable):
 				watched.erase(name)
 		elif entry["seen"]:
 			watched.erase(name)  # it turned up and is gone now
@@ -281,8 +292,8 @@ static func _by(deadline: int, ms: int) -> int:
 
 
 ## One unload request with exactly {"model": name, "keep_alive": 0}; true if answered.
-func _send_unload(name: String, deadline: int) -> bool:
-	var sent := _send("POST", GENERATE_PATH, JSON.stringify({"model": name, "keep_alive": 0}).to_utf8_buffer(), deadline, false)
+func _send_unload(name: String, deadline: int, cancellable: bool) -> bool:
+	var sent := _send("POST", GENERATE_PATH, JSON.stringify({"model": name, "keep_alive": 0}).to_utf8_buffer(), deadline, cancellable)
 	return sent[2] == "done" and sent[0]
 
 

@@ -41,6 +41,8 @@ const GUIDE_TUNING_PATH := "res://resources/guide.tres"
 const GPU_INTERVAL_FIRST_MS := 1000
 ## The longest wait between two retries of an unload that keeps failing.
 const TIDY_BACKOFF_LAST_MS := 30000.0
+## The least time the exit unload gets even if stopping a job used the whole budget.
+const EXIT_UNLOAD_FLOOR_MS := 250
 const ERROR_WORD_MAX := 24
 
 const DEMO_AGENT := "claude"
@@ -626,11 +628,13 @@ func _read_outcome(kind: String, id: int) -> void:
 				load_state = "error"
 
 
-## At the end of the session: stops a load job, then unloads the game's own model (and a
-## watched load that has turned up) right here, within unload_timeout_ms.
+## At the end of the session: stops a loader job (every job stops at a cancel within a
+## poll step), then unloads the game's own models (and watched loads that have turned up)
+## right here. The join and the unloads share one deadline of unload_timeout_ms.
 func _unload_for_exit() -> void:
 	if _loader == null:
 		return
+	var deadline := Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms)
 	_queued_job = Callable()
 	_queued_kind = ""
 	if _loader_thread != null:
@@ -639,7 +643,7 @@ func _unload_for_exit() -> void:
 		_loader_thread = null
 		_read_outcome(_running_kind, _running_id)
 		_running_kind = ""
-	_loader.unload_now(Time.get_ticks_msec() + int(guide_tuning.unload_timeout_ms))
+	_loader.unload_now(maxi(deadline, Time.get_ticks_msec() + EXIT_UNLOAD_FLOOR_MS))
 	_game_loaded = _loader.current
 
 
