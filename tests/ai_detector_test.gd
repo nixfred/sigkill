@@ -423,13 +423,23 @@ func _parser_checks() -> void:
 	_check("whitespace between tokens is fine, but a raw control byte inside a string is refused", pretty is Dictionary and pretty["data"]["count"] == 2 and raw_controls.is_empty(), "accepted: " + ", ".join(raw_controls))
 	var escaped_key = Detector.json_top_level('{"\\u0064ata":[1,2,3],"\\u00e9":[1],"mo\\/dels":[]}'.to_ascii_buffer())
 	_check("top-level keys are matched with their escapes undone; keys that are not plain ASCII are skipped", escaped_key is Dictionary and escaped_key.has("data") and escaped_key["data"]["count"] == 3 and escaped_key.has("mo/dels") and escaped_key.size() == 2, str(escaped_key))
-	# A long string of escapes: the closing quote is remembered, so this stays linear.
-	var escapes := '{"data":["%s"]}' % "\\n".repeat(100000)
+	# A long string of escapes: the closing quote is remembered, so the searches cover the
+	# body about once. Measured as bytes searched, not time, so a loaded machine cannot
+	# fail it; the watchdog only catches a hang.
+	var escapes := ('{"data":["%s"]}' % "\\n".repeat(100000)).to_ascii_buffer()
+	var stats := {}
 	var t_escapes := Time.get_ticks_msec()
-	var escaped_ok = Detector.json_top_level(escapes.to_ascii_buffer())
+	var escaped_ok = Detector.json_top_level(escapes, Callable(), stats)
 	var escape_ms := Time.get_ticks_msec() - t_escapes
-	print("AI DETECTOR scanner: a 200 KB string of escapes scanned in %d ms" % escape_ms)
-	_check("a string of 100000 escapes scans in linear time", escaped_ok is Dictionary and escape_ms < 1500, "%d ms" % escape_ms)
+	print("AI DETECTOR scanner: a %d byte string of escapes took %d bytes of searching, %d ms" % [escapes.size(), stats["searched"], escape_ms])
+	_check("a string of 100000 escapes is scanned in linear work", escaped_ok is Dictionary and stats["searched"] <= 2 * escapes.size() and escape_ms < WATCHDOG_MS, "%d bytes searched for a %d byte body" % [stats["searched"], escapes.size()])
+	# A huge key is skipped without decoding, at once.
+	var long_key := ('{"%s":1,"data":[1]}' % "k".repeat(900000)).to_ascii_buffer()
+	var key_stats := {}
+	var t_key := Time.get_ticks_msec()
+	var long_key_shape = Detector.json_top_level(long_key, Callable(), key_stats)
+	var key_ms := Time.get_ticks_msec() - t_key
+	_check("a 900000-character key is skipped without being decoded", long_key_shape is Dictionary and long_key_shape.size() == 1 and long_key_shape["data"]["count"] == 1 and key_stats["searched"] <= 2 * long_key.size() and key_ms < WATCHDOG_MS, "%d ms" % key_ms)
 	# A cancel stops even a million-digit number at once.
 	_stop_calls = 0
 	var digits := ('{"data":[%s]}' % "1".repeat(1000000)).to_ascii_buffer()

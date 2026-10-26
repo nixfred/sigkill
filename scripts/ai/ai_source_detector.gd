@@ -720,9 +720,16 @@ static func is_utf8_text(bytes: PackedByteArray, stop: Callable = Callable()) ->
 ## number, so model names are never read as text and nothing can make Godot print. Only
 ## top-level keys are read, and only as plain ASCII names after their escapes are undone;
 ## a key that is not plain ASCII cannot be one the detector looks for, so it is skipped.
-## `stop` returning true abandons the scan.
-static func json_top_level(bytes: PackedByteArray, stop: Callable = Callable()) -> Variant:
+## `stop` returning true abandons the scan. If `stats` is given, stats["searched"] is set to
+## the bytes covered by the string scanning's searches, a fixed measure of its work.
+static func json_top_level(bytes: PackedByteArray, stop: Callable = Callable(), stats: Dictionary = {}) -> Variant:
 	var scan := JsonScan.new(bytes, stop)
+	var shape = _scan_top_level(scan)
+	stats["searched"] = scan.searched
+	return shape
+
+
+static func _scan_top_level(scan: JsonScan) -> Variant:
 	scan.skip_space()
 	if scan.at() != JsonScan.OPEN_BRACE:
 		return null
@@ -757,6 +764,9 @@ class JsonScan:
 	const SIMPLE_ESCAPES := [0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74]
 	const SPACE := [0x20, 0x09, 0x0A, 0x0D]
 	const CONTROL_LAST := 0x1F
+	## Longest raw key decoded. Every key the detector looks for is at most 7 letters, so even
+	## written fully as \uXXXX escapes it fits; a longer key is skipped without decoding.
+	const KEY_RAW_MAX := 64
 	const MAX_DEPTH := 64
 	const CHECK_EVERY := 65536
 	const ESCAPED := {0x22: "\"", 0x5C: "\\", 0x2F: "/"}
@@ -766,6 +776,8 @@ class JsonScan:
 	var i := 0
 	var failed := false
 	var last_count := -1
+	## Bytes covered by the quote and backslash searches.
+	var searched := 0
 	var _stop: Callable
 	var _next_check := CHECK_EVERY
 	var _next_backslash := -1
@@ -797,6 +809,12 @@ class JsonScan:
 	func skip_space() -> void:
 		while not failed and i < n and SPACE.has(b[i]):
 			advance()
+
+	## b.find(value, from), counting the bytes it covers.
+	func search(value: int, from: int) -> int:
+		var found := b.find(value, from)
+		searched += (found if found >= 0 else n) - from
+		return found
 
 	## The first byte at or after `from` below 0x20, or n. Each control value's next
 	## position is remembered and found natively, so this stays linear over the body.
@@ -911,13 +929,13 @@ class JsonScan:
 		advance()
 		while not failed:
 			if _next_quote < i:
-				_next_quote = b.find(QUOTE, i)
+				_next_quote = search(QUOTE, i)
 				if _next_quote < 0:
 					fail()
 					return -1
 			var quote := _next_quote
 			if _next_backslash < i and _next_backslash != n:
-				_next_backslash = b.find(BACKSLASH, i)
+				_next_backslash = search(BACKSLASH, i)
 				if _next_backslash < 0:
 					_next_backslash = n
 			var segment_end := mini(quote, _next_backslash)
@@ -973,6 +991,8 @@ class JsonScan:
 	## one: anything outside printable ASCII, raw or escaped, cannot be a key the detector
 	## looks for. The bytes are already checked as a well-formed JSON string.
 	static func ascii_key(raw: PackedByteArray) -> String:
+		if raw.size() > KEY_RAW_MAX:
+			return ""
 		var out := ""
 		var k := 0
 		while k < raw.size():
