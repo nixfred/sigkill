@@ -5,8 +5,9 @@
 // How it finds edges without normals or extra geometry: on any flat face one of the
 // plane distances is zero (the face itself). The second smallest distance is how far the
 // point is from the nearest edge. A box has three plane families. The hexagonal prism has
-// four: three side-plane pairs plus the top and bottom caps. Hexagon vertical edges come out
-// about 13 percent thinner than the rim edges, because side planes meet at 120 degrees.
+// four: three side-plane pairs plus the top and bottom caps. On the hexagon the side planes
+// meet at 120 degrees, so the plane distance underestimates the true distance along a face
+// and the vertical edges come out about 15 percent wider than the rim edges.
 //
 // half_extents: box = half size on each axis. Hexagon = (apothem, half height, unused).
 // Colour defaults only mirror scripts/palette.gd so the material previews in the editor.
