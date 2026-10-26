@@ -45,7 +45,14 @@ const REASONS := {
 	"timeout": "no answer in time",
 	"empty": "empty answer",
 	"stopped": "the call was stopped",
+	"cancelled": "the call was stopped",
+	"ai_off": "AI off",
+	"rate_limited": "too soon after the last call",
+	"unavailable": "your AI is not available",
+	"needs_consent": "no model loaded",
 }
+## Less than this many metres in a round counts as standing still.
+const STILL_M := 2.0
 
 ## Where the round's line stands: "" (none), "thinking", "ai" (their AI's words), "game"
 ## (SIGKILL's own line) or "demo".
@@ -66,6 +73,9 @@ var _link: Link
 var _cap := 1
 var _max_chars := TuningScript.TEXT_LAST
 var _asked_round := 0
+## The link's call_serial when this round's call started: the call is ours only while the
+## link's still matches.
+var _serial := -1
 
 
 func _init(link: Link, cap: int, max_chars: int) -> void:
@@ -100,6 +110,7 @@ func round_ended(stats: Dictionary) -> void:
 		_scripted(Link.error_word(started.get("error_kind", "")))
 		return
 	asks += 1
+	_serial = _link.call_serial
 	state = "thinking"
 
 
@@ -107,10 +118,13 @@ func round_ended(stats: Dictionary) -> void:
 func poll() -> void:
 	if state != "thinking":
 		return
+	if _link.call_serial != _serial:
+		_scripted("stopped")  # stopped from outside, and maybe another call started since
+		return
 	var done: Dictionary = _link.poll_call()
 	if done.is_empty():
 		if not _link.is_busy():
-			_scripted("stopped")  # stopped from outside: the AI was turned off
+			_scripted("stopped")
 		return
 	var answer = done.get("text", "")
 	if done.get("ok", false) and answer is String:
@@ -124,10 +138,10 @@ func poll() -> void:
 	_scripted(Link.error_word(done.get("error_kind", "")))
 
 
-## The break is over and the next round starts now: a call still out is stopped and its
-## answer dropped.
+## The break is over and the next round starts now: our call still out is stopped and its
+## answer dropped. A call that is not ours is never touched.
 func intermission_over() -> void:
-	if state == "thinking":
+	if state == "thinking" and _link.call_serial == _serial:
 		_link.cancel_call()
 		dropped += 1
 	state = ""
@@ -178,6 +192,7 @@ static func scripted_line(stats: Dictionary, roast: bool) -> String:
 	var down := int(stats.get("derezzes", 0))
 	var best := int(stats.get("longest_streak", 0))
 	var moves := int(stats.get("slides", 0)) + int(stats.get("jumps", 0))
+	var still := float(stats.get("distance_m", 0.0)) < STILL_M
 	if roast:
 		if shots == 0:
 			return "Zero shots fired. The processes thank you for your mercy."
@@ -185,8 +200,10 @@ static func scripted_line(stats: Dictionary, roast: bool) -> String:
 			return "%d shots and not one process down. They are still running, and so is the clock." % shots
 		if accuracy < 35.0:
 			return "%d%% accuracy. The walls took more damage than the processes." % roundi(accuracy)
+		if still:
+			return "You barely moved all round. The dummies are bolted down and still covered more ground."
 		if moves == 0:
-			return "Not one jump or slide all round. The dummies are bolted down and still moved more."
+			return "Not one jump or slide all round. Gravity sends its thanks."
 		return "%d down, best streak %d. Respectable, for a screensaver." % [down, best]
 	if shots == 0:
 		return "No shots this round. Find a process and fire: the cannon is the left mouse button."
@@ -194,6 +211,8 @@ static func scripted_line(stats: Dictionary, roast: bool) -> String:
 		return "No process went down. Aim at the middle of a dummy and fire while the crosshair is still."
 	if accuracy < 35.0:
 		return "Accuracy %d%%. Fire after the crosshair settles, not while you turn." % roundi(accuracy)
+	if still:
+		return "You barely moved all round. Run between targets so the next one is always close."
 	if moves == 0:
-		return "You stood still all round. Slide with C between targets to cross the arena faster."
+		return "No jumps or slides this round. Slide with C between targets to cross the arena faster."
 	return "%d down, best streak %d. Next round, chain your hits: every miss resets the streak." % [down, best]

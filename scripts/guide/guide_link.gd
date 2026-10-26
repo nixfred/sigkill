@@ -89,6 +89,10 @@ var choose_failed := false
 var last_call := {}
 ## Calls this session that reached the adapter.
 var calls := 0
+## Moves on when a call starts and when one is stopped. A caller that kept the number its
+## own call started with owns the call in flight only while the two still match, so it
+## never polls or stops a call someone else started after its own was stopped.
+var call_serial := 0
 ## True once a local server said it has nothing loaded, until a later call is answered or
 ## a model is loaded: "available, not loaded".
 var not_loaded := false
@@ -366,6 +370,7 @@ func ask(request: RefCounted) -> Dictionary:
 	var started: Dictionary = adapter.ask(request)
 	if started.is_empty():
 		calls += 1
+		call_serial += 1
 	return started
 
 
@@ -399,6 +404,7 @@ func cooldown_ms() -> int:
 
 ## Stops a call in flight; the agent child is stopped by its own PID.
 func cancel_call() -> void:
+	call_serial += 1
 	if adapter != null and adapter.has_method("cancel"):
 		adapter.cancel()
 

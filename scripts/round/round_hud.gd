@@ -8,7 +8,8 @@ extends Control
 ## the summary panel: the round's numbers and one line about them, from the player's own AI
 ## (scripts/round/round_announcer.gd, through the session's GuideLink) or from SIGKILL,
 ## with a thinking spinner while the AI is out. At the end of the break every dummy comes
-## back and the next round starts, whatever the AI is doing.
+## back and the next round starts, whatever the AI is doing. While the panel is up the
+## guide HUD holds back a long answer to T until the break ends, so the two never overlap.
 ##
 ## Round numbers come from scripts/round/round_stats.gd, fed by the game's own signals: the
 ## cannon's shot_fired, each dummy's downed, the player's jumped and slid, and how far the
@@ -72,7 +73,6 @@ var _who: Label
 var _line: Label
 var _tip_who: Label
 var _tip: Label
-var _next: Label
 
 
 func _ready() -> void:
@@ -289,7 +289,7 @@ func summary_text() -> String:
 	if not _panel.visible:
 		return ""
 	var out := PackedStringArray()
-	for label in [_heading, _numbers, _who, _line, _tip_who, _tip, _next]:
+	for label in [_heading, _numbers, _who, _line, _tip_who, _tip]:
 		if label.visible:
 			out.append(label.text)
 	return "\n".join(out)
@@ -303,6 +303,7 @@ func line_label() -> Label:
 func _refresh() -> void:
 	if _round_line == null:
 		return
+	guide.hold_answer = phase == Phase.BREAK
 	var roast := "on" if guide.session_link().roast_on() else "off"
 	var note := "  (not saved)" if _note_left_s > 0.0 else ""
 	if phase == Phase.ROUND:
@@ -317,7 +318,7 @@ func _refresh() -> void:
 		return
 	var shown: Dictionary = announcer.payload
 	var demo: bool = announcer.state == "demo"
-	_heading.text = "ROUND %d OVER%s" % [int(shown.get("round_number", 0)), "   (demo data)" if demo else ""]
+	_heading.text = "ROUND %d OVER%s   next round in %d s" % [int(shown.get("round_number", 0)), "   (demo data)" if demo else "", maxi(ceili(_left_s), 0)]
 	var first := float(shown.get("time_to_first_derezz_s", -1.0))
 	_numbers.text = "shots %d   hits %d   accuracy %.1f%%\nprocesses down %d   best streak %d   first down %s\nmoved %.1f m   slides %d   jumps %d" % [
 		int(shown.get("shots", 0)), int(shown.get("hits", 0)), float(shown.get("accuracy_pct", 0.0)),
@@ -334,7 +335,6 @@ func _refresh() -> void:
 		_who.text = "your AI (%s) roasts:" % guide.session_link().display_name()
 		_tip_who.text = "your AI (%s) coaches:" % guide.session_link().display_name()
 		_tip.text = Announcer.DEMO_TIP
-	_next.text = "next round in %d s" % maxi(ceili(_left_s), 0)
 
 
 func _build() -> void:
@@ -362,13 +362,12 @@ func _build() -> void:
 	var stack := VBoxContainer.new()
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(stack)
-	_heading = _label(stack, _t.summary_font_size + 4, Palette.TEAL)
+	_heading = _label(stack, _t.summary_font_size + 3, Palette.TEAL)
 	_numbers = _label(stack, _t.summary_font_size, Palette.MINT)
 	_who = _label(stack, _t.summary_font_size, Palette.TEAL)
 	_line = _label(stack, _t.summary_font_size, Palette.MINT)
 	_tip_who = _label(stack, _t.summary_font_size, Palette.TEAL)
 	_tip = _label(stack, _t.summary_font_size, Palette.MINT)
-	_next = _label(stack, _t.summary_font_size - 2, Palette.MINT)
 	for label in [_numbers, _line, _tip]:
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_panel.visible = false

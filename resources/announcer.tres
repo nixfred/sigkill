@@ -13,6 +13,6 @@ miss_run_callout = 10
 text_max_chars = 240
 round_font_size = 16
 callout_font_size = 26
-summary_font_size = 15
+summary_font_size = 14
 summary_width = 560
 summary_top = 120

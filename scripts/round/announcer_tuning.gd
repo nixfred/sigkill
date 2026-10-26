@@ -32,7 +32,7 @@ extends Resource
 ## Size of an in-round callout.
 @export var callout_font_size: int = 26
 ## Size of the summary panel's text.
-@export var summary_font_size: int = 15
+@export var summary_font_size: int = 14
 ## Widest the summary panel gets; never wider than the screen allows.
 @export var summary_width: int = 560
 ## Distance from the top of the screen to the summary panel.

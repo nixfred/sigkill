@@ -60,6 +60,7 @@ func _run() -> void:
 	_settings_checks()
 	await _round_checks()
 	await _gate_checks()
+	await _ownership_checks()
 	await _fallback_checks()
 	await _callout_checks()
 	await _demo_checks()
@@ -379,6 +380,10 @@ func _text_checks() -> void:
 	_check("shown text is plain: escape sequences, control and invisible characters stripped, markup tags dropped, one line", wrong.is_empty(), "; ".join(wrong))
 	_check("shown text is cut to the cap, and never past 240 whatever the cap says", Announcer.shown_text("x".repeat(500), 240).length() == 240 and Announcer.shown_text("x".repeat(500), 999).length() == 240 and Announcer.shown_text("x".repeat(500), 50).length() == 50)
 	_check("an answer with nothing left after cleaning is empty", Announcer.shown_text(esc + "[2J" + char(0x07) + " [b][/b] " + char(0x200B) + "\n\t", 240) == "")
+	var walked := {"shots": 10, "accuracy_pct": 80.0, "derezzes": 5, "longest_streak": 3, "distance_m": 60.0, "slides": 0, "jumps": 0}
+	var still := walked.duplicate()
+	still["distance_m"] = 0.5
+	_check("SIGKILL's own lines read the distance: a walk with no jumps or slides is not standing still", Announcer.scripted_line(walked, false).begins_with("No jumps or slides") and Announcer.scripted_line(still, false).begins_with("You barely moved") and Announcer.scripted_line(walked, true).begins_with("Not one jump or slide") and Announcer.scripted_line(still, true).begins_with("You barely moved"))
 
 
 func _settings_checks() -> void:
@@ -451,7 +456,7 @@ func _round_checks() -> void:
 	await _until(func(): return round.announcer.state != "thinking")
 	var shown := round.summary_text()
 	print("ROUND summary panel:\n", shown)
-	_check("their AI's tip is shown in its own words, labelled as their AI", round.announcer.state == "ai" and shown.contains("your AI (claude) coaches:\n" + COACH_ANSWER) and shown.begins_with("ROUND 1 OVER\nshots 2   hits 1   accuracy 50.0%"))
+	_check("their AI's tip is shown in its own words, labelled as their AI", round.announcer.state == "ai" and shown.contains("your AI (claude) coaches:\n" + COACH_ANSWER) and shown.begins_with("ROUND 1 OVER   next round in ") and shown.contains("\nshots 2   hits 1   accuracy 50.0%"))
 	_fake_now += 60000
 	round.announcer.round_ended(p)
 	_check("a second end for the same round never calls again", stub.ask_calls == 1 and link.calls == 1 and round.announcer.state == "game", round.announcer.reason)
@@ -536,6 +541,49 @@ func _gate_checks() -> void:
 	_check("headless guard with nothing handed in: no detector, no adapter, no call; SIGKILL's line", guarded.is_guarded() and guarded.detector == null and guarded.adapter == null and guarded.calls == 0 and gr.announcer.reason == "guarded" and gr.summary_text().contains("SIGKILL says (no AI linked):"))
 	print("ROUND gates, as the panel labels them: ", " | ".join(seen))
 	await _drop(g)
+
+
+## The round's call is the announcer's only while the link's call_serial still matches: a
+## call someone else starts after it was stopped is never polled or stopped by it.
+func _ownership_checks() -> void:
+	Settings.save("claude", true, _tmp.path_join("owner.cfg"))
+	_fake_now += 60000
+	var holder := {}
+	var link := _link({"name": "claude", "delay_steps": 1000000}, "owner.cfg", holder)
+	var a := await _arena(link, _short(1.0, 3.0))
+	var round: RoundHud = a["round"]
+	var stub = holder.get("stub")
+	await _to_break(round)
+	var asked: int = stub.ask_calls
+	# One frame: the AI turned off and on again, and a T ask started before the announcer
+	# polls again.
+	link.set_consent(false)
+	link.set_consent(true)
+	_fake_now += 60000
+	stub.delay_steps = 3
+	stub.answer = "T ANSWER"
+	var started := link.ask(Request.build({}, "hi", 100))
+	await physics_frame
+	await physics_frame
+	_check("a call started after the round's call was stopped is not the announcer's: SIGKILL's line, the other call untouched", started.is_empty() and stub.ask_calls == asked + 1 and round.announcer.state == "game" and round.announcer.reason == "stopped" and link.is_busy() and stub.steps == 0, "%s %s, busy %s, steps %d" % [round.announcer.state, round.announcer.reason, link.is_busy(), stub.steps])
+	var got := {}
+	while got.is_empty():
+		got = link.poll_call()
+		await physics_frame
+	_check("its answer goes to the one who asked, never to the summary panel", got.get("text", "") == "T ANSWER" and not round.summary_text().contains("T ANSWER"))
+	await _to_round(round)
+	stub.delay_steps = 1000000
+	_fake_now += 60000
+	await _to_break(round)
+	var cancels: int = stub.cancels
+	link.set_consent(false)
+	link.set_consent(true)
+	_fake_now += 60000
+	link.ask(Request.build({}, "hi", 100))
+	round.announcer.intermission_over()
+	_check("the break's end never stops a call that is not the announcer's", stub.cancels == cancels + 1 and link.is_busy() and round.announcer.dropped == 0, "cancels %d -> %d" % [cancels, stub.cancels])
+	link.cancel_call()
+	await _drop(a)
 
 
 ## A timeout and an empty answer give SIGKILL's line; a late answer is dropped and the next
@@ -660,33 +708,76 @@ func _demo_checks() -> void:
 func _layout_checks() -> void:
 	Settings.save("claude", true, _tmp.path_join("layout.cfg"))
 	var before := root.size
+	var six := "Hold the line.\nAim low.\nStrafe.\nBreathe.\nFire.\nRepeat until every process is down."
+	var long := "word ".repeat(100)
 	for size in [Vector2i(1280, 720), Vector2i(960, 540)]:
 		root.size = size
 		_fake_now += 60000
 		var holder := {}
-		var link := _link({"name": "claude", "answer": "word ".repeat(100)}, "layout.cfg", holder)
-		var a := await _arena(link, _short(1.0, 1.0))
+		var link := _link({"name": "claude", "answer": six}, "layout.cfg", holder)
+		var a := await _arena(link, _short(2.0, 4.0))
 		var round: RoundHud = a["round"]
+		var guide: GuideHud = a["guide"]
+		var stub = holder.get("stub")
+		await _ask("tip")
+		await _until(func(): return not guide.is_asking() and guide.panel_text().contains("Repeat until"))
+		stub.answer = long
+		_fake_now += 60000
 		await _to_break(round)
 		await _until(func(): return round.announcer.state != "thinking")
 		await _frames(3)
-		var screen := Rect2(Vector2.ZERO, Vector2(root.size))
-		var panel: Rect2 = round.get("_panel").get_global_rect()
-		var outside := PackedStringArray()
-		var overlaps := PackedStringArray()
-		var shown := 0
-		for label in a["main"].find_children("*", "Label", true, false):
-			if not label.is_visible_in_tree() or label.text.is_empty():
-				continue
-			shown += 1
-			var rect: Rect2 = label.get_global_rect()
-			if not screen.encloses(rect):
-				outside.append("%s %s" % [label.text.left(20), rect])
-			if not round.get("_panel").is_ancestor_of(label) and rect.size.x < screen.size.x and panel.intersects(rect):
-				overlaps.append("%s %s" % [label.text.left(20), rect])
-		_check("at %dx%d the summary panel and every label sit inside the screen, and the panel covers no other line" % [size.x, size.y], shown >= 10 and outside.is_empty() and overlaps.is_empty(), "%d shown; %s | %s" % [shown, ", ".join(outside), ", ".join(overlaps)])
+		var held := _overlaps(a, round)
+		_check("at %dx%d with a six-line answer to T up when the break starts: the answer waits, everything fits, nothing overlaps" % [size.x, size.y], guide.panel_text() == "" and guide.hold_answer and held == "", held)
+		await _to_round(round)
+		await _frames(2)
+		_check("at %dx%d the held answer shows again once the break ends" % [size.x, size.y], guide.panel_text().contains("Repeat until") and not guide.hold_answer)
+		_fake_now += 60000
+		await _to_break(round)
+		await _until(func(): return round.announcer.state != "thinking")
+		guide._notice(GuideHud.NONE_FITS_LINE % "8.6 GB", Color.WHITE, 5000)
+		await _frames(3)
+		var notice := _overlaps(a, round)
+		await _key(KEY_O)
+		await _key(KEY_O)
+		await _frames(3)
+		var question := _overlaps(a, round)
+		var asked: bool = guide.is_asking_consent()
+		await _key(KEY_Y)
+		_fake_now += 60000
+		await _key(KEY_T)
+		await _frames(3)
+		var box := _overlaps(a, round)
+		var typing: bool = guide.is_typing()
+		await _key(KEY_ESCAPE)
+		_check("at %dx%d during the break the longest notice, the AI question and the ask box sit under the summary panel" % [size.x, size.y], notice == "" and asked and question == "" and typing and box == "" and round.showing_summary(), "%s | %s | %s" % [notice, question, box])
 		await _drop(a)
 	root.size = before
+
+
+## "" when every shown label sits inside the screen and the summary panel and the guide's
+## panel cover no other line and not each other; otherwise what is wrong.
+func _overlaps(a: Dictionary, round: RoundHud) -> String:
+	var screen := Rect2(Vector2.ZERO, Vector2(root.size))
+	var summary: PanelContainer = round.get("_panel")
+	var guide_panel: PanelContainer = a["guide"].get("_panel")
+	var panels := [summary]
+	if guide_panel.is_visible_in_tree():
+		panels.append(guide_panel)
+	var wrong := PackedStringArray()
+	if guide_panel.is_visible_in_tree() and summary.get_global_rect().intersects(guide_panel.get_global_rect()):
+		wrong.append("panels %s and %s" % [summary.get_global_rect(), guide_panel.get_global_rect()])
+	for label in a["main"].find_children("*", "Label", true, false):
+		if not label.is_visible_in_tree() or label.text.is_empty():
+			continue
+		var rect: Rect2 = label.get_global_rect()
+		if not screen.encloses(rect):
+			wrong.append("outside: %s %s" % [label.text.left(20), rect])
+		if rect.size.x >= screen.size.x:
+			continue
+		for panel in panels:
+			if not panel.is_ancestor_of(label) and panel.get_global_rect().intersects(rect):
+				wrong.append("under a panel: %s %s" % [label.text.left(20), rect])
+	return ", ".join(wrong)
 
 
 func _cleanup() -> void:

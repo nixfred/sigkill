@@ -94,6 +94,10 @@ var demo := false
 var player: Node = null
 ## () -> bool, whether the window has focus. Empty: the window's own answer.
 var focus_check := Callable()
+## Set by the round HUD during the break between rounds, whose summary panel needs the room:
+## the AI's answer to T is held back, hidden with its time on screen paused, and shows again
+## when the break ends. Notices, the ask box and the questions still show.
+var hold_answer := false
 
 var _t: Resource
 var _link: Link
@@ -151,7 +155,7 @@ func _process(delta: float) -> void:
 	_round_s = minf(_round_s + delta, ROUND_SECONDS_LAST)
 	_link.poll(ms)
 	_poll_call(ms)
-	if _answer_ms_left > 0.0:
+	if _answer_ms_left > 0.0 and not hold_answer:
 		_answer_ms_left -= ms
 	if _notice_ms_left > 0.0:
 		_notice_ms_left -= ms
@@ -691,7 +695,7 @@ func _refresh() -> void:
 			else:
 				line = NOT_LOADED_LINE + (OWN_APP if hint == "own_app" else "") + ("   " + reason if reason != "" else "")
 		_status.text = line
-	_panel.visible = _typing or _consent_prompt or _load_ui != "" or _answer_ms_left > 0.0 or _notice_ms_left > 0.0
+	_panel.visible = _typing or _consent_prompt or _load_ui != "" or (_answer_ms_left > 0.0 and not hold_answer) or _notice_ms_left > 0.0
 
 
 func _build() -> void:
