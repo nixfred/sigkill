@@ -649,6 +649,9 @@ func _gpu_checks() -> void:
 	var timed_out := slow.poll_gpu()
 	var t1 := Time.get_ticks_msec()
 	_fake_now = 41000
+	# Code that waited on the hung one again would now wait twice the watchdog: correct code
+	# only checks on it and returns at once.
+	slow.nvidia_smi_timeout_ms = 2 * WATCHDOG_MS
 	var still_running := slow.poll_gpu()
 	var t2 := Time.get_ticks_msec()
 	var runs_while_hung := slow.nvidia_smi_runs()
