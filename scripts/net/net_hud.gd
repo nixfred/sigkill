@@ -28,6 +28,7 @@ const BOX_KEYS := "Enter joins   Esc cancels"
 const PLAYERS_LINE := "players %d/%d: %s"
 const NET_OFF := "net: off   M multiplayer"
 const NET_HOSTING := "net: hosting :%d   players %d/%d"
+const NET_NOTICE := "   %s"
 const NET_JOINED := "net: joined   players %d/%d"
 const NET_CONNECTING := "net: connecting"
 const SPINNER := ["|", "/", "-", "\\"]
@@ -254,7 +255,7 @@ func _refresh() -> void:
 	var cap: int = s.tuning_in_use().max_players
 	match s.state:
 		Session.State.HOSTING:
-			_line.text = NET_HOSTING % [s.listen_port(), count, cap]
+			_line.text = NET_HOSTING % [s.listen_port(), count, cap] + (NET_NOTICE % s.notice if s.notice != "" else "")
 		Session.State.JOINED:
 			_line.text = NET_JOINED % [count, cap]
 		Session.State.RESOLVING, Session.State.CONNECTING:
@@ -276,7 +277,7 @@ func _refresh() -> void:
 	var color := Palette.MINT
 	match s.state:
 		Session.State.HOSTING:
-			_body.text = (HOST_LINE % s.listen_port()) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()]
+			_body.text = (HOST_LINE % s.listen_port()) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()] + ("\n" + s.notice if s.notice != "" else "")
 			_keys.text = HOST_KEYS
 		Session.State.JOINED:
 			_body.text = (JOINED_LINE % s.address_text) + "\n" + PLAYERS_LINE % [count, cap, s.roster_text()]

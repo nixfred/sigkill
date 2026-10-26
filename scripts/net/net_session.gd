@@ -49,6 +49,8 @@ const ENET_TIMEOUT_LIMIT := 32
 const WORLD_LAST := 10000.0
 const SPEED_LAST := 200.0
 const PITCH_LAST := PI * 0.5 + 0.01
+## A body yaw is an angle Godot already wrapped: never past one full turn either way.
+const YAW_LAST := TAU + 0.01
 const ADDRESS_LAST := 260
 const HOSTNAME_LAST := 253
 const LABEL_LAST := 63
@@ -79,6 +81,8 @@ var state: State = State.OFF
 var error := ""
 ## What the player typed to join, shown back on their own screen only.
 var address_text := ""
+## For a host: the last joiner it refused and why, so the host's screen says so too.
+var notice := ""
 ## Everyone in the session, id -> {slot, name}; the host is id 1.
 var players := {}
 var my_id := 1
@@ -97,6 +101,9 @@ var _connect_left_ms := 0.0
 var _resolve_item := -1
 var _resolve_name := ""
 var _join_port := 0
+## The local port a joiner's socket was bound to on the tuning's bind address, or 0 when
+## it was left to the system on every interface.
+var _local_port := 0
 var _seq := 0
 var _send_wait_s := 0.0
 ## Host: joiners that passed the handshake, id -> {slot, name}, until peer_connected.
@@ -206,6 +213,7 @@ func host(port: int = -1) -> bool:
 	my_id = 1
 	players = {1: {"slot": 1, "name": assigned_name(_t.display_name, 1)}}
 	error = ""
+	notice = ""
 	address_text = ""
 	state = State.HOSTING
 	changed.emit()
@@ -249,6 +257,7 @@ func leave() -> void:
 	_clear_players()
 	state = State.OFF
 	error = ""
+	notice = ""
 	address_text = ""
 	changed.emit()
 
@@ -354,7 +363,16 @@ func _tick_send(delta: float) -> void:
 
 func _connect(ip: String) -> void:
 	var enet := ENetMultiplayerPeer.new()
-	if enet.create_client(ip, _join_port) != OK:
+	_local_port = 0
+	if _t.bind_address != "*":
+		# ENet binds a joiner's socket to the bind address only with a local port named,
+		# so one the system has just handed out on that address is taken.
+		enet.set_bind_ip(_t.bind_address)
+		_local_port = _spare_port()
+		if _local_port == 0:
+			_fail(CANT_REACH)
+			return
+	if enet.create_client(ip, _join_port, 0, 0, 0, _local_port) != OK:
 		_fail(CANT_REACH)
 		return
 	_enet = enet
@@ -420,6 +438,11 @@ func _host_auth(id: int, data: PackedByteArray) -> void:
 	if verdict != Verdict.OK:
 		m.send_auth(id, reply_bytes(protocol, verdict, 0, ""))
 		_refused[id] = REFUSE_GRACE_MS
+		if verdict == Verdict.VERSION:
+			notice = "refused a joiner: version mismatch, host %d, joiner %s" % [protocol, str(hello["version"]) if not hello.is_empty() else "unknown"]
+		else:
+			notice = "refused a joiner: host full"
+		changed.emit()
 		return
 	var slot := _free_slot()
 	var name := assigned_name(hello["name"], slot)
@@ -629,7 +652,7 @@ static func sane(pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> bool:
 		return false
 	if absf(pos.x) > WORLD_LAST or absf(pos.y) > WORLD_LAST or absf(pos.z) > WORLD_LAST:
 		return false
-	return absf(pitch) <= PITCH_LAST and vel.length() <= SPEED_LAST
+	return absf(yaw) <= YAW_LAST and absf(pitch) <= PITCH_LAST and vel.length() <= SPEED_LAST
 
 
 ## The name a player is shown under: the one it asked for when it is one the game can
@@ -752,3 +775,11 @@ func _port_free(port: int) -> bool:
 	var ok := probe.bind(port, _t.bind_address) == OK
 	probe.close()
 	return ok
+
+
+## A port on the bind address the system has just handed out and given back, or 0.
+func _spare_port() -> int:
+	var probe := PacketPeerUDP.new()
+	var port := probe.get_local_port() if probe.bind(0, _t.bind_address) == OK else 0
+	probe.close()
+	return port

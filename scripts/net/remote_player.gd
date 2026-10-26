@@ -19,6 +19,10 @@ const VISOR_FORWARD := -0.28
 const TAG_HEIGHT := 1.25
 const FEET := 0.9
 const SAMPLES_KEPT := 12
+## The most a sequence number may jump past the last one accepted: packets lost for over
+## eight minutes at 20 a second. A bigger jump is one bad packet, dropped, so it can never
+## put the real stream behind it.
+const SEQ_JUMP_LAST := 10000
 ## A sample's shape: {t, pos, yaw, pitch, vel}.
 
 ## Shown above the body.
@@ -85,10 +89,10 @@ func _ready() -> void:
 	visible = false
 
 
-## A received position: `seq` orders them, older ones are dropped.
+## A received position: `seq` orders them; an older one, or one too far ahead, is dropped.
 func push_sample(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
 	received += 1
-	if seq <= _last_seq and _last_seq - seq < 1000000:
+	if not seq_ok(seq, _last_seq):
 		dropped += 1
 		return
 	_last_seq = seq
@@ -132,3 +136,8 @@ func _apply(pos: Vector3, yaw: float, pitch: float) -> void:
 
 func view_pitch() -> float:
 	return _head.rotation.x
+
+
+## True for the next sequence number to accept after `last`: newer, and not absurdly so.
+static func seq_ok(seq: int, last: int) -> bool:
+	return seq > last and seq - last <= SEQ_JUMP_LAST

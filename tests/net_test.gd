@@ -210,7 +210,7 @@ func _source_checks() -> void:
 			found.append(word)
 	_check("the net module starts no program, reads no file, asks the system nothing, opens no TCP, HTTP, WebSocket or WebRTC socket and never decodes objects", found.is_empty(), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("its only sockets are the one ENet peer a host or a joiner makes and the port probe that binds and closes", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 1 and session.count("probe.bind(") == 1 and session.count("probe.close()") == 1 and session.count("create_server(") == 1 and session.count("create_client(") == 1 and all.count("create_server(") == 1 and all.count("create_client(") == 1)
+	_check("its only sockets are the one ENet peer a host or a joiner makes and the port probes that bind and close at once", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 2 and session.count("probe.bind(") == 2 and session.count("probe.close()") == 2 and session.count("create_server(") == 1 and session.count("create_client(") == 1 and all.count("create_server(") == 1 and all.count("create_client(") == 1)
 	_check("Godot's relay stays off and objects are never decoded: nothing moves between players without the host's code", session.contains("m.server_relay = false") and session.contains("m.allow_object_decoding = false"))
 	_check("three RPCs, all with numbers, names and ids only: the roster from the host, state to the host, state from the host", session.count("@rpc(") == 3 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray)') and session.contains('@rpc("any_peer", "call_remote", "unreliable_ordered")\nfunc _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)') and session.contains('@rpc("authority", "call_remote", "unreliable_ordered")\nfunc _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)'))
 	_check("what is sent about a player is its position, body yaw, view pitch and velocity, read from the player node and nothing else", session.contains("var pos: Vector3 = _player.position") and session.contains("var yaw: float = _player.rotation.y") and session.contains("_player.view_pitch()") and session.contains("_player.velocity") and session.count(".rpc_id(") == 4 and session.count(".rpc(") == 0)
@@ -260,7 +260,7 @@ func _helper_checks() -> void:
 	_check("junk, short, wrong-magic and wrong-length packets parse to nothing; an ok reply needs a slot and a shown name; a name with a control byte becomes the placeholder", junk.is_empty() and Session.parse_reply(ok_no_slot).is_empty() and Session.parse_reply(ok_bad_name).is_empty() and Session.parse_hello(ctrl_name) == {"version": 1, "name": "player"}, ", ".join(junk))
 	_check("names: a shown name is kept, the placeholder or a name the game cannot show becomes player <slot>", Session.assigned_name("spike", 2) == "spike" and Session.assigned_name("player", 2) == "player 2" and Session.assigned_name("", 1) == "player 1" and Session.assigned_name("x".repeat(40), 3) == "player 3" and Session.assigned_name("aéb", 2) == "player 2")
 	var v := Vector3(1, 2, 3)
-	_check("state packets with NaN, infinity, a position beyond the world, a pitch past straight up or an impossible speed are refused", Session.sane(v, 0.5, -0.5, v) and not Session.sane(Vector3(NAN, 0, 0), 0.0, 0.0, v) and not Session.sane(v, INF, 0.0, v) and not Session.sane(v, 0.0, 2.0, v) and not Session.sane(Vector3(20000, 0, 0), 0.0, 0.0, v) and not Session.sane(v, 0.0, 0.0, Vector3(500, 0, 0)))
+	_check("state packets with NaN, infinity, a position beyond the world, a yaw past a full turn, a pitch past straight up or an impossible speed are refused", Session.sane(v, 0.5, -0.5, v) and Session.sane(v, -TAU, PI * 0.5, v) and not Session.sane(Vector3(NAN, 0, 0), 0.0, 0.0, v) and not Session.sane(v, INF, 0.0, v) and not Session.sane(v, 1e300, 0.0, v) and not Session.sane(v, 7.0, 0.0, v) and not Session.sane(v, 0.0, 2.0, v) and not Session.sane(Vector3(20000, 0, 0), 0.0, 0.0, v) and not Session.sane(v, 0.0, 0.0, Vector3(500, 0, 0)))
 
 
 ## Solo play: the arena alone makes an OFF session with the offline peer, no socket, no
@@ -309,6 +309,8 @@ func _session_checks() -> void:
 	var cs: Session = client["session"]
 	var client_id: int = cs.my_id
 	print("NET join: joined %s in %d ms real; host players %s; joiner players %s" % [joined, took, hs.players, cs.players])
+	var client_enet = cs.get("_enet")
+	_check("the joiner's socket is bound to the tuning's bind address, 127.0.0.1, on a port the system handed out for it", client_enet != null and cs.get("_local_port") > 0 and client_enet.host.get_local_port() == cs.get("_local_port"), "local port %d, bound %d" % [cs.get("_local_port"), client_enet.host.get_local_port() if client_enet != null else -1])
 	_check("the joiner connects, passes the handshake and both sides agree on the roster: player 1 (host) and player 2", started and joined and client_id != 1 and hs.players.has(client_id) and hs.players[client_id] == {"slot": 2, "name": "player 2"} and cs.players == hs.players and cs.my_name() == "player 2" and hs.roster_text() == "player 1 (you), player 2" and cs.roster_text() == "player 1, player 2 (you)")
 	_check("each side shows the other's avatar, named, under the arena's Players node, hidden until it moves", _avatar(host, client_id) is RemotePlayer and _avatar(client, 1) is RemotePlayer and _avatar(client, 1).player_name == "player 1" and _avatar(host, client_id).player_name == "player 2" and _avatar(client, 1).get_parent() == client["main"].get_node("Players"))
 	# The host's player runs forward; the joiner's avatar of it follows, smoothly, behind.
@@ -354,6 +356,32 @@ func _session_checks() -> void:
 	var client_run: float = (cp.position - from).length()
 	var back_off: float = (back.position - cp.position).length()
 	_check("the host sees the joiner move too, in the joiner's own arena space", client_run > 3.0 and back.visible and back_off < 0.05 and hs.received > 0, "ran %.2f, avatar %.3f off" % [client_run, back_off])
+	# Hostile state packets over the wire, with sequence numbers in range: the host refuses
+	# them, the avatar's transform stays finite and the real stream keeps flowing after them.
+	var last: int = back.get("_last_seq")
+	var avatar_yaw: float = back.rotation.y
+	cs._state.rpc_id(1, last + 1, cp.position, 1e300, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, last + 2, Vector3(NAN, 0, 0), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, last + 3, cp.position, 0.0, 0.0, Vector3(9999, 0, 0))
+	var got_before: int = hs.received
+	var worst_yaw := 0.0
+	var finite := true
+	for i in delay_frames + FRAMES_PER_SEND * 3:
+		await physics_frame
+		worst_yaw = maxf(worst_yaw, absf(back.rotation.y - avatar_yaw))
+		finite = finite and back.transform.basis.is_finite() and back.position.is_finite()
+	var flowing: int = hs.received - got_before
+	_check("a joiner's packets with a yaw of 1e300, a NaN position or an impossible speed are refused on the host: the avatar keeps its finite transform on every frame and the real stream keeps flowing", finite and worst_yaw < 0.01 and (back.position - cp.position).length() < 0.05 and flowing >= 3, "worst yaw change %.3f, %.3f m off, %d real packets after" % [worst_yaw, (back.position - cp.position).length(), flowing])
+	# One sane-looking packet with a giant sequence number must not put the real stream behind it.
+	last = back.get("_last_seq")
+	cs._state.rpc_id(1, last + 5000000, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	await _frames(delay_frames + FRAMES_PER_SEND)
+	var not_jumped: bool = (back.position - cp.position).length() < 0.05
+	for i in 30:
+		cp.drive_input(Vector2(0, -1))
+		await physics_frame
+	await _frames(delay_frames + FRAMES_PER_SEND * 3)
+	_check("a packet with a sequence number far ahead is dropped by the avatar, which goes on following the real ones", not_jumped and back.dropped >= 1 and (back.position - cp.position).length() < 0.05 and RemotePlayer.seq_ok(5, 4) and not RemotePlayer.seq_ok(4, 4) and not RemotePlayer.seq_ok(20000, 4), "%.3f m off after moving on, dropped %d" % [(back.position - cp.position).length(), back.dropped])
 	# The joiner leaves: the host sees it at once.
 	cs.leave()
 	var seen := await _until(func(): return hs.players.size() == 1 and hs.avatars.is_empty())
@@ -401,6 +429,8 @@ func _refusal_checks() -> void:
 	var refused := await _until(func(): return old["session"].state == Session.State.FAILED)
 	await _frames(FRAMES_PER_SEND * 2)
 	_check("a joiner on another protocol version is refused with the reason, and the host keeps nothing of it", refused and old["session"].error == "version mismatch: host %d, you %d" % [Session.PROTOCOL, Session.PROTOCOL + 1] and hs.players.size() == 1 and hs.get("_pending").is_empty() and hs.multiplayer.get_peers().is_empty(), old["session"].error)
+	var line: String = host["net_hud"].line_text()
+	_check("the host's screen says so too: the net line and the panel carry the refusal with both versions", hs.notice == "refused a joiner: version mismatch, host %d, joiner %d" % [Session.PROTOCOL, Session.PROTOCOL + 1] and line.ends_with(hs.notice) and line.begins_with("net: hosting :%d   players 1/2" % hs.listen_port()), line)
 	await _drop(old)
 	var client := _branch("Client2", CLIENT_OFFSET, _tuning())
 	await _frames(2)
@@ -411,7 +441,7 @@ func _refusal_checks() -> void:
 	third["session"].join(_address(host))
 	var full := await _until(func(): return third["session"].state == Session.State.FAILED)
 	await _frames(FRAMES_PER_SEND * 2)
-	_check("a third player to a two-player host is refused with \"host full\"; the two keep playing", full and third["session"].error == Session.HOST_FULL and hs.players.size() == 2 and client["session"].state == Session.State.JOINED and hs.multiplayer.get_peers().size() == 1, third["session"].error)
+	_check("a third player to a two-player host is refused with \"host full\"; the two keep playing, and the host's screen says it refused one", full and third["session"].error == Session.HOST_FULL and hs.players.size() == 2 and client["session"].state == Session.State.JOINED and hs.multiplayer.get_peers().size() == 1 and hs.notice == "refused a joiner: host full" and host["net_hud"].line_text().ends_with(hs.notice), third["session"].error)
 	await _until(func(): return hs.get("_refused").is_empty() and hs.multiplayer.get_authenticating_peers().is_empty())
 	_check("the refused peers are gone from the host after the grace", hs.get("_refused").is_empty() and hs.multiplayer.get_authenticating_peers().is_empty())
 	await _drop(third)
