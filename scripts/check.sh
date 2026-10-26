@@ -5,8 +5,8 @@
 #   scripts/check.sh <dir>    check another copy of the project (used to prove the gate can fail)
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
-# headless movement and cannon tests (tests/movement_test.gd, tests/cannon_test.gd) at a
-# fixed frame rate.
+# headless movement, cannon and derezz tests (tests/movement_test.gd, tests/cannon_test.gd,
+# tests/derezz_test.gd) at a fixed frame rate.
 # All steps always run, so one invocation shows everything that is wrong.
 # Exit 0 only when every step is clean. Exit 1 on any parse error, any ERROR or
 # SCRIPT ERROR line, or a nonzero Godot exit code. Exit 2 means the gate itself
@@ -82,6 +82,7 @@ run_godot "import" --import
 run_godot "run 300 frames" --quit-after 300
 run_godot "movement test" --fixed-fps 60 --script res://tests/movement_test.gd
 run_godot "cannon test" --fixed-fps 60 --script res://tests/cannon_test.gd
+run_godot "derezz test" --fixed-fps 60 --script res://tests/derezz_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2
