@@ -1,7 +1,9 @@
 extends RefCounted
-## Short-lived visual effects for the terminal cannon: beam, muzzle flash and its light,
-## impact flash and sparks. Every tunable comes from the weapon tuning resource and every
-## colour from palette.gd. Each effect frees itself when its lifetime ends.
+## Short-lived visual effects for every hitscan weapon (the terminal cannon first, then
+## SIGTERM's pellets): beam, muzzle flash and its light, impact flash and sparks. Every
+## tunable comes from the weapon's resource and every colour from palette.gd, through the
+## weapon's light skin (C16); plain WeaponTuning gets the cannon's teal and mint. Each
+## effect frees itself when its lifetime ends.
 ## Effects are cosmetic only and never touch anything outside the game.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -32,7 +34,7 @@ static func spawn_beam(root: Node, start: Vector3, finish: Vector3, w: Weapon) -
 	cyl.bottom_radius = w.beam_radius
 	cyl.height = length
 	cyl.radial_segments = w.beam_sides
-	var mat := Palette.unlit_glow(Palette.MINT, w.beam_energy)
+	var mat := Palette.unlit_glow(_beam_color(w), w.beam_energy)
 	var beam := _mesh(cyl, mat)
 	beam.rotation.x = QUARTER_TURN  # cylinder axis Y onto the pivot's -Z
 	pivot.add_child(beam)
@@ -47,10 +49,10 @@ static func spawn_muzzle_flash(muzzle: Node3D, w: Weapon) -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = w.muzzle_flash_radius
 	sphere.height = w.muzzle_flash_radius * SPHERE_HEIGHT_PER_RADIUS
-	var mat := Palette.unlit_glow(Palette.MINT, w.muzzle_flash_energy)
+	var mat := Palette.unlit_glow(_beam_color(w), w.muzzle_flash_energy)
 	flash.add_child(_mesh(sphere, mat))
 	var light := OmniLight3D.new()
-	light.light_color = Palette.TEAL
+	light.light_color = _body_color(w)
 	light.light_energy = w.muzzle_light_energy
 	light.omni_range = w.muzzle_light_range
 	light.shadow_enabled = false
@@ -63,11 +65,12 @@ static func spawn_muzzle_flash(muzzle: Node3D, w: Weapon) -> void:
 
 
 ## Flash and spark burst where the shot landed. The node's +Y points along the surface
-## normal, so the sparks fly off the surface. Hostile hits spark amber, the world mint.
+## normal, so the sparks fly off the surface. Hostile hits spark amber, the world in the
+## weapon's beam colour (mint for the cannon).
 static func spawn_impact(root: Node, point: Vector3, normal: Vector3, hostile: bool, w: Weapon) -> void:
 	var impact := _effect_root(root, "CannonImpact")
 	impact.global_transform = Transform3D(_basis_with_up(normal), point)
-	var color := Palette.HOSTILE_AMBER if hostile else Palette.MINT
+	var color := Palette.HOSTILE_AMBER if hostile else _beam_color(w)
 
 	var sphere := SphereMesh.new()
 	sphere.radius = w.impact_flash_radius
@@ -104,6 +107,15 @@ static func spawn_impact(root: Node, point: Vector3, normal: Vector3, hostile: b
 	tween.tween_property(flash_mat, "albedo_color:a", 0.0, w.impact_flash_lifetime)
 	tween.chain().tween_interval(maxf(w.spark_lifetime - w.impact_flash_lifetime, 0.0))
 	tween.chain().tween_callback(impact.queue_free)
+
+
+## The weapon's light skin colours; the cannon's for a plain WeaponTuning.
+static func _beam_color(w: Weapon) -> Color:
+	return w.call("skin_beam") if w.has_method("skin_beam") else Palette.MINT
+
+
+static func _body_color(w: Weapon) -> Color:
+	return w.call("skin_body") if w.has_method("skin_body") else Palette.TEAL
 
 
 static func _effect_root(parent: Node, effect_name: String) -> Node3D:

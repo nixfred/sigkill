@@ -9,6 +9,7 @@ const GuideHud = preload("res://scripts/hud/guide_hud.gd")
 const RoundHud = preload("res://scripts/round/round_hud.gd")
 const NetHud = preload("res://scripts/net/net_hud.gd")
 const CombatHud = preload("res://scripts/net/combat_hud.gd")
+const WeaponHud = preload("res://scripts/hud/weapon_hud.gd")
 
 const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off   M net"
 
@@ -20,6 +21,9 @@ var _guide: GuideHud
 var _round: RoundHud
 var _net: NetHud
 var _combat: CombatHud
+var _weapons: WeaponHud
+var _player: Node = null
+var _marker_weapon: Resource = null
 
 
 func _ready() -> void:
@@ -74,8 +78,15 @@ func _ready() -> void:
 	_combat.hud = self
 	root.add_child(_combat)
 
+	_weapons = WeaponHud.new()
+	_weapons.name = "WeaponHud"
+	root.add_child(_weapons)
+
 
 func _process(_delta: float) -> void:
+	# The hit marker takes the drawn weapon's sizes and timing.
+	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
+		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
 	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open()
 
@@ -89,8 +100,10 @@ func set_targets(remaining: int, total: int) -> void:
 
 
 ## The player, whose input the guide HUD blocks while its ask box is open, and whose
-## shots, jumps, slides and steps each round counts.
+## shots, jumps, slides and steps each round counts, and whose weapons the strip shows.
 func set_player(player: Node) -> void:
+	_player = player
+	_weapons.player = player
 	_guide.player = player
 	_round.set_player(player)
 	_net.player = player
@@ -104,6 +117,10 @@ func set_net_session(session: Node) -> void:
 
 func combat_hud() -> CombatHud:
 	return _combat
+
+
+func weapon_hud() -> WeaponHud:
+	return _weapons
 
 
 ## The host confirmed a hit by this player: the C6 hit marker, nothing else.
@@ -138,8 +155,9 @@ func guide() -> GuideHud:
 	return _guide
 
 
-## Hit marker sizes and timing come from the player's weapon tuning.
+## Hit marker sizes and timing come from the drawn weapon's tuning.
 func set_weapon_tuning(w: Resource) -> void:
+	_marker_weapon = w
 	_hit_marker.configure(w.hit_marker_seconds, w.hit_marker_size, w.hit_marker_gap, w.hit_marker_thickness)
 
 

@@ -1,12 +1,16 @@
 extends CharacterBody3D
-## First-person player: WASD + mouse look, jump and slide, plus a hitscan "terminal cannon".
+## First-person player: WASD + mouse look, jump and slide, plus a small arsenal (C16):
+## the hitscan terminal cannon in slot 1 and SIGTERM, the polite shotgun, in slot 2.
 ##
 ## Movement feel lives in one resource: scripts/movement_tuning.gd, with the default
 ## instance in resources/movement_tuning.tres. Every movement and camera number comes
 ## from it. All motion is scaled by delta, so it feels the same at any physics rate.
-## The cannon works the same way: scripts/weapon_tuning.gd, default instance
-## resources/terminal_cannon.tres, with its effects in scripts/cannon_fx.gd and its
-## synthesised sounds in scripts/sfx_synth.gd.
+## Weapons work the same way: each is a WeaponDef (scripts/weapons/weapon_def.gd, one .tres
+## per weapon: resources/terminal_cannon.tres, resources/sigterm.tres), the loadout and
+## swap timing are resources/arsenal.tres, and what the player holds, its ammo, swap and
+## reload live in scripts/weapons/inventory.gd. Effects are scripts/cannon_fx.gd and the
+## synthesised sounds scripts/sfx_synth.gd. 1 to 9 pick a weapon, the wheel cycles, Q
+## swaps back, E reloads; no shot goes off while a weapon is drawn or reloaded.
 ##
 ## Mouse rules: the mouse is captured only after the player clicks into the window.
 ## Esc, or the window losing focus, releases it. The game never grabs the mouse on
@@ -16,16 +20,19 @@ const Palette = preload("res://scripts/palette.gd")
 const Controls = preload("res://scripts/controls.gd")
 const Tuning = preload("res://scripts/movement_tuning.gd")
 const DEFAULT_TUNING_PATH := "res://resources/movement_tuning.tres"
-const Weapon = preload("res://scripts/weapon_tuning.gd")
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 const Sfx = preload("res://scripts/sfx_synth.gd")
-const DEFAULT_WEAPON_PATH := "res://resources/terminal_cannon.tres"
+const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
+const Inventory = preload("res://scripts/weapons/inventory.gd")
+const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
-## Emitted with each shot's origin and direction in world space: the intent the host of a
-## LAN session validates (C14). Local effects never wait for it.
-signal fire_intent(origin: Vector3, direction: Vector3)
+## Emitted with each shot's origin, aim direction in world space and weapon id: the intent
+## the host of a LAN session validates (C14, C16). The host draws a pellet weapon's pellets
+## itself. Local effects never wait for it.
+signal fire_intent(origin: Vector3, direction: Vector3, weapon: String)
 ## Emitted when a jump starts, from the ground or out of a slide. Round stats count it.
 signal jumped
 ## Emitted when a slide starts. Round stats count it.
@@ -33,8 +40,12 @@ signal slid
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
-## Terminal cannon tuning. Leave empty to use resources/terminal_cannon.tres.
+## Slot 1's weapon, a WeaponDef. Leave empty for the arsenal's own slot 1, the terminal
+## cannon. A bad one is replaced by the built-in cannon.
 @export var weapon: Resource
+## The loadout and swap timing, an ArsenalTuning. Leave empty to use resources/arsenal.tres.
+## A weapon in it that fails its own checks is refused and left out.
+@export var arsenal: Resource
 
 ## Shots and hits since the arena loaded, for the guide's ask stats. Each round counts its
 ## own from shot_fired, jumped and slid (scripts/round/round_stats.gd).
@@ -46,21 +57,30 @@ var input_blocked := false
 ## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
 ## read keyboard and mouse input as if it were captured. Never set by the game.
 var assume_captured := false
-## False while derezzed in a LAN match (C14): no movement, no fire, no cannon in view. The
-## session sets it from the host's word and clears it at the respawn.
+## False while derezzed in a LAN match (C14): no movement, no fire, no weapon in view. The
+## session sets it from the host's word and clears it at the respawn, which refills every
+## weapon.
 var alive := true
+## The weapons held and their state (scripts/weapons/inventory.gd).
+var inventory: Inventory
 
 var _t: Tuning
-var _w: Weapon
+var _w: WeaponDefScript  # the drawn weapon
+var _a: Arsenal
 var _spawn: Transform3D
 var _fire_queued := false
-var _viewmodel: MeshInstance3D
+var _viewmodel: MeshInstance3D  # the drawn weapon's
+var _viewmodels: Array[MeshInstance3D] = []
 var _rng := RandomNumberGenerator.new()
-var _cooldown_left := 0.0
+## Draws this player's own pellets: cosmetic tracers and its own dummies. In a match the
+## host draws the pellets that count with its own generator.
+var _pellet_rng := RandomNumberGenerator.new()
 var _recoil := Vector2.ZERO  # pitch and yaw kick in radians, applied to the camera
 var _viewmodel_kick := 0.0
-var _fire_sfx: AudioStreamPlayer
+var _fire_sfx: AudioStreamPlayer  # the drawn weapon's
 var _hit_sfx: AudioStreamPlayer
+var _reload_sfx: AudioStreamPlayer
+var _sfx: Array = []  # per slot: [fire, hit, reload]
 
 # Movement state.
 var _sliding := false
@@ -104,24 +124,22 @@ func _ready() -> void:
 	_head.position.y = _t.stand_head_height
 	_camera.fov = _t.base_fov
 
-	if not (weapon is Weapon):
-		weapon = load(DEFAULT_WEAPON_PATH)
-	_w = weapon as Weapon
-	if _w == null:
-		push_error("player: no weapon tuning resource at " + DEFAULT_WEAPON_PATH)
-		set_physics_process(false)
-		set_process_unhandled_input(false)
-		return
-	var weapon_issues := _w.problems()
-	if not weapon_issues.is_empty():
+	if not (arsenal is Arsenal):
+		arsenal = load(DEFAULT_ARSENAL_PATH)
+	_a = Arsenal.usable_timing(arsenal)
+	var defs: Array = Arsenal.usable_loadout(arsenal)
+	if weapon != null:
+		var weapon_issues: PackedStringArray = weapon.problems() if weapon is WeaponDefScript else PackedStringArray(["not a WeaponDef"])
 		for issue in weapon_issues:
 			push_warning("weapon tuning: " + issue + "; using the built-in defaults instead")
-		_w = Weapon.new()
+		defs[0] = weapon if weapon_issues.is_empty() else WeaponDefScript.new()
+	inventory = Inventory.new(defs, _a.swap_s, _a.fiction_s)
 	_rng.randomize()
-	_muzzle.position = _w.muzzle_offset
-	_build_viewmodel()
-	_fire_sfx = _make_sfx_player(Sfx.fire_zap(_w))
-	_hit_sfx = _make_sfx_player(Sfx.hit_blip(_w))
+	_pellet_rng.randomize()
+	for def in inventory.defs:
+		_viewmodels.append(_build_viewmodel(def))
+		_sfx.append([_make_sfx_player(Sfx.fire_zap(def), def), _make_sfx_player(Sfx.hit_blip(def), def), _make_sfx_player(Sfx.reload_clack(def), def)])
+	_show_weapon()
 
 
 func _notification(what: int) -> void:
@@ -148,6 +166,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		_look((event as InputEventMouseMotion).relative)
 	elif event.is_action_pressed("fire"):
 		_fire_queued = true
+	elif event.is_action_pressed("reload"):
+		reload_weapon()
+	elif event.is_action_pressed("weapon_last"):
+		swap_to_last()
+	elif event.is_action_pressed("weapon_next"):
+		cycle_weapon(1)
+	elif event.is_action_pressed("weapon_prev"):
+		cycle_weapon(-1)
+	else:
+		for i in Controls.SLOT_KEYS.size():
+			if event.is_action_pressed("weapon_%d" % (i + 1)):
+				select_slot(i)
+				break
 
 
 ## Mouse look: yaw on the body, pitch on the head, clamped to the pitch limit. The recoil
@@ -364,8 +395,11 @@ func respawn_at(pos: Vector3) -> void:
 
 
 ## Alive or derezzed (C14). Derezzed: no input counts, the body stops where it is (a slide
-## ends, momentum goes; it still falls if in the air) and the cannon is out of view.
+## ends, momentum goes; it still falls if in the air) and the weapon is out of view. Coming
+## back to life (the host's respawn) refills every weapon (C16).
 func set_alive(on: bool) -> void:
+	if on and not alive and inventory != null:
+		inventory.refill()
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -395,51 +429,98 @@ func _release_mouse() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-# --- Terminal cannon. Every number below comes from the weapon tuning resource. ---
+# --- Weapons. Every number below comes from the drawn weapon's WeaponDef. ---
 
-## The weapon tuning in use: the shipped resource, or the built-in defaults if it was bad.
+## The drawn weapon's WeaponDef: the shipped one, or the built-in cannon if slot 1's was bad.
 func weapon_tuning() -> Resource:
 	return _w
 
 
+## Draws the weapon in `slot` (0 for slot 1): ready to fire after the swap time. False when
+## it is already drawn, there is no such slot, or the player is derezzed.
+func select_slot(slot: int) -> bool:
+	if not alive or not inventory.select(slot):
+		return false
+	_show_weapon()
+	return true
+
+
+## The next (`step` 1) or previous (-1) weapon, wrapping round: the mouse wheel.
+func cycle_weapon(step: int) -> bool:
+	return select_slot(posmod(inventory.current + step, inventory.slot_count())) if inventory.slot_count() > 1 else false
+
+
+## Back to the weapon drawn before this one: Q.
+func swap_to_last() -> bool:
+	return select_slot(inventory.last)
+
+
+## Reloads the drawn weapon: E. False when there is nothing to reload or it cannot now.
+func reload_weapon() -> bool:
+	return alive and inventory.reload()
+
+
+## Takes over `other`'s weapons and their state, when it holds the same loadout: the session
+## hands a match's inventory to the new arena after an R reload, so R never refills ammo
+## mid-match. False when the loadouts differ.
+func adopt_inventory(other: Inventory) -> bool:
+	if other == null or other.slot_count() != inventory.slot_count():
+		return false
+	for i in other.slot_count():
+		if other.defs[i].id != inventory.defs[i].id:
+			return false
+	inventory = other
+	_show_weapon()
+	return true
+
+
 func _step_weapon(delta: float) -> void:
-	_cooldown_left = maxf(_cooldown_left - delta, 0.0)
+	var reloading := inventory.is_reloading()
+	inventory.tick(delta)
+	if reloading and not inventory.is_reloading() and alive:
+		_reload_sfx.play()  # the rounds are in
 	# Recover first, then apply any new shot, so a shot's kick is the same size at any
 	# physics rate. Mouse aim is never touched, so the view settles back on target.
 	_recoil = _recoil.lerp(Vector2.ZERO, _smoothing(_w.recoil_recovery, delta))
 	_viewmodel_kick = lerpf(_viewmodel_kick, 0.0, _smoothing(_w.viewmodel_recovery, delta))
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
-	if _fire_pressed and _cooldown_left <= 0.0 and alive:
+	if _fire_pressed and alive and inventory.try_fire() == "":
 		_fire()
 		_apply_recoil()
-	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, 0.0, _w.viewmodel_kick_back * _viewmodel_kick)
+	# A weapon being drawn rises from below; one being reloaded tips over and back.
+	var drop := _a.swap_drop_m * (1.0 - inventory.swap_progress())
+	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, -drop, _w.viewmodel_kick_back * _viewmodel_kick)
 	_viewmodel.rotation.x = deg_to_rad(_w.viewmodel_kick_pitch_degrees) * _viewmodel_kick
+	_viewmodel.rotation.z = deg_to_rad(_a.reload_tilt_degrees) * sin(PI * inventory.reload_progress())
 
 
+## One shot of the drawn weapon: one ray for a single shot, one per pellet for SIGTERM, each
+## pellet's damage eased by its distance. Hits on this machine's own dummies land here; in
+## a match the host judges every shot at another player from the intent alone.
 func _fire() -> void:
-	_cooldown_left = _w.fire_cooldown
 	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
-	var far_point := origin + forward * _w.fire_range
-	var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
-	var result := get_world_3d().direct_space_state.intersect_ray(query)
-
-	var end_point := far_point
 	var hit_target := false
 	var fx_root := _fx_root()
-	if not result.is_empty():
-		end_point = result["position"]
-		var normal: Vector3 = result["normal"]
-		if normal.is_zero_approx():
-			normal = -forward
-		var collider = result["collider"]
-		if is_instance_valid(collider) and collider.has_method("hit"):
-			hit_target = collider.call("hit", _w.damage, end_point, forward) == true
-		CannonFx.spawn_impact(fx_root, end_point, normal, hit_target, _w)
-
-	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
+	for dir in _w.pellet_directions(forward, _pellet_rng):
+		var far_point := origin + dir * _w.fire_range
+		var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
+		var result := get_world_3d().direct_space_state.intersect_ray(query)
+		var end_point := far_point
+		if not result.is_empty():
+			end_point = result["position"]
+			var normal: Vector3 = result["normal"]
+			if normal.is_zero_approx():
+				normal = -dir
+			var landed := false
+			var collider = result["collider"]
+			if is_instance_valid(collider) and collider.has_method("hit"):
+				landed = collider.call("hit", _w.damage_at(origin.distance_to(end_point)), end_point, dir) == true
+			hit_target = hit_target or landed
+			CannonFx.spawn_impact(fx_root, end_point, normal, landed, _w)
+		CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
 	CannonFx.spawn_muzzle_flash(_muzzle, _w)
 	_kick()
 	_fire_sfx.play()
@@ -447,7 +528,20 @@ func _fire() -> void:
 		hits_landed += 1
 		_hit_sfx.play()
 	shot_fired.emit(hit_target)
-	fire_intent.emit(origin, forward)
+	fire_intent.emit(origin, forward, _w.id)
+
+
+## Puts the drawn weapon in view, with its muzzle and its sounds.
+func _show_weapon() -> void:
+	_w = inventory.def()
+	_muzzle.position = _w.muzzle_offset
+	for i in _viewmodels.size():
+		_viewmodels[i].visible = i == inventory.current and alive
+	_viewmodel = _viewmodels[inventory.current]
+	_fire_sfx = _sfx[inventory.current][0]
+	_hit_sfx = _sfx[inventory.current][1]
+	_reload_sfx = _sfx[inventory.current][2]
+	_viewmodel_kick = 0.0
 
 
 ## Puts the recoil on the camera, clamped so aim plus recoil stays within the pitch limit.
@@ -473,22 +567,25 @@ func _fx_root() -> Node:
 	return scene if scene != null else get_parent()
 
 
-func _build_viewmodel() -> void:
+## A placeholder viewmodel: a glowing box in the weapon's light skin, out of view until drawn.
+func _build_viewmodel(def: WeaponDefScript) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
-	mesh.size = _w.viewmodel_size
-	_viewmodel = MeshInstance3D.new()
-	_viewmodel.name = "TerminalCannon"
-	_viewmodel.mesh = mesh
-	_viewmodel.material_override = Palette.glow(Palette.TEAL, _w.viewmodel_glow_energy)
-	_viewmodel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_viewmodel.position = _w.viewmodel_offset
-	_camera.add_child(_viewmodel)
+	mesh.size = def.viewmodel_size
+	var model := MeshInstance3D.new()
+	model.name = def.display_name.to_pascal_case()
+	model.mesh = mesh
+	model.material_override = Palette.glow(def.skin_body(), def.viewmodel_glow_energy)
+	model.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	model.position = def.viewmodel_offset
+	model.visible = false
+	_camera.add_child(model)
+	return model
 
 
-func _make_sfx_player(stream: AudioStream) -> AudioStreamPlayer:
+func _make_sfx_player(stream: AudioStream, def: WeaponDefScript) -> AudioStreamPlayer:
 	var sfx := AudioStreamPlayer.new()
 	sfx.stream = stream
-	sfx.volume_db = Sfx.volume_db(_w.master_volume)
-	sfx.max_polyphony = _w.sfx_polyphony
+	sfx.volume_db = Sfx.volume_db(def.master_volume)
+	sfx.max_polyphony = def.sfx_polyphony
 	add_child(sfx)
 	return sfx

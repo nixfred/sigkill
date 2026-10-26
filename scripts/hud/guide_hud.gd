@@ -253,9 +253,18 @@ static func usable_tuning(candidate: Resource) -> Resource:
 	return HudTuningScript.new()
 
 
+## The drawn weapon's id (C16), or the cannon's when the player has none to tell.
+func _weapon_id() -> String:
+	if player != null and is_instance_valid(player) and player.has_method("weapon_tuning"):
+		var id = player.weapon_tuning().get("id")
+		if id is String and id != "":
+			return id
+	return WEAPON
+
+
 ## The game stats a question carries, all in the C9b whitelist.
 func game_stats() -> Dictionary:
-	var stats := {"weapon": WEAPON, "mode": MODE, "round_seconds": snappedf(_round_s, 0.1), "kills": _kills}
+	var stats := {"weapon": _weapon_id(), "mode": MODE, "round_seconds": snappedf(_round_s, 0.1), "kills": _kills}
 	if _targets_left >= 0:
 		stats["targets_left"] = _targets_left
 	if player != null:

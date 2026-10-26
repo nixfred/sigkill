@@ -7,10 +7,16 @@ extends RefCounted
 ## Fred's dictation tool). Esc releases the mouse. C slides, so crouch-style keys
 ## never need a modifier. T opens the ask box to the player's AI and O turns the AI on
 ## or off (C11 guide HUD). B turns the roast announcer on or off (C12 rounds). M opens
-## the multiplayer panel (C13), whose own keys count only while it is open.
+## the multiplayer panel (C13), whose own keys count only while it is open. Weapons (C16):
+## 1 to 9 pick a slot, the mouse wheel cycles, Q swaps back to the last weapon, and E
+## reloads, because R already resets the arena.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
+
+
+## Keys 1 to 9 pick weapon slots 1 to 9.
+const SLOT_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
 
 
 static func ensure() -> void:
@@ -27,6 +33,12 @@ static func ensure() -> void:
 	_key("toggle_roast", [KEY_B])
 	_key("net_menu", [KEY_M])
 	_mouse("fire", MOUSE_BUTTON_LEFT)
+	for i in SLOT_KEYS.size():
+		_key("weapon_%d" % (i + 1), [SLOT_KEYS[i]])
+	_mouse("weapon_next", MOUSE_BUTTON_WHEEL_DOWN)
+	_mouse("weapon_prev", MOUSE_BUTTON_WHEEL_UP)
+	_key("weapon_last", [KEY_Q])
+	_key("reload", [KEY_E])
 
 
 static func _key(action: StringName, keycodes: Array) -> void:

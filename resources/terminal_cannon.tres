@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="WeaponTuning" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponDef" load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/weapon_tuning.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/weapons/weapon_def.gd" id="1_weapon"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -61,3 +61,22 @@ hit_hz = 2200.0
 hit_second_ratio = 1.5
 hit_decay = 35.0
 hit_gain = 0.6
+id = "terminal_cannon"
+display_name = "Terminal cannon"
+short_name = "cannon"
+fiction = "cannon: one line, one hit."
+kill_word = "SIGKILL"
+fire_mode = 0
+pellet_count = 1
+spread_degrees = 0.0
+magazine_size = -1
+reserve_ammo = -1
+reload_s = 0.0
+falloff_start_m = 120.0
+falloff_end_m = 120.0
+falloff_floor = 1.0
+light_skin = "teal"
+reload_click_hz = 900.0
+reload_gain = 0.5
+mod_slots = Array[String]([])
+skin_slots = Array[String]([])

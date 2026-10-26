@@ -1,7 +1,7 @@
 extends RefCounted
-## Procedural placeholder sound effects for the terminal cannon, synthesised here at load
-## time. No audio file is downloaded, copied or shipped. Deterministic: the same tuning
-## always gives the same sound. Every parameter comes from the weapon tuning resource.
+## Procedural placeholder sound effects for every weapon, synthesised here at load time.
+## No audio file is downloaded, copied or shipped. Deterministic: the same tuning always
+## gives the same sound. Every parameter comes from the weapon's resource.
 
 const Weapon = preload("res://scripts/weapon_tuning.gd")
 
@@ -10,6 +10,12 @@ const SILENT_DB := -80.0
 const INT16_FULL_SCALE := 32767.0
 ## Fixed so every build makes the same noise.
 const NOISE_SEED := 9
+## The reload clack: two short clicks, the second a little higher, this far apart.
+const CLACK_GAP_S := 0.11
+const CLACK_SECONDS := 0.04
+const CLACK_DECAY := 90.0
+const CLACK_NOISE := 0.45
+const CLACK_SECOND_PITCH := 1.35
 
 
 ## Player volume in dB for a linear master volume from 0 to 1.
@@ -25,6 +31,23 @@ static func fire_zap(w: Weapon) -> AudioStreamWAV:
 ## Hit: two bright tones at once, very short, so a hit sounds different from a shot.
 static func hit_blip(w: Weapon) -> AudioStreamWAV:
 	return _render(w, w.hit_sfx_seconds, w.hit_hz, w.hit_hz, w.hit_decay, 0.0, w.hit_second_ratio, w.hit_gain)
+
+
+## Reload: a mechanical clack-clack at the weapon's reload pitch. WeaponDef only.
+static func reload_clack(w: Weapon) -> AudioStreamWAV:
+	var hz: float = w.get("reload_click_hz") if w.get("reload_click_hz") != null else 900.0
+	var gain: float = w.get("reload_gain") if w.get("reload_gain") != null else 0.5
+	var first := _render(w, CLACK_SECONDS, hz, hz * 0.6, CLACK_DECAY, CLACK_NOISE, 0.0, gain)
+	var second := _render(w, CLACK_SECONDS, hz * CLACK_SECOND_PITCH, hz * CLACK_SECOND_PITCH * 0.6, CLACK_DECAY, CLACK_NOISE, 0.0, gain)
+	var gap := PackedByteArray()
+	gap.resize(maxi(int(CLACK_GAP_S * w.sfx_mix_rate) * 2 - first.data.size(), 0))
+	gap.fill(0)
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = w.sfx_mix_rate
+	stream.stereo = false
+	stream.data = first.data + gap + second.data
+	return stream
 
 
 static func _render(w: Weapon, seconds: float, start_hz: float, end_hz: float, decay: float, noise: float, second_ratio: float, gain: float) -> AudioStreamWAV:

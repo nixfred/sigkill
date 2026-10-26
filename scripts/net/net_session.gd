@@ -1086,7 +1086,7 @@ func _show_avatar_state(id: int) -> void:
 
 ## This player's cannon fired (scripts/player.gd): the intent goes to the host, which, when
 ## this is the host, is the same validation every other shot gets.
-func _on_fire_intent(origin: Vector3, direction: Vector3) -> void:
+func _on_fire_intent(origin: Vector3, direction: Vector3, _weapon: String = "") -> void:
 	if not is_online() or _arena == null or not is_instance_valid(_arena):
 		return
 	fire_seq += 1

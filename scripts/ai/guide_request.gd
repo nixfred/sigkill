@@ -26,7 +26,7 @@ const STATS := {
 	"targets_left": ["int", 0, 10000],
 	"accuracy_percent": ["float", 0.0, 100.0],
 	"round_seconds": ["float", 0.0, 86400.0],
-	"weapon": ["enum", ["terminal_cannon"]],
+	"weapon": ["enum", ["terminal_cannon", "sigterm"]],
 	"mode": ["enum", ["practice", "deathmatch", "hunt"]],
 	# One round's numbers, for the coaching or roast at its end (C12).
 	"round_number": ["int", 1, 100000],

@@ -20,6 +20,12 @@ const FLASH := Color(1.0, 1.0, 1.0)  # #ffffff kill flash and hit-marker pop
 # Matrix register: green code rain where reality is thin. Nothing else is green.
 const MATRIX_GREEN := Color(0.0, 1.0, 0.254901961)  # #00ff41 code rain tails
 const MATRIX_HEAD := Color(0.784313725, 1.0, 0.815686275)  # #c8ffd0 the leading glyph of each stream
+# Weapon light skins (C16): each weapon's own neon, never hostile red or amber, never green.
+const VIOLET := Color(0.615686275, 0.360784314, 1.0)  # #9d5cff SIGTERM body and light
+const VIOLET_HI := Color(0.847058824, 0.749019608, 1.0)  # #d8bfff SIGTERM beam and flash
+## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
+## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI]}
 
 # Look tunables. Lengths are in metres, energies multiply the emission colour.
 const EDGE_WIDTH := 0.04
@@ -79,7 +85,17 @@ static func ally_material(radius: float, height: float) -> ShaderMaterial:
 	return mat
 
 
-## Dark body with a glowing emission colour. Used for the cannon viewmodel.
+## A weapon light skin's body colour: the viewmodel and the muzzle light. Teal when unknown.
+static func skin_body(skin: String) -> Color:
+	return SKINS.get(skin, SKINS["teal"])[0]
+
+
+## A weapon light skin's beam colour: tracers, the muzzle flash, a miss's sparks.
+static func skin_beam(skin: String) -> Color:
+	return SKINS.get(skin, SKINS["teal"])[1]
+
+
+## Dark body with a glowing emission colour. Used for the weapon viewmodels.
 static func glow(color: Color, energy: float = 1.5) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color.darkened(0.65)

@@ -18,7 +18,8 @@ const BANNER := "[ DEREZZED by %s ]\n\nrespawn in %.1f s"
 const FEED_FIRST := "SIGKILL sent by %s"
 const FEED_SECOND := "to %s"
 const FEED_FONT := 13
-const FEED_BOTTOM_GAP := 54
+## Room below the feed for the hint line and the weapon strip (C16).
+const FEED_BOTTOM_GAP := 104
 const FLASH_ALPHA := 0.28
 const BORDER_WIDTH := 3
 
