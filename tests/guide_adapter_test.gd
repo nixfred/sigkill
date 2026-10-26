@@ -256,7 +256,7 @@ func _safety_checks() -> void:
 			if (file.ends_with(".gd") or file.ends_with(".tscn")) and file != "guide_tuning.gd" and (text.contains("scripts/ai/") or text.contains("guide_tuning")):
 				users.append(dir.path_join(file))
 	users.sort()
-	_check("outside scripts/ai only the boot screen (C10) uses the guide", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd"], ", ".join(users))
+	_check("outside scripts/ai only the boot screen (C10) and the guide link use the guide", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd", "res://scripts/guide/guide_link.gd"], ", ".join(users))
 
 
 func _tuning_checks() -> void:

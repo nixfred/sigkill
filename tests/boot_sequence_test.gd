@@ -17,6 +17,7 @@ const Settings = preload("res://scripts/boot/guide_settings.gd")
 const Detector = preload("res://scripts/ai/ai_source_detector.gd")
 const Found = preload("res://scripts/ai/ai_source_result.gd")
 const Request = preload("res://scripts/ai/guide_request.gd")
+const Link = preload("res://scripts/guide/guide_link.gd")
 const BOOT_TUNING_PATH := "res://resources/boot.tres"
 const FIXTURES := "res://tests/fixtures/ai"
 const ARENA := "res://scenes/main.tscn"
@@ -497,16 +498,18 @@ func _code(path: String) -> String:
 
 
 func _source_checks() -> void:
-	var source := _code("res://scripts/boot/boot_sequence.gd") + _code("res://scripts/boot/guide_settings.gd") + _code("res://scripts/boot/boot_tuning.gd")
+	var source := _code("res://scripts/boot/boot_sequence.gd") + _code("res://scripts/boot/guide_settings.gd") + _code("res://scripts/boot/boot_tuning.gd") + _code("res://scripts/guide/guide_link.gd")
 	var found := PackedStringArray()
 	for word in SOURCE_NEVER:
 		if source.contains(word):
 			found.append(word)
 	_check("the boot screen starts no program, opens no socket and stops nothing itself", found.is_empty(), ", ".join(found))
 	var boot := _code("res://scripts/boot/boot_sequence.gd")
-	_check("the registry is asked in one place, on the adapter worker, after the headless guard has returned", boot.count("adapter_for(") == 1 and boot.contains("\t\tif guarded:\n\t\t\treturn\n\t\tadapter = RegistryScript.adapter_for(found, detector, tuning)") and boot.contains("_adapter_thread.start(_adapter_job.run)"))
-	_check("a real detector is made in one place, only when not guarded", boot.count("Detector.new()") == 1 and boot.contains("\tif detector == null and not _guarded:\n\t\tdetector = Detector.new()"))
-	_check("the AI switch is set in one place, on the screen's own copy, right before the one ask", boot.count("ai_enabled = true") == 1 and boot.contains("\t_guide_tuning.ai_enabled = true\n\tvar started: Dictionary = _adapter.ask(") and boot.count(".ask(") == 1)
+	var link := _code("res://scripts/guide/guide_link.gd")
+	_check("the boot screen never asks the registry or makes a detector itself; the guide link does", boot.count("adapter_for(") == 0 and boot.count("Detector.new()") == 0 and boot.count(".ask(") == 1 and boot.contains("_link.ask(Request.build({}, HANDSHAKE_TEXT,"))
+	_check("the registry is asked in one place, on the adapter worker, after the headless guard has returned", link.count("adapter_for(") == 1 and link.contains("\t\tif guarded:\n\t\t\treturn\n\t\tadapter = RegistryScript.adapter_for(found, detector, tuning)") and link.contains("_adapter_thread.start(_job.run)"))
+	_check("a real detector is made in one place, only when not guarded", link.count("Detector.new()") == 1 and link.contains("\tif detector == null and not _guarded:\n\t\tdetector = Detector.new()"))
+	_check("the AI switch is set in one place, on the link's own copy, right before the one ask, and only after the yes is checked", link.count("ai_enabled = true") == 1 and link.contains("\tif not ai_on() or adapter.tuning() != guide_tuning:") and link.contains("\tguide_tuning.ai_enabled = true\n\tvar started: Dictionary = adapter.ask(request)") and link.count(".ask(") == 1)
 
 
 func _line_checks() -> void:
@@ -739,7 +742,7 @@ func _exit_checks() -> void:
 func _leftovers() -> int:
 	var n := 0
 	for child in root.get_children():
-		if child.get_script() == Boot.Leftovers:
+		if child.get_script() == Link.Leftovers:
 			n += 1
 	return n
 

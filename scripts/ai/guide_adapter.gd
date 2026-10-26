@@ -125,6 +125,13 @@ func poll() -> Dictionary:
 	return _end(done)
 
 
+## How long until ask() would pass the rate limit, in milliseconds; 0 when it would now.
+func cooldown_ms() -> int:
+	if not _ever_asked:
+		return 0
+	return maxi(0, _t.min_interval_ms - (int(rate_clock.call()) - _last_ask_at))
+
+
 ## Stops a running request and returns its "cancelled" result; {} if none was running.
 func cancel() -> Dictionary:
 	if not _busy:

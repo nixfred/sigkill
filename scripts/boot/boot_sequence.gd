@@ -4,21 +4,14 @@ extends Control
 ## GPU readout, and a "Linking..." handshake that shows the AI answering, then the arena.
 ## Esc or Enter skips straight to the arena at any point.
 ##
-## Never blocks the main thread: the detector runs on its own worker (start/is_done/wait),
-## the adapter is chosen on a worker too (the registry looks the agent's command up along
-## the PATH), each GPU reading runs on a short worker thread of its own (nvidia-smi can take
-## a second), and the handshake adapter is polled once a frame. The arena loads in the
-## background. Leaving never waits on a worker either: it cancels the detector and hands
-## anything still running (the detector, the adapter worker, a GPU reading) to a small
-## Leftovers node that outlives the screen and joins each one once it has finished. Only
-## when the game itself quits are workers joined on the spot, since a running thread must
-## not outlive the engine; the C9 reader gives up at a cancel, so that is about a
-## millisecond unless the filesystem itself hangs.
+## The AI side lives in scripts/guide/guide_link.gd, which this screen makes and, when it
+## hands off, leaves to the arena's guide HUD: detection, the adapter choice and GPU
+## readings on workers (never the main thread), the player's opt-in, the AI switch, the
+## headless guard and demo data. The arena loads in the background.
 ##
 ## The AI is called only with the player's yes. Before the first call to a source, the
 ## screen names it and says what it gets, and waits for Y (allow) or N (keep AI off); the
-## answer is kept by scripts/boot/guide_settings.gd in user://settings.cfg. The guide
-## tuning's ai_enabled switch is set only on this screen's own copy, and only after a yes.
+## answer is kept by scripts/boot/guide_settings.gd in user://settings.cfg.
 ## The handshake is one call through the C9b registry with the request builder, a fixed
 ## prompt and no player data at all; a timeout or an error falls back to the scripted line.
 ## The prompt asks the AI to answer with one of SIGKILL's own HANDSHAKE_LINES; the screen
@@ -26,11 +19,10 @@ extends Control
 ## own words, which could name a person, a machine or a model, never reach the screen.
 ## A local server with nothing loaded is never asked to load anything.
 ##
-## Headless guard (hard rule): in any headless run, or with the user argument --no-ai, no
-## real detector is ever made and the C9b registry is never asked, whatever was saved, so
-## no agent is launched and no model server is contacted. Only a detector and an adapter
-## factory a test hands in are used. A headless run with nothing handed in, such as the
-## check.sh smoke run, goes straight to the arena.
+## Headless guard (hard rule, kept by the link): in any headless run, or with the user
+## argument --no-ai, no real detector is made and the registry is never asked, whatever was
+## saved. A headless run with nothing handed in, such as the check.sh smoke run, goes
+## straight to the arena.
 ##
 ## Demo-data mode (user argument --demo, e.g. `godot --path . -- --demo`): fake data
 ## everywhere, agent "claude", fake GPU numbers, a canned answer and latency. No detector,
@@ -49,11 +41,10 @@ const Detector = preload("res://scripts/ai/ai_source_detector.gd")
 const Found = preload("res://scripts/ai/ai_source_result.gd")
 const Registry = preload("res://scripts/ai/guide_registry.gd")
 const Request = preload("res://scripts/ai/guide_request.gd")
-const GuideTuningScript = preload("res://scripts/guide_tuning.gd")
+const Link = preload("res://scripts/guide/guide_link.gd")
 
 const ARENA_SCENE := "res://scenes/main.tscn"
 const DEFAULT_TUNING_PATH := "res://resources/boot.tres"
-const GUIDE_TUNING_PATH := "res://resources/guide.tres"
 
 const TITLE := "SIGKILL boot"
 const HINT := "Esc or Enter: skip to the arena"
@@ -76,14 +67,10 @@ const HANDSHAKE_TEXT := "Boot handshake. Reply with exactly one of these lines, 
 ## Characters stripped from both ends of an answer before it is matched.
 const ANSWER_WRAPPING := " \t\"'`*>"
 const SPINNER := ["|", "/", "-", "\\"]
-const ERROR_WORD_MAX := 24
 
-const DEMO_AGENT := "claude"
 const DEMO_ANSWER := "Link up. Daemons detected. Let's go hunting."  # one of HANDSHAKE_LINES
-const DEMO_GPU := {"available": true, "source": "demo", "util_percent": 41, "vram_used_mib": 3072, "vram_total_mib": 8192, "temp_c": 58}
-const DEMO_UTIL_SWING := 7
 
-enum Phase { DETECTING, CHOOSING, CONSENT, LINKING, CLOSING, LEAVING, DONE }
+enum Phase { DETECTING, CONSENT, LINKING, CLOSING, LEAVING, DONE }
 
 # Set these before the node enters the tree; the defaults are the real ones.
 ## BootTuning; null for resources/boot.tres.
@@ -99,19 +86,16 @@ var adapter_factory := Callable()
 var settings_path := Settings.DEFAULT_PATH
 ## Demo-data mode; --demo on the command line also turns it on.
 var demo := false
-## Change to next_scene when done. Tests that only watch `finished` turn it off.
+## Change to next_scene when done, leaving the link to it. Tests that only watch
+## `finished` turn it off.
 var hand_off := true
 var next_scene := ARENA_SCENE
 
 var _t: Resource
-var _guide_tuning: Resource
-var _guarded := false
-var _skip_reason := ""
+var _link: Link
 var _phase: Phase = Phase.DETECTING
-var _found: Found
-var _adapter  # untyped on purpose: a C9b adapter, or a test stub with the same calls
+var _routed := false
 var _who := ""
-var _source_key := ""
 var _link_ms := 0.0
 var _spin_ms := 0.0
 var _spin_at := 0
@@ -119,6 +103,7 @@ var _continue_ms := 0.0
 var _left := false
 var _skipped := false
 var _loading := false
+var _link_parked := false
 
 var _lines: VBoxContainer
 var _spinner: Label
@@ -127,44 +112,33 @@ var _queue: Array[Label] = []
 var _typed := 0.0
 var _pause_ms := 0.0
 
-var _gpu_on := false
-var _gpu_wait_ms := 0.0
-var _gpu_thread: Thread
-var _gpu_reads := 0
-var _demo_ticks := 0
-var _adapter_job: AdapterJob
-var _adapter_thread: Thread
-
 
 func _ready() -> void:
 	_t = usable_tuning(tuning)
-	_guide_tuning = _fresh_guide_tuning()
-	var args := OS.get_cmdline_user_args()
-	demo = demo or args.has("--demo")
-	var headless := DisplayServer.get_name() == "headless"
-	_guarded = headless or args.has("--no-ai")
-	_skip_reason = ("headless run" if headless else "--no-ai") if _guarded else "the detector gave no answer"
+	_link = Link.new()
+	_link.detector = detector
+	_link.adapter_factory = adapter_factory
+	_link.settings_path = settings_path
+	_link.demo = demo
+	_link.gpu_interval_ms = _t.gpu_interval_ms
+	_link.start()
+	demo = _link.demo
 	_build_screen()
-	if headless and not demo and detector == null and adapter_factory.is_null():
+	if DisplayServer.get_name() == "headless" and _link.is_inert():
 		print("SIGKILL boot: headless run, AI link skipped, straight to the arena")
 		_leave.call_deferred(false)
 		return
 	if hand_off and next_scene != "":
 		_loading = ResourceLoader.load_threaded_request(next_scene) == OK
 	_say(TITLE, _t.title_color, _t.title_font_size)
-	if demo:
-		return
-	if detector == null and not _guarded:
-		detector = Detector.new()
-	if detector != null and detector.start() != OK:
-		detector = null
-		_skip_reason = "detection could not start"
 
 
 func _process(delta: float) -> void:
 	var ms := delta * 1000.0
 	_type(delta)
-	_tick_gpu(ms)
+	if not _left:
+		_link.poll(ms)
+		_show_gpu()
 	_tick_spinner(ms)
 	if _phase == Phase.LEAVING:
 		_finish_leaving()
@@ -175,9 +149,9 @@ func _process(delta: float) -> void:
 		return
 	match _phase:
 		Phase.DETECTING:
-			_poll_detection()
-		Phase.CHOOSING:
-			_poll_choosing()
+			if _link.is_ready() and not _routed:
+				_routed = true
+				_route()
 		Phase.CLOSING:
 			_continue_ms -= ms
 			if _continue_ms <= 0.0:
@@ -201,19 +175,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
-	_stop_link()
-	# Cancel first: the C9 reader then gives up at once, so the joins below take about a
-	# millisecond even with an nvidia-smi still running (it is left to exit on its own).
-	# Workers left here were not handed to a Leftovers node (the game is quitting, or the
-	# screen was freed without leaving), so they are joined now: a thread must not
-	# outlive its owner.
-	if detector != null and detector.has_method("cancel"):
-		detector.cancel()
-	for worker in [_gpu_thread, _adapter_thread]:
-		if worker != null and worker.is_started():
-			worker.wait_to_finish()
-	_gpu_thread = null
-	_adapter_thread = null
+	# A link left for the arena keeps running there. Otherwise it is dropped for good, and
+	# whatever it still runs is joined right here: the game is quitting, or the screen was
+	# freed without leaving, and a root being torn down is no place to hand workers to.
+	if _link != null and not _link_parked:
+		_link.shut_down(null)
 
 
 ## What is on screen, line by line, for tests: every line's whole text, then the spinner,
@@ -241,27 +207,32 @@ func gpu_line() -> String:
 	return _gpu_label.text if _gpu_label != null and _gpu_label.visible else ""
 
 
-## How many GPU readings this screen has started.
+## How many GPU readings this screen's link has started.
 func gpu_reads() -> int:
-	return _gpu_reads
+	return _link.gpu_reads if _link != null else 0
 
 
 ## True while a GPU reading is running on its worker.
 func gpu_busy() -> bool:
-	return _gpu_thread != null and _gpu_thread.is_alive()
+	return _link != null and _link.gpu_busy()
 
 
 ## The adapter the handshake uses, or null.
 func adapter() -> Variant:
-	return _adapter
+	return _link.adapter if _link != null else null
+
+
+## The link this screen made (the arena's HUD takes it over on handoff).
+func link() -> Link:
+	return _link
 
 
 func is_guarded() -> bool:
-	return _guarded
+	return _link != null and _link.is_guarded()
 
 
 func is_choosing() -> bool:
-	return _phase == Phase.CHOOSING
+	return _link != null and _link.is_choosing()
 
 
 func is_waiting_for_consent() -> bool:
@@ -309,14 +280,6 @@ static func _unwrap(text: String) -> String:
 	while last > first and ANSWER_WRAPPING.contains(text[last - 1]):
 		last -= 1
 	return text.substr(first, last - first)
-
-
-## A copy of the shipped guide tuning with the AI switch off; only a yes turns it on.
-static func _fresh_guide_tuning() -> Resource:
-	var shipped = load(GUIDE_TUNING_PATH)
-	var copy: Resource = shipped.duplicate() if shipped is GuideTuningScript else GuideTuningScript.new()
-	copy.ai_enabled = false
-	return copy
 
 
 func _build_screen() -> void:
@@ -391,69 +354,30 @@ func _type(delta: float) -> void:
 		label.visible_characters = int(_typed)
 
 
-func _poll_detection() -> void:
-	if demo:
-		_found = _demo_found()
-	elif detector == null:
-		_found = null
-	elif not detector.is_done():
-		return
-	else:
-		_found = detector.wait()
-	_route()
-
-
-## Decides the lines, the adapter and the next step once the detector has answered.
+## Decides the lines and the next step once the link knows its adapter.
 func _route() -> void:
-	if _found == null:
-		_say("AI link skipped: %s." % _skip_reason, _t.warn_color)
+	var found := _link.found
+	if found == null:
+		_say("AI link skipped: %s." % _link.skip_reason, _t.warn_color)
 		_scripted()
 		return
-	_gpu_on = true
-	_show_gpu(DEMO_GPU if demo else _reading_of(_found))
 	if demo:
-		_who = DEMO_AGENT
-		_say("Omarchy default agent: %s. Linking..." % DEMO_AGENT)
+		_who = Link.DEMO_AGENT
+		_say("Omarchy default agent: %s. Linking..." % Link.DEMO_AGENT)
 		_begin_link()
 		return
-	_adapter_job = AdapterJob.new()
-	_adapter_job.factory = adapter_factory
-	_adapter_job.found = _found
-	_adapter_job.detector = detector
-	_adapter_job.tuning = _guide_tuning
-	_adapter_job.guarded = _guarded
-	_adapter_thread = Thread.new()
-	if _adapter_thread.start(_adapter_job.run) != OK:
-		# Never on the main thread: no worker means no adapter, and the scripted guide.
-		_adapter_thread = null
-		_adapter_job.adapter = null
-		_skip_reason = "no worker thread"
-		_adapter_job.failed = true
-	_phase = Phase.CHOOSING
-
-
-## Once the adapter is chosen: the agent line, then the link, the question or the fallback.
-func _poll_choosing() -> void:
-	if _adapter_thread != null:
-		if _adapter_thread.is_alive():
-			return
-		_adapter_thread.wait_to_finish()
-		_adapter_thread = null
-	_adapter = _adapter_job.adapter
-	var failed := _adapter_job.failed
-	_adapter_job = null
-	_say(_agent_line())
-	if _adapter == null:
-		if failed or (_guarded and _found.source != Found.Source.SCRIPTED):
-			_say("AI link skipped: %s." % _skip_reason, _t.warn_color)
+	var chosen = _link.adapter
+	_say(_agent_line(found, chosen))
+	if chosen == null:
+		if _link.choose_failed or (_link.is_guarded() and found.source != Found.Source.SCRIPTED):
+			_say("AI link skipped: %s." % _link.skip_reason, _t.warn_color)
 		_scripted()
 		return
-	var local: bool = _adapter.adapter_name() == "local"
+	var local: bool = chosen.adapter_name() == "local"
 	if local:
 		_say(LOCAL_LINE)
-	_who = "the local model server" if local else String(_adapter.adapter_name())
-	_source_key = _adapter.source_name()
-	match Settings.answer_for(_source_key, settings_path):
+	_who = "the local model server" if local else String(chosen.adapter_name())
+	match _link.consent():
 		Settings.Answer.ALLOWED:
 			_begin_link()
 		Settings.Answer.DECLINED:
@@ -465,23 +389,23 @@ func _poll_choosing() -> void:
 			_phase = Phase.CONSENT
 
 
-func _agent_line() -> String:
-	var name := _found.agent if Detector.KNOWN_AGENTS.has(_found.agent) else ""
-	if _found.agent_state == Found.AgentState.KNOWN and name != "":
-		if _adapter != null and _adapter.adapter_name() == name:
+static func _agent_line(found: Found, chosen) -> String:
+	var name := found.agent if Detector.KNOWN_AGENTS.has(found.agent) else ""
+	if found.agent_state == Found.AgentState.KNOWN and name != "":
+		if chosen != null and chosen.adapter_name() == name:
 			return "Omarchy default agent: %s. Linking..." % name
-		if not _found.agent_cli_present:
+		if not found.agent_cli_present:
 			return "Omarchy default agent: %s, but its command is not installed." % name
 		if not Registry.AGENT_ADAPTERS.has(name):
 			return "Omarchy default agent: %s. No SIGKILL adapter for it yet." % name
 		return "Omarchy default agent: %s." % name
-	if _found.agent_state == Found.AgentState.UNKNOWN or _found.agent_state == Found.AgentState.KNOWN:
+	if found.agent_state == Found.AgentState.UNKNOWN or found.agent_state == Found.AgentState.KNOWN:
 		return "Omarchy default agent: not one SIGKILL knows."
 	return "Omarchy default agent: not set."
 
 
 func _answer_consent(allowed: bool) -> void:
-	var saved := Settings.save(_source_key, allowed, settings_path)
+	var saved := _link.set_consent(allowed)
 	if not allowed:
 		_say("AI kept off." if saved else "AI kept off. Your answer could not be saved, so you will be asked again.")
 		_scripted()
@@ -497,12 +421,7 @@ func _begin_link() -> void:
 	_spin()
 	if demo:
 		return
-	# The switch goes on only on this screen's own copy, and only if the adapter uses it.
-	if _adapter.tuning() != _guide_tuning:
-		_link_done(_result(false, "", "ai_off", -1))
-		return
-	_guide_tuning.ai_enabled = true
-	var started: Dictionary = _adapter.ask(Request.build({}, HANDSHAKE_TEXT, _guide_tuning.typed_text_max_chars))
+	var started := _link.ask(Request.build({}, HANDSHAKE_TEXT, _link.guide_tuning.typed_text_max_chars))
 	if not started.is_empty():
 		_link_done(started)
 
@@ -511,15 +430,17 @@ func _poll_link(ms: float) -> void:
 	_link_ms += ms
 	if demo:
 		if _link_ms >= _t.demo_link_ms:
-			_link_done(_result(true, DEMO_ANSWER, "", _t.demo_latency_ms))
+			_link_done({"ok": true, "text": DEMO_ANSWER, "error_kind": "", "latency_ms": _t.demo_latency_ms, "tokens_per_sec": -1.0})
 		return
-	var done: Dictionary = _adapter.poll()
+	var done := _link.poll_call()
 	if not done.is_empty():
 		_link_done(done)
 
 
 func _link_done(done: Dictionary) -> void:
 	_spinner.visible = false
+	if demo:
+		_link.last_call = {"ok": true, "error_kind": "", "latency_ms": _t.demo_latency_ms, "tokens_per_sec": -1.0}
 	if done.get("ok", false):
 		var text = done.get("text", "")
 		var line := handshake_line(text) if text is String else ""
@@ -531,25 +452,12 @@ func _link_done(done: Dictionary) -> void:
 		_say(info)
 		_closing()
 		return
-	var kind := _error_word(done.get("error_kind", ""))
+	var kind := Link.error_word(done.get("error_kind", ""))
 	if kind == "needs_consent":
 		_say(NOT_LOADED_LINE, _t.warn_color)
 	else:
 		_say("No answer from %s (%s)." % [_who, kind], _t.warn_color)
 	_scripted()
-
-
-static func _result(ok: bool, text: String, kind: String, latency_ms: int) -> Dictionary:
-	return {"ok": ok, "text": text, "error_kind": kind, "latency_ms": latency_ms, "tokens_per_sec": -1.0}
-
-
-static func _error_word(kind: Variant) -> String:
-	if not (kind is String) or (kind as String).is_empty() or (kind as String).length() > ERROR_WORD_MAX:
-		return "error"
-	for c in (kind as String):
-		if not ((c >= "a" and c <= "z") or c == "_"):
-			return "error"
-	return kind
 
 
 func _scripted() -> void:
@@ -577,79 +485,10 @@ func _spin() -> void:
 	_spinner.text = "thinking  %s   waiting for %s" % [SPINNER[_spin_at], _who]
 
 
-func _tick_gpu(ms: float) -> void:
-	if not _gpu_on or _left:
-		return
-	if _gpu_thread != null:
-		if _gpu_thread.is_alive():
-			return
-		_show_gpu(_gpu_thread.wait_to_finish())
-		_gpu_thread = null
-	_gpu_wait_ms -= ms
-	if _gpu_wait_ms > 0.0:
-		return
-	_gpu_wait_ms = _t.gpu_interval_ms
-	_gpu_reads += 1
-	if demo:
-		_demo_ticks += 1
-		var fake := DEMO_GPU.duplicate()
-		fake["util_percent"] = DEMO_GPU["util_percent"] + (_demo_ticks * 3) % DEMO_UTIL_SWING
-		_show_gpu(fake)
-		return
-	if detector == null:
-		return
-	_gpu_thread = Thread.new()
-	if _gpu_thread.start(detector.poll_gpu) != OK:
-		_gpu_thread = null
-
-
-func _show_gpu(reading: Variant) -> void:
-	if not (reading is Dictionary) or not reading.get("available", false):
-		_gpu_label.visible = false
-		return
-	var parts := PackedStringArray()
-	var util := _number(reading, "util_percent")
-	if util >= 0:
-		parts.append("GPU %d%%" % util)
-	var used := _number(reading, "vram_used_mib")
-	var total := _number(reading, "vram_total_mib")
-	if used >= 0 and total > 0:
-		parts.append("VRAM %d/%d MiB" % [used, total])
-	var temp := _number(reading, "temp_c")
-	if temp >= 0:
-		parts.append("%d C" % temp)
-	_gpu_label.text = "   ".join(parts)
-	_gpu_label.visible = not parts.is_empty()
-
-
-static func _number(reading: Dictionary, key: String) -> int:
-	var value = reading.get(key, -1)
-	return value if value is int else -1
-
-
-static func _reading_of(found: Found) -> Dictionary:
-	return {
-		"available": found.gpu_available,
-		"util_percent": found.gpu_util_percent,
-		"vram_used_mib": found.gpu_vram_used_mib,
-		"vram_total_mib": found.gpu_vram_total_mib,
-		"temp_c": found.gpu_temp_c,
-	}
-
-
-static func _demo_found() -> Found:
-	var found := Found.new()
-	found.agent_state = Found.AgentState.KNOWN
-	found.agent = DEMO_AGENT
-	found.agent_cli_present = true
-	found.source = Found.Source.AGENT
-	found.source_name = DEMO_AGENT
-	return found
-
-
-func _stop_link() -> void:
-	if _adapter != null and _adapter.has_method("cancel"):
-		_adapter.cancel()
+func _show_gpu() -> void:
+	var text := Link.gpu_text(_link.gpu_reading())
+	_gpu_label.text = text
+	_gpu_label.visible = text != ""
 
 
 func _leave(skipped: bool) -> void:
@@ -657,36 +496,20 @@ func _leave(skipped: bool) -> void:
 		return
 	_left = true
 	_skipped = skipped
-	_stop_link()
 	_spinner.visible = false
-	_hand_over_workers()
+	if hand_off and next_scene != "":
+		# The link goes on to the arena's HUD; anything it had half done is handed off.
+		_link.pause(get_tree().root)
+		Link.park(_link)
+		_link_parked = true
+	else:
+		_link.shut_down(get_tree().root)
 	finished.emit(skipped)
 	if not hand_off or next_scene == "":
 		_phase = Phase.DONE
 		return
 	_phase = Phase.LEAVING
 	_finish_leaving()
-
-
-## Leaving never waits: the detector is cancelled, and whatever is still running goes to a
-## Leftovers node under the root that joins it once it has ended.
-func _hand_over_workers() -> void:
-	if detector != null and detector.has_method("cancel"):
-		detector.cancel()
-	var leftovers := Leftovers.new()
-	if _adapter_thread != null:
-		leftovers.keep(_adapter_thread, _adapter_job)
-		_adapter_thread = null
-		_adapter_job = null
-	if _gpu_thread != null:
-		leftovers.keep(_gpu_thread, detector)
-		_gpu_thread = null
-	if detector != null and detector.has_method("is_done") and not detector.is_done():
-		leftovers.keep(null, detector)  # its own worker; dropping it would join it here
-	if leftovers.is_empty() or not is_inside_tree():
-		leftovers.free()
-		return
-	get_tree().root.add_child(leftovers)
 
 
 func _finish_leaving() -> void:
@@ -703,66 +526,3 @@ func _finish_leaving() -> void:
 				return
 	_phase = Phase.DONE
 	get_tree().change_scene_to_file(next_scene)
-
-
-## Holds workers the boot screen left running, and joins each one once it has ended (or
-## drops a detector once its own worker is done), then frees itself. If the game quits
-## first, it joins what is left right there.
-class Leftovers:
-	extends Node
-	var _threads: Array = []
-	var _held: Array = []
-
-	func keep(thread: Thread, held) -> void:
-		_threads.append(thread)
-		_held.append(held)
-
-	func is_empty() -> bool:
-		return _threads.is_empty()
-
-	func count() -> int:
-		return _threads.size()
-
-	func _process(_delta: float) -> void:
-		for i in range(_threads.size() - 1, -1, -1):
-			var thread: Thread = _threads[i]
-			if thread != null:
-				if thread.is_alive():
-					continue
-				thread.wait_to_finish()
-			elif _held[i] != null and not _held[i].is_done():
-				continue
-			_threads.remove_at(i)
-			_held.remove_at(i)
-		if _threads.is_empty():
-			queue_free()
-
-	func _exit_tree() -> void:
-		for thread in _threads:
-			if thread != null and thread.is_started():
-				thread.wait_to_finish()
-		_threads.clear()
-		_held.clear()
-
-
-## Chooses the handshake adapter off the main thread: a test's factory if one was handed
-## in; otherwise, unless the headless guard is on, the C9b registry, which looks the agent's
-## command up along the PATH. The screen holds the job until its thread is joined.
-class AdapterJob:
-	extends RefCounted
-	const RegistryScript = preload("res://scripts/ai/guide_registry.gd")
-	var factory := Callable()
-	var found
-	var detector
-	var tuning: Resource
-	var guarded := false
-	var adapter = null
-	var failed := false
-
-	func run() -> void:
-		if not factory.is_null():
-			adapter = factory.call(found, detector, tuning)
-			return
-		if guarded:
-			return  # headless guard: never the registry, so never a real agent or server
-		adapter = RegistryScript.adapter_for(found, detector, tuning)
