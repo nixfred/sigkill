@@ -1251,14 +1251,19 @@ func _send_ammo(id: int) -> void:
 			ids.append(def.id)
 			mags.append(ammo[0])
 			reserves.append(ammo[1])
-	_ammo.rpc_id(id, lives.get(id, 0), _actions_from.get(id, 0), ids, mags, reserves)
+	var s: Dictionary = combat.states.get(id, {})
+	_ammo.rpc_id(id, lives.get(id, 0), _actions_from.get(id, 0), ids, mags, reserves, s.get("drawn", ""), s.get("reloading", ""), combat.reload_left(id, _clock), combat.draw_left(id, _clock))
 
 
 ## The host's count of this player's magazines once it has handled `handled` of this side's
-## intents: taken when that is all this side has sent in this life, else stale and dropped.
+## intents, with the weapon in hand, the reload it is running and the time left on that and
+## on the draw: taken when that is all this side has sent in this life, else stale and
+## dropped.
 @rpc("authority", "call_remote", "reliable")
-func _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Array, reserves: PackedInt32Array) -> void:
+func _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Array, reserves: PackedInt32Array, drawn: String, reloading: String, reload_s: float, draw_s: float) -> void:
 	if state != State.JOINED or life != lives.get(my_id, 0) or handled != _sent_actions:
+		return
+	if not is_finite(reload_s) or reload_s < 0.0 or reload_s > WeaponDefScript.RELOAD_LAST_S or not is_finite(draw_s) or draw_s < 0.0 or draw_s > ArsenalScript.SWAP_LAST_S:
 		return
 	if ids.size() != mags.size() or ids.size() != reserves.size() or ids.size() > _weapon_list.size():
 		return
@@ -1266,7 +1271,7 @@ func _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Arr
 		var def = _weapons.get(ids[i])
 		if def == null or not def.has_magazine() or mags[i] < 0 or mags[i] > def.magazine_size or (reserves[i] != WeaponDefScript.INFINITE and (reserves[i] < 0 or reserves[i] > def.reserve_ammo)):
 			return
-	var count := {"life": life, "handled": handled, "ids": ids, "mags": mags, "reserves": reserves}
+	var count := {"life": life, "handled": handled, "ids": ids, "mags": mags, "reserves": reserves, "drawn": drawn, "reloading": reloading, "reload_s": reload_s, "draw_s": draw_s}
 	if _player != null and is_instance_valid(_player) and _player.has_method("take_ammo"):
 		_apply_ammo(count)
 	else:
@@ -1275,7 +1280,9 @@ func _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Arr
 
 func _apply_ammo(count: Dictionary) -> void:
 	for i in count["ids"].size():
-		_player.take_ammo(count["ids"][i], count["mags"][i], count["reserves"][i])
+		_player.take_ammo(count["ids"][i], count["mags"][i], count["reserves"][i], count["ids"][i] == count["reloading"])
+	if _player.has_method("take_timing"):
+		_player.take_timing(count["drawn"], count["reloading"], count["reload_s"], count["draw_s"])
 
 
 ## This player fired (scripts/player.gd): the intent goes to the host, which, when this is

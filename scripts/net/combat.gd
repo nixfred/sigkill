@@ -215,6 +215,17 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	a["last_fire"] = now
 
 
+## Seconds until `id`'s running reload is done, and until its draw is done; 0 for none.
+func reload_left(id: int, now: float) -> float:
+	if not states.has(id) or states[id]["reloading"] == "":
+		return 0.0
+	return maxf(states[id]["reload_done_at"] - now, 0.0)
+
+
+func draw_left(id: int, now: float) -> float:
+	return maxf(states[id]["ready_at"] - now, 0.0) if states.has(id) else 0.0
+
+
 ## Puts in the rounds of `id`'s reload if its time is up: before the host reports a count.
 func settle(id: int, now: float) -> void:
 	if states.has(id):

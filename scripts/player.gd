@@ -26,6 +26,9 @@ const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
 const Inventory = preload("res://scripts/weapons/inventory.gd")
 const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
+## Added to the host's remaining reload or draw time when this side's has to wait for it:
+## three physics frames at 60 Hz.
+const TIMING_MARGIN_S := 0.05
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
@@ -486,15 +489,35 @@ func refill_weapons() -> void:
 
 
 ## Takes the host's count for the weapon with `id` (C16): its magazine and reserve. A reload
-## running here goes on and moves what the new count leaves room for. False for a weapon not
-## in the loadout.
-func take_ammo(id: String, mag: int, reserve: int) -> bool:
+## running here goes on and moves what the new count leaves room for. With `host_reloading`
+## (the host is running a reload of it) and none running here any more (this side's
+## finished first), the count is taken as that reload will leave it, so a late reply never
+## undoes a reload this side has finished. False for a weapon not in the loadout.
+func take_ammo(id: String, mag: int, reserve: int, host_reloading: bool = false) -> bool:
 	var slot := inventory.slot_of(id)
 	if slot < 0:
 		return false
+	if host_reloading and not (slot == inventory.current and inventory.is_reloading()):
+		var take: int = inventory.defs[slot].reload_take(mag, reserve)
+		mag += take
+		if reserve != WeaponDefScript.INFINITE:
+			reserve -= take
 	inventory.mags[slot] = mag
 	inventory.reserves[slot] = reserve
 	return true
+
+
+## The host's timing for the weapon in hand (C16): its reload or draw still has `reload_s`
+## or `draw_s` to go there, so this side's own, if running for that weapon, lasts at least as
+## long and a little more (TIMING_MARGIN_S, so a shot never lands on the host's last frame of
+## it); a shot then never goes off before the host will believe it. Never shortens either.
+func take_timing(id: String, reloading: String, reload_s: float, draw_s: float) -> void:
+	if inventory.def().id != id:
+		return
+	if reloading == id and inventory.is_reloading() and reload_s > 0.0:
+		inventory.reload_left = maxf(inventory.reload_left, reload_s + TIMING_MARGIN_S)
+	if inventory.is_swapping() and draw_s > 0.0:
+		inventory.swap_left = maxf(inventory.swap_left, draw_s + TIMING_MARGIN_S)
 
 
 ## Holds the weapon with `id` at once, ready (a respawn with the weapon the host says is in

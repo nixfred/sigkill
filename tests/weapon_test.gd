@@ -297,10 +297,11 @@ func _host_rule_checks() -> void:
 	c.states[7]["ammo"]["sigterm"] = {"mag": 1, "reserve": 9, "last_fire": -INF}
 	c.draw(7, 0, "sigterm", 0, 44.0)
 	c.reload(7, 0, "sigterm", 0, 45.0)
+	var timing_ok: bool = absf(c.reload_left(7, 45.5) - (0.225 + 1.65 - 1.5)) < EPS or absf(c.reload_left(7, 45.5) - 1.15) < EPS
 	c.settle(7, 46.0)
 	var not_yet: Array = c.ammo_of(7, "sigterm")
 	c.settle(7, 46.7)
-	_check("settle(), run before the host reports a count, puts in a reload's rounds once its time is up and not before", not_yet == [1, 9] and c.ammo_of(7, "sigterm") == [6, 4] and c.states[7]["reloading"] == "", "%s then %s" % [not_yet, c.ammo_of(7, "sigterm")])
+	_check("settle(), run before the host reports a count, puts in a reload's rounds once its time is up and not before; reload_left() says how long it has to go (1.15 s at 45.5)", timing_ok and not_yet == [1, 9] and c.ammo_of(7, "sigterm") == [6, 4] and c.states[7]["reloading"] == "", "%s then %s" % [not_yet, c.ammo_of(7, "sigterm")])
 	c.states[7]["ammo"]["sigterm"] = {"mag": 0, "reserve": 0, "last_fire": -INF}
 	c.draw(7, 0, "sigterm", 0, 50.0)
 	_check("with nothing in reserve there is no reload and the magazine stays empty", c.reload(7, 0, "sigterm", 0, 51.0) == "reload" and shoot.call("sigterm", 52.0) == "empty")
@@ -383,7 +384,7 @@ func _source_checks() -> void:
 	var player := _code("res://scripts/player.gd")
 	_check("an intent carries only the aim: _fire takes the number, life, weapon, origin and direction, nothing about pellets", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:') and player.contains("fire_intent.emit(origin, forward, _w.id)"))
 	_check("a draw and a reload reach the host as untyped, type-checked any_peer intents of a life number and a weapon id, nothing else", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _draw(life: Variant, weapon: Variant) -> void:') and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _reload(life: Variant, weapon: Variant) -> void:') and _body(session, "_draw").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and _body(session, "_reload").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING") and player.contains("weapon_drawn.emit(_w.id)") and player.contains("reload_started.emit(_w.id)"))
-	_check("the host's ammo count goes to one player only, as an authority RPC: a life number, the intents handled, and the magazines and reserves", session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Array, reserves: PackedInt32Array) -> void:') and _body(session, "_send_ammo").contains("_ammo.rpc_id(id, lives.get(id, 0), _actions_from.get(id, 0), ids, mags, reserves)") and _body(session, "_ammo").contains("handled != _sent_actions"))
+	_check("the host's ammo count goes to one player only, as an authority RPC: a life number, the intents handled, the magazines and reserves, the weapon in hand, the reload running and the time left on it and on the draw", session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Array, reserves: PackedInt32Array, drawn: String, reloading: String, reload_s: float, draw_s: float) -> void:') and _body(session, "_send_ammo").contains('_ammo.rpc_id(id, lives.get(id, 0), _actions_from.get(id, 0), ids, mags, reserves, s.get("drawn", ""), s.get("reloading", ""), combat.reload_left(id, _clock), combat.draw_left(id, _clock))') and _body(session, "_ammo").contains("handled != _sent_actions"))
 	_check("the host draws the pellets with its own generator, in _handle_fire only", session.count("pellet_directions(") == 1 and _body(session, "_handle_fire").contains("def.pellet_directions(dir, _pellets_rng)"))
 	var all := ""
 	for path in WEAPON_SOURCES:
@@ -726,13 +727,15 @@ func _match_checks() -> void:
 	ccp.select_slot(sig_slot)
 	await _settle(ccp, 0.4)
 	var reloading_now: bool = ccp.reload_weapon()
-	await _settle(ccp, 2.3)
+	await _settle(ccp, 0.3)
+	var during: int = ccp.inventory.mags[sig_slot]
+	await _settle(ccp, 2.0)
 	cs.fire_seq = hs.combat.states[cid]["last_seq"]
 	var seq_was: int = cs.fire_seq
 	await _fire(ccp)
 	var counted := await _until(func(): return hs.combat.states[cid]["last_seq"] == seq_was + 1, 2000)
 	await _frames(3)
-	_check("then the joiner's own draw, reload and shot leave both sides counting the same (5 and 6), neither reloading", reloading_now and counted and hs.combat.ammo_of(cid, "sigterm") == [5, 6] and ccp.inventory.mags[sig_slot] == 5 and ccp.inventory.reserves[sig_slot] == 6 and not ccp.inventory.is_reloading() and hs.combat.states[cid]["reloading"] == "", "host %s joiner %d/%d" % [hs.combat.ammo_of(cid, "sigterm"), ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot]])
+	_check("then the joiner's own draw, reload and shot leave both sides counting the same (5 and 6), neither reloading; while the reload ran the strip kept the magazine it had (0)", reloading_now and during == 0 and counted and hs.combat.ammo_of(cid, "sigterm") == [5, 6] and ccp.inventory.mags[sig_slot] == 5 and ccp.inventory.reserves[sig_slot] == 6 and not ccp.inventory.is_reloading() and hs.combat.states[cid]["reloading"] == "", "host %s joiner %d/%d" % [hs.combat.ammo_of(cid, "sigterm"), ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot]])
 	# A reload the host refuses (it counts the magazine full): the joiner takes the host's
 	# count, and its own reload, ending, finds nothing to move.
 	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 6, "reserve": 6, "last_fire": -INF}
@@ -743,13 +746,41 @@ func _match_checks() -> void:
 	var taken := await _until(func(): return ccp.inventory.mags[sig_slot] == 6, 2000)
 	await _settle(ccp, 1.2)
 	_check("over 127.0.0.1: a reload the host refuses (its magazine full) is answered with the host's count: the joiner shows 6 and 6, and its own reload ends moving nothing", taken and hs.combat.drops.get("reload", 0) == refused_before + 1 and ccp.inventory.mags[sig_slot] == 6 and ccp.inventory.reserves[sig_slot] == 6 and not ccp.inventory.is_reloading(), "joiner %d/%d reloading %s" % [ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot], ccp.inventory.is_reloading()])
+	# A reload whose message reaches the host 0.8 s late: the host's reply says how long its
+	# reload has to go, the joiner's own lasts at least that long, and its first shot after
+	# it, fire held every frame, is believed.
+	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 0, "reserve": 18, "last_fire": -INF}
+	hs.combat.states[cid]["reloading"] = ""
+	ccp.inventory.mags[sig_slot] = 0
+	ccp.inventory.reserves[sig_slot] = 18
+	var started_here: bool = ccp.inventory.reload()  # this side's reload, its message held back
+	await _settle(ccp, 0.8)
+	var left_before: float = ccp.inventory.reload_left
+	cs._on_reload_started("sigterm")
+	var stretched := await _until(func(): return ccp.inventory.reload_left > left_before + 0.1, 500)
+	var left_after: float = ccp.inventory.reload_left
+	cs.fire_seq = hs.combat.states[cid]["last_seq"]
+	var seq_late: int = cs.fire_seq
+	var reload_drops_late: int = hs.combat.drops.get("reload", 0)
+	var shot_frame := await _first_shot_frame(ccp, 200)
+	var believed_late := await _until(func(): return hs.combat.states[cid]["last_seq"] == seq_late + 1, 2000)
+	print("WEAPON late reload message: this side had %.2f s to go, then %.2f s after the host's reply; first shot after %d frames" % [left_before, left_after, shot_frame])
+	_check("a reload whose message reaches the host 0.8 s late: the joiner's reload is stretched to the host's, and its first shot after it (fire held every frame) is believed, none dropped as mid-reload", started_here and stretched and shot_frame > 0 and believed_late and hs.combat.drops.get("reload", 0) == reload_drops_late and hs.combat.ammo_of(cid, "sigterm") == [5, 12], "shot frame %d believed %s drops %s host %s" % [shot_frame, believed_late, hs.combat.drops, hs.combat.ammo_of(cid, "sigterm")])
+	# A reply that left the host while its reload ran, arriving after this side's reload has
+	# finished: taken as that reload leaves it, so it undoes nothing.
+	ccp.inventory.mags[sig_slot] = 6
+	ccp.inventory.reserves[sig_slot] = 12
+	ccp.inventory.reload_left = 0.0
+	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions"), PackedStringArray(["sigterm"]), PackedInt32Array([0]), PackedInt32Array([18]), "sigterm", "sigterm", 1.0, 0.0)
+	_check("a reply sent while the host's reload ran, arriving after this side's reload finished, is taken as that reload leaves it: 6 and 12 stay, not 0 and 18", ccp.inventory.mags[sig_slot] == 6 and ccp.inventory.reserves[sig_slot] == 12 and not ccp.inventory.is_reloading(), "%d/%d" % [ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot]])
 	# A stale reply is not taken: one that answers fewer intents than the joiner has sent.
 	var stale_mag: int = ccp.inventory.mags[sig_slot]
-	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions") - 1, PackedStringArray(["sigterm"]), PackedInt32Array([0]), PackedInt32Array([0]))
+	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions") - 1, PackedStringArray(["sigterm"]), PackedInt32Array([0]), PackedInt32Array([0]), "sigterm", "", 0.0, 0.0)
 	_check("an ammo reply that has not caught up with every intent the joiner sent is stale and not taken", ccp.inventory.mags[sig_slot] == stale_mag and stale_mag == 6)
 	# A reply that comes while R has the arena away is kept and taken by the next arena, after
 	# it takes over the old player's weapons.
 	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 0, "reserve": 12, "last_fire": -INF}
+	hs.combat.states[cid]["reloading"] = ""
 	ccp.inventory.mags[sig_slot] = 6
 	ccp.inventory.reserves[sig_slot] = 6
 	cs._on_reload_started("sigterm")
