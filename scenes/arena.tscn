@@ -1,7 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/grey_block.tscn" id="1_block"]
 [ext_resource type="PackedScene" path="res://scenes/target_dummy.tscn" id="2_dummy"]
+[ext_resource type="Script" path="res://scripts/code_rain_driver.gd" id="3_rain"]
+[ext_resource type="Resource" path="res://resources/code_rain.tres" id="4_rain_tuning"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -134,3 +136,7 @@ tag_text = "<defunct>"
 [node name="DummyD" parent="Targets" instance=ExtResource("2_dummy")]
 position = Vector3(-8, 1, 12)
 tag_text = "runaway"
+
+[node name="CodeRain" type="Node" parent="."]
+script = ExtResource("3_rain")
+tuning = ExtResource("4_rain_tuning")

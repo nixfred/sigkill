@@ -28,6 +28,9 @@ func _ready() -> void:
 	_player.shot_fired.connect(_on_shot_fired)
 	_hud.set_weapon_tuning(_player.weapon_tuning())
 	_hud.set_targets(_remaining, _total)
+	var rain := get_node_or_null("Arena/CodeRain")
+	if rain != null:
+		rain.viewer = _player
 
 
 ## The arena scene stores approximate colours so the editor previews the look.

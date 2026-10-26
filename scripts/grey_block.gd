@@ -4,6 +4,8 @@ extends StaticBody3D
 ## Set `size` and `kind` in the inspector. @tool, so it previews in the editor.
 
 const Palette = preload("res://scripts/palette.gd")
+## Blocks that carry the code rain shader join this group for scripts/code_rain_driver.gd.
+const RAIN_GROUP := &"code_rain_surfaces"
 
 @export var size: Vector3 = Vector3(4.0, 3.0, 0.4):
 	set(value):
@@ -19,6 +21,14 @@ var _mesh_instance: MeshInstance3D
 var _shape_node: CollisionShape3D
 
 
+func _enter_tree() -> void:
+	# Joined here, before the tree's node_added signal fires, so the rain driver sees it.
+	if kind != Palette.Surface.FLOOR:
+		add_to_group(RAIN_GROUP)
+	elif is_in_group(RAIN_GROUP):
+		remove_from_group(RAIN_GROUP)
+
+
 func _ready() -> void:
 	_mesh_instance = MeshInstance3D.new()
 	_mesh_instance.name = "Mesh"
@@ -27,6 +37,11 @@ func _ready() -> void:
 	_shape_node.name = "Shape"
 	add_child(_shape_node)
 	_refresh()
+
+
+## The block's material, once it is in the tree.
+func surface_material() -> ShaderMaterial:
+	return _mesh_instance.material_override as ShaderMaterial if _mesh_instance != null else null
 
 
 func _refresh() -> void:

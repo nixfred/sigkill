@@ -73,6 +73,16 @@ func is_hittable() -> bool:
 	return state == State.ALIVE
 
 
+## True while the dummy counts as a live enemy, which the code rain on the walls reacts to.
+func is_alive() -> bool:
+	return state == State.ALIVE
+
+
+## Where the dummy is, for anything that measures distance to it: the centre of its body.
+func threat_point() -> Vector3:
+	return _body.global_position
+
+
 func health() -> float:
 	return _health
 
