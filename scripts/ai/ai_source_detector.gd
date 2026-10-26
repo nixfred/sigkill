@@ -15,8 +15,17 @@ extends RefCounted
 ##   counted and dropped, never stored, logged or printed. Nothing is loaded, pulled,
 ##   unloaded or changed, and no model setting is touched.
 ##
-## Blocking: the server probes wait up to http_timeout_ms per request, so they must never
-## run on the main thread. detect() is synchronous and start() runs it on a worker thread.
+## - GPU stats, read-only: a few named /sys attributes per DRM card first (gpu_busy_percent,
+##   mem_info_vram_used, mem_info_vram_total, hwmon temp1_input), and only if none answer,
+##   the SECOND named execute exception of PRD section 6: nvidia-smi with exactly
+##   NVIDIA_SMI_ARGS, query-only, no control flags, as an argument array with no shell.
+##   poll_gpu() is the only way in, and it reads at most once per GPU_POLL_MIN_INTERVAL_MS.
+##
+## Blocking: the server probes wait up to http_timeout_ms per request and nvidia-smi up to
+## nvidia_smi_timeout_ms, so they must never run on the main thread. detect() is
+## synchronous and start() runs it on a worker thread. nvidia-smi runs through a
+## non-blocking pipe with a deadline: if it hangs it is left to exit on its own, never
+## waited on forever and never killed.
 ##
 ## Every outside touchpoint is a variable below, so tests point it at fixtures. The
 ## defaults are the real ones.
@@ -53,8 +62,29 @@ const HTTP_TIMEOUT_MS := 500
 const HTTP_BODY_MAX_BYTES := 1048576
 const HTTP_OK := 200
 const PORT_LAST := 65535
-## Pause between polls of a connection, in microseconds.
+## Pause between polls of a connection or a pipe, in microseconds.
 const POLL_SLEEP_USEC := 1000
+const SYSFS_ROOT := "/sys"
+## DRM cards and hwmon sensors looked at, card0 and hwmon0 upward.
+const DRM_CARDS_SCANNED := 8
+const HWMON_SCANNED := 16
+## Most bytes read from one /sys attribute.
+const SYSFS_VALUE_MAX_BYTES := 32
+const NVIDIA_SMI := "nvidia-smi"
+## The only arguments nvidia-smi is ever given: a query, never a control flag.
+const NVIDIA_SMI_ARGS: PackedStringArray = [
+	"--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+	"--format=csv,noheader,nounits",
+]
+const NVIDIA_SMI_FIELDS := 4
+## Longest wait for nvidia-smi to finish, in milliseconds.
+const NVIDIA_SMI_TIMEOUT_MS := 1500
+## Most bytes of nvidia-smi output read.
+const NVIDIA_SMI_OUTPUT_MAX_BYTES := 4096
+## poll_gpu() reads the GPU at most this often, in milliseconds.
+const GPU_POLL_MIN_INTERVAL_MS := 1000
+const BYTES_PER_MIB := 1048576
+const MILLIDEGREES_PER_DEGREE := 1000.0
 
 ## Omarchy's default-agent setting. Empty means the real one under the player's home.
 var agent_file_path := ""
@@ -65,8 +95,21 @@ var ollama_port := OLLAMA_PORT
 var openai_port := OPENAI_PORT
 ## Longest wait for one HTTP request, in milliseconds.
 var http_timeout_ms := HTTP_TIMEOUT_MS
-## Milliseconds since some fixed start, for latency and rate limits. Tests swap it.
-var clock := Callable(Time, "get_ticks_msec")
+## Root of the /sys tree read for GPU stats.
+var sysfs_root := SYSFS_ROOT
+## nvidia-smi to run. Empty means the one on the PATH, if any.
+var nvidia_smi_path := ""
+## Longest wait for nvidia-smi, in milliseconds.
+var nvidia_smi_timeout_ms := NVIDIA_SMI_TIMEOUT_MS
+## Milliseconds since a fixed start, for the GPU rate limit only. Tests swap it. Timeouts
+## and latency always use real time, so a stopped test clock can never stall a probe.
+var rate_clock := Callable(Time, "get_ticks_msec")
+
+var _gpu := {}
+var _gpu_read_at := 0
+var _gpu_ever_read := false
+var _gpu_mutex := Mutex.new()
+var _nvidia_smi_runs := 0
 
 
 ## Reads the default-agent setting and returns [AgentState, agent name or ""].
@@ -144,8 +187,8 @@ static func _no_server() -> Dictionary:
 func _get_json(port: int, path: String) -> Dictionary:
 	if port < 1 or port > PORT_LAST:
 		return {}
-	var start: int = clock.call()
-	var deadline: int = start + http_timeout_ms
+	var start := Time.get_ticks_msec()
+	var deadline := start + http_timeout_ms
 	var client := HTTPClient.new()
 	if client.connect_to_host(LOCALHOST, port) != OK:
 		return {}
@@ -162,13 +205,13 @@ func _get_json(port: int, path: String) -> Dictionary:
 	if not client.has_response() or client.get_response_code() != HTTP_OK:
 		client.close()
 		return {}
-	var latency: int = clock.call() - start
+	var latency := Time.get_ticks_msec() - start
 	var body := PackedByteArray()
 	while client.get_status() == HTTPClient.STATUS_BODY:
 		client.poll()
 		var chunk := client.read_response_body_chunk()
 		if chunk.is_empty():
-			if clock.call() > deadline:
+			if Time.get_ticks_msec() > deadline:
 				client.close()
 				return {}
 			OS.delay_usec(POLL_SLEEP_USEC)
@@ -188,12 +231,143 @@ func _get_json(port: int, path: String) -> Dictionary:
 ## closed, if the deadline passes first.
 func _wait_while(client: HTTPClient, waiting: Array, deadline: int) -> bool:
 	while waiting.has(client.get_status()):
-		if clock.call() > deadline:
+		if Time.get_ticks_msec() > deadline:
 			client.close()
 			return false
 		client.poll()
 		OS.delay_usec(POLL_SLEEP_USEC)
 	return true
+
+
+## GPU stats: {available, source, util_percent, vram_used_mib, vram_total_mib, temp_c}.
+## Reads at most once per GPU_POLL_MIN_INTERVAL_MS; a call sooner gets the last reading.
+## /sys first; nvidia-smi only when /sys gives nothing. Safe to call from any one thread at
+## a time; a mutex keeps two callers from reading at once.
+func poll_gpu() -> Dictionary:
+	_gpu_mutex.lock()
+	var now: int = rate_clock.call()
+	if not _gpu_ever_read or now - _gpu_read_at >= GPU_POLL_MIN_INTERVAL_MS:
+		_gpu_ever_read = true
+		_gpu_read_at = now
+		_gpu = _read_sysfs_gpu()
+		if not _gpu["available"]:
+			_gpu = _read_nvidia_smi()
+	var reading := _gpu.duplicate()
+	_gpu_mutex.unlock()
+	return reading
+
+
+## How many times nvidia-smi has been started by this detector.
+func nvidia_smi_runs() -> int:
+	return _nvidia_smi_runs
+
+
+static func _no_gpu() -> Dictionary:
+	return {"available": false, "source": "none", "util_percent": -1, "vram_used_mib": -1, "vram_total_mib": -1, "temp_c": -1}
+
+
+## The first DRM card under sysfs_root that reports busy percent or VRAM.
+func _read_sysfs_gpu() -> Dictionary:
+	for card in DRM_CARDS_SCANNED:
+		var device := sysfs_root.path_join("class/drm/card%d/device" % card)
+		var busy := _read_sysfs_int(device.path_join("gpu_busy_percent"))
+		var used := _read_sysfs_int(device.path_join("mem_info_vram_used"))
+		var total := _read_sysfs_int(device.path_join("mem_info_vram_total"))
+		if busy < 0 and total <= 0:
+			continue
+		var temp := -1
+		for sensor in HWMON_SCANNED:
+			var milli := _read_sysfs_int(device.path_join("hwmon/hwmon%d/temp1_input" % sensor))
+			if milli >= 0:
+				temp = roundi(milli / MILLIDEGREES_PER_DEGREE)
+				break
+		return {
+			"available": true,
+			"source": "sysfs",
+			"util_percent": busy,
+			"vram_used_mib": used / BYTES_PER_MIB if used >= 0 else -1,
+			"vram_total_mib": total / BYTES_PER_MIB if total > 0 else -1,
+			"temp_c": temp,
+		}
+	return _no_gpu()
+
+
+## A whole number from one /sys attribute, or -1 if it is missing or not a number.
+static func _read_sysfs_int(path: String) -> int:
+	if not FileAccess.file_exists(path):
+		return -1
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return -1
+	var text := file.get_buffer(SYSFS_VALUE_MAX_BYTES).get_string_from_ascii().strip_edges()
+	file.close()
+	if not text.is_valid_int():
+		return -1
+	var value := text.to_int()
+	return value if value >= 0 else -1
+
+
+## Runs nvidia-smi with exactly NVIDIA_SMI_ARGS and reads the first GPU's line.
+func _read_nvidia_smi() -> Dictionary:
+	var path := nvidia_smi_path if not nvidia_smi_path.is_empty() else find_command(NVIDIA_SMI)
+	if path.is_empty() or not path.is_absolute_path() or DirAccess.dir_exists_absolute(path):
+		return _no_gpu()
+	if not FileAccess.file_exists(path) or not (FileAccess.get_unix_permissions(path) & EXECUTE_BITS):
+		return _no_gpu()
+	var run := OS.execute_with_pipe(path, NVIDIA_SMI_ARGS, false)
+	if run.is_empty():
+		return _no_gpu()
+	_nvidia_smi_runs += 1
+	var stdout: FileAccess = run["stdio"]
+	var stderr: FileAccess = run["stderr"]
+	var pid: int = run["pid"]
+	var deadline := Time.get_ticks_msec() + nvidia_smi_timeout_ms
+	var output := PackedByteArray()
+	var finished := false
+	while true:
+		var chunk := stdout.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES)
+		output.append_array(chunk)
+		stderr.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES)  # drained and dropped, so it never fills
+		if output.size() > NVIDIA_SMI_OUTPUT_MAX_BYTES:
+			break
+		if chunk.is_empty():
+			if not OS.is_process_running(pid):
+				output.append_array(stdout.get_buffer(NVIDIA_SMI_OUTPUT_MAX_BYTES))
+				finished = true
+				break
+			if Time.get_ticks_msec() > deadline:
+				break  # left to exit on its own: never killed (PRD section 6)
+			OS.delay_usec(POLL_SLEEP_USEC)
+	stdout.close()
+	stderr.close()
+	if not finished or output.size() > NVIDIA_SMI_OUTPUT_MAX_BYTES or OS.get_process_exit_code(pid) != 0:
+		return _no_gpu()
+	return parse_nvidia_smi(output.get_string_from_ascii())
+
+
+## The first line of nvidia-smi's CSV: utilization %, memory used MiB, memory total MiB,
+## temperature C. A field that is not a whole number, such as "[N/A]", becomes -1.
+static func parse_nvidia_smi(text: String) -> Dictionary:
+	var line := text.split("\n", false)
+	if line.is_empty():
+		return _no_gpu()
+	var fields := line[0].split(",")
+	if fields.size() != NVIDIA_SMI_FIELDS:
+		return _no_gpu()
+	var values := PackedInt64Array()
+	for field in fields:
+		var value := field.strip_edges()
+		values.append(value.to_int() if value.is_valid_int() and value.to_int() >= 0 else -1)
+	if values[0] < 0 and values[2] < 0:
+		return _no_gpu()
+	return {
+		"available": true,
+		"source": "nvidia-smi",
+		"util_percent": values[0],
+		"vram_used_mib": values[1],
+		"vram_total_mib": values[2],
+		"temp_c": values[3],
+	}
 
 
 func _search_dirs() -> PackedStringArray:

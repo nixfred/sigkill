@@ -30,6 +30,26 @@ var openai_reachable := false
 var openai_latency_ms := -1
 var openai_model_count := -1
 
+## GPU stats, read-only. gpu_source is "sysfs", "nvidia-smi" or "none"; when no source
+## works, gpu_available is false and the HUD hides GPU stats. A field a source does not
+## give is -1. Utilization in percent, memory in MiB, temperature in whole degrees C.
+var gpu_available := false
+var gpu_source := "none"
+var gpu_util_percent := -1
+var gpu_vram_used_mib := -1
+var gpu_vram_total_mib := -1
+var gpu_temp_c := -1
+
+
+## Copies a GPU reading from AiSourceDetector.poll_gpu() into the gpu_ fields.
+func set_gpu(reading: Dictionary) -> void:
+	gpu_available = reading.get("available", false)
+	gpu_source = reading.get("source", "none")
+	gpu_util_percent = reading.get("util_percent", -1)
+	gpu_vram_used_mib = reading.get("vram_used_mib", -1)
+	gpu_vram_total_mib = reading.get("vram_total_mib", -1)
+	gpu_temp_c = reading.get("temp_c", -1)
+
 
 ## Every field as a plain Dictionary, for the string form and for later chunks.
 func to_dict() -> Dictionary:
@@ -50,6 +70,14 @@ func to_dict() -> Dictionary:
 				"latency_ms": openai_latency_ms,
 				"model_count": openai_model_count,
 			},
+		},
+		"gpu": {
+			"available": gpu_available,
+			"source": gpu_source,
+			"util_percent": gpu_util_percent,
+			"vram_used_mib": gpu_vram_used_mib,
+			"vram_total_mib": gpu_vram_total_mib,
+			"temp_c": gpu_temp_c,
 		},
 	}
 
