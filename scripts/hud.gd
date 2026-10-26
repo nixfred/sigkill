@@ -7,8 +7,9 @@ const Crosshair = preload("res://scripts/crosshair.gd")
 const HitMarker = preload("res://scripts/hit_marker.gd")
 const GuideHud = preload("res://scripts/hud/guide_hud.gd")
 const RoundHud = preload("res://scripts/round/round_hud.gd")
+const NetHud = preload("res://scripts/net/net_hud.gd")
 
-const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off"
+const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off   M net"
 
 var _status: Label
 var _engage: Label
@@ -16,6 +17,7 @@ var _crosshair  # untyped on purpose: calls ping() from crosshair.gd
 var _hit_marker  # untyped on purpose: calls show_hit() from hit_marker.gd
 var _guide: GuideHud
 var _round: RoundHud
+var _net: NetHud
 
 
 func _ready() -> void:
@@ -59,10 +61,16 @@ func _ready() -> void:
 	_round.guide = _guide
 	root.add_child(_round)
 
+	_net = NetHud.new()
+	_net.name = "NetHud"
+	_net.guide = _guide
+	_net.round_hud = _round
+	root.add_child(_net)
+
 
 func _process(_delta: float) -> void:
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _round.showing_summary()
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -78,6 +86,16 @@ func set_targets(remaining: int, total: int) -> void:
 func set_player(player: Node) -> void:
 	_guide.player = player
 	_round.set_player(player)
+	_net.player = player
+
+
+## The session beside the arena, for the multiplayer panel.
+func set_net_session(session: Node) -> void:
+	_net.session = session
+
+
+func net_hud() -> NetHud:
+	return _net
 
 
 ## The dummies a round counts downs of, and brings back when the next round starts.
@@ -94,9 +112,9 @@ func note_kill() -> void:
 	_guide.note_kill()
 
 
-## True while the guide HUD's ask box is open.
+## True while the guide HUD's ask box or the multiplayer panel's address box is open.
 func is_typing() -> bool:
-	return _guide.is_typing()
+	return _guide.is_typing() or _net.is_typing()
 
 
 func guide() -> GuideHud:

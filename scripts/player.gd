@@ -186,6 +186,12 @@ func drive_input(move: Vector2, jump: bool = false, slide: bool = false, fire: b
 	_fire_pressed = fire
 
 
+## Where the player looks up or down, in radians: the head's pitch, without recoil. Sent to
+## other players (C13).
+func view_pitch() -> float:
+	return _head.rotation.x
+
+
 ## True while a slide is running.
 func is_sliding() -> bool:
 	return _sliding

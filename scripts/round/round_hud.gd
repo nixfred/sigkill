@@ -17,6 +17,9 @@ extends Control
 ## misses) are game logic only, never the AI: at most one per callout_min_interval_s, any
 ## sooner one dropped, each shown for callout_seconds.
 ##
+## The multiplayer panel (C13) takes the summary's place at the top of the screen while it
+## is up: hold_summary hides the summary until it closes; the break runs on regardless.
+##
 ## B turns the roast announcer on or off: off by default, saved next to the AI opt-in in
 ## user://settings.cfg (demo data keeps it in memory). Plain key only; ignored while the
 ## ask box or the AI question is open. Esc and every other key work as before.
@@ -44,6 +47,8 @@ enum Phase { ROUND, BREAK }
 var tuning: Resource = null
 ## The guide HUD (scripts/hud/guide_hud.gd): the session's link and its cap on calls.
 var guide: Control = null
+## Set by the multiplayer panel while it is up: the summary panel stays hidden.
+var hold_summary := false
 
 var stats: Stats
 var announcer: Announcer
@@ -313,8 +318,8 @@ func _refresh() -> void:
 		_round_line.text = "ROUND %d OVER   B roast: %s%s" % [stats.round_number, roast, note]
 	_callout_label.text = last_callout
 	_callout_label.visible = phase == Phase.ROUND and _callout_left_s > 0.0
-	_panel.visible = phase == Phase.BREAK
-	if phase != Phase.BREAK:
+	_panel.visible = phase == Phase.BREAK and not hold_summary
+	if not _panel.visible:
 		return
 	var shown: Dictionary = announcer.payload
 	var demo: bool = announcer.state == "demo"
@@ -342,11 +347,11 @@ func _build() -> void:
 	_round_line.position = Vector2(18.0, 44.0)
 	_callout_label = _label(self, _t.callout_font_size, Palette.HOSTILE_AMBER)
 	_callout_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Across the whole width, a third of the way down: centred above the crosshair.
+	# Across the whole width, just above the crosshair, under the top panels.
 	_callout_label.anchor_left = 0.0
 	_callout_label.anchor_right = 1.0
-	_callout_label.anchor_top = 0.3
-	_callout_label.anchor_bottom = 0.3
+	_callout_label.anchor_top = 0.45
+	_callout_label.anchor_bottom = 0.45
 	_callout_label.offset_left = 0.0
 	_callout_label.offset_right = 0.0
 	_callout_label.visible = false

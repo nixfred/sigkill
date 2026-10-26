@@ -5,6 +5,7 @@ extends Node3D
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
+const NetSession = preload("res://scripts/net/net_session.gd")
 
 var _remaining := 0
 var _total := 0
@@ -31,6 +32,12 @@ func _ready() -> void:
 	_hud.set_player(_player)
 	_hud.set_round_targets(dummies)
 	_hud.set_targets(_remaining, _total)
+	# LAN and tailnet play (C13): the session lives beside this scene and outlives an R
+	# reload; this arena shows its players and sends this player's movement.
+	var session = NetSession.of(self)
+	if session != null:
+		session.attach(self, _player)
+		_hud.set_net_session(session)
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player

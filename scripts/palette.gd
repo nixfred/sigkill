@@ -70,6 +70,15 @@ static func hostile_material(radius: float, height: float) -> ShaderMaterial:
 	return mat
 
 
+## Another player's body (C13): the same hexagonal prism as a target, in the player side's
+## teal. radius is the circumradius of the CylinderMesh, height its full height.
+static func ally_material(radius: float, height: float) -> ShaderMaterial:
+	var apothem := radius * 0.8660254
+	var mat := _neon_material(NEON_EDGE_SHADER, Vector3(apothem * 2.0, height, 0.0), TEAL, ACCENT_EDGE_ENERGY)
+	mat.set_shader_parameter("hex_prism", true)
+	return mat
+
+
 ## Dark body with a glowing emission colour. Used for the cannon viewmodel.
 static func glow(color: Color, energy: float = 1.5) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()

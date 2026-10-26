@@ -6,13 +6,15 @@
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
 # headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence,
-# guide HUD, model load and round tests (tests/movement_test.gd, tests/cannon_test.gd,
-# tests/derezz_test.gd, tests/code_rain_test.gd, tests/ai_detector_test.gd,
-# tests/guide_adapter_test.gd, tests/boot_sequence_test.gd, tests/guide_hud_test.gd,
-# tests/model_load_test.gd, tests/round_test.gd) at a fixed frame rate. The AI tests use
-# fakes only: fixture files, stub agent CLIs, the fakes in tests/support and fake model
-# servers (a stateful fake Ollama for model loading) on 127.0.0.1. No real agent or model
-# server is ever run or reached. The main scene is the boot screen; under --headless, with
+# guide HUD, model load, round and net tests (tests/movement_test.gd,
+# tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
+# tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
+# tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
+# tests/net_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
+# stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
+# Ollama for model loading) on 127.0.0.1. No real agent or model server is ever run or
+# reached. The net test runs a host and joiners in this one process over ENet on
+# 127.0.0.1 only, on ports the system hands out. The main scene is the boot screen; under --headless, with
 # nothing handed in, it skips the AI link and goes straight to the arena, so the 300-frame
 # run makes no call and still runs the arena.
 # All steps always run, so one invocation shows everything that is wrong.
@@ -99,6 +101,7 @@ run_godot "boot sequence test" --fixed-fps 60 --script res://tests/boot_sequence
 run_godot "guide HUD test" --fixed-fps 60 --script res://tests/guide_hud_test.gd
 run_godot "model load test" --fixed-fps 60 --script res://tests/model_load_test.gd
 run_godot "round test" --fixed-fps 60 --script res://tests/round_test.gd
+run_godot "net test" --fixed-fps 60 --script res://tests/net_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

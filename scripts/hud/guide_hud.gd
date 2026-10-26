@@ -94,6 +94,9 @@ var demo := false
 var player: Node = null
 ## () -> bool, whether the window has focus. Empty: the window's own answer.
 var focus_check := Callable()
+## Set by the multiplayer panel while its address box is open: T and O do nothing, since
+## the player is typing an address and the input lock is that box's.
+var other_box_open := false
 ## Set by the round HUD during the break between rounds, whose summary panel needs the room:
 ## the AI's answer to T is held back, hidden with its time on screen paused, and shows again
 ## when the break ends. Notices, the ask box and the questions still show.
@@ -179,7 +182,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _typing:
+	if _typing or other_box_open:
 		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
@@ -285,6 +288,11 @@ func is_asking_consent() -> bool:
 	return _consent_prompt
 
 
+## True while the ask box, the opt-in question or the model-load question is up.
+func is_prompting() -> bool:
+	return _typing or _consent_prompt or _load_ui != ""
+
+
 func session_link() -> Link:
 	return _link
 
@@ -329,7 +337,7 @@ func recaptures() -> int:
 ## Opens the ask box, or says why not; or, with nothing loaded on the local Ollama server,
 ## offers to load a model.
 func open_ask() -> void:
-	if _typing or _consent_prompt or _load_ui == "prompt":
+	if _typing or other_box_open or _consent_prompt or _load_ui == "prompt":
 		return
 	if _load_ui == "checking" or _load_ui == "loading":
 		_notice(LOADING_BUSY_LINE, _t.off_color)
@@ -360,7 +368,7 @@ func open_ask() -> void:
 
 ## O: off at once; on only after the player's yes, asked by name.
 func toggle_ai() -> void:
-	if _typing or _consent_prompt:
+	if _typing or other_box_open or _consent_prompt:
 		return
 	if demo:
 		_link.set_consent(not _link.ai_on())

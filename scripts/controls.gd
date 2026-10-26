@@ -6,7 +6,8 @@ extends RefCounted
 ## Rules: no Ctrl/Alt/Super chords anywhere (those belong to the desktop and to
 ## Fred's dictation tool). Esc releases the mouse. C slides, so crouch-style keys
 ## never need a modifier. T opens the ask box to the player's AI and O turns the AI on
-## or off (C11 guide HUD). B turns the roast announcer on or off (C12 rounds).
+## or off (C11 guide HUD). B turns the roast announcer on or off (C12 rounds). M opens
+## the multiplayer panel (C13), whose own keys count only while it is open.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -24,6 +25,7 @@ static func ensure() -> void:
 	_key("ask_ai", [KEY_T])
 	_key("toggle_ai", [KEY_O])
 	_key("toggle_roast", [KEY_B])
+	_key("net_menu", [KEY_M])
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 
 
