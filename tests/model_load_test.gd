@@ -59,6 +59,8 @@ var _ps_delay_ms := 0
 var _bad_ps := false
 var _show_fails: Array = []
 var _unload_fails := false
+## Models whose unload request the fake server holds open and never answers.
+var _hang_unload_for: Array = []
 
 
 func _initialize() -> void:
@@ -88,6 +90,7 @@ func _run() -> void:
 	await _boot_checks()
 	await _hardening_checks()
 	await _more_hardening_checks()
+	await _last_hardening_checks()
 	await _cleanup()
 	print("LOAD server log (every request the fake Ollama server saw, in order):")
 	for line in _log_all:
@@ -150,6 +153,7 @@ func _server_state(models: Array, loaded: Array, mode: String = "load", late_ms:
 	_bad_ps = false
 	_show_fails = []
 	_unload_fails = false
+	_hang_unload_for = []
 	_requests.clear()
 	_mutex.unlock()
 
@@ -317,6 +321,9 @@ func _answer(method: String, path: String, body: String) -> PackedByteArray:
 			var asked = JSON.parse_string(body)
 			var name: String = asked.get("model", "") if asked is Dictionary else ""
 			if asked is Dictionary and asked.has("keep_alive") and int(asked["keep_alive"]) == 0:
+				if _hang_unload_for.has(name):
+					_mutex.unlock()
+					return PackedByteArray()
 				if _unload_fails:
 					status = "500 Internal Server Error"
 				else:
@@ -394,6 +401,7 @@ func _link(ollama_server: bool = true, inject_port: bool = true, gpu: Dictionary
 		local.rate_clock = _now
 		return local
 	link.guide_tuning.load_timeout_ms = tweak.get("load_timeout_ms", 5000)
+	link.guide_tuning.unload_timeout_ms = tweak.get("unload_timeout_ms", 2000)
 	link.guide_tuning.load_watch_interval_ms = 500
 	link.guide_tuning.local_timeout_ms = 5000
 	link.start()
@@ -1014,6 +1022,53 @@ func _more_hardening_checks() -> void:
 	var finally_gone: bool = await _pump(seen_link, func(): return _loaded_now().is_empty())
 	_check("a watched load seen loaded is kept past its 1 s window while its unload fails, then unloaded", still_kept and finally_gone, "kept %s, gone %s" % [still_kept, finally_gone])
 	seen_link.shut_down(null)
+	_seen()
+
+
+func _last_hardening_checks() -> void:
+	# A watched load offered and accepted again, then cancelled before anything was sent:
+	# the first watch is kept, and the model is unloaded when it turns up.
+	_server_state(_standard_models(), [], "late", 1500)
+	var again := await _bare_link()
+	await _offer_ready(again)
+	again.accept_load()
+	await _until(func(): return _has_request("/api/generate"))
+	again.cancel_load()
+	await _pump(again, func(): return again.loader_idle() and again.load_state == "cancelled")
+	await _offer_ready(again)
+	var offered_again: String = again.offer_name()
+	again.accept_load()
+	again.cancel_load()
+	var appeared: bool = await _pump(again, func(): return _loaded_now().has(SMALL))
+	var cleared: bool = appeared and await _pump(again, func(): return _loaded_now().is_empty())
+	var again_sent := _seen()
+	_check("a watched load accepted again and cancelled before sending keeps its first watch: unloaded when it turns up", offered_again == SMALL and cleared and _bodies(again_sent, "/api/generate").count('{"model":"%s"}' % SMALL) == 1 and _bodies(again_sent, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % SMALL), str(_bodies(again_sent, "/api/generate")))
+	again.shut_down(null)
+	_seen()
+	# One unload that hangs (B) does not keep another (a pending load A) from being done.
+	_server_state(_standard_models(), [], "late", 1500)
+	var stuck := await _bare_link({"unload_timeout_ms": 500})
+	await _offer_ready(stuck)
+	stuck.accept_load()
+	await _until(func(): return _has_request("/api/generate"))
+	stuck.cancel_load()
+	await _pump(stuck, func(): return stuck.loader_idle() and stuck.load_state == "cancelled")
+	_server_tweak("_models", [_model(MEDIUM, int(4.7 * GB))])
+	_server_tweak("_generate_mode", "load")
+	_server_tweak("_hang_unload_for", [MEDIUM])
+	await _offer_ready(stuck)
+	stuck.accept_load()
+	await _pump(stuck, func(): return stuck.load_state == "loaded")
+	stuck.set_consent(false)
+	var a_up: bool = await _pump(stuck, func(): return _loaded_now().has(SMALL))
+	var a_unloaded: bool = a_up and await _pump(stuck, func(): return _loaded_now() == [MEDIUM])
+	var mid_seen := _seen()
+	var b_tries := _bodies(mid_seen, "/api/generate").count('{"keep_alive":0,"model":"%s"}' % MEDIUM)
+	_check("while B's unload hangs on every try, the pending load A still turns up and is unloaded", a_unloaded and _bodies(mid_seen, "/api/generate").has('{"keep_alive":0,"model":"%s"}' % SMALL) and b_tries >= 1, "B tries %d; %s" % [b_tries, str(_loaded_now())])
+	_server_tweak("_hang_unload_for", [])
+	var b_gone: bool = await _pump(stuck, func(): return _loaded_now().is_empty() and not stuck.load_pending())
+	_check("and once B's unload is answered, B goes too", b_gone, str(_loaded_now()))
+	stuck.shut_down(null)
 	_seen()
 
 

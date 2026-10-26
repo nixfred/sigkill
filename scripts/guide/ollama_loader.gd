@@ -163,7 +163,7 @@ func job_load(name: String) -> void:
 	var listed := loaded_names(ps[1])
 	if watched.has(name):
 		# An earlier load of this model that the game stopped waiting for: the game's own.
-		watched.erase(name)
+		# Its watch stays until this attempt claims the model or sends a load of its own.
 		if listed.has(name):
 			_own(name)
 			outcome = Outcome.LOADED
@@ -204,6 +204,7 @@ func job_load(name: String) -> void:
 func _own(name: String) -> void:
 	if not owned.has(name):
 		owned.append(name)
+	watched.erase(name)
 	current = name
 
 
@@ -211,39 +212,45 @@ func _watch(name: String) -> void:
 	watched[name] = {"until": Time.get_ticks_msec() + int(tuning.load_timeout_ms), "seen": false}
 
 
-## Worker job: unloads the models marked for release and any watched load that has turned
-## up. Whatever cannot be done now stays for the next run.
+## Worker job: unloads any watched load that has turned up, then the models marked for
+## release. Every request has its own deadline, so one unload that hangs cannot use up the
+## time for the others; whatever cannot be done now stays for the next run, and the
+## release list is rotated so the next run starts with a different model.
 func job_tidy() -> void:
 	_begin_job()
-	var deadline := Time.get_ticks_msec() + int(tuning.unload_timeout_ms)
-	_release_pass(deadline)
-	_watch_pass(deadline)
+	_watch_pass(-1)
+	_release_pass(-1)
+	if release.size() > 1:
+		release.append(release[0])
+		release.remove_at(0)
 	outcome = Outcome.NONE
 
 
 ## At the end of the session: marks every owned model for release, unloads it and any
-## watched load that has turned up, each only if /api/ps lists it, before `deadline`, then
-## forgets everything (nothing can follow). Runs on the main thread with no job running,
-## and always runs, even after a cancel.
+## watched load that has turned up, each only if /api/ps lists it, all before `deadline`,
+## then forgets everything (nothing can follow). Runs on the main thread with no job
+## running, and always runs, even after a cancel.
 func unload_now(deadline: int) -> void:
 	mark_release()
-	_release_pass(deadline)
 	_watch_pass(deadline)
+	_release_pass(deadline)
 	owned.clear()
 	release.clear()
 	watched.clear()
 	current = ""
 
 
+## `deadline` < 0: each request gets its own (PROBE_TIMEOUT_MS to read /api/ps,
+## unload_timeout_ms per unload); otherwise everything shares it (the end of the session).
 func _release_pass(deadline: int) -> void:
 	if release.is_empty():
 		return
-	var ps := _send("GET", PS_PATH, PackedByteArray(), deadline, false)
+	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), false)
 	if not (ps[0] and listing_ok(ps[1])):
 		return  # cannot tell: kept for the next run
 	var listed := loaded_names(ps[1])
 	for name in release.duplicate():
-		if not listed.has(name) or _send_unload(name, deadline):
+		if not listed.has(name) or _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms))):
 			release.erase(name)
 			owned.erase(name)
 
@@ -251,20 +258,26 @@ func _release_pass(deadline: int) -> void:
 func _watch_pass(deadline: int) -> void:
 	if watched.is_empty():
 		return
-	var ps := _send("GET", PS_PATH, PackedByteArray(), deadline, false)
-	var known: bool = ps[0] and listing_ok(ps[1])
-	var listed := loaded_names(ps[1]) if known else PackedStringArray()
+	var ps := _send("GET", PS_PATH, PackedByteArray(), _by(deadline, PROBE_TIMEOUT_MS), false)
+	if not (ps[0] and listing_ok(ps[1])):
+		return  # cannot tell: nothing expires on a check that did not happen
+	var listed := loaded_names(ps[1])
 	var now := Time.get_ticks_msec()
 	for name in watched.keys():
 		var entry: Dictionary = watched[name]
-		if known and listed.has(name):
+		if listed.has(name):
 			entry["seen"] = true
-			if _send_unload(name, deadline):
+			if _send_unload(name, _by(deadline, int(tuning.unload_timeout_ms))):
 				watched.erase(name)
-		elif known and entry["seen"]:
+		elif entry["seen"]:
 			watched.erase(name)  # it turned up and is gone now
-		elif not entry["seen"] and now > int(entry["until"]):
-			watched.erase(name)  # never turned up in its window
+		elif now > int(entry["until"]):
+			watched.erase(name)  # /api/ps shows it absent, past its window
+
+
+## A shared deadline, or a fresh one `ms` from now when there is none.
+static func _by(deadline: int, ms: int) -> int:
+	return deadline if deadline >= 0 else Time.get_ticks_msec() + ms
 
 
 ## One unload request with exactly {"model": name, "keep_alive": 0}; true if answered.
