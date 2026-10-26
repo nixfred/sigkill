@@ -508,16 +508,23 @@ func take_ammo(id: String, mag: int, reserve: int, host_reloading: bool = false)
 
 
 ## The host's timing for the weapon in hand (C16): its reload or draw still has `reload_s`
-## or `draw_s` to go there, so this side's own, if running for that weapon, lasts at least as
-## long and a little more (TIMING_MARGIN_S, so a shot never lands on the host's last frame of
-## it); a shot then never goes off before the host will believe it. Never shortens either.
+## or `draw_s` to go there, so no shot goes off here until then and a little more
+## (TIMING_MARGIN_S, so a shot never lands on the host's last frame of it). This side's own
+## reload or draw, if still running, is stretched; if it has already ended, a fire block holds
+## the shot instead (the reload is not run again, so no rounds move twice). Never shortens.
 func take_timing(id: String, reloading: String, reload_s: float, draw_s: float) -> void:
 	if inventory.def().id != id:
 		return
-	if reloading == id and inventory.is_reloading() and reload_s > 0.0:
-		inventory.reload_left = maxf(inventory.reload_left, reload_s + TIMING_MARGIN_S)
-	if inventory.is_swapping() and draw_s > 0.0:
-		inventory.swap_left = maxf(inventory.swap_left, draw_s + TIMING_MARGIN_S)
+	if reloading == id and reload_s > 0.0:
+		if inventory.is_reloading():
+			inventory.reload_left = maxf(inventory.reload_left, reload_s + TIMING_MARGIN_S)
+		else:
+			inventory.block_left = maxf(inventory.block_left, reload_s + TIMING_MARGIN_S)
+	if draw_s > 0.0:
+		if inventory.is_swapping():
+			inventory.swap_left = maxf(inventory.swap_left, draw_s + TIMING_MARGIN_S)
+		else:
+			inventory.block_left = maxf(inventory.block_left, draw_s + TIMING_MARGIN_S)
 
 
 ## Holds the weapon with `id` at once, ready (a respawn with the weapon the host says is in

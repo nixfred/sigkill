@@ -222,6 +222,10 @@ func _inventory_checks() -> void:
 	inv.reserves[1] = 0
 	inv.tick(0.9)
 	_check("an empty magazine with nothing in reserve clicks dry and starts no reload", inv.try_fire() == Inventory.BLOCK_DRY and not inv.is_reloading())
+	inv.block_left = 0.5
+	var held := inv.try_fire()
+	inv.tick(0.51)
+	_check("a fire block (the host's timing) holds a shot for its time, and only that long", held == Inventory.BLOCK_RELOAD and inv.block_left == 0.0, held)
 	inv.refill()
 	_check("a new life refills every weapon and stops anything running", inv.mags == [-1, 6] and inv.reserves == [-1, 24] and not inv.is_swapping() and not inv.is_reloading())
 	var cannon := Inventory.new([_cannon], 0.3)
@@ -773,10 +777,39 @@ func _match_checks() -> void:
 	ccp.inventory.reload_left = 0.0
 	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions"), PackedStringArray(["sigterm"]), PackedInt32Array([0]), PackedInt32Array([18]), "sigterm", "sigterm", 1.0, 0.0)
 	_check("a reply sent while the host's reload ran, arriving after this side's reload finished, is taken as that reload leaves it: 6 and 12 stay, not 0 and 18", ccp.inventory.mags[sig_slot] == 6 and ccp.inventory.reserves[sig_slot] == 12 and not ccp.inventory.is_reloading(), "%d/%d" % [ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot]])
+	# The host's draw still running when this side's has ended (a draw late on the wire), with
+	# the cannon, whose 0.16 s interval is shorter than what the host's draw has left: the one
+	# shot that meets it is dropped, the reply holds this side until the host's draw is done,
+	# and the next honest shot, fire held every frame, is believed.
+	ccp.inventory.block_left = 0.0  # the hold the reply above left
+	ccp.select_slot(ccp.inventory.slot_of("terminal_cannon"))
+	await _settle(ccp, 0.6)
+	hs.combat.states[cid]["ready_at"] = hs.get("_clock") + 0.35
+	cs.fire_seq = hs.combat.states[cid]["last_seq"]
+	var swap_drops: int = hs.combat.drops.get("swap", 0)
+	var seq_draw: int = cs.fire_seq
+	await _fire(ccp)
+	var blocked := await _until(func(): return ccp.inventory.block_left > 0.0, 2000)
+	var block_seen: float = ccp.inventory.block_left
+	var next_frame := await _first_shot_frame(ccp, 120)
+	var next_believed := await _until(func(): return hs.combat.states[cid]["last_seq"] > seq_draw, 2000)  # the dropped shot's number is not burnt, the next is believed
+	print("WEAPON late draw on the host: one cannon shot dropped, this side held %.2f s, the next shot after %d frames" % [block_seen, next_frame])
+	_check("a draw still running on the host after this side's has ended: one cannon shot is dropped as mid-draw, the reply holds this side past the cannon's own 0.16 s, and the next honest shot (fire held every frame) is believed with no second drop", blocked and next_frame > _frames_for(0.16) + 2 and next_believed and hs.combat.drops.get("swap", 0) == swap_drops + 1, "blocked %s frame %d believed %s drops %s" % [blocked, next_frame, next_believed, hs.combat.drops])
+	ccp.select_slot(sig_slot)
+	await _settle(ccp, 1.0)
+	# A reply saying the host's reload of the weapon in hand has 1 s to go, after this side's
+	# own reload has finished: a hold of that long, the rounds not moved again.
+	await _settle(ccp, 1.0)
+	var mag_now: int = ccp.inventory.mags[sig_slot]
+	var res_now: int = ccp.inventory.reserves[sig_slot]
+	var host_mag: int = mag_now - 1
+	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions"), PackedStringArray(["sigterm"]), PackedInt32Array([host_mag]), PackedInt32Array([res_now + 1]), "sigterm", "sigterm", 1.0, 0.0)
+	var held_frames := await _first_shot_frame(ccp, 120)
+	_check("a reply that says the host's reload has 1 s to go, after this side's own has finished, holds the next shot about that long (frame %d) and moves no rounds twice" % held_frames, held_frames >= _frames_for(1.05) - 1 and held_frames <= _frames_for(1.05) + 2 and ccp.inventory.mags[sig_slot] == mag_now - 1 and ccp.inventory.reserves[sig_slot] == res_now, "frame %d mags %d/%d (was %d/%d)" % [held_frames, ccp.inventory.mags[sig_slot], ccp.inventory.reserves[sig_slot], mag_now, res_now])
 	# A stale reply is not taken: one that answers fewer intents than the joiner has sent.
 	var stale_mag: int = ccp.inventory.mags[sig_slot]
 	cs._ammo(cs.lives.get(cid, 0), cs.get("_sent_actions") - 1, PackedStringArray(["sigterm"]), PackedInt32Array([0]), PackedInt32Array([0]), "sigterm", "", 0.0, 0.0)
-	_check("an ammo reply that has not caught up with every intent the joiner sent is stale and not taken", ccp.inventory.mags[sig_slot] == stale_mag and stale_mag == 6)
+	_check("an ammo reply that has not caught up with every intent the joiner sent is stale and not taken", ccp.inventory.mags[sig_slot] == stale_mag and stale_mag > 0, str(stale_mag))
 	# A reply that comes while R has the arena away is kept and taken by the next arena, after
 	# it takes over the old player's weapons.
 	hs.combat.states[cid]["ammo"]["sigterm"] = {"mag": 0, "reserve": 12, "last_fire": -INF}

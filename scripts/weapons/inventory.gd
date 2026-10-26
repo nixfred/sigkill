@@ -32,6 +32,9 @@ var last := 0
 var swap_s := 0.3
 var swap_left := 0.0
 var reload_left := 0.0
+## Seconds no shot may go off although this side's own draw and reload are done: the host
+## still counts one of them running (a LAN match, C16). A new draw, a hold or a refill ends it.
+var block_left := 0.0
 ## Seconds the HUD keeps showing the drawn weapon's fiction line.
 var fiction_left := 0.0
 var fiction_s := 1.6
@@ -73,6 +76,7 @@ func select(slot: int) -> bool:
 	current = slot
 	swap_left = swap_s
 	reload_left = 0.0
+	block_left = 0.0
 	fiction_left = fiction_s
 	return true
 
@@ -87,6 +91,7 @@ func hold(slot: int) -> bool:
 		current = slot
 	swap_left = 0.0
 	reload_left = 0.0
+	block_left = 0.0
 	return true
 
 
@@ -141,7 +146,7 @@ func swap_progress() -> float:
 func try_fire() -> String:
 	if swap_left > 0.0:
 		return BLOCK_SWAP
-	if reload_left > 0.0:
+	if reload_left > 0.0 or block_left > 0.0:
 		return BLOCK_RELOAD
 	if cooldowns[current] > 0.0:
 		return BLOCK_COOLDOWN
@@ -159,6 +164,7 @@ func tick(delta: float) -> void:
 	for i in cooldowns.size():
 		cooldowns[i] = maxf(cooldowns[i] - delta, 0.0)
 	swap_left = maxf(swap_left - delta, 0.0)
+	block_left = maxf(block_left - delta, 0.0)
 	fiction_left = maxf(fiction_left - delta, 0.0)
 	if reload_left > 0.0:
 		reload_left -= delta
@@ -179,3 +185,4 @@ func refill() -> void:
 		cooldowns[i] = 0.0
 	swap_left = 0.0
 	reload_left = 0.0
+	block_left = 0.0
