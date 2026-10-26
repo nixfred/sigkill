@@ -70,6 +70,9 @@ const OPENAI_MODELS_PATH := "/v1/models"
 const HTTP_TIMEOUT_MS := 500
 ## Largest whole response read, status line and headers included; longer is no answer.
 const HTTP_RESPONSE_MAX_BYTES := 1048576
+## Largest header section accepted. Real ones are a few hundred bytes; the cap keeps their
+## checking to a few microseconds.
+const HTTP_HEADER_MAX_BYTES := 16384
 const HTTP_STATUS_OK := ["HTTP/1.0 200", "HTTP/1.1 200"]
 ## Characters allowed in an HTTP header name (RFC 9110 token), besides letters and digits.
 const HTTP_TOKEN_EXTRA := "!#$%&'*+-.^_`|~"
@@ -589,7 +592,7 @@ func _stop_waiting(deadline: int) -> bool:
 ## plain number or does not match the body, and a body that is not valid UTF-8 or holds a
 ## NUL. `stop` returning true abandons the check. Nothing here prints, whatever the bytes.
 static func parse_http_body(raw: PackedByteArray, stop: Callable = Callable()) -> Variant:
-	var split := _header_end(raw)
+	var split := _header_end(raw, HTTP_HEADER_MAX_BYTES)
 	if split < 0:
 		return null
 	var head := raw.slice(0, split)
@@ -649,10 +652,10 @@ static func _is_plain_ascii(bytes: PackedByteArray) -> bool:
 	return text.length() == bytes.size() and text.to_utf8_buffer().size() == bytes.size()
 
 
-## Index of the blank line that ends the headers, or -1.
-static func _header_end(raw: PackedByteArray) -> int:
+## Index of the blank line that ends the headers, or -1 if none starts within `limit`.
+static func _header_end(raw: PackedByteArray, limit: int) -> int:
 	var at := raw.find(CARRIAGE_RETURN)
-	while at >= 0 and at + 3 < raw.size():
+	while at >= 0 and at <= limit and at + 3 < raw.size():
 		if raw[at + 1] == NEWLINE and raw[at + 2] == CARRIAGE_RETURN and raw[at + 3] == NEWLINE:
 			return at
 		at = raw.find(CARRIAGE_RETURN, at + 1)
@@ -715,8 +718,9 @@ static func is_utf8_text(bytes: PackedByteArray, stop: Callable = Callable()) ->
 ## otherwise). Null unless the bytes are exactly one well-formed JSON object. The scanner
 ## checks structure, escapes and number syntax but never decodes a string or converts a
 ## number, so model names are never read as text and nothing can make Godot print. Only
-## the top-level keys are decoded, from bytes already known to be UTF-8. `stop` returning
-## true abandons the scan.
+## top-level keys are read, and only as plain ASCII names after their escapes are undone;
+## a key that is not plain ASCII cannot be one the detector looks for, so it is skipped.
+## `stop` returning true abandons the scan.
 static func json_top_level(bytes: PackedByteArray, stop: Callable = Callable()) -> Variant:
 	var scan := JsonScan.new(bytes, stop)
 	scan.skip_space()
@@ -752,8 +756,10 @@ class JsonScan:
 	const LOWER_U := 0x75
 	const SIMPLE_ESCAPES := [0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74]
 	const SPACE := [0x20, 0x09, 0x0A, 0x0D]
+	const CONTROL_LAST := 0x1F
 	const MAX_DEPTH := 64
 	const CHECK_EVERY := 65536
+	const ESCAPED := {0x22: "\"", 0x5C: "\\", 0x2F: "/"}
 
 	var b: PackedByteArray
 	var n := 0
@@ -763,11 +769,16 @@ class JsonScan:
 	var _stop: Callable
 	var _next_check := CHECK_EVERY
 	var _next_backslash := -1
+	var _next_quote := -1
+	var _next_control := -1
+	var _control_at := PackedInt64Array()
 
 	func _init(bytes: PackedByteArray, stop: Callable) -> void:
 		b = bytes
 		n = bytes.size()
 		_stop = stop
+		_control_at.resize(CONTROL_LAST + 1)
+		_control_at.fill(-1)
 
 	func at() -> int:
 		return b[i] if i < n else -1
@@ -784,8 +795,22 @@ class JsonScan:
 		return false
 
 	func skip_space() -> void:
-		while i < n and SPACE.has(b[i]):
+		while not failed and i < n and SPACE.has(b[i]):
 			advance()
+
+	## The first byte at or after `from` below 0x20, or n. Each control value's next
+	## position is remembered and found natively, so this stays linear over the body.
+	func next_control(from: int) -> int:
+		if _next_control >= from:
+			return _next_control
+		var least := n
+		for value in CONTROL_LAST + 1:
+			if _control_at[value] < from:
+				var found := b.find(value, from)
+				_control_at[value] = found if found >= 0 else n
+			least = mini(least, _control_at[value])
+		_next_control = least
+		return least
 
 	func digit(c: int) -> bool:
 		return c >= ZERO and c <= NINE
@@ -841,8 +866,9 @@ class JsonScan:
 			if kind == "":
 				return fail()
 			if top:
-				var key := b.slice(key_start, key_end).get_string_from_utf8()
-				record[key] = {"kind": kind, "count": last_count if kind == "array" else -1}
+				var key := ascii_key(b.slice(key_start, key_end))
+				if not key.is_empty():
+					record[key] = {"kind": kind, "count": last_count if kind == "array" else -1}
 			skip_space()
 			var c := at()
 			if c == COMMA:
@@ -879,19 +905,25 @@ class JsonScan:
 		return false
 
 	## Scans a string from its opening quote; returns the index of its closing quote, or -1.
-	## It jumps to the next quote or backslash natively; the next backslash is remembered,
-	## so a body of many plain strings is scanned once, not once per string.
+	## It jumps to the next quote or backslash natively, and remembers both, so a body of many
+	## strings or many escapes is scanned once. A raw byte below 0x20 inside it is an error.
 	func string_end() -> int:
 		advance()
 		while not failed:
-			var quote := b.find(QUOTE, i)
-			if quote < 0:
-				fail()
-				return -1
+			if _next_quote < i:
+				_next_quote = b.find(QUOTE, i)
+				if _next_quote < 0:
+					fail()
+					return -1
+			var quote := _next_quote
 			if _next_backslash < i and _next_backslash != n:
 				_next_backslash = b.find(BACKSLASH, i)
 				if _next_backslash < 0:
 					_next_backslash = n
+			var segment_end := mini(quote, _next_backslash)
+			if next_control(i) < segment_end:
+				fail()
+				return -1
 			if _next_backslash < quote:
 				advance(_next_backslash - i + 1)
 				var e := at()
@@ -917,7 +949,7 @@ class JsonScan:
 		if at() == ZERO:
 			advance()
 		elif digit(at()):
-			while digit(at()):
+			while not failed and digit(at()):
 				advance()
 		else:
 			return fail()
@@ -925,7 +957,7 @@ class JsonScan:
 			advance()
 			if not digit(at()):
 				return fail()
-			while digit(at()):
+			while not failed and digit(at()):
 				advance()
 		if at() == LOWER_E or at() == UPPER_E:
 			advance()
@@ -933,9 +965,37 @@ class JsonScan:
 				advance()
 			if not digit(at()):
 				return fail()
-			while digit(at()):
+			while not failed and digit(at()):
 				advance()
 		return not failed
+
+	## A key's raw bytes as a plain ASCII name with its escapes undone, or "" if it is not
+	## one: anything outside printable ASCII, raw or escaped, cannot be a key the detector
+	## looks for. The bytes are already checked as a well-formed JSON string.
+	static func ascii_key(raw: PackedByteArray) -> String:
+		var out := ""
+		var k := 0
+		while k < raw.size():
+			var c := raw[k]
+			if c == BACKSLASH:
+				var e := raw[k + 1]
+				if ESCAPED.has(e):
+					out += ESCAPED[e]
+					k += 2
+					continue
+				if e != LOWER_U:
+					return ""  # \b \f \n \r \t: control characters, never in a wanted key
+				var code := ("0x" + raw.slice(k + 2, k + 6).get_string_from_ascii()).hex_to_int()
+				if code < 0x20 or code > 0x7E:
+					return ""
+				out += String.chr(code)
+				k += 6
+				continue
+			if c < 0x20 or c > 0x7E:
+				return ""
+			out += String.chr(c)
+			k += 1
+		return out
 
 	func literal(word: String) -> bool:
 		var bytes := word.to_ascii_buffer()

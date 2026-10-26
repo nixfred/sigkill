@@ -47,6 +47,7 @@ var _exec_mark := ""
 var _huge_body := PackedByteArray()
 var _results: Array = []
 var _fake_now := 0
+var _stop_calls := 0
 
 # Fake servers, served on their own thread. _server answers per its mode; _closer accepts
 # and hangs up at once, the test's own "no server here" that nothing else can take.
@@ -301,6 +302,12 @@ func _now() -> int:
 	return _fake_now
 
 
+## A stop callback that counts its calls and always says stop.
+func _stop_now() -> bool:
+	_stop_calls += 1
+	return true
+
+
 func _smi_runs_logged() -> PackedStringArray:
 	if not FileAccess.file_exists(_smi_log):
 		return PackedStringArray()
@@ -326,7 +333,7 @@ func _safety_checks() -> void:
 	_check("nvidia-smi comes from its fixed system path, never from the PATH", Detector.NVIDIA_SMI_PATH == "/usr/bin/nvidia-smi" and Detector.new().nvidia_smi_path == Detector.NVIDIA_SMI_PATH and _detector().nvidia_smi_path != Detector.NVIDIA_SMI_PATH)
 	_check("its one network socket connects only to the constant 127.0.0.1", source.count("StreamPeerTCP.new()") == 1 and source.count("connect_to_host(") == 1 and source.contains("peer.connect_to_host(LOCALHOST, port)") and Detector.LOCALHOST == "127.0.0.1")
 	_check("every file it opens, it opens for reading", source.count("FileAccess.open(") == 2 and source.count("FileAccess.open(path, FileAccess.READ)") == 2)
-	_check("it never hands an answer to Godot's JSON parser and decodes only top-level keys", source.count("get_string_from_utf8(") == 1 and source.contains("b.slice(key_start, key_end).get_string_from_utf8()"))
+	_check("it never hands an answer to Godot's JSON parser or decodes it as text, only plain ASCII keys", source.count("get_string_from_utf8(") == 0 and source.contains("ascii_key(b.slice(key_start, key_end))"))
 	var users := PackedStringArray()
 	var files := PackedStringArray()
 	for dir in SCAN_DIRS:
@@ -405,6 +412,33 @@ func _parser_checks() -> void:
 		if Detector.json_top_level(String(json_cases[name]).to_ascii_buffer()) != null:
 			not_json.append(name)
 	_check("the JSON scanner refuses anything but one well-formed object", not_json.is_empty(), "accepted: " + ", ".join(not_json))
+	var pretty = Detector.json_top_level('{\n\t"data": [\r\n\t\t1,\n\t\t2\n\t]\n}\n'.to_ascii_buffer())
+	var raw_controls := PackedStringArray()
+	for control in [0x01, 0x09, 0x0A, 0x1F]:
+		var doc := '{"data":["a'.to_ascii_buffer()
+		doc.append(control)
+		doc.append_array('b"]}'.to_ascii_buffer())
+		if Detector.json_top_level(doc) != null:
+			raw_controls.append("0x%02x" % control)
+	_check("whitespace between tokens is fine, but a raw control byte inside a string is refused", pretty is Dictionary and pretty["data"]["count"] == 2 and raw_controls.is_empty(), "accepted: " + ", ".join(raw_controls))
+	var escaped_key = Detector.json_top_level('{"\\u0064ata":[1,2,3],"\\u00e9":[1],"mo\\/dels":[]}'.to_ascii_buffer())
+	_check("top-level keys are matched with their escapes undone; keys that are not plain ASCII are skipped", escaped_key is Dictionary and escaped_key.has("data") and escaped_key["data"]["count"] == 3 and escaped_key.has("mo/dels") and escaped_key.size() == 2, str(escaped_key))
+	# A long string of escapes: the closing quote is remembered, so this stays linear.
+	var escapes := '{"data":["%s"]}' % "\\n".repeat(100000)
+	var t_escapes := Time.get_ticks_msec()
+	var escaped_ok = Detector.json_top_level(escapes.to_ascii_buffer())
+	var escape_ms := Time.get_ticks_msec() - t_escapes
+	print("AI DETECTOR scanner: a 200 KB string of escapes scanned in %d ms" % escape_ms)
+	_check("a string of 100000 escapes scans in linear time", escaped_ok is Dictionary and escape_ms < 1500, "%d ms" % escape_ms)
+	# A cancel stops even a million-digit number at once.
+	_stop_calls = 0
+	var digits := ('{"data":[%s]}' % "1".repeat(1000000)).to_ascii_buffer()
+	var t_cancel := Time.get_ticks_msec()
+	var cancelled_scan = Detector.json_top_level(digits, _stop_now)
+	var cancel_scan_ms := Time.get_ticks_msec() - t_cancel
+	_check("a cancel stops the scanner inside a long number at once", cancelled_scan == null and _stop_calls == 1 and cancel_scan_ms < WATCHDOG_MS, "%d stop calls, %d ms" % [_stop_calls, cancel_scan_ms])
+	var big_header := "HTTP/1.0 200 OK\r\nX-Big: %s\r\n\r\n" % "a".repeat(Detector.HTTP_HEADER_MAX_BYTES)
+	_check("a header section over 16 KiB is refused", Detector.parse_http_body(_http(big_header, ok_body)) == null)
 	var good_utf8 := [PackedByteArray([0x61]), PackedByteArray([0xC3, 0xA9]), PackedByteArray([0xE2, 0x82, 0xAC]), PackedByteArray([0xF0, 0x9F, 0x98, 0x80])]
 	var bad_utf8 := [PackedByteArray([0xC0, 0x80]), PackedByteArray([0xED, 0xA0, 0x80]), PackedByteArray([0xF4, 0x90, 0x80, 0x80]), PackedByteArray([0xE2, 0x82]), PackedByteArray([0x80]), PackedByteArray([0xE0, 0x80, 0x80]), PackedByteArray([0x00])]
 	var utf8_ok := true
@@ -617,8 +651,8 @@ func _gpu_checks() -> void:
 	var outstanding_before: int = peer._gpu_state().smi_pid
 	var free_release := FileAccess.open(_smi_release, FileAccess.WRITE)
 	free_release.close()
-	var exited := _wait_for(func() -> bool: return FileAccess.file_exists(_smi_done))
-	OS.delay_msec(WAIT_STEP_MS * 20)  # it exits right after writing its done mark
+	# Wait until it has really exited; the done mark comes just before that.
+	var exited := _wait_for(func() -> bool: return FileAccess.file_exists(_smi_done) and not OS.is_process_running(outstanding_before))
 	reaped = null
 	var outstanding_after: int = peer._gpu_state().smi_pid
 	_check("dropping a detector reaps an nvidia-smi that has exited, with no poll needed", outstanding_before != 0 and exited and outstanding_after == 0, "pid set %s, exited %s, cleared %s" % [outstanding_before != 0, exited, outstanding_after == 0])
