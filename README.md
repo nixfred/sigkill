@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="docs/media/banner-title.jpg" alt="SIGKILL. kill -9 the daemons.">
+  <img src="docs/media/banner-title.jpg" alt="SIGKILL. kill -9 the daemons."><br>
+  <sub><em>Concept art, not in-game footage.</em></sub>
 </p>
 
 <p align="center">
@@ -36,30 +37,30 @@ SIGKILL is a first-person shooter that runs natively on Omarchy, the Arch and Hy
 
 You play the nixfred `>_` hexagon, deep inside your own machine, hunting rogue daemons, zombie processes and runaway apps. The world has three visual registers that share one space:
 
-- **Tron** where the system is healthy: a pure black void, glowing light grids, neon edges on every surface. Teal and mint are yours; red and amber are hostile.
-- **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near.
-- **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage.
+- **Tron** where the system is healthy: a pure black void, glowing light grids, neon edges on every surface. Teal and mint are yours; red and amber are hostile. **Built:** the greybox arena already has the black void, the glowing floor grid and the neon edges.
+- **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near. **Planned** (C8 code-rain walls, C21 code-rain vision).
+- **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage. **Planned** (C36 ruins art kit).
 
-Corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay. The core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign.
+In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with static targets.
 
 ### Why a big studio can't ship this
 
 A studio game has to be the same on every machine. SIGKILL is different on every machine, on purpose:
 
-- **It is built from your machine.** Later milestones turn your real folder tree into rooms and your running processes into enemies, using only names, sizes and counts. Nothing is ever read beyond that, and every kill is cosmetic.
-- **It plays alongside your AI.** Your guide is the coding agent you already chose in Omarchy, talking to you live, on your own subscription or your own hardware. A studio cannot ship your AI in the box.
+- **It is built from your machine.** Later milestones turn your real folder tree into rooms and your running processes into enemies, using only names, sizes and counts. The few other planned reads are narrow and read-only, and the [safety section](#safety-and-privacy) lists them all. Every kill is cosmetic.
+- **It plays alongside your AI.** Your guide will be the coding agent you already chose in Omarchy, talking to you live, on your own subscription or your own hardware (Planned, M2). A studio cannot ship your AI in the box.
 - **It is made for one desktop.** Omarchy themes, Hyprland and the terminal culture around them are the setting, not an afterthought.
 
 <table>
   <tr>
-    <td align="center" width="33%">🟦<br><b>Tron arena</b><br>Black void, glowing light grid, neon edges on every surface.</td>
-    <td align="center" width="33%">📡<br><b>Signal weapons</b><br>SIGTERM shotgun, SIGHUP confusion grenade, the SIGKILL railgun.</td>
-    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.</td>
+    <td align="center" width="33%">🟦<br><b>Tron arena</b><br>Black void, glowing light grid, neon edges.<br><sub>✅ Built, as a greybox arena</sub></td>
+    <td align="center" width="33%">📡<br><b>Signal weapons</b><br>SIGTERM shotgun, SIGHUP confusion grenade, the SIGKILL rail rifle.<br><sub>⬜ Planned from C16; the terminal cannon is built</sub></td>
+    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.<br><sub>⬜ Planned, M2</sub></td>
   </tr>
   <tr>
-    <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.</td>
-    <td align="center">🟢<br><b>Code-rain vision</b><br>See daemons through walls as Matrix glyphs.</td>
-    <td align="center">🐧<br><b>Native linux binary</b><br>Godot 4 on Vulkan. One program, built for Omarchy and Hyprland.</td>
+    <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.<br><sub>⬜ Planned, M3</sub></td>
+    <td align="center">🟢<br><b>Code-rain vision</b><br>See daemons through walls as Matrix glyphs.<br><sub>⬜ Planned, C21</sub></td>
+    <td align="center">🐧<br><b>Native linux binary</b><br>Godot 4 on Vulkan, built for Omarchy and Hyprland.<br><sub>✅ Runs from source; packaged builds planned</sub></td>
   </tr>
 </table>
 
@@ -67,19 +68,21 @@ Built today: the greybox arena with the Tron look, tight movement and the termin
 
 ## Story
 
+> **Status: Planned** (story bible C34, missions C35 to C37, the opener C38 to C42). None of the campaign is built yet.
+
 **You're a sysadmin jacked into your own machine, because something is spawning processes you never started.** Your AI is the only one you trust, until the trail leads to a question nobody wants answered: who wrote the daemons?
 
 The campaign is told in short missions between arenas, through terminal logs you pick up, your AI's lines and the places themselves. There are no long cutscenes. The story is fiction from top to bottom: nothing in it reads or reveals real system data.
 
 ### The opener
 
-> It doesn't start with a menu. It starts the way your late nights usually end: a terminal, a cursor, your own machine.
+> Something has been living in your machine longer than you have been playing.
 >
-> Something in there knows your machine better than it should.
+> It has been waiting for you to notice.
 >
-> Two minutes later you will understand exactly why you are holding a rifle.
+> The first time you run SIGKILL, it notices you back.
 
-The opener runs live in the engine, never pre-rendered, and is skippable after the first viewing. It is built from your real machine only if you say yes on first launch, using read-only names, sizes and counts; say no and you get the same opener on fake data. Esc and the window's close button always work. Status: Planned (C38 to C42, after the boot sequence and the derezz effect exist).
+The opener runs live in the engine, never pre-rendered, and can be skipped after the first viewing. It uses your machine's real names only if you allow it on first launch, read-only; otherwise it runs on fake data. Esc and the window's close button always work. Status: Planned (C38 to C42, after the boot sequence and the derezz effect exist).
 
 ## The arsenal
 
@@ -108,7 +111,7 @@ Nothing in the arsenal is in progress right now: the cannon is finished and the 
 
 | Ability or mode | What it does | Status |
 |---|---|---|
-| Derezz deaths | Players and daemons shatter into glowing voxels. Kill feed: "SIGKILL &lt;pid&gt; sent by &lt;player&gt;" | ⬜ Planned (C7) |
+| Derezz deaths | Daemons shatter into glowing voxels: the target dummies first (C7), players later. The kill feed, "SIGKILL &lt;pid&gt; sent by &lt;player&gt;", arrives with synced combat (C14) | ⬜ Planned (C7, C14) |
 | SIGSTOP bullet time | Short meter of Matrix slow-mo; SIGCONT resumes | ⬜ Planned (C18) |
 | Light-trail mode | Your path leaves a solid neon wall, for Tron deathmatch | ⬜ Planned (C20) |
 | Code-rain vision | See enemies through walls as glyphs; drains fast | ⬜ Planned (C21) |
@@ -197,9 +200,9 @@ The rules that make this safe, in plain words:
 ### Built: the Tron arena
 
 - **Floor grid**, `shaders/floor_grid.gdshader`. A spatial shader that works in world space: the vertex stage passes `MODEL_MATRIX * VERTEX` to the fragment stage, so every floor block shares one continuous grid. Lines run along X and Z with 1 m cells and a brighter major line every 8 m, set by `GRID_CELL` and `GRID_MAJOR_EVERY` in `scripts/palette.gd`. Line coverage is anti-aliased with `fwidth`, and once a pixel is wider than a line the line's energy is spread over that pixel, so the far floor fades into the dark instead of shimmering. The lines are emission on a near-black base, which is what the glow pass blooms.
-- **Neon edges**, `shaders/neon_edge.gdshader`. Glowing outlines on every greybox block and on the target dummies, found without normals or extra geometry. In local space, a point on a flat face sits at distance zero from its own face plane, so the second-smallest plane distance is its distance to the nearest edge. A box has three plane families; the dummies' hexagonal prism has four, three side-plane pairs plus the caps. Edge width and colour are uniforms, and every block gets its own material sized to its half extents. The hexagon's vertical edges draw about 13 percent thinner than its rims, because its side faces meet at 120 degrees; the shader documents this.
+- **Neon edges**, `shaders/neon_edge.gdshader`. Glowing outlines on every greybox block except the floor, which has its own grid shader, and on the target dummies, found without normals or extra geometry. In local space, a point on a flat face sits at distance zero from its own face plane, so the second-smallest plane distance is its distance to the nearest edge. A box has three plane families; the dummies' hexagonal prism has four, three side-plane pairs plus the caps. Edge width and colour are uniforms, and every block gets its own material sized to its half extents. On the hexagon the side faces meet at 120 degrees, so the plane distance underestimates the true distance along a face and the vertical edges draw about 15 percent wider than the rims.
 - **Environment**, `scenes/arena.tscn`. One WorldEnvironment: a black background, glow in screen blend with an HDR threshold of 0.5 so emissive edges bloom while faces stay dark, black exponential fog at density 0.02 so distance fades into the void, and the filmic tonemapper. SSAO, SSR and SDFGI are off to keep it cheap.
-- **Colour**, `scripts/palette.gd`. The single source for every colour and the factory for every material: void `#000000`, base `#05080a`, teal `#19d3c5` and mint `#7dffcf` for the player side, hostile red `#ff3355` and amber `#ffb000`. `scripts/main.gd` applies the exact palette colours to the environment at runtime; the scene file carries approximations only so the editor previews the look.
+- **Colour**, `scripts/palette.gd`. The single source for every material and environment colour, and the factory for every material: void `#000000`, base `#05080a`, teal `#19d3c5` and mint `#7dffcf` for the player side, hostile red `#ff3355` and amber `#ffb000`. `scripts/main.gd` applies the exact palette colours to the environment at runtime; the scene file carries approximations only so the editor previews the look. Two light colours still live in their scenes: the sun in `scenes/main.tscn` and the room light in `scenes/arena.tscn`.
 - **Cannon effects**, `scripts/cannon_fx.gd`. The beam, the muzzle flash and its light, the impact flash and the sparks use unlit, over-bright materials so the glow pass picks them up. Sparks are CPU particles launched along the surface normal: hostile hits spark amber, the world sparks mint. Every effect frees itself when its lifetime ends.
 
 **What is verified, and what is not.** Headless Godot still runs the shading-language front end, so `scripts/check.sh` catches shader syntax and semantic errors; deliberately broken shaders were used to prove it. During C4 a one-off probe also checked the edge-distance maths against real mesh data. What nobody has seen yet is the result on a real screen: the GPU-side compile and the actual look stay unverified until the first windowed capture.
@@ -263,10 +266,12 @@ flowchart LR
 
 ### Project tree
 
-Every file in the repository, from `git ls-files`. Godot also keeps a small `.uid` file next to each script and shader.
+The project layout, from `git ls-files`. Godot also keeps a small `.uid` file next to each script and shader, and the media folder under docs holds the README images.
 
 ```text
 sigkill/
+├── README.md                   This page
+├── .gitignore                  Keeps Godot's cache and build output out of git
 ├── project.godot               Godot 4.7 project: main scene, physics layer names, Forward+, black clear colour
 ├── scenes/
 │   ├── main.tscn               Root level: sun light, arena, player and HUD
@@ -279,8 +284,8 @@ sigkill/
 │   ├── main.gd                 Wires targets and player to the HUD, applies palette colours, R respawns targets
 │   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
 │   ├── controls.gd             The input map, registered in code
-│   ├── movement_tuning.gd      MovementTuning: every movement and camera number, validated
-│   ├── weapon_tuning.gd        WeaponTuning: every cannon number, validated
+│   ├── movement_tuning.gd      MovementTuning: the exposed movement and camera tuning, validated
+│   ├── weapon_tuning.gd        WeaponTuning: the exposed cannon tuning, validated
 │   ├── palette.gd              Every colour, plus the material factory
 │   ├── grey_block.gd           Builds a block's mesh, collision and neon material; previews in the editor
 │   ├── target_dummy.gd         Takes hits, pulses, shrinks and despawns, reports whether a hit landed
@@ -308,12 +313,12 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Two custom resources hold every number that shapes the game, each with a default instance the player scene loads:
+Feel is data, not code. Two custom resources hold the exposed tuning parameters for player movement, the camera and the cannon, each with a default instance the player scene loads. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' despawn timing from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
 
-Both resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, the player prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every colour comes from `scripts/palette.gd`.
+Both resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, the player prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -414,7 +419,7 @@ godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
 
 These rules apply to every chunk, from PRD section 6, in plain language:
 
-- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Anything it looks at, it only reads: names, sizes and counts, and for the opener also modification times and theme colours. Never the contents of a file.
+- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Everything it looks at is read-only: folder and process names, sizes and counts for the machine-world features; modification times, uptime and theme colours for the opener; GPU utilisation, VRAM and temperature for the HUD; model names and whether they are loaded, for the local AI fallback. It never reads what is inside your files, with one narrow exception: the single line of Omarchy's default-agent setting, read to find your AI.
 - **The one exception: your own AI.** The game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Nothing else is ever executed.
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
@@ -442,7 +447,7 @@ Before M0 came the scaffold (`d086489`), and the decision that the player's AI i
 
 Real in-game captures land once the renderer chunks are verified.
 
-Every image on this page is concept art and says so. Real captures need a window on screen, so they wait for windowed playtests, and they will use demo data.
+Every illustration on this page is concept art and is labelled that way; the badges and the hexagon are brand marks. Real captures need a window on screen, so they wait for windowed playtests, and they will use demo data.
 
 <p align="center">
   <img src="docs/media/nixfred-icon.svg" alt="nixfred" width="64" height="64"><br>
