@@ -135,6 +135,13 @@ func damage_player(victim: int, killer: int) -> Dictionary:
 	return {"health": s["health"], "killed": killed}
 
 
+## The host has no arena to put `id` down in right now (its own is reloading): the respawn
+## comes due again a moment later.
+func defer_respawn(id: int, by_s: float) -> void:
+	if states.has(id) and states[id]["dead"]:
+		states[id]["respawn_left"] = maxf(by_s, 0.001)
+
+
 ## Back to full health, alive and protected for a while.
 func respawn(id: int) -> void:
 	if not states.has(id):

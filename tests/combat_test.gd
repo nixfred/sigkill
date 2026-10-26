@@ -363,6 +363,10 @@ func _match_checks() -> void:
 	await _shoot(cp, host, client)
 	cs.shot_confirmed.disconnect(end_hook)
 	_check("the dead host's body stops no shot: a ray through the corpse ends far beyond it", not ends.is_empty() and ends[-1].z < 0.0 and (ends[-1] - cp.position).length() > 15.0, "end %s" % (ends[-1] if not ends.is_empty() else Vector3.INF))
+	var corpse_at: Vector3 = hp.position
+	var through_corpse: bool = hs._obstructed(cid, corpse_at + Vector3(0, 0.7, 0.6), corpse_at + Vector3(0, 0.7, -0.6))
+	var through_wall: bool = hs._obstructed(cid, Vector3(4.75, 1.65, -7.5), Vector3(4.75, 1.65, -8.6))
+	_check("the cover probe sees no cover in the dead host's body, and still sees the wall", not through_corpse and through_wall)
 	# The dead host cannot fire.
 	var seq_before: int = hs.combat.states[1]["last_seq"]
 	var shots_before: int = hp.shots_fired
@@ -437,6 +441,10 @@ func _forgery_checks() -> void:
 		["a number already believed", 1, eye, up, "seq"],
 	]
 	var wrong := PackedStringArray()
+	var answers: Array = [0]
+	var answer_hook := func(_s: int, _h: int, _o: Vector3, _e: Vector3) -> void:
+		answers[0] += 1
+	cs.shot_confirmed.connect(answer_hook)
 	for item in bad:
 		var dropped_before: int = hs.combat.dropped
 		var health_before: Dictionary = hs.health.duplicate()
@@ -444,8 +452,10 @@ func _forgery_checks() -> void:
 		var counted := await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 		if not counted or hs.combat.dropped != dropped_before + 1 or hs.combat.drops.get(item[4], 0) < 1 or hs.health != health_before:
 			wrong.append("%s: dropped %d -> %d (%s), health %s" % [item[0], dropped_before, hs.combat.dropped, hs.combat.drops, hs.health])
+	await _frames(FRAMES_PER_SEND + 2)
+	cs.shot_confirmed.disconnect(answer_hook)
 	print("COMBAT forgeries dropped by reason: ", hs.combat.drops)
-	_check("forged intents (an origin 3 m off, a NaN or 50-long direction, an infinite origin, a number far ahead, a number already believed) are each dropped and counted by reason, with no damage and no answer", wrong.is_empty() and hs.combat.drops == {"origin": 1, "shape": 3, "seq": 2}, "; ".join(wrong) + " " + str(hs.combat.drops))
+	_check("forged intents (an origin 3 m off, a NaN or 50-long direction, an infinite origin, a number far ahead, a number already believed) are each dropped and counted by reason, with no damage and no answer sent back", wrong.is_empty() and hs.combat.drops == {"origin": 1, "shape": 3, "seq": 2} and answers[0] == 0, "; ".join(wrong) + " %s answers %d" % [hs.combat.drops, answers[0]])
 	# Too fast: two believable intents in one frame; the second is refused.
 	await _frames(10)
 	var dropped_before: int = hs.combat.dropped
@@ -647,6 +657,45 @@ func _leave_checks() -> void:
 	await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2)
 	await _frames(2)
 	_check("rejoined: full health and alive on both sides", cs.health[cs.my_id] == 100.0 and hs.health[cs.my_id] == 100.0 and not cs.dead[cs.my_id] and cp.alive)
+	# A respawn that lands while the joiner's arena is reloading: the next arena puts the
+	# player at the host's spawn, not the scene's own.
+	for i in 4:
+		_aim(hp, _avatar(host, cs.my_id).global_position + Vector3(0, 0.3, 0))
+		await _fire(hp)
+		await _frames(SHOT_FRAMES)
+	await _until(func(): return cs.dead.get(cs.my_id, false), 3000)
+	client["main"].free()
+	client["main"] = null
+	await _until(func(): return not cs.dead.get(cs.my_id, true), 3000)
+	var pending: Vector3 = cs.get("_pending_spawn")
+	var main2 = MainScene.instantiate()
+	client["branch"].add_child(main2)
+	client["main"] = main2
+	client["player"] = main2.get_node("Player")
+	client["player"].assume_captured = true
+	cp = client["player"]
+	await _frames(2)
+	var at: Vector3 = cp.position
+	_check("a respawn received with no arena is kept and applied by the next arena: the player stands at the host's spawn, far from the host, alive", pending.is_finite() and (at - pending).length() < 0.6 and Vector2(at.x - hp.position.x, at.z - hp.position.z).length() > 15.0 and (at - Vector3(0, 0.95, 10)).length() > 5.0 and cp.alive and not cs.get("_pending_spawn").is_finite(), "pending %s at %s" % [pending, at])
+	# The host's own arena away while a respawn is due: the respawn waits for the arena.
+	for i in 4:
+		_aim(cp, _avatar(client, 1).global_position + Vector3(0, 0.3, 0))
+		await _fire(cp)
+		await _frames(SHOT_FRAMES)
+	await _until(func(): return hs.dead.get(1, false), 3000)
+	host["main"].free()
+	host["main"] = null
+	await _frames(75)
+	var still_dead: bool = hs.dead.get(1, false) and hs.combat.states[1]["dead"]
+	var hmain2 = MainScene.instantiate()
+	host["branch"].add_child(hmain2)
+	host["main"] = hmain2
+	host["player"] = hmain2.get_node("Player")
+	host["player"].assume_captured = true
+	hp = host["player"]
+	var back_up := await _until(func(): return not hs.dead.get(1, true), 2000)
+	await _frames(2)
+	_check("the host with its arena away stays dead past the delay, and respawns at a real spawn point once the arena is back", still_dead and back_up and hp.alive and (hp.position - Vector3(0, 0.95, 10)).length() > 5.0 and hs.lives[1] == 1, "still dead %s back %s at %s" % [still_dead, back_up, hp.position])
 	# The host leaving while the joiner is dead: the joiner comes back to life on its own.
 	for i in 4:
 		_aim(hp, _avatar(host, cs.my_id).global_position + Vector3(0, 0.3, 0))

@@ -135,6 +135,16 @@ var respawn_left := {}
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
 var lives := {}
+## A respawn that arrived for this player while its arena was reloading: the host's chosen
+## spawn, in arena space, applied when the next arena attaches. INF when none is waiting.
+var _pending_spawn := Vector3.INF
+## How soon the host tries a respawn again when its own arena is absent.
+const RESPAWN_RETRY_S := 0.05
+## After the host's arena attaches, how long a respawn waits for the opponents' positions
+## to arrive (a few send intervals), so the spawn is chosen away from them.
+const SPAWN_LOOK_S := 0.5
+## The host's clock when its arena last attached; respawns wait a little after it.
+var _attached_at := -INF
 ## Shot intents this player sent (or, hosting, fired), numbered from 1 per session.
 var fire_seq := 0
 
@@ -253,6 +263,10 @@ func attach(arena: Node, player: Node) -> void:
 		arena.tree_exiting.connect(_on_arena_exit)
 	if player.has_signal("fire_intent") and not player.fire_intent.is_connected(_on_fire_intent):
 		player.fire_intent.connect(_on_fire_intent)
+	if _pending_spawn.is_finite() and player.has_method("respawn_at"):
+		player.respawn_at(arena.to_global(_pending_spawn))  # the host chose this while the arena was away
+	_pending_spawn = Vector3.INF
+	_attached_at = _clock
 	if player.has_method("set_alive"):
 		player.set_alive(not dead.get(my_id, false))
 	for id in players:
@@ -393,7 +407,12 @@ func _physics_process(delta: float) -> void:
 			_tick_refused(delta)
 			_tick_send(delta)
 			for id in combat.tick(delta):
-				_do_respawn(id)
+				if _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
+					combat.defer_respawn(id, RESPAWN_RETRY_S)  # no arena to choose a spawn in yet
+				elif _clock - _attached_at < SPAWN_LOOK_S and _opponents_unseen(id):
+					combat.defer_respawn(id, RESPAWN_RETRY_S)  # the arena just came back: wait for their positions
+				else:
+					_do_respawn(id)
 			_mirror_from_combat()
 			_tick_protection(delta)
 		State.JOINED:
@@ -504,6 +523,7 @@ func _clear_players() -> void:
 	last_killer = {}
 	respawn_left = {}
 	lives = {}
+	_pending_spawn = Vector3.INF
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -879,6 +899,8 @@ func _obstructed(shooter: int, eye: Vector3, origin: Vector3) -> bool:
 	var own = avatars.get(shooter)
 	if own != null and is_instance_valid(own):
 		exclude.append(own.hit_rid())
+	if not combat.alive(1):
+		exclude.append(_player.get_rid())  # the host's corpse is no cover, as in the shot itself
 	query.exclude = exclude
 	return not _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
@@ -987,6 +1009,17 @@ func _do_respawn(id: int) -> void:
 			_respawn.rpc_id(peer, id, life, pos, _ct.spawn_protection_s, combat.health_of(id))
 
 
+## True while some living opponent of `id` has sent no position since this arena attached.
+func _opponents_unseen(id: int) -> bool:
+	for other in players:
+		if other == id or other == 1 or not combat.alive(other):
+			continue
+		var avatar = avatars.get(other)
+		if avatar == null or not is_instance_valid(avatar) or not avatar.visible:
+			return true
+	return false
+
+
 ## The arena's spawn point farthest from the nearest living opponent, in arena space.
 func _pick_spawn(id: int) -> Vector3:
 	var spawns := []
@@ -1029,11 +1062,13 @@ func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_heal
 	lives[id] = life
 	respawn_left.erase(id)
 	if id == my_id:
-		if _player != null and is_instance_valid(_player):
-			if _player.has_method("respawn_at") and _arena != null and is_instance_valid(_arena):
+		if _player != null and is_instance_valid(_player) and _arena != null and is_instance_valid(_arena):
+			if _player.has_method("respawn_at"):
 				_player.respawn_at(_arena.to_global(pos))
 			if _player.has_method("set_alive"):
 				_player.set_alive(true)
+		else:
+			_pending_spawn = pos  # the arena is reloading: the next one puts the player there
 	else:
 		var avatar = avatars.get(id)
 		if avatar != null and is_instance_valid(avatar):
