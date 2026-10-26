@@ -160,6 +160,16 @@ func _finish_respawn() -> void:
 	respawned.emit(self)
 
 
+## A new round: back at once, alive, hittable and at full health. A dummy that was down
+## (derezzing or growing back) says so with `respawned`; its voxels finish on their own.
+func reset_for_round() -> void:
+	if state == State.DEREZZING:
+		_begin_rematerialise()
+	if state == State.RESPAWNING:
+		_finish_respawn()
+	_health = max_health
+
+
 func _pulse() -> void:
 	_material.set_shader_parameter("edge_color", Palette.HOSTILE_AMBER)
 	_material.set_shader_parameter("edge_energy", 8.0)

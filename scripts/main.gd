@@ -1,6 +1,7 @@
 extends Node3D
-## Root of the prototype level. Wires targets and the player to the HUD,
-## and handles "respawn all targets" (reloads the scene).
+## Root of the prototype level. Wires targets and the player to the HUD (its round HUD
+## counts each round from their signals), and handles "respawn all targets" (reloads the
+## scene).
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -28,6 +29,7 @@ func _ready() -> void:
 	_player.shot_fired.connect(_on_shot_fired)
 	_hud.set_weapon_tuning(_player.weapon_tuning())
 	_hud.set_player(_player)
+	_hud.set_round_targets(dummies)
 	_hud.set_targets(_remaining, _total)
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:

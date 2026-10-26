@@ -5,11 +5,18 @@ extends RefCounted
 ## name, a path, a host name or a process name, is dropped without a trace. The player's
 ## typed text is capped and has its control and direction-changing characters removed.
 ## Nothing here reads the system; it only filters what the game passes in.
+##
+## Round-stat coaching (C12) uses the same builder: the round's numbers go in as stats (the
+## round keys below, numbers only), with no typed text, and the request names one of the
+## game's own fixed round tasks, coach or roast, whose instruction is added to the
+## preamble. A task name the game does not know is dropped, so nothing but SIGKILL's own
+## words can reach the instructions.
 
 ## The fixed instructions every guide gets, as its system prompt where the agent allows one.
 const PREAMBLE := "You are the in-game guide in SIGKILL, a first-person shooter. Answer the player in at most three short lines. Use only the game stats and the player's message below. Do not use tools, do not read or write files, and do not run commands."
 
 ## The only stats a request can carry: [kind, low, high] for numbers, ["enum", values].
+## "float_or_unset" is a float in range, or exactly -1 for "never happened".
 const STATS := {
 	"shots_fired": ["int", 0, 1000000],
 	"hits_landed": ["int", 0, 1000000],
@@ -21,7 +28,26 @@ const STATS := {
 	"round_seconds": ["float", 0.0, 86400.0],
 	"weapon": ["enum", ["terminal_cannon"]],
 	"mode": ["enum", ["practice", "deathmatch", "hunt"]],
+	# One round's numbers, for the coaching or roast at its end (C12).
+	"round_number": ["int", 1, 100000],
+	"duration_s": ["float", 0.0, 86400.0],
+	"shots": ["int", 0, 1000000],
+	"hits": ["int", 0, 1000000],
+	"accuracy_pct": ["float", 0.0, 100.0],
+	"derezzes": ["int", 0, 100000],
+	"longest_streak": ["int", 0, 1000000],
+	"time_to_first_derezz_s": ["float_or_unset", 0.0, 86400.0],
+	"distance_m": ["float", 0.0, 1000000.0],
+	"slides": ["int", 0, 100000],
+	"jumps": ["int", 0, 100000],
 }
+## The game's own instructions for the end of a round, by task name. Only these words, and
+## never anything the player or an AI wrote, are ever added to the preamble.
+const TASKS := {
+	"coach": "The round just ended. Give the player one concrete tip for the next round, drawn from these round numbers, in one or two short sentences.",
+	"roast": "The round just ended. Roast the player's play in this round, PG-13, in one or two short sentences. Mock the play and the numbers only, never the player as a person. No slurs, nothing hateful, no profanity beyond mild words.",
+}
+const UNSET := -1.0
 ## Characters removed from typed text besides control characters: direction overrides and
 ## isolates, marks and zero-width characters that could hide or reorder text.
 const INVISIBLE := [0x061C, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2060, 0x2066, 0x2067, 0x2068, 0x2069, 0xFEFF]
@@ -37,10 +63,13 @@ const INPUT_SLACK := 4
 var stats := {}
 ## The player's text, cleaned and capped.
 var text := ""
+## The round task, "coach" or "roast", or "" for an ordinary ask.
+var task := ""
 
 
-## A request from whatever the game hands in: only whitelisted stats survive.
-static func build(raw_stats: Dictionary, typed: String, max_chars: int) -> RefCounted:
+## A request from whatever the game hands in: only whitelisted stats survive, and only a
+## task named in TASKS.
+static func build(raw_stats: Dictionary, typed: String, max_chars: int, task_name: String = "") -> RefCounted:
 	var request = load("res://scripts/ai/guide_request.gd").new()
 	for name in STATS:
 		if raw_stats.has(name):
@@ -48,6 +77,7 @@ static func build(raw_stats: Dictionary, typed: String, max_chars: int) -> RefCo
 			if value != null:
 				request.stats[name] = value
 	request.text = clean_text(typed, max_chars)
+	request.task = task_name if TASKS.has(task_name) else ""
 	return request
 
 
@@ -56,9 +86,12 @@ static func _accept(rule: Array, value: Variant) -> Variant:
 		"int":
 			if typeof(value) == TYPE_INT and value >= rule[1] and value <= rule[2]:
 				return value
-		"float":
-			if (typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT) and is_finite(float(value)) and float(value) >= rule[1] and float(value) <= rule[2]:
-				return float(value)
+		"float", "float_or_unset":
+			if (typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT) and is_finite(float(value)):
+				if float(value) >= rule[1] and float(value) <= rule[2]:
+					return float(value)
+				if rule[0] == "float_or_unset" and float(value) == UNSET:
+					return UNSET
 		"enum":
 			if typeof(value) == TYPE_STRING and (rule[1] as Array).has(value):
 				return value
@@ -102,6 +135,11 @@ func user_message() -> String:
 	return "Game stats: %s\nPlayer: %s" % [stats_line(), text if text != "" else "(no message)"]
 
 
+## The fixed instructions for this request: the preamble, plus the round task's own line.
+func preamble() -> String:
+	return PREAMBLE if task == "" else PREAMBLE + " " + TASKS[task]
+
+
 ## The whole prompt, preamble first, for agents that take no separate system prompt.
 func full_prompt() -> String:
-	return PREAMBLE + "\n\n" + user_message()
+	return preamble() + "\n\n" + user_message()

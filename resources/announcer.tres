@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="AnnouncerTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/round/announcer_tuning.gd" id="1_announcer"]
+
+[resource]
+script = ExtResource("1_announcer")
+round_seconds = 90.0
+intermission_seconds = 12.0
+callout_min_interval_s = 4.0
+callout_seconds = 2.0
+streak_callout = 3
+miss_run_callout = 10
+text_max_chars = 240
+round_font_size = 16
+callout_font_size = 26
+summary_font_size = 15
+summary_width = 560
+summary_top = 120

@@ -58,12 +58,15 @@ class StubAdapter:
 	var mode := "ok"
 	var answer := "Aim for the core, then strafe."
 	var tps := -1.0
+	## Polls before the answer comes; a late answer is many.
+	var delay_steps := 3
 	var ask_calls := 0
 	var begins := 0
 	var cancels := 0
 	var steps := 0
 	var last_message := ""
 	var last_stats := {}
+	var last_preamble := ""
 
 	func _init(tuning_resource: Resource) -> void:
 		super(tuning_resource)
@@ -86,11 +89,12 @@ class StubAdapter:
 		steps = 0
 		last_message = request.user_message()
 		last_stats = request.stats.duplicate()
+		last_preamble = request.preamble()
 		return ""
 
 	func _step() -> Dictionary:
 		steps += 1
-		if steps < 3 or mode == "hang":
+		if steps < delay_steps or mode == "hang":
 			return {}
 		if mode == "ok":
 			return result(true, answer, "", tps)

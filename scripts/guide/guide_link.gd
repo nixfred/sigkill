@@ -22,6 +22,9 @@ extends RefCounted
 ## The AI is called only with the player's yes for that source (scripts/boot/
 ## guide_settings.gd keeps it in user://settings.cfg), and the guide tuning's ai_enabled
 ## switch is set only on this link's own copy, in ask(), right before the one call.
+## refusal() is the one gate every caller checks first: the T ask box (C11) and the round's
+## end (C12) share its pace, its one call in flight and the session's cap on calls. The
+## roast announcer switch (C12) sits next to the answer in the same settings file.
 ##
 ## Model loading (C11b), for an Ollama server only, through scripts/guide/ollama_loader.gd
 ## on a worker: begin_offer() finds one candidate (or a model loaded by now), and only
@@ -109,6 +112,11 @@ var _demo_on := true
 ## with set_consent(), so a caller asking every frame never touches the disk.
 var _consent_known := false
 var _consent: Settings.Answer = Settings.Answer.NOT_ASKED
+## The roast announcer switch, read from the settings file once, like the answer. Demo data
+## keeps its own in memory and never reads or writes the file.
+var _roast_known := false
+var _roast := false
+var _demo_roast := false
 var _loader: Loader
 var _loader_thread: Thread
 ## A loader job waiting for the running one to be joined: jobs never overlap, and a thread
@@ -284,6 +292,49 @@ func set_consent(allowed: bool) -> bool:
 	_consent = Settings.Answer.ALLOWED if allowed else Settings.Answer.DECLINED
 	_consent_known = true
 	return Settings.save(adapter.source_name(), allowed, settings_path)
+
+
+## True when the player turned the roast announcer on (B); off by default.
+func roast_on() -> bool:
+	if demo:
+		return _demo_roast
+	if not _roast_known:
+		_roast = Settings.roast_on(settings_path)
+		_roast_known = true
+	return _roast
+
+
+## Turns the roast announcer on or off and saves it next to the opt-in answer. It counts for
+## this session even if it cannot be saved; false then (demo saves nothing, and is true).
+func set_roast(on: bool) -> bool:
+	if demo:
+		_demo_roast = on
+		return true
+	_roast = on
+	_roast_known = true
+	return Settings.save_roast(on, settings_path)
+
+
+## Why a call would be refused right now, as one word, or "" when one may start: "linking",
+## "guarded" (the headless guard, with nothing handed in to call), "no_ai", "off", "busy"
+## (a call in flight), "cap" (`cap` calls made this session) or "cooldown". Demo data never
+## calls: "demo".
+func refusal(cap: int) -> String:
+	if demo:
+		return "demo"
+	if not is_ready():
+		return "linking"
+	if adapter == null:
+		return "guarded" if _guarded else "no_ai"
+	if not ai_on():
+		return "off"
+	if is_busy():
+		return "busy"
+	if calls >= cap:
+		return "cap"
+	if cooldown_ms() > 0:
+		return "cooldown"
+	return ""
 
 
 ## The adapter's name for the screen: an agent name from the detector's known list,

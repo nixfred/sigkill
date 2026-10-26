@@ -47,5 +47,5 @@ func adapter_name() -> String:
 
 func arguments(request: RefCounted, _workdir: String) -> PackedStringArray:
 	var args := FLAGS.duplicate()
-	args.append_array(PackedStringArray(["--system-prompt", Request.PREAMBLE, request.user_message()]))
+	args.append_array(PackedStringArray(["--system-prompt", request.preamble(), request.user_message()]))
 	return args

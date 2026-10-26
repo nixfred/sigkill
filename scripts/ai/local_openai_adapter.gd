@@ -44,6 +44,7 @@ var _http: Http
 var _listing := 0
 var _model := ""
 var _message := ""
+var _system := ""
 var _deadline := 0
 var _chat_started := 0
 
@@ -83,6 +84,7 @@ func _timeout_ms() -> int:
 
 func _begin(request: RefCounted) -> String:
 	_message = request.user_message()
+	_system = request.preamble()
 	_model = ""
 	_deadline = Time.get_ticks_msec() + _t.local_timeout_ms
 	_listing = 0
@@ -136,7 +138,7 @@ func _step() -> Dictionary:
 		_model = found[1]
 		if _model == "":
 			return _done(result(false, "", "needs_consent"))
-		var body := JSON.stringify(chat_body(_model, _message, _t.local_max_tokens)).to_utf8_buffer()
+		var body := JSON.stringify(chat_body(_model, _system, _message, _t.local_max_tokens)).to_utf8_buffer()
 		_http.close()
 		_http = Http.new()
 		_chat_started = Time.get_ticks_msec()
@@ -214,13 +216,14 @@ static func _can_chat(entry: Variant) -> bool:
 	return type is String and CHAT_TYPES.has(type)
 
 
-## The chat request: the model, the fixed preamble as the system message, the stats and
-## the player's text as the user message, no streaming, a token cap. Nothing else.
-static func chat_body(model: String, message: String, max_tokens: int) -> Dictionary:
+## The chat request: the model, the fixed preamble (with a round task's line) as the system
+## message, the stats and the player's text as the user message, no streaming, a token cap.
+## Nothing else.
+static func chat_body(model: String, system: String, message: String, max_tokens: int) -> Dictionary:
 	return {
 		"model": model,
 		"messages": [
-			{"role": "system", "content": Request.PREAMBLE},
+			{"role": "system", "content": system},
 			{"role": "user", "content": message},
 		],
 		"stream": false,
@@ -231,6 +234,7 @@ static func chat_body(model: String, message: String, max_tokens: int) -> Dictio
 func _done(done: Dictionary) -> Dictionary:
 	_model = ""  # model names live only for the one request
 	_message = ""
+	_system = ""
 	_phase = Phase.IDLE
 	if _http != null:
 		_http.close()

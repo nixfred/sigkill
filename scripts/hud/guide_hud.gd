@@ -586,23 +586,32 @@ func _notice(text: String, color: Color, ms: float = -1.0) -> void:
 	_refresh()
 
 
-## Why T would be refused right now, or "".
+## Why T would be refused right now, or "": the link's gate, shared with the round's end.
 func _refusal() -> String:
 	if demo:
 		return "" if _link.ai_on() else OFF_LINE
-	if not _link.is_ready():
-		return LINKING_LINE
-	if _link.adapter == null:
-		return NO_AI_LINE
-	if not _link.ai_on():
-		return OFF_LINE
-	if _asking or _link.is_busy():
-		return BUSY_LINE
-	if _link.calls >= _t.session_call_cap:
-		return "Limit reached: %d AI call%s this session." % [_t.session_call_cap, "" if _t.session_call_cap == 1 else "s"]
-	if _link.cooldown_ms() > 0:
-		return _cooldown_line()
+	var word: String = _link.refusal(_t.session_call_cap)
+	if _asking and (word == "" or word == "cap" or word == "cooldown"):
+		word = "busy"
+	match word:
+		"linking":
+			return LINKING_LINE
+		"guarded", "no_ai":
+			return NO_AI_LINE
+		"off":
+			return OFF_LINE
+		"busy":
+			return BUSY_LINE
+		"cap":
+			return "Limit reached: %d AI call%s this session." % [_t.session_call_cap, "" if _t.session_call_cap == 1 else "s"]
+		"cooldown":
+			return _cooldown_line()
 	return ""
+
+
+## The most AI calls in one game session, for the round's end to check against too.
+func call_cap() -> int:
+	return _t.session_call_cap
 
 
 func _cooldown_line() -> String:

@@ -23,13 +23,18 @@ const DEFAULT_WEAPON_PATH := "res://resources/terminal_cannon.tres"
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
+## Emitted when a jump starts, from the ground or out of a slide. Round stats count it.
+signal jumped
+## Emitted when a slide starts. Round stats count it.
+signal slid
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
 ## Terminal cannon tuning. Leave empty to use resources/terminal_cannon.tres.
 @export var weapon: Resource
 
-## Round stats, counted for the HUD now and for round-stat coaching later.
+## Shots and hits since the arena loaded, for the guide's ask stats. Each round counts its
+## own from shot_fired, jumped and slid (scripts/round/round_stats.gd).
 var shots_fired := 0
 var hits_landed := 0
 ## True while the guide HUD's ask box is open: no movement, jump, slide, look or fire, and a
@@ -243,12 +248,14 @@ func _step_movement(delta: float) -> void:
 		# Jump out of the slide and keep its momentum, up to a cap.
 		velocity.y = _t.jump_velocity
 		horizontal = horizontal.limit_length(_t.slide_jump_max_speed)
+		jumped.emit()
 	elif start_slide:
 		# Short burst along the current direction of travel. Never slows the player down.
 		_sliding = true
 		_slide_time = 0.0
 		var burst := maxf(speed, minf(speed + _t.slide_boost, _t.slide_max_speed))
 		horizontal = horizontal / speed * burst
+		slid.emit()
 	elif _sliding:
 		horizontal = horizontal.move_toward(Vector3.ZERO, _t.slide_friction * delta)
 	elif on_floor:
@@ -258,6 +265,7 @@ func _step_movement(delta: float) -> void:
 			horizontal = horizontal.move_toward(wish * _t.walk_speed, _t.ground_accel * delta)
 		if _jump_pressed:
 			velocity.y = _t.jump_velocity
+			jumped.emit()
 	else:
 		# Air: reduced steering. Speed is capped at walk speed or at the speed carried off
 		# the ground, whichever is higher, so strafing never builds extra speed.

@@ -6,6 +6,7 @@ const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
 const HitMarker = preload("res://scripts/hit_marker.gd")
 const GuideHud = preload("res://scripts/hud/guide_hud.gd")
+const RoundHud = preload("res://scripts/round/round_hud.gd")
 
 const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off"
 
@@ -14,6 +15,7 @@ var _engage: Label
 var _crosshair  # untyped on purpose: calls ping() from crosshair.gd
 var _hit_marker  # untyped on purpose: calls show_hit() from hit_marker.gd
 var _guide: GuideHud
+var _round: RoundHud
 
 
 func _ready() -> void:
@@ -52,9 +54,15 @@ func _ready() -> void:
 	_guide.name = "GuideHud"
 	root.add_child(_guide)
 
+	_round = RoundHud.new()
+	_round.name = "RoundHud"
+	_round.guide = _guide
+	root.add_child(_round)
+
 
 func _process(_delta: float) -> void:
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing()
+	# The break's summary panel takes the middle of the screen; a click still engages.
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _round.showing_summary()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -65,9 +73,20 @@ func set_targets(remaining: int, total: int) -> void:
 	_status.text = text
 
 
-## The player, whose input the guide HUD blocks while its ask box is open.
+## The player, whose input the guide HUD blocks while its ask box is open, and whose
+## shots, jumps, slides and steps each round counts.
 func set_player(player: Node) -> void:
 	_guide.player = player
+	_round.set_player(player)
+
+
+## The dummies a round counts downs of, and brings back when the next round starts.
+func set_round_targets(targets: Array) -> void:
+	_round.set_targets(targets)
+
+
+func round_hud() -> RoundHud:
+	return _round
 
 
 ## A target went down: the guide HUD counts it for the game stats it may send.
