@@ -1,0 +1,56 @@
+#!/bin/bash
+# Test stub for the Codex CLI, for tests/guide_adapter_test.gd only: never a real agent.
+# Like codex exec it writes its answer to the file named after --output-last-message. It
+# records its arguments (NUL-separated), PID, working directory, the --cd value and
+# whether its stdin is open or at its end, then answers as SIGKILL_TEST_STUB_MODE says.
+out=""
+cd_dir=""
+prev=""
+for arg in "$@"; do
+	case "$prev" in
+		--output-last-message | -o) out="$arg" ;;
+		--cd | -C) cd_dir="$arg" ;;
+	esac
+	prev="$arg"
+done
+log="${SIGKILL_TEST_GUIDE_LOG:-}"
+if [ -n "$log" ]; then
+	printf '%s\0' "$@" > "$log.codex.argv"
+	if read -r -t 0.3 _line; then stdin=data; elif [ $? -gt 128 ]; then stdin=open; else stdin=eof; fi
+	printf 'pid=%s\ncwd=%s\nstdin=%s\ncd=%s\n' "$$" "$PWD" "$stdin" "$cd_dir" > "$log.codex.meta"
+fi
+answer() {
+	if [ -n "$out" ]; then
+		printf '%s' "$1" > "$out"
+	fi
+}
+case "${SIGKILL_TEST_STUB_MODE:-ok}" in
+	hang)
+		i=0
+		while [ ! -e "${SIGKILL_TEST_GUIDE_RELEASE:-/nonexistent}" ] && [ "$i" -lt 200 ]; do
+			sleep 0.05
+			i=$((i + 1))
+		done
+		answer "late answer"
+		;;
+	flood)
+		if [ -n "$out" ]; then
+			i=0
+			while [ "$i" -lt 20000 ]; do
+				echo "flood line $i"
+				i=$((i + 1))
+			done > "$out"
+		fi
+		;;
+	ansi) answer "$(printf '\033[1;31mStay\033[0m low\r\n\001and move')" ;;
+	epipe)
+		# The answer file first, then the same text on stdout, which the game has closed.
+		answer "Aim for the core, then strafe left."
+		echo "Aim for the core, then strafe left."
+		;;
+	fail)
+		echo "stub failure" >&2
+		exit 2
+		;;
+	*) answer "Aim for the core, then strafe left." ;;
+esac

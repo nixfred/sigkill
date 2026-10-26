@@ -5,10 +5,11 @@
 #   scripts/check.sh <dir>    check another copy of the project (used to prove the gate can fail)
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
-# headless movement, cannon, derezz, code rain and AI detector tests (tests/movement_test.gd,
-# tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
-# tests/ai_detector_test.gd) at a fixed frame rate. The AI detector test uses fakes only:
-# fixture files, stubs and a fake model server on 127.0.0.1.
+# headless movement, cannon, derezz, code rain, AI detector and guide adapter tests
+# (tests/movement_test.gd, tests/cannon_test.gd, tests/derezz_test.gd,
+# tests/code_rain_test.gd, tests/ai_detector_test.gd, tests/guide_adapter_test.gd) at a
+# fixed frame rate. The AI tests use fakes only: fixture files, stub agent CLIs and a fake
+# model server on 127.0.0.1. No real agent or model server is ever run or reached.
 # All steps always run, so one invocation shows everything that is wrong.
 # Exit 0 only when every step is clean. Exit 1 on any parse error, any ERROR or
 # SCRIPT ERROR line, or a nonzero Godot exit code. Exit 2 means the gate itself
@@ -87,6 +88,7 @@ run_godot "cannon test" --fixed-fps 60 --script res://tests/cannon_test.gd
 run_godot "derezz test" --fixed-fps 60 --script res://tests/derezz_test.gd
 run_godot "code rain test" --fixed-fps 60 --script res://tests/code_rain_test.gd
 run_godot "AI detector test" --fixed-fps 60 --script res://tests/ai_detector_test.gd
+run_godot "guide adapter test" --fixed-fps 60 --script res://tests/guide_adapter_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

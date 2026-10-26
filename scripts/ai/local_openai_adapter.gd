@@ -85,7 +85,7 @@ func _step() -> Dictionary:
 	if state != Http.State.DONE and state != Http.State.FAILED:
 		return {}
 	if state == Http.State.FAILED:
-		return _done(result(false, "", "unreachable"))
+		return _done(result(false, "", "timeout" if Time.get_ticks_msec() > _deadline else "unreachable"))
 	var parsed := _parsed(_http.body())
 	if not parsed[0]:
 		return _done(result(false, "", "bad_response"))

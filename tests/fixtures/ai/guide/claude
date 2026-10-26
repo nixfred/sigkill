@@ -1,0 +1,33 @@
+#!/bin/bash
+# Test stub for the Claude Code CLI, for tests/guide_adapter_test.gd only: never a real
+# agent. It records its arguments (NUL-separated), PID, working directory and whether its
+# stdin is open or at its end, then answers as SIGKILL_TEST_STUB_MODE says.
+log="${SIGKILL_TEST_GUIDE_LOG:-}"
+if [ -n "$log" ]; then
+	printf '%s\0' "$@" > "$log.claude.argv"
+	if read -r -t 0.3 _line; then stdin=data; elif [ $? -gt 128 ]; then stdin=open; else stdin=eof; fi
+	printf 'pid=%s\ncwd=%s\nstdin=%s\n' "$$" "$PWD" "$stdin" > "$log.claude.meta"
+fi
+case "${SIGKILL_TEST_STUB_MODE:-ok}" in
+	hang)
+		i=0
+		while [ ! -e "${SIGKILL_TEST_GUIDE_RELEASE:-/nonexistent}" ] && [ "$i" -lt 200 ]; do
+			sleep 0.05
+			i=$((i + 1))
+		done
+		echo "late answer"
+		;;
+	flood)
+		i=0
+		while [ "$i" -lt 20000 ]; do
+			echo "flood line $i"
+			i=$((i + 1))
+		done
+		;;
+	ansi) printf '\033[1;31mStay\033[0m low\r\n\001\002\033]0;fake title\007and move\n' ;;
+	fail)
+		echo "stub failure" >&2
+		exit 3
+		;;
+	*) echo "Aim for the core, then strafe left." ;;
+esac
