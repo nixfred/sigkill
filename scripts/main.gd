@@ -10,6 +10,10 @@ const NetSession = preload("res://scripts/net/net_session.gd")
 var _remaining := 0
 var _total := 0
 
+## The game's own command-line arguments after --. A test sets its own before the arena
+## enters the tree.
+var launch_args: PackedStringArray = OS.get_cmdline_user_args()
+
 # Untyped on purpose: these call methods defined in their own scripts.
 @onready var _hud = $Hud
 @onready var _player = $Player
@@ -40,7 +44,7 @@ func _ready() -> void:
 		_hud.set_net_session(session)
 		# A room code or invite link on the command line (C15), once per run: the panel opens
 		# to show what came of it.
-		if session.take_launch_join(OS.get_cmdline_user_args()):
+		if session.take_launch_join(launch_args):
 			_hud.net_hud().open()
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:

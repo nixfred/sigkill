@@ -262,7 +262,7 @@ func _source_checks() -> void:
 	var to_rv := PackedStringArray()
 	for call in ["_rv.register(", "_rv.resolve(", "_rv.close("]:
 		to_rv.append(str(session.count(call)))
-	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each; close(code, protocol, port) wherever a code is released: leaving, a fresh code, and an unanswered, timed-out or zero-time registration", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and session.count("_rv.close(_room_wanted, protocol, _room_port)") == 3 and Array(to_rv) == ["1", "1", "5"], ", ".join(to_rv))
+	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each; close(code, protocol, port) wherever a code is released: leaving, a fresh code, and an unanswered, timed-out, failed or zero-time registration", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and session.count("_rv.close(_room_wanted, protocol, _room_port)") == 4 and Array(to_rv) == ["1", "1", "6"], ", ".join(to_rv))
 	var keys := FileAccess.get_file_as_string("res://scripts/controls.gd")
 	var users := PackedStringArray()
 	for action in InputMap.get_actions():
@@ -271,7 +271,7 @@ func _source_checks() -> void:
 				users.append(String(action))
 	_check("K is the panel's own key, bound to no action, counted only while the panel is up", users.is_empty() and not keys.contains("KEY_K") and _code("res://scripts/net/net_hud.gd").contains("KEY_K:"), ", ".join(users))
 	var main := _code("res://scripts/main.gd")
-	_check("the arena reads --join from the game's own arguments once and opens the panel to show the result", main.contains("session.take_launch_join(OS.get_cmdline_user_args())") and main.contains("_hud.net_hud().open()"))
+	_check("the arena reads --join from the game's own arguments once and opens the panel to show the result", main.contains("var launch_args: PackedStringArray = OS.get_cmdline_user_args()") and main.contains("session.take_launch_join(launch_args)") and main.contains("_hud.net_hud().open()"))
 	var nothing_installed := true
 	for word in ["xdg-mime", "update-desktop-database", ".desktop", "x-scheme-handler", "register_protocol"]:
 		for path in ["res://scripts/net/room_code.gd", "res://scripts/net/net_session.gd", "res://scripts/main.gd", "res://scripts/net/net_hud.gd", "res://project.godot"]:
@@ -594,6 +594,24 @@ func _edge_checks() -> void:
 	var took: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
 	_check("a registration whose answer is lost: the host gives up on the timeout, says so, and releases the code", took != "" and lost["session"].notice == Session.ROOM_NO_CODE % Session.ROOM_UNREACHABLE and lost["session"].room_code == "" and not _server.rooms.has(took), "%s %s" % [lost["session"].notice, _server.log])
 	await _drop(lost)
+	# A lost reply where the client gives up first (its own timeout, shorter than the session's):
+	# released the same way.
+	await _fresh_log()
+	_server.mute = true
+	var quick_client := _client()
+	# Real milliseconds: game time runs far ahead of real time here, so the client's own
+	# timeout must be tiny to come first.
+	quick_client.timeout_ms = 1
+	var impatient := _branch("Impatient", Vector3.ZERO, quick_client, false)
+	impatient["session"].room_tuning_in_use().request_timeout_ms = 30000  # the session waits far longer than the client
+	await _frames(2)
+	impatient["session"].host(0)
+	await _until(func(): return impatient["session"].notice != "")
+	await _frames(4)
+	_server.mute = false
+	var held: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
+	_check("a lost reply the client gives up on first: the notice, and the code released", held != "" and impatient["session"].notice == Session.ROOM_NO_CODE % Session.ROOM_UNREACHABLE and not _server.rooms.has(held) and _server.log.size() == 2 and _server.log[1]["op"] == Fake.Op.CLOSE, "%s %s" % [impatient["session"].notice, _server.log])
+	await _drop(impatient)
 	# An ok answer that gives the code no time at all: refused and released.
 	await _fresh_log()
 	_server.left_override = 0
@@ -623,8 +641,8 @@ func _edge_checks() -> void:
 	# Which addresses count as local. The IPv4 cases are built from their four numbers: they are
 	# the private ranges themselves (RFC 1918, RFC 6598) and documentation space, not hosts.
 	var v4 := func(a: int, b: int, c: int, d: int) -> String: return "%d.%d.%d.%d" % [a, b, c, d]
-	var local := [v4.call(127, 0, 0, 1), v4.call(10, 1, 2, 3), v4.call(172, 16, 0, 1), v4.call(172, 31, 255, 254), v4.call(192, 168, 1, 20), v4.call(100, 64, 0, 1), v4.call(100, 127, 1, 1), v4.call(169, 254, 3, 4), "::1", "fd7a:115c:a1e0::1", "fe80::1"]
-	var far := [v4.call(203, 0, 113, 5), v4.call(172, 32, 0, 1), v4.call(100, 128, 0, 1), v4.call(192, 169, 1, 1), v4.call(8, 8, 4, 4), "2001:db8::5", "fe00::1", "::ffff:1", "not an ip", ""]
+	var local := [v4.call(127, 0, 0, 1), v4.call(10, 1, 2, 3), v4.call(172, 16, 0, 1), v4.call(172, 31, 255, 254), v4.call(192, 168, 1, 20), v4.call(100, 64, 0, 1), v4.call(100, 127, 1, 1), v4.call(169, 254, 3, 4), "::1", "0:0:0:0:0:0:0:1", "::0:1", "0::1", "fd7a:115c:a1e0::1", "FD00::1", "fe80::1", "fe80:0:0::1", "::ffff:7f00:1", "::ffff:" + v4.call(10, 0, 0, 7)]
+	var far := [v4.call(203, 0, 113, 5), v4.call(172, 32, 0, 1), v4.call(100, 128, 0, 1), v4.call(192, 169, 1, 1), v4.call(8, 8, 4, 4), "2001:db8::5", "fe00::1", "::ffff:1", "::2", "1::1", "::ffff:" + v4.call(8, 8, 4, 4), "not an ip", ""]
 	var wrong := PackedStringArray()
 	for ip in local:
 		if not Session.local_address(ip):
@@ -632,7 +650,7 @@ func _edge_checks() -> void:
 	for ip in far:
 		if Session.local_address(ip):
 			wrong.append("accepted " + ip)
-	_check("local means loopback, the private ranges, the tailnet range and link-local, IPv4 and IPv6; everything else is not", wrong.is_empty(), ", ".join(wrong))
+	_check("local means loopback, the private ranges, the tailnet range and link-local, IPv4 and IPv6 in any spelling (expanded, compressed, upper case, IPv4-mapped); everything else is not", wrong.is_empty() and Session.ipv6_groups("0::1") == PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 1]) and Session.ipv6_groups("1::2::3").is_empty() and Session.ipv6_groups("12345::1").is_empty(), ", ".join(wrong))
 	# A reply from anywhere but the server is ignored by the fake client.
 	var probe := _client()
 	var stranger := PacketPeerUDP.new()
@@ -670,6 +688,28 @@ func _launch_checks() -> void:
 	_check("a --join that arrives before the session is ready is kept and applied once it is: no error, the not-live line", took_early and state_before == Session.State.OFF and early.state == Session.State.FAILED and early.error == NullRendezvous.NOT_LIVE)
 	branch.free()
 	_branches.erase(branch)
+	await process_frame
+	# The real first launch: an arena with --join and no session yet. The arena makes the
+	# session (a frame late), hands it the arguments and opens the panel at once.
+	var api2 := SceneMultiplayer.new()
+	var fresh := Node3D.new()
+	fresh.name = "FirstLaunch"
+	root.add_child(fresh)
+	set_multiplayer(api2, fresh.get_path())
+	_branches.append(fresh)
+	var main = MainScene.instantiate()
+	main.launch_args = PackedStringArray(["--join", "sigkill://join/ABC23P"])
+	fresh.add_child(main)
+	var panel_at_once: String = main.get_node("Hud").net_hud().panel_text()
+	await _frames(3)
+	var made = fresh.get_node_or_null(Session.NODE_NAME)
+	var panel_after: String = main.get_node("Hud").net_hud().panel_text()
+	print("ROOM first launch panel:\n", panel_after)
+	_check("first launch with --join and no session yet: the panel is up at once, the session made a frame later applies the join, the not-live line shows, no error", panel_at_once.begins_with("multiplayer") and made != null and made.state == Session.State.FAILED and made.error == NullRendezvous.NOT_LIVE and panel_after.contains("\n" + NullRendezvous.NOT_LIVE + "\n") and made.rendezvous_in_use().requests() == 0, panel_after.c_escape())
+	for sfx in fresh.find_children("*", "AudioStreamPlayer", true, false):
+		(sfx as AudioStreamPlayer).stop()
+	fresh.free()
+	_branches.erase(fresh)
 	await process_frame
 	var host := _branch("LaunchHost", Vector3.ZERO, _client(), false)
 	await _frames(2)

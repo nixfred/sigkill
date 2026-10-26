@@ -249,10 +249,10 @@ static func usable_tuning(candidate: Resource) -> Tuning:
 
 
 func _ready() -> void:
-	_t = usable_tuning(tuning)
-	_ct = usable_combat_tuning(combat_tuning)
-	_rt = usable_room_tuning(room_tuning)
-	_rv = rendezvous if rendezvous != null else rendezvous_for(_rt)
+	tuning_in_use()
+	combat_tuning_in_use()
+	room_tuning_in_use()
+	rendezvous_in_use()
 	if not _launch_pending.is_empty():
 		var pending := _launch_pending
 		_launch_pending = {}
@@ -279,19 +279,29 @@ func _exit_tree() -> void:
 	_shut_peer()
 
 
+## The tunings and the rendezvous in use. Made on first use, so a screen that looks at a
+## session before it is ready (the arena makes it a frame late) already gets real ones.
 func tuning_in_use() -> Tuning:
+	if _t == null:
+		_t = usable_tuning(tuning)
 	return _t
 
 
 func combat_tuning_in_use() -> CombatTuningScript:
+	if _ct == null:
+		_ct = usable_combat_tuning(combat_tuning)
 	return _ct
 
 
 func room_tuning_in_use() -> RoomTuningScript:
+	if _rt == null:
+		_rt = usable_room_tuning(room_tuning)
 	return _rt
 
 
 func rendezvous_in_use() -> RefCounted:
+	if _rv == null:
+		_rv = rendezvous if rendezvous != null else rendezvous_for(room_tuning_in_use())
 	return _rv
 
 
@@ -436,8 +446,8 @@ func take_launch_join(args: PackedStringArray) -> bool:
 	var parsed := RoomCode.parse_args(args)
 	if parsed.is_empty():
 		return false
-	if _rv == null:
-		_launch_pending = parsed  # not ready yet: _ready applies it
+	if not is_node_ready():
+		_launch_pending = parsed  # not in the tree yet: _ready applies it
 	else:
 		_apply_launch(parsed)
 	return true
@@ -648,6 +658,9 @@ func _tick_room_code(delta: float) -> void:
 		elif done.get("error", "") == "taken" and _room_attempts < _rt.register_attempts:
 			_register_room()  # someone holds that one: draw another
 		else:
+			if done.get("error", "") != "taken":
+				# A timeout or an odd answer: the rendezvous may hold the code all the same.
+				_rv.close(_room_wanted, protocol, _room_port)
 			notice = ROOM_NO_CODE % _room_error_text(done)
 		changed.emit()
 	elif room_code != "":
@@ -1382,20 +1395,61 @@ static func local_address(ip: String) -> bool:
 	if not ip.is_valid_ip_address():
 		return false
 	if ip.contains(":"):
-		var low := ip.to_lower()
-		if low == "::1":
-			return true
-		var head := low.split(":")[0]
-		if head.length() < 3:
+		var g := ipv6_groups(ip)
+		if g.size() != 8:
 			return false
-		var first := head.hex_to_int() if head.is_valid_hex_number() else -1
-		if head.length() == 4 and first >= 0:
-			return (first & 0xFE00) == 0xFC00 or (first & 0xFFC0) == 0xFE80
-		return false
+		if g == PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 1]):
+			return true
+		if g[0] == 0 and g[1] == 0 and g[2] == 0 and g[3] == 0 and g[4] == 0 and g[5] == 0xFFFF:
+			return local_address("%d.%d.%d.%d" % [g[6] >> 8, g[6] & 0xFF, g[7] >> 8, g[7] & 0xFF])  # IPv4-mapped
+		return (g[0] & 0xFE00) == 0xFC00 or (g[0] & 0xFFC0) == 0xFE80
 	var o := ip.split(".")
 	var a := int(o[0])
 	var b := int(o[1])
 	return a == 127 or a == 10 or (a == 172 and b >= 16 and b <= 31) or (a == 192 and b == 168) or (a == 100 and b >= 64 and b <= 127) or (a == 169 and b == 254)
+
+
+## An IPv6 address as its eight 16-bit groups, "::" expanded and a trailing IPv4 part folded
+## in; empty when it is not one.
+static func ipv6_groups(ip: String) -> PackedInt32Array:
+	var text := ip.to_lower()
+	var tail4 := PackedStringArray()
+	var last := text.rfind(":")
+	if last >= 0 and text.substr(last + 1).contains("."):
+		tail4 = text.substr(last + 1).split(".")
+		if tail4.size() != 4:
+			return PackedInt32Array()
+		text = text.substr(0, last + 1) + "0:0"
+	var halves := text.split("::")
+	if halves.size() > 2:
+		return PackedInt32Array()
+	var head := halves[0].split(":", false)
+	var tail := halves[1].split(":", false) if halves.size() == 2 else PackedStringArray()
+	var gap := 8 - head.size() - tail.size()
+	if (halves.size() == 1 and gap != 0) or (halves.size() == 2 and gap < 1):
+		return PackedInt32Array()
+	var out := PackedInt32Array()
+	for part in head:
+		out.append(_hex_group(part))
+	for i in gap if halves.size() == 2 else 0:
+		out.append(0)
+	for part in tail:
+		out.append(_hex_group(part))
+	if out.has(-1):
+		return PackedInt32Array()
+	if not tail4.is_empty():
+		for octet in tail4:
+			if not octet.is_valid_int() or int(octet) < 0 or int(octet) > 255:
+				return PackedInt32Array()
+		out[6] = (int(tail4[0]) << 8) | int(tail4[1])
+		out[7] = (int(tail4[2]) << 8) | int(tail4[3])
+	return out
+
+
+static func _hex_group(part: String) -> int:
+	if part.is_empty() or part.length() > 4 or not part.is_valid_hex_number():
+		return -1
+	return part.hex_to_int()
 
 
 ## True for a sequence number a sender could have counted to.
