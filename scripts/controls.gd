@@ -5,7 +5,8 @@ extends RefCounted
 ## Physical keycodes are used, so WASD stays put on any keyboard layout.
 ## Rules: no Ctrl/Alt/Super chords anywhere (those belong to the desktop and to
 ## Fred's dictation tool). Esc releases the mouse. C slides, so crouch-style keys
-## never need a modifier.
+## never need a modifier. T opens the ask box to the player's AI and O turns the AI on
+## or off (C11 guide HUD).
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -20,6 +21,8 @@ static func ensure() -> void:
 	_key("slide", [KEY_C])
 	_key("release_mouse", [KEY_ESCAPE])
 	_key("reset_arena", [KEY_R])
+	_key("ask_ai", [KEY_T])
+	_key("toggle_ai", [KEY_O])
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 
 

@@ -27,6 +27,7 @@ func _ready() -> void:
 		dummy.connect("respawned", _on_target_respawned)
 	_player.shot_fired.connect(_on_shot_fired)
 	_hud.set_weapon_tuning(_player.weapon_tuning())
+	_hud.set_player(_player)
 	_hud.set_targets(_remaining, _total)
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
@@ -47,12 +48,13 @@ func _apply_palette_to_environment() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("reset_arena"):
+	if event.is_action_pressed("reset_arena") and not _hud.is_typing():
 		get_tree().reload_current_scene()
 
 
 func _on_target_downed(_dummy: Node3D) -> void:
 	_remaining -= 1
+	_hud.note_kill()
 	_hud.set_targets(_remaining, _total)
 
 

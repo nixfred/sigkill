@@ -32,6 +32,12 @@ signal shot_fired(hit_target: bool)
 ## Round stats, counted for the HUD now and for round-stat coaching later.
 var shots_fired := 0
 var hits_landed := 0
+## True while the guide HUD's ask box is open: no movement, jump, slide, look or fire, and a
+## click does not grab the mouse. The HUD sets it and clears it.
+var input_blocked := false
+## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
+## read keyboard and mouse input as if it were captured. Never set by the game.
+var assume_captured := false
 
 var _t: Tuning
 var _w: Weapon
@@ -113,12 +119,14 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if input_blocked:
+		return
 	if event.is_action_pressed("release_mouse"):
 		_release_mouse()
 		get_viewport().set_input_as_handled()
 		return
 
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if not _captured():
 		# Click to engage. That click is consumed so it never fires the cannon.
 		if event.is_action_pressed("fire"):
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -183,8 +191,12 @@ func horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
 
 
+func _captured() -> bool:
+	return assume_captured or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+
+
 func _read_player_input() -> void:
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if input_blocked or not _captured():
 		_move_input = Vector2.ZERO
 		_jump_pressed = false
 		_slide_pressed = false

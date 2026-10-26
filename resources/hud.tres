@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="HudTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/hud/hud_tuning.gd" id="1_hud"]
+
+[resource]
+script = ExtResource("1_hud")
+margin = 18
+panel_width = 520
+panel_bottom_gap = 36
+badge_font_size = 18
+line_font_size = 14
+answer_font_size = 16
+panel_alpha = 0.78
+ask_max_chars = 160
+answer_max_chars = 420
+answer_max_lines = 6
+answer_ms = 14000
+notice_ms = 3500
+session_call_cap = 40
+spinner_frame_ms = 90
+gpu_interval_ms = 1000
+demo_answer_ms = 900
+demo_latency_ms = 842
+badge_color = Color(0.098039216, 0.82745098, 0.77254902, 1)
+text_color = Color(0.490196078, 1.0, 0.811764706, 1)
+off_color = Color(1.0, 0.690196078, 0.0, 1)
+warn_color = Color(1.0, 0.2, 0.333333333, 1)

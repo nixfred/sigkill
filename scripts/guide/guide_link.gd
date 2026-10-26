@@ -324,7 +324,8 @@ func _tick_gpu(ms: float) -> void:
 ## hands a GPU reading or an unfinished adapter choice that is still running to a
 ## Leftovers node under `root`, which joins it once it has ended (an unfinished choice is
 ## made again by the next owner). Detection still running carries on for the next owner.
-func pause(root: Node) -> void:
+## `deferred` adds that node at the end of the frame, for an owner leaving the tree.
+func pause(root: Node, deferred: bool = false) -> void:
 	cancel_call()
 	var leftovers := Leftovers.new()
 	if _adapter_thread != null:
@@ -334,7 +335,7 @@ func pause(root: Node) -> void:
 	if _gpu_thread != null:
 		leftovers.keep(_gpu_thread, detector)
 		_gpu_thread = null
-	_adopt(leftovers, root)
+	_adopt(leftovers, root, deferred)
 
 
 ## When the link is dropped for good: also cancels the detector, and a detector whose own
@@ -358,11 +359,14 @@ func shut_down(root: Node) -> void:
 	_adopt(leftovers, root)
 
 
-static func _adopt(leftovers: Leftovers, root: Node) -> void:
+static func _adopt(leftovers: Leftovers, root: Node, deferred: bool = false) -> void:
 	if leftovers.is_empty():
 		leftovers.free()
 	elif root != null and root.is_inside_tree():
-		root.add_child(leftovers)
+		if deferred:
+			root.add_child.call_deferred(leftovers)
+		else:
+			root.add_child(leftovers)
 	else:
 		leftovers.join_all()
 		leftovers.free()

@@ -5,13 +5,15 @@ extends CanvasLayer
 const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
 const HitMarker = preload("res://scripts/hit_marker.gd")
+const GuideHud = preload("res://scripts/hud/guide_hud.gd")
 
-const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn targets   Esc release mouse"
+const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off"
 
 var _status: Label
 var _engage: Label
 var _crosshair  # untyped on purpose: calls ping() from crosshair.gd
 var _hit_marker  # untyped on purpose: calls show_hit() from hit_marker.gd
+var _guide: GuideHud
 
 
 func _ready() -> void:
@@ -46,16 +48,40 @@ func _ready() -> void:
 	_engage.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_engage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	_guide = GuideHud.new()
+	_guide.name = "GuideHud"
+	root.add_child(_guide)
+
 
 func _process(_delta: float) -> void:
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing()
 
 
 func set_targets(remaining: int, total: int) -> void:
+	_guide.set_targets_left(remaining)
 	var text := "> daemons down: %d/%d" % [total - remaining, total]
 	if total > 0 and remaining <= 0:
 		text += "   [clear] press R to respawn"
 	_status.text = text
+
+
+## The player, whose input the guide HUD blocks while its ask box is open.
+func set_player(player: Node) -> void:
+	_guide.player = player
+
+
+## A target went down: the guide HUD counts it for the game stats it may send.
+func note_kill() -> void:
+	_guide.note_kill()
+
+
+## True while the guide HUD's ask box is open.
+func is_typing() -> bool:
+	return _guide.is_typing()
+
+
+func guide() -> GuideHud:
+	return _guide
 
 
 ## Hit marker sizes and timing come from the player's weapon tuning.
