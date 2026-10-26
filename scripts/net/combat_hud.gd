@@ -48,6 +48,8 @@ func _ready() -> void:
 func set_session(s: Node) -> void:
 	_unhook()
 	session = s
+	entries.clear()
+	_flash_left = 0.0
 	if s == null:
 		return
 	# Methods, never lambdas: the session outlives this HUD (R reloads the arena under a
@@ -140,6 +142,10 @@ func _refresh(fade: float = -1.0) -> void:
 	_line.visible = online
 	_flash.visible = online and _flash_left > 0.0
 	if not online:
+		# The match is over: nothing of it carries into the next one. (A player merely
+		# leaving keeps the session online, and the feed with it.)
+		entries.clear()
+		_flash_left = 0.0
 		_border.visible = false
 		_banner.visible = false
 		for label in _feed_labels:

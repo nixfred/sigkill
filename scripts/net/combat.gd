@@ -25,6 +25,7 @@ const DROP_SEQ := "seq"
 const DROP_SHAPE := "shape"
 const DROP_RATE := "rate"
 const DROP_ORIGIN := "origin"
+const DROP_LIFE := "life"
 
 var tuning: Tuning
 ## The weapon's numbers, copied in from WeaponTuning by the session.
@@ -83,15 +84,19 @@ func tick(delta: float) -> Array:
 	return due
 
 
-## "" when the host believes shot `seq` from `shooter` at `origin` along `dir`, given the
-## host's view of the shooter's eye and its clock; otherwise why not, counted. Nothing is
-## recorded here: accept() does, once the host has also looked at the shot itself.
-func validate(shooter: int, seq: int, origin: Vector3, dir: Vector3, eye: Vector3, now: float) -> String:
+## "" when the host believes shot `seq` from `shooter`, in its life `life`, at `origin`
+## along `dir`, given the host's view of the shooter's eye, the life it knows the shooter
+## is in, and its clock; otherwise why not, counted. A shot from a past life is one that
+## was in flight when the shooter died. Nothing is recorded here: accept() does, once the
+## host has also looked at the shot itself.
+func validate(shooter: int, seq: int, life: int, origin: Vector3, dir: Vector3, eye: Vector3, known_life: int, now: float) -> String:
 	if not states.has(shooter):
 		return _drop(DROP_NO_PLAYER)
 	var s: Dictionary = states[shooter]
 	if s["dead"]:
 		return _drop(DROP_DEAD)
+	if life != known_life:
+		return _drop(DROP_LIFE)
 	if not seq_ok(seq, s["last_seq"]):
 		return _drop(DROP_SEQ)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:

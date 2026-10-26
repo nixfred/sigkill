@@ -241,9 +241,9 @@ func _source_checks() -> void:
 	_check("the combat module starts no program, reads no file, asks the system nothing, opens no socket of its own and parses no rich text", found.is_empty(), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
 	var handle := _body(session, "_handle_fire")
-	_check("damage is applied in one place, the host's _handle_fire, after validate() and the host's own raycast; joiners never call it", session.count("damage_player(") == 1 and handle.contains("combat.validate(shooter, seq, origin, dir, eye, _clock) != \"\"") and handle.contains("_raycast(shooter, origin, dir)") and handle.contains("combat.damage_player(hit, shooter)") and handle.begins_with("\nfunc _handle_fire") and handle.contains("if state != State.HOSTING or combat == null"))
-	_check("the host's own shot takes the same path as a joiner's: _on_fire_intent hands it to _handle_fire, a joiner's intent arrives through the any_peer _fire RPC into _handle_fire", _body(session, "_on_fire_intent").contains("_handle_fire(1, fire_seq, local_origin, local_dir)") and _body(session, "_fire").contains("_handle_fire(multiplayer.get_remote_sender_id(), seq, origin, dir)") and session.count("_handle_fire(") == 3)
-	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire, untyped and type-checked, is the only any_peer one besides _state", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, origin: Variant, dir: Variant)') and _body(session, "_fire").contains("typeof(seq) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
+	_check("damage is applied in one place, the host's _handle_fire, after validate() and the host's own raycast; joiners never call it", session.count("damage_player(") == 1 and handle.contains("combat.validate(shooter, seq, life, origin, dir, eye, lives.get(shooter, 0), _clock) != \"\"") and handle.contains("_raycast(shooter, origin, dir)") and handle.contains("combat.damage_player(hit, shooter)") and handle.begins_with("\nfunc _handle_fire") and handle.contains("if state != State.HOSTING or combat == null"))
+	_check("the host's own shot takes the same path as a joiner's: _on_fire_intent hands it to _handle_fire, a joiner's intent arrives through the any_peer _fire RPC into _handle_fire", _body(session, "_on_fire_intent").contains("_handle_fire(1, fire_seq, life, local_origin, local_dir)") and _body(session, "_fire").contains("_handle_fire(multiplayer.get_remote_sender_id(), seq, life, origin, dir)") and session.count("_handle_fire(") == 3)
+	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire, untyped and type-checked, is the only any_peer one besides _state", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, life: Variant, origin: Variant, dir: Variant)') and _body(session, "_fire").contains("typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
 	var hud := _code("res://scripts/net/combat_hud.gd")
 	_check("the HUD shows only confirmed results: the hit marker and the flash come from shot_confirmed, the feed from player_died, never from the local cannon", hud.contains("s.shot_confirmed.connect(_on_shot)") and hud.contains("s.player_died.connect(_on_death)") and not hud.contains("shot_fired") and hud.count("confirm_hit()") == 1)
 	var names := _code("res://scripts/net/net_session.gd")
@@ -266,19 +266,20 @@ func _rule_checks() -> void:
 		[7, 3, eye, dir, eye, 1.63], [7, 50000, eye, dir, eye, 2.0], [7, 2147483647, eye, dir, eye, 2.0],
 	]
 	for a in attempts:
-		var word: String = c.validate(a[0], a[1], a[2], a[3], a[4], a[5])
+		var word: String = c.validate(a[0], a[1], 0, a[2], a[3], a[4], 0, a[5])
 		if word == "":
 			c.accept(a[0], a[1], a[5])  # as the session does once its own look at the shot is done
 		words.append(word)
 	_check("validate: a first shot passes; 0.05 s later is too fast; a number already believed is refused, a refused one is not burnt; an origin 3 m off, a NaN or 50-long direction, an infinite origin, an unknown shooter and an unseen eye are refused; 1 m off within the 1.5 m tolerance passes; 0.11 s later is too fast and 0.13 s later passes; a number 50000 ahead or at the cap is refused", words == PackedStringArray(["", "rate", "seq", "origin", "shape", "shape", "shape", "no_player", "origin", "", "rate", "", "seq", "seq"]), ", ".join(words))
-	var unrecorded: bool = c.validate(7, 4, eye + Vector3(0, 0, 3), dir, eye, 3.0) == "origin" and c.states[7]["last_seq"] == 3 and c.validate(7, 4, eye, dir, eye, 3.0) == ""
+	var unrecorded: bool = c.validate(7, 4, 0, eye + Vector3(0, 0, 3), dir, eye, 0, 3.0) == "origin" and c.states[7]["last_seq"] == 3 and c.validate(7, 4, 0, eye, dir, eye, 0, 3.0) == ""
+	_check("a shot from a past life is refused as such, before its number is looked at", c.validate(7, 4, 0, eye, dir, eye, 1, 3.0) == "life" and c.validate(7, 4, 1, eye, dir, eye, 1, 3.0) == "")
 	_check("validate alone records nothing: a refused shot burns neither its number nor the clock, and accept() is what the next shot is measured from", unrecorded and c.states[7]["last_fire"] == 1.63)
-	_check("drops are counted in all and by reason", c.dropped == 12 and c.drops.get("rate", 0) == 2 and c.drops.get("seq", 0) == 3 and c.drops.get("shape", 0) == 3 and c.drops.get("origin", 0) == 3 and c.drops.get("no_player", 0) == 1, str(c.drops))
+	_check("drops are counted in all and by reason", c.dropped == 13 and c.drops.get("rate", 0) == 2 and c.drops.get("seq", 0) == 3 and c.drops.get("shape", 0) == 3 and c.drops.get("origin", 0) == 3 and c.drops.get("no_player", 0) == 1 and c.drops.get("life", 0) == 1, str(c.drops))
 	var hits := []
 	for i in 4:
 		hits.append(c.damage_player(1, 7))
 	_check("damage: 100 to 75, 50, 25, 0 and dead on the fourth hit, the killer credited", hits[0] == {"health": 75.0, "killed": false} and hits[2] == {"health": 25.0, "killed": false} and hits[3] == {"health": 0.0, "killed": true} and not c.alive(1) and c.states[7]["kills"] == 1 and c.states[1]["deaths"] == 1 and c.states[1]["respawn_left"] == 1.0)
-	_check("a dead player takes no more damage and cannot fire", c.damage_player(1, 7).is_empty() and c.validate(1, 1, eye, dir, eye, 5.0) == "dead")
+	_check("a dead player takes no more damage and cannot fire", c.damage_player(1, 7).is_empty() and c.validate(1, 1, 0, eye, dir, eye, 0, 5.0) == "dead")
 	c.accept(7, 4, 3.0)
 	var due := []
 	for i in 65:
@@ -429,7 +430,7 @@ func _forgery_checks() -> void:
 	var eye: Vector3 = _avatar(host, cid).latest_position() + Vector3(0, cp.eye_height(), 0)
 	var up := Vector3.UP
 	# One believed shot straight up first, so the joiner has a number to be ahead of.
-	cs._fire.rpc_id(1, 1, eye, up)
+	cs._fire.rpc_id(1, 1, cs.lives.get(cid, 0), eye, up)
 	await _until(func(): return hs.combat.states[cid]["last_seq"] == 1, 2000)
 	await _frames(10)
 	var bad := [
@@ -448,7 +449,7 @@ func _forgery_checks() -> void:
 	for item in bad:
 		var dropped_before: int = hs.combat.dropped
 		var health_before: Dictionary = hs.health.duplicate()
-		cs._fire.rpc_id(1, item[1], item[2], item[3])
+		cs._fire.rpc_id(1, item[1], cs.lives.get(cid, 0), item[2], item[3])
 		var counted := await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 		if not counted or hs.combat.dropped != dropped_before + 1 or hs.combat.drops.get(item[4], 0) < 1 or hs.health != health_before:
 			wrong.append("%s: dropped %d -> %d (%s), health %s" % [item[0], dropped_before, hs.combat.dropped, hs.combat.drops, hs.health])
@@ -460,8 +461,8 @@ func _forgery_checks() -> void:
 	await _frames(10)
 	var dropped_before: int = hs.combat.dropped
 	var seq_before: int = hs.combat.states[cid]["last_seq"]
-	cs._fire.rpc_id(1, 10, eye, up)
-	cs._fire.rpc_id(1, 11, eye, up)
+	cs._fire.rpc_id(1, 10, cs.lives.get(cid, 0), eye, up)
+	cs._fire.rpc_id(1, 11, cs.lives.get(cid, 0), eye, up)
 	await _until(func(): return hs.combat.states[cid]["last_seq"] >= 10, 2000)
 	await _frames(2)
 	_check("two intents inside the cooldown: the first is believed, the second dropped as too fast", hs.combat.states[cid]["last_seq"] == 10 and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("rate", 0) == 1 and seq_before == 1, "last seq %d drops %s" % [hs.combat.states[cid]["last_seq"], hs.combat.drops])
@@ -478,7 +479,7 @@ func _forgery_checks() -> void:
 	var within: bool = behind.distance_to(eye_now) <= 1.5
 	dropped_before = hs.combat.dropped
 	var health_before: float = hs.health[1]
-	cs._fire.rpc_id(1, 40, behind, Vector3(0, 0, -1))
+	cs._fire.rpc_id(1, 40, cs.lives.get(cid, 0), behind, Vector3(0, 0, -1))
 	await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 	await _frames(2)
 	_check("an origin claimed on the far side of the wall the joiner stands against, though within the tolerance, is refused: no damage through cover", within and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("origin", 0) == 2 and hs.health[1] == health_before and hs.health[1] == 100.0, "within %s drops %s health %.0f" % [within, hs.combat.drops, hs.health[1]])
@@ -512,7 +513,7 @@ func _forgery_checks() -> void:
 	await _frames(SHOT_FRAMES)
 	# From the wrong peer: an intent not from a player (no sender) is dropped.
 	dropped_before = hs.combat.dropped
-	hs._fire(12, eye, up)
+	hs._fire(12, 0, eye, up)
 	_check("an intent from no player is dropped", hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("no_player", 0) >= 1)
 	# A dead shooter: the host derezzes the joiner, then the joiner's intents are refused.
 	var hp = host["player"]
@@ -527,7 +528,7 @@ func _forgery_checks() -> void:
 	var died := await _until(func(): return cs.dead.get(cid, false) and hs.dead.get(cid, false), 3000)
 	await _frames(2)
 	dropped_before = hs.combat.dropped
-	cs._fire.rpc_id(1, 20, eye, up)
+	cs._fire.rpc_id(1, 20, cs.lives.get(cid, 0), eye, up)
 	await _until(func(): return hs.combat.dropped > dropped_before, 2000)
 	var shots_before: int = cp.shots_fired
 	await _fire(cp)
@@ -535,12 +536,13 @@ func _forgery_checks() -> void:
 	_check("the host derezzes the joiner through the same path, with the derezz effect on the host's own screen; a dead joiner's intent is dropped as dead, its own cannon stays silent and its screen says who got it", died and _derezz_count(host) == 1 and mine.dead and not cp.alive and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("dead", 0) == 1 and cp.shots_fired == shots_before and client["combat_hud"].line_text().begins_with("DEREZZED by Daemon-1") and client["combat_hud"].feed_text() == PackedStringArray(["SIGKILL sent by Daemon-1 to Daemon-2"]), "alive %s derezz %d drops %s line '%s'" % [cp.alive, _derezz_count(host), hs.combat.drops, client["combat_hud"].line_text()])
 	# Wrong types from a joiner: dropped and counted, never an engine error.
 	dropped_before = hs.combat.dropped
-	cs._fire.rpc_id(1, "junk", Vector3.ZERO, up)
-	cs._fire.rpc_id(1, 30, "junk", up)
-	cs._fire.rpc_id(1, 30, eye, 7)
+	cs._fire.rpc_id(1, "junk", cs.lives.get(cid, 0), Vector3.ZERO, up)
+	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), "junk", up)
+	cs._fire.rpc_id(1, 30, cs.lives.get(cid, 0), eye, 7)
+	cs._fire.rpc_id(1, 30, "junk", eye, up)
 	cs._state.rpc_id(1, "junk", 0, eye, 0.0, 0.0, Vector3.ZERO)
-	await _until(func(): return hs.combat.dropped >= dropped_before + 3, 2000)
-	_check("intents and positions of the wrong types are dropped as malformed, three counted, with nothing applied", hs.combat.dropped == dropped_before + 3 and hs.combat.drops.get("no_player", 0) >= 4, str(hs.combat.drops))
+	await _until(func(): return hs.combat.dropped >= dropped_before + 4, 2000)
+	_check("intents and positions of the wrong types are dropped as malformed, four counted, with nothing applied", hs.combat.dropped == dropped_before + 4 and hs.combat.drops.get("no_player", 0) >= 5, str(hs.combat.drops))
 	# A corpse whose hit volume has not been switched off yet (that happens a frame after the
 	# death): a shot in that same poll must still pass through it. Here the volume is switched
 	# back on to stand in for that frame.
@@ -557,6 +559,15 @@ func _forgery_checks() -> void:
 	var back := await _until(func(): return not cs.dead.get(cid, true) and cp.alive, 3000)
 	await _frames(2)
 	_check("the joiner respawns too, far from the host, alive on its own screen, in a new life on both sides", back and cp.alive and cs.health[cid] == 100.0 and Vector2(cp.position.x - hp.position.x, cp.position.z - hp.position.z).length() > 15.0 and cs.lives[cid] == old_life + 1 and hs.lives[cid] == old_life + 1)
+	# An intent from the past life, in flight at the death, lands after the respawn: refused
+	# as such, before its number or its origin are looked at, nothing applied.
+	var past_before: int = hs.combat.dropped
+	var past_health: Dictionary = hs.health.duplicate()
+	await _until(func(): return mine.visible and (mine.latest_position() - cp.position).length() < 0.1)
+	var past_eye: Vector3 = mine.latest_position() + Vector3(0, cp.eye_height(), 0)
+	cs._fire.rpc_id(1, hs.combat.states[cid]["last_seq"] + 1, old_life, past_eye, up)
+	await _until(func(): return hs.combat.dropped > past_before, 2000)
+	_check("an intent from the shooter's past life is dropped as such, nothing applied", hs.combat.dropped == past_before + 1 and hs.combat.drops.get("life", 0) == 1 and hs.health == past_health, str(hs.combat.drops))
 	# A position from the past life, still in flight at the respawn, cannot drag the avatar
 	# back: with the joiner's real stream paused, the host takes nothing from it.
 	await _until(func(): return mine.visible and (mine.latest_position() - cp.position).length() < 0.1)
@@ -579,6 +590,21 @@ func _forgery_checks() -> void:
 	await _until(func(): return (mine.latest_position() - cp.position).length() < 0.1)
 	await _until(func(): return client["combat_hud"].feed_text().is_empty(), 4000)
 	_check("the kill feed entry fades out after its time", client["combat_hud"].feed_text().is_empty() and client["combat_hud"].entries.is_empty())
+	# The feed belongs to the match: a kill, then leaving, then a new match shows none of it.
+	for i in 4:
+		_aim(hp, mine.global_position + Vector3(0, 0.3, 0))
+		await _fire(hp)
+		await _frames(SHOT_FRAMES)
+	await _until(func(): return cs.dead.get(cid, false), 3000)
+	await _frames(2)
+	var feed_in_match: int = client["combat_hud"].feed_text().size()
+	cs.leave()
+	await _frames(2)
+	var feed_after_leave: int = client["combat_hud"].feed_text().size()
+	cs.join("127.0.0.1:%d" % hs.listen_port())
+	await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2)
+	await _frames(2)
+	_check("a kill is in the feed during the match, gone once the joiner leaves, and not back in the next match", feed_in_match == 1 and feed_after_leave == 0 and client["combat_hud"].feed_text().is_empty() and client["combat_hud"].entries.is_empty() and client["combat_hud"].flash_left() == 0.0, "%d / %d / %d" % [feed_in_match, feed_after_leave, client["combat_hud"].feed_text().size()])
 	await _drop(client)
 	await _drop(host)
 

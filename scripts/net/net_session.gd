@@ -819,36 +819,37 @@ func _on_fire_intent(origin: Vector3, direction: Vector3) -> void:
 	fire_seq += 1
 	var local_origin: Vector3 = _arena.to_local(origin)
 	var local_dir: Vector3 = (_arena.global_transform.basis.inverse() * direction).normalized()
+	var life: int = lives.get(my_id, 0)
 	if state == State.HOSTING:
-		_handle_fire(1, fire_seq, local_origin, local_dir)
+		_handle_fire(1, fire_seq, life, local_origin, local_dir)
 	elif multiplayer.get_peers().has(1):
-		_fire.rpc_id(1, fire_seq, local_origin, local_dir)
+		_fire.rpc_id(1, fire_seq, life, local_origin, local_dir)
 
 
 ## A joiner's intent to fire, to the host. Untyped on purpose: a packet of the wrong types
 ## is dropped and counted here, never an engine error.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire(seq: Variant, origin: Variant, dir: Variant) -> void:
+func _fire(seq: Variant, life: Variant, origin: Variant, dir: Variant) -> void:
 	if state != State.HOSTING or combat == null:
 		return
-	if typeof(seq) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
-		combat.validate(0, 0, Vector3.ZERO, Vector3.ZERO, Vector3.INF, _clock)  # counted: no such shot
+	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
+		combat.validate(0, 0, 0, Vector3.ZERO, Vector3.ZERO, Vector3.INF, 0, _clock)  # counted: no such shot
 		return
-	_handle_fire(multiplayer.get_remote_sender_id(), seq, origin, dir)
+	_handle_fire(multiplayer.get_remote_sender_id(), seq, life, origin, dir)
 
 
 ## The one authority path: validate, raycast in the host's world, apply, tell everyone.
-func _handle_fire(shooter: int, seq: int, origin: Vector3, dir: Vector3) -> void:
+func _handle_fire(shooter: int, seq: int, life: int, origin: Vector3, dir: Vector3) -> void:
 	if state != State.HOSTING or combat == null:
 		return
 	if not players.has(shooter):
-		combat.validate(0, seq, origin, dir, Vector3.INF, _clock)  # counted: no such player
+		combat.validate(0, seq, life, origin, dir, Vector3.INF, 0, _clock)  # counted: no such player
 		return
 	var eye := _eye_of(shooter)
 	if not eye.is_finite():
-		combat.validate(0, seq, origin, dir, eye, _clock)  # counted: nothing of it is known yet
+		combat.validate(0, seq, life, origin, dir, eye, 0, _clock)  # counted: nothing of it is known yet
 		return
-	if combat.validate(shooter, seq, origin, dir, eye, _clock) != "":
+	if combat.validate(shooter, seq, life, origin, dir, eye, lives.get(shooter, 0), _clock) != "":
 		return
 	# Within the tolerance is not enough: a claimed origin the host's view of the eye
 	# cannot see (behind cover it stands against) is a shot through that cover.
