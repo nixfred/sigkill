@@ -459,7 +459,7 @@ func _refusal() -> String:
 	if _asking or _link.is_busy():
 		return BUSY_LINE
 	if _link.calls >= _t.session_call_cap:
-		return "Limit reached: %d AI calls this session." % _t.session_call_cap
+		return "Limit reached: %d AI call%s this session." % [_t.session_call_cap, "" if _t.session_call_cap == 1 else "s"]
 	if _link.cooldown_ms() > 0:
 		return _cooldown_line()
 	return ""
@@ -526,9 +526,11 @@ func _refresh() -> void:
 		_status.text = CONSENT_KEYS
 	else:
 		var reason := _refusal()
-		if reason == "" and _link.not_loaded:
-			reason = NOT_LOADED_LINE  # stays up until a later call is answered; T checks again
-		_status.text = KEYS_LINE if reason == "" else reason
+		var line := KEYS_LINE if reason == "" else reason
+		if _link.not_loaded:
+			# Stays up until a later call is answered, next to any cooldown or limit.
+			line = NOT_LOADED_LINE + ("   " + reason if reason != "" else "")
+		_status.text = line
 	_panel.visible = _typing or _consent_prompt or _answer_ms_left > 0.0 or _notice_ms_left > 0.0
 
 

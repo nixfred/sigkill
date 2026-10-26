@@ -499,6 +499,24 @@ func _failure_checks() -> void:
 	await _answered(empty)
 	_check("T checks again, and once a model answers the line goes", empty.status_text() != GuideHud.NOT_LOADED_LINE and empty.panel_text().begins_with("your AI (local) says:"), empty.status_text())
 	await _drop(empty)
+	# The empty server's answer used the session's last call: both facts stay on screen.
+	var last: Resource = load(HUD_TUNING_PATH).duplicate()
+	last.session_call_cap = 1
+	_fake_now += 60000
+	var capped := _hud(_link(_fake(_found(Found.AgentState.UNSET, "", false, 1)), {"name": "local", "kind": "ollama", "mode": "needs_consent"}, "fail-local.cfg"), {"tuning": last})
+	await _ready_hud(capped)
+	await _ask(capped, "help")
+	await _answered(capped)
+	await _until(func(): return capped.panel_text() == "")
+	var before := root.size
+	root.size = Vector2i(960, 540)
+	for i in 3:
+		await process_frame
+	var status_rect: Rect2 = capped._status.get_global_rect()
+	var fits := Rect2(Vector2.ZERO, Vector2(root.size)).encloses(status_rect)
+	_check("when that answer used the last call, \"not loaded\" and \"limit reached\" both stay, and fit at 960x540", capped.status_text() == GuideHud.NOT_LOADED_LINE + "   Limit reached: 1 AI call this session." and fits, "%s %s" % [capped.status_text(), status_rect])
+	root.size = before
+	await _drop(capped)
 	# The boot handshake's "not loaded" carries into the arena on the same link.
 	var carried := _link(_fake(_found(Found.AgentState.UNSET, "", false, 1)), {"name": "local", "kind": "ollama"}, "fail-local.cfg")
 	carried.not_loaded = true
