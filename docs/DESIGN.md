@@ -5,7 +5,7 @@ Native first-person shooter for Omarchy (Arch + Hyprland). You are the nixfred >
 ## Decided
 - Name: SIGKILL (Fred).
 - Native installable Linux game, not web.
-- Code lives at gus:~/Projects/sigkill; Larry (herdr workspace "sigkill") writes all code.
+- Code lives at the dev machine; Larry (herdr workspace "sigkill") writes all code.
 - Safety: game never modifies, deletes, executes, signals or kills anything real. Filesystem/process features read names, sizes, counts only. Demo-data mode for anything public. No Ctrl+Alt hotkeys, no focus stealing, no GPU use when not running.
 - Brand: locked nixfred hexagon (icon-only, white >_) on icon, repo, README.
 
@@ -16,8 +16,8 @@ Native first-person shooter for Omarchy (Arch + Hyprland). You are the nixfred >
 - Full spec: PRD.md (docs/PRD.md in repo).
 
 ## Proposed (waiting on Fred)
-- Relay hosting/budget for matchmaking; local-only vs cloud AI keys; windowed playtests on gus; first playable = M1+M2 before multiplayer (producer pick).
-- Engine: Godot 4 (Vulkan, single binary), pending Larry ENGINE.md. Fred approved installing godot 4.7.2 from pacman on gus (2026-10-25).
+- Relay hosting/budget for matchmaking; local-only vs cloud AI keys; windowed playtests on the dev machine; first playable = M1+M2 before multiplayer (producer pick).
+- Engine: Godot 4 (Vulkan, single binary), pending Larry ENGINE.md. Fred approved installing godot 4.7.2 from pacman on the dev machine (2026-10-25).
 - Hook: filesystem maps + Larry announcer (Random Bot's pick).
 
 ## Idea pile
@@ -32,5 +32,5 @@ Native first-person shooter for Omarchy (Arch + Hyprland). You are the nixfred >
 - Packet tracer arena: tailnet machines as islands
 
 ## State
-- 2026-10-25: ~/Projects/sigkill was empty. Sent Larry step 1: engine recommendation (docs/ENGINE.md) + Godot scaffold + greybox arena, local commit only, no installs. Godot install waiting on Fred.
+- 2026-10-25: the project dir was empty. Sent Larry step 1: engine recommendation (docs/ENGINE.md) + Godot scaffold + greybox arena, local commit only, no installs. Godot install waiting on Fred.
 - 2026-10-25 7:20 PM ET: step 1 committed d086489 (scaffold, syntax-checked only). C1 sent: install Godot, clean headless import, commit PRD.

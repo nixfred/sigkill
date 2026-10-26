@@ -1,6 +1,6 @@
 # SIGKILL PRD (v0.1, 2026-10-25)
 
-Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, gus, ~/Projects/sigkill).
+Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
 
 ## 1. Pitch
@@ -97,5 +97,5 @@ M5 Your machine is the world (filesystem maps, process enemies, themes, etc.)
 ## 9. Open questions for Fred
 1. Matchmaking/relay hosting: where and what budget? (Needed before C15 deploys.)
 2. AI guide: local models only, or also let players plug in a cloud key later?
-3. Windowed playtests on gus: OK to pop a game window on your desk when I ask, or keep it to headless + clips?
+3. Windowed playtests on the dev machine: OK to pop a game window on your desk when I ask, or keep it to headless + clips?
 4. First playable target: M1 + M2 (solo, looks great, your AI talks) before multiplayer? (Producer's pick: yes.)
