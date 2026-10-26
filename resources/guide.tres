@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="GuideTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/guide_tuning.gd" id="1_guide"]
+
+[resource]
+script = ExtResource("1_guide")
+ai_enabled = false
+min_interval_ms = 10000
+agent_timeout_ms = 60000
+local_timeout_ms = 30000
+typed_text_max_chars = 500
+answer_max_chars = 600
+stdout_max_bytes = 65536
+local_response_max_bytes = 131072
+local_max_tokens = 200
