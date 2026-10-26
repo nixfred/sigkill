@@ -74,6 +74,12 @@ func adapter_name() -> String:
 	return "none"
 
 
+## What the player is asked to allow: the agent's name, or the local server's kind
+## ("ollama" or "openai-compatible"). The boot screen keys the AI opt-in on it.
+func source_name() -> String:
+	return adapter_name()
+
+
 ## Whether this adapter can be asked at all (its command or server is there).
 func is_available() -> bool:
 	return false

@@ -485,6 +485,8 @@ func _reply(mode: String, method: String, path: String) -> PackedByteArray:
 				body = '{"choices":[{"message":{"role":"assistant","content":"zero\\u0000here \\ud800 lone"}}],"usage":{"completion_tokens":1e999999}}'
 			"nonjson":
 				body = "<html>busy</html>"
+			"named":
+				body = '{"choices":[{"message":{"role":"assistant","content":"%s here, and %s again."}}]}' % [LOADED_MODEL.to_upper(), LOADED_MODEL]
 			_:
 				body = '{"choices":[{"message":{"role":"assistant","content":"Strafe left \\u001b[31mnow\\u001b[0m."}}],"usage":{"prompt_tokens":40,"completion_tokens":12}}'
 	else:
@@ -607,6 +609,9 @@ func _local_checks() -> void:
 	_set_mode("hostile")
 	var hostile := await _ask(_local(Local.KIND_OLLAMA), "")
 	_check("a hostile answer (NUL escape, lone surrogate, 1e999999 tokens) is read quietly; tokens per second unknown", hostile["ok"] and hostile["tokens_per_sec"] == -1.0 and String(hostile["text"]).begins_with("zero"))
+	_set_mode("named")
+	var named := await _ask(_local(Local.KIND_OLLAMA), "")
+	_check("an answer that names the loaded model has the name replaced, in any letter case", named["ok"] and named["text"] == "the local model here, and the local model again." and String(named["text"]).findn(FAKE_MODEL_WORD) < 0, str(named["text"]))
 	var bad_kinds := PackedStringArray()
 	for mode in ["truncated", "nonjson", "error500"]:
 		_set_mode(mode)

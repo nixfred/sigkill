@@ -11,7 +11,8 @@ extends "res://scripts/ai/guide_adapter.gd"
 ## only ever sends those GETs and one POST /v1/chat/completions with {model, messages,
 ## stream: false, max_tokens}: never num_ctx, options or keep_alive, and it never loads,
 ## pulls, deletes or unloads a model. Model names stay in memory for the one request and
-## are never stored in a result, printed or logged.
+## are never stored in a result, printed or logged; an answer that names the model has the
+## name replaced (redact()).
 ##
 ## tokens_per_sec is usage.completion_tokens over the time the chat request took, when the
 ## answer reports it; otherwise -1.
@@ -32,6 +33,7 @@ const CHAT_TYPES := ["llm", "vlm"]
 const CHAT_PATH := "/v1/chat/completions"
 const MODEL_NAME_MAX := 256
 const MS_PER_SECOND := 1000.0
+const REDACTED := "the local model"
 
 enum Phase { IDLE, LISTING, CHATTING }
 
@@ -65,6 +67,10 @@ func configure(kind: String, host: String, port: int) -> bool:
 
 func adapter_name() -> String:
 	return "local"
+
+
+func source_name() -> String:
+	return _kind
 
 
 func is_available() -> bool:
@@ -143,7 +149,7 @@ func _step() -> Dictionary:
 	var content = Json.field(Json.field(Json.item(Json.field(parsed[1], "choices"), 0), "message"), "content")
 	if not (content is String):
 		return _done(result(false, "", "bad_response"))
-	var answer := clean_answer((content as String).to_utf8_buffer(), _t.answer_max_chars)
+	var answer := redact(clean_answer((content as String).to_utf8_buffer(), _t.answer_max_chars), _model)
 	if answer == "":
 		return _done(result(false, "", "empty"))
 	var tokens = Json.field(Json.field(parsed[1], "usage"), "completion_tokens")
@@ -188,6 +194,19 @@ static func loaded_model(listing: Variant, path: String) -> Array:
 			if name is String and not (name as String).is_empty() and (name as String).length() <= MODEL_NAME_MAX:
 				return [true, name]
 	return [true, ""]
+
+
+## `answer` with every mention of the loaded model's name, in any letter case, replaced by
+## "the local model", so the name never reaches the screen.
+static func redact(answer: String, model: String) -> String:
+	if model.is_empty():
+		return answer
+	var out := answer
+	var at := out.findn(model)
+	while at >= 0:
+		out = out.substr(0, at) + REDACTED + out.substr(at + model.length())
+		at = out.findn(model, at + REDACTED.length())
+	return out
 
 
 static func _can_chat(entry: Variant) -> bool:
