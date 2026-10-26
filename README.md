@@ -259,53 +259,88 @@ flowchart LR
 - **Built on Godot's high-level multiplayer:** ENet for direct play and WebRTC data channels for punch-through.
 - **Hosting cost is Fred's call** before anything is deployed; nothing runs on a server today.
 
-## Install and play
+## Architecture
 
-Runs from source today. Packaged builds (AppImage, AUR) are planned and not available yet.
+### Project tree
 
-**Requirements**
+Every file in the repository, from `git ls-files`. Godot also keeps a small `.uid` file next to each script and shader.
 
-- Godot 4.x from pacman (the project is built against 4.7)
-- A Vulkan-capable GPU and driver
-- git
-- Optional, coming in M2: the AI guide uses your Omarchy default agent (Claude Code and Codex first), with a local model server such as Ollama or LM Studio as the fallback
-
-**Quickstart (Omarchy / Arch)**
-
-```bash
-sudo pacman -S --needed godot git
-git clone https://github.com/nixfred/sigkill.git   # private for now, ask for access
-cd sigkill
-godot --path .
+```text
+sigkill/
+├── project.godot               Godot 4.7 project: main scene, physics layer names, Forward+, black clear colour
+├── scenes/
+│   ├── main.tscn               Root level: sun light, arena, player and HUD
+│   ├── arena.tscn              Greybox arena, its WorldEnvironment, and the four target dummies
+│   ├── player.tscn             First-person player: capsule, head, camera, muzzle marker, both tuning resources
+│   ├── grey_block.tscn         One greybox building block
+│   ├── target_dummy.tscn       Hexagonal-prism target dummy with a floating tag
+│   └── hud.tscn                Canvas layer for the code-built HUD
+├── scripts/
+│   ├── main.gd                 Wires targets and player to the HUD, applies palette colours, R respawns targets
+│   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
+│   ├── controls.gd             The input map, registered in code
+│   ├── movement_tuning.gd      MovementTuning: every movement and camera number, validated
+│   ├── weapon_tuning.gd        WeaponTuning: every cannon number, validated
+│   ├── palette.gd              Every colour, plus the material factory
+│   ├── grey_block.gd           Builds a block's mesh, collision and neon material; previews in the editor
+│   ├── target_dummy.gd         Takes hits, pulses, shrinks and despawns, reports whether a hit landed
+│   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair and hit marker
+│   ├── crosshair.gd            Crosshair drawn in code; kicks on every shot
+│   ├── hit_marker.gd           Diagonal hit marker, shown only on a confirmed hit
+│   ├── cannon_fx.gd            Beam, muzzle flash and light, impact flash and sparks; all self-freeing
+│   ├── sfx_synth.gd            Fire and hit sounds synthesised in code
+│   └── check.sh                The headless quality gate
+├── shaders/
+│   ├── floor_grid.gdshader     World-space glowing floor grid
+│   └── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms
+├── resources/
+│   ├── movement_tuning.tres    Default movement tuning
+│   └── terminal_cannon.tres    Default terminal cannon tuning
+├── tests/
+│   ├── movement_test.gd        Headless movement test
+│   └── cannon_test.gd          Headless cannon test
+└── docs/
+    ├── PRD.md                  Product requirements: features, safety rules, chunk plan
+    ├── DESIGN.md               Decisions log and design notes
+    ├── ENGINE.md               Why Godot 4
+    └── media/                  README art; .gdignore keeps Godot from importing it
 ```
 
-Click into the window to grab the mouse. Esc gives it back, and so does switching away from the window.
+### Tuning resources
 
-**Controls**
+Feel is data, not code. Two custom resources hold every number that shapes the game, each with a default instance the player scene loads:
 
-Bindings are registered in code in `scripts/controls.gd`, with mouse look and the click-to-engage rule in `scripts/player.gd`. There are no Ctrl, Alt or Super chords.
+- **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
+- **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
 
-| Input | Action |
-|---|---|
-| W / A / S / D, or the arrow keys | Move |
-| Mouse | Look |
-| Space | Jump |
-| C | Slide, when running fast on the ground. Jump during a slide to keep its speed |
-| Left click | Fire the terminal cannon (the first click only grabs the mouse) |
-| R | Respawn all targets |
-| Esc | Release the mouse |
+Both resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, the player prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every colour comes from `scripts/palette.gd`.
 
-**Run the checks**
+### How the checks work
 
-```bash
-scripts/check.sh
-```
+`scripts/check.sh` is the gate every chunk has to pass. It never opens a window: every Godot call is `--headless`.
 
-The game never modifies, deletes, executes, signals or kills anything on your system. The full contract is in `docs/DESIGN.md`.
+1. **Parse** every `.gd` file with the GDScript parser.
+2. **Import** the project headless.
+3. **Run** the main scene for 300 frames headless.
+4. **Movement test**, `tests/movement_test.gd`.
+5. **Cannon test**, `tests/cannon_test.gd`.
 
-## How it's built
+It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
-One small numbered chunk at a time, from the PRD. Every chunk goes through the same gate before it lands.
+The tests are SceneTree scripts that drive the real scenes through a one-frame input hook on the player, `drive_input()`, with `--fixed-fps 60` so every run is deterministic and faster than real time:
+
+- **Movement test.** A flat floor and the real player scene. Measures the start and the stop in frames, repeats them at 60 Hz and 120 Hz to prove nothing depends on the frame rate, and covers the slide (threshold, burst, timer, cooldown boundary, same-frame jump), slide-jump momentum, air control, head bob scaling and its toggle, the FOV kick, and the tuning fallback.
+- **Cannon test.** The real main scene. Fires at the real dummy, then the wall behind it, then the open sky, and checks the hit, the hit marker, recoil and its recovery at 60 Hz and 120 Hz, each effect's own lifetime, misses without a marker, the cooldown boundary, the pitch clamp including mouse look, the synthesised sounds, the tuning fallback, and that no orphan nodes are left behind.
+
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, and more. Each one makes `scripts/check.sh` exit 1.
+
+### The Codex bug run
+
+Every chunk ends with a second opinion. After the gate passes, the chunk's diff goes to the Codex CLI, run non-interactively in a read-only sandbox, with a prompt to hunt bugs, Godot API misuse, frame-rate dependence, edge cases and safety-rule violations. Real findings get fixed and the gate is re-run; findings that are rejected are written down with the reason. When the fixes are substantial, Codex reviews the fixes too. Codex never gets write access, never commits and never pushes.
+
+### The chunk pipeline
+
+SIGKILL is built one small numbered chunk at a time, from the PRD. Every chunk goes through the same path before it lands.
 
 ```mermaid
 flowchart LR
@@ -319,26 +354,98 @@ flowchart LR
     Audit --> Chunk
 ```
 
-- `docs/PRD.md`: what we are building and the hard safety rules
-- `docs/ENGINE.md`: why Godot 4
-- `docs/DESIGN.md`: design notes and the safety contract
+### Docs
+
+- [`docs/PRD.md`](docs/PRD.md): what we are building, the hard safety rules, the chunk plan
+- [`docs/DESIGN.md`](docs/DESIGN.md): decisions log and design notes
+- [`docs/ENGINE.md`](docs/ENGINE.md): why Godot 4
+
+## Install and play
+
+Runs from source today. Packaged builds (AppImage, AUR) are planned and not available yet. Nothing is published.
+
+**Requirements**
+
+- Godot 4.x from pacman (the project is built against 4.7)
+- A Vulkan-capable GPU and driver
+- git
+- For running the checks: `uvx`, which fetches the GDScript parser, unless `gdparse` is already installed
+- Optional, coming in M2: the AI guide uses your Omarchy default agent (Claude Code and Codex first), with a local model server such as Ollama or LM Studio as the fallback
+
+**Quickstart (Omarchy / Arch)**
+
+```bash
+sudo pacman -S --needed godot git
+git clone https://github.com/nixfred/sigkill.git   # private for now, ask for access
+cd sigkill
+godot --path .
+```
+
+Click into the window to grab the mouse. Esc gives it back, and so does switching away from the window.
+
+### Controls
+
+Bindings are registered in code in `scripts/controls.gd`, with mouse look and the click-to-engage rule in `scripts/player.gd`. There are no Ctrl, Alt or Super chords.
+
+| Input | Action |
+|---|---|
+| W / A / S / D, or the arrow keys | Move |
+| Mouse | Look |
+| Space | Jump |
+| C | Slide, when running fast on the ground. Jump during a slide to keep its speed |
+| Left click | Fire the terminal cannon (the first click only grabs the mouse) |
+| R | Respawn all targets |
+| Esc | Release the mouse |
+
+### Running the checks
+
+```bash
+scripts/check.sh
+```
+
+Exit 0 means every step passed, 1 means a problem was found, 2 means the gate itself could not run. Each test can also run on its own, headless:
+
+```bash
+godot --headless --path . --fixed-fps 60 --script res://tests/movement_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
+```
+
+## Safety and privacy
+
+These rules apply to every chunk, from PRD section 6, in plain language:
+
+- **SIGKILL never changes your system.** It never modifies, deletes, executes, signals or kills anything on your machine. Anything it looks at, it only reads: names, sizes and counts, and for the opener also modification times and theme colours. Never the contents of a file.
+- **The one exception: your own AI.** The game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only game stats and what you type in the prompt. Nothing else is ever executed.
+- **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
+- **Your desktop stays yours.** No Ctrl+Alt hotkeys. The mouse is captured only while the window is focused and is released on Esc or when focus leaves. The game never steals focus and uses no GPU when it is not running.
+- **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc and the window's close button always work. A one-line content note and an opt-in come first, and saying no gives you the same opener on fake data.
+- **Original art and audio.** Today's sounds are synthesised in code, and the repository contains no audio files. Concept art is always labelled as concept art.
+- **Private until Fred says otherwise.** Local commits and pushes to a private repository only. Nothing goes public without Fred's yes, and every chunk reports real command output.
 
 ## Roadmap
 
-| Milestone | What lands | Status |
+Status from `git log`. Hashes are the commits that finished each chunk.
+
+| Milestone | Chunks | Status |
 |---|---|---|
-| M0 Foundations | Godot installed, headless quality gate, private repo | ✅ Done |
-| M1 Look and feel | Tron environment (done), movement feel, cannon feel, derezz deaths, code-rain walls | 🔧 In progress |
-| M2 Your AI | Local model detection, boot sequence, in-game guide, round coaching | ⬜ Planned |
-| M3 Multiplayer | LAN and tailnet play, synced combat, room codes and invite links | ⬜ Planned |
-| M4 Arsenal and modes | SIGTERM, SIGKILL railgun, SIGSTOP bullet time, fork bomb, light trails, code-rain vision, root vs user, spectate as top | ⬜ Planned |
-| M5 Your machine is the world | Filesystem maps, process enemies, theme levels | ⬜ Planned |
+| M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
+| M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths · C8 code-rain walls | 🔧 In progress |
+| M2 Your AI | C9 AI source detector · C9b agent adapters · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | ⬜ Planned |
+| M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
+| M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
+| M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op | ⬜ Planned |
+| M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
+
+Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 ## Screenshots
 
 Real in-game captures land once the renderer chunks are verified.
 
+Every image on this page is concept art and says so. Real captures need a window on screen, so they wait for windowed playtests, and they will use demo data.
+
 <p align="center">
   <img src="docs/media/nixfred-icon.svg" alt="nixfred" width="64" height="64"><br>
-  <sub>a nixfred joint</sub>
+  <sub>a nixfred joint</sub><br>
+  <sub>Made by Fred Nix. Built chunk by chunk by Larry, produced by SIGKILL bot. Engine: Godot. Art and audio are original; concept art is labelled as concept art.</sub>
 </p>
