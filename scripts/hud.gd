@@ -143,11 +143,19 @@ func set_weapon_tuning(w: Resource) -> void:
 	_hit_marker.configure(w.hit_marker_seconds, w.hit_marker_size, w.hit_marker_gap, w.hit_marker_thickness)
 
 
-## Every shot kicks the crosshair; only a landed shot shows the hit marker.
+## Every shot kicks the crosshair. Solo, a landed shot shows the hit marker; in a LAN
+## match the marker is the host's word alone (confirm_hit), never the local cannon's
+## guess, so a dummy hit on this machine's own copy of the arena shows none.
 func on_shot(hit_target: bool) -> void:
 	_crosshair.ping()
-	if hit_target:
+	if hit_target and not _online():
 		_hit_marker.show_hit()
+
+
+## True while the session beside the arena is hosting or joined.
+func _online() -> bool:
+	var session = _net.session
+	return session != null and is_instance_valid(session) and session.is_online()
 
 
 ## 1 right after a hit, 0 once the hit marker has faded. Used by tests/cannon_test.gd.

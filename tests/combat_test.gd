@@ -302,7 +302,7 @@ func _solo_checks() -> void:
 	var dummy = side["main"].get_node("Arena/Targets/DummyA")
 	await _fire(side["player"])
 	await _frames(2)
-	_check("solo: the combat line, feed, flash and banner stay hidden, and the cannon still derezzes a dummy in one shot", hud.line_text() == "" and hud.feed_text().is_empty() and hud.flash_left() == 0.0 and hud.banner_text() == "" and side["player"].shots_fired == 1 and side["player"].hits_landed == 1 and not dummy.is_hittable() and side["session"].fire_seq == 0)
+	_check("solo: the combat line, feed, flash and banner stay hidden, and the cannon still derezzes a dummy in one shot with the hit marker", hud.line_text() == "" and hud.feed_text().is_empty() and hud.flash_left() == 0.0 and hud.banner_text() == "" and side["player"].shots_fired == 1 and side["player"].hits_landed == 1 and not dummy.is_hittable() and side["session"].fire_seq == 0 and side["hud"].hit_marker_alpha() > 0.5)
 	var p = side["player"]
 	for i in 20:
 		p.drive_input(Vector2(0, -1))
@@ -511,6 +511,20 @@ func _forgery_checks() -> void:
 	_check("a shot that starts inside an opponent's body hits it", inside_hits[0] == 1 and hs.health[cid] == inside_before - 25.0, "hits %d health %.0f -> %.0f, host last seq %d, drops %s, host at %s avatar at %s shape off %s" % [inside_hits[0], inside_before, hs.health[cid], hs.combat.states[1]["last_seq"], hs.combat.drops, hp0.position, _avatar(host, cid).position, _avatar(host, cid).get("_hit_shape").disabled])
 	hp0.respawn_at(Vector3(0, 0.95, 4))
 	await _frames(SHOT_FRAMES)
+	# A dummy on the joiner's own copy of the arena: its cannon derezzes it locally, but in a
+	# match no hit marker shows for it, since the host confirms no such hit.
+	var dummy = client["main"].get_node("Arena/Targets/DummyA")
+	await _until(func(): return dummy.is_hittable(), 4000)
+	cp.respawn_at(CLIENT_OFFSET + Vector3(0, 0.95, -11))
+	_aim(cp, dummy.global_position + Vector3(0, 0.9, 0))
+	await _frames(SHOT_FRAMES)
+	var hits_before: int = cp.hits_landed
+	var healths_before: Dictionary = hs.health.duplicate()
+	var dummy_shot := await _shoot(cp, host, client)
+	await _frames(2)
+	_check("a dummy hit on the joiner's own arena derezzes the dummy locally but shows no hit marker in a match, and nobody's health changes", dummy_shot and cp.hits_landed == hits_before + 1 and not dummy.is_hittable() and client["hud"].hit_marker_alpha() == 0.0 and hs.health == healths_before, "believed %s hits %d -> %d marker %.2f dummy hittable %s drops %s health %s" % [dummy_shot, hits_before, cp.hits_landed, client["hud"].hit_marker_alpha(), dummy.is_hittable(), hs.combat.drops, hs.health])
+	cp.respawn_at(CLIENT_OFFSET + Vector3(0, 0.95, 10))
+	await _until(func(): return (_avatar(host, cid).latest_position() - cp.position).length() < 0.05)
 	# From the wrong peer: an intent not from a player (no sender) is dropped.
 	dropped_before = hs.combat.dropped
 	hs._fire(12, 0, eye, up)
