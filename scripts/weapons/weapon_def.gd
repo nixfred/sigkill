@@ -161,9 +161,11 @@ func damage_at(distance: float) -> float:
 	return damage * lerpf(1.0, falloff_floor, (distance - falloff_start_m) / (falloff_end_m - falloff_start_m))
 
 
-## Every pellet's direction for a shot along unit vector `aim`: the first straight along
-## it, the rest spread evenly over the cone, drawn from `rng`. A single shot draws nothing.
-func pellet_directions(aim: Vector3, rng: RandomNumberGenerator) -> PackedVector3Array:
+## Every pellet's direction for a shot along `aim` (made unit length first, so a slightly
+## long aim cannot narrow the cone): the first straight along it, the rest spread evenly over
+## the cone, drawn from `rng`. A single shot draws nothing.
+func pellet_directions(aim_in: Vector3, rng: RandomNumberGenerator) -> PackedVector3Array:
+	var aim := aim_in.normalized()
 	var out := PackedVector3Array([aim])
 	if pellet_count < 2:
 		return out

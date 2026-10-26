@@ -183,6 +183,10 @@ var lives := {}
 ## A respawn that arrived for this player while its arena was reloading: the host's chosen
 ## spawn, in arena space, applied when the next arena attaches. INF when none is waiting.
 var _pending_spawn := Vector3.INF
+## The weapon that respawn put in this player's hand, applied with it.
+var _pending_weapon := ""
+## Joiner: whether the first roster has come, at which this side's weapons start fresh.
+var _weapons_synced := false
 ## How soon the host tries a respawn again when its own arena is absent.
 const RESPAWN_RETRY_S := 0.05
 ## After the host's arena attaches, how long a respawn waits for the opponents' positions
@@ -388,7 +392,10 @@ func attach(arena: Node, player: Node) -> void:
 		player.respawn_at(arena.to_global(_pending_spawn))  # the host chose this while the arena was away
 		if player.has_method("refill_weapons"):
 			player.refill_weapons()  # and refilled every weapon, as a respawn does
+		if _pending_weapon != "" and player.has_method("hold_weapon"):
+			player.hold_weapon(_pending_weapon)
 	_pending_spawn = Vector3.INF
+	_pending_weapon = ""
 	_attached_at = _clock
 	if player.has_method("set_alive"):
 		player.set_alive(not dead.get(my_id, false))
@@ -838,6 +845,8 @@ func _clear_players() -> void:
 	respawn_left = {}
 	lives = {}
 	_pending_spawn = Vector3.INF
+	_pending_weapon = ""
+	_weapons_synced = false
 	_kept_inventory = null
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
@@ -942,7 +951,6 @@ func _on_connected() -> void:
 	_set_peer_timeout(1)
 	state = State.JOINED
 	error = ""
-	_reset_player_weapons()
 	changed.emit()
 
 
@@ -1033,6 +1041,13 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 			_show_avatar_state(id)
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(not dead.get(my_id, false))
+	if not _weapons_synced:
+		# The first roster: the host holds this player now. Weapons start fresh here, and a
+		# draw of slot 1 goes to the host, so any draw sent before it held the player is undone.
+		_weapons_synced = true
+		_reset_player_weapons()
+		if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning"):
+			_on_weapon_drawn(_player.weapon_tuning().id)
 	changed.emit()
 	combat_changed.emit()
 
@@ -1401,11 +1416,12 @@ func _do_respawn(id: int) -> void:
 	combat.respawn(id)
 	_mirror_from_combat()
 	var life: int = lives.get(id, 0) + 1
-	_apply_respawn(id, life, pos, _ct.spawn_protection_s, combat.health_of(id))
+	var held := combat.drawn_by(id)
+	_apply_respawn(id, life, pos, _ct.spawn_protection_s, combat.health_of(id), held)
 	var connected := multiplayer.get_peers()
 	for peer in players:
 		if peer != 1 and connected.has(peer):
-			_respawn.rpc_id(peer, id, life, pos, _ct.spawn_protection_s, combat.health_of(id))
+			_respawn.rpc_id(peer, id, life, pos, _ct.spawn_protection_s, combat.health_of(id), held)
 
 
 ## True while some living opponent of `id` has sent no position since this arena attached.
@@ -1448,13 +1464,15 @@ func _pick_spawn(id: int) -> Vector3:
 ## A player is back, from the host: its new life number, where, how long safe, with what
 ## health.
 @rpc("authority", "call_remote", "reliable")
-func _respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float) -> void:
-	if state != State.JOINED or not players.has(id) or life < 0 or not pos.is_finite() or not is_finite(protect_s) or protect_s < 0.0 or not is_finite(new_health) or new_health <= 0.0 or new_health > _ct.max_health:
+func _respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float, held: String) -> void:
+	if state != State.JOINED or not players.has(id) or life < 0 or not pos.is_finite() or not is_finite(protect_s) or protect_s < 0.0 or not is_finite(new_health) or new_health <= 0.0 or new_health > _ct.max_health or not _weapons.has(held):
 		return
-	_apply_respawn(id, life, pos, protect_s, new_health)
+	_apply_respawn(id, life, pos, protect_s, new_health, held)
 
 
-func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float) -> void:
+## A respawn, with `held`, the weapon in the player's hand as the host counts it: this
+## player takes it, so a draw that crossed its death leaves no difference behind.
+func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float, held: String) -> void:
 	dead[id] = false
 	health[id] = new_health
 	protect_left[id] = protect_s
@@ -1466,8 +1484,11 @@ func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_heal
 				_player.respawn_at(_arena.to_global(pos))
 			if _player.has_method("set_alive"):
 				_player.set_alive(true)
+			if _player.has_method("hold_weapon"):
+				_player.hold_weapon(held)
 		else:
 			_pending_spawn = pos  # the arena is reloading: the next one puts the player there
+			_pending_weapon = held
 	else:
 		var avatar = avatars.get(id)
 		if avatar != null and is_instance_valid(avatar):

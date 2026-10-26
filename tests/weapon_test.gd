@@ -271,10 +271,15 @@ func _host_rule_checks() -> void:
 	c.draw(7, 0, "terminal_cannon", 0, 5.1)
 	c.draw(7, 0, "sigterm", 0, 5.2)
 	var after_stop: String = shoot.call("sigterm", 7.5)
-	_check("drawing another weapon stops a reload: its rounds never go in", after_stop == "" and c.ammo_of(7, "sigterm") == [4, 22], str(c.ammo_of(7, "sigterm")))
+	_check("drawing another weapon stops a reload still running: its rounds never go in", after_stop == "" and c.ammo_of(7, "sigterm") == [4, 22], str(c.ammo_of(7, "sigterm")))
+	c.reload(7, 0, "sigterm", 0, 7.6)
+	c.draw(7, 0, "terminal_cannon", 0, 7.6 + 2.3)
+	c.draw(7, 0, "sigterm", 0, 7.6 + 2.4)
+	var kept_reload: String = shoot.call("sigterm", 7.6 + 2.8)
+	_check("a reload whose time was up before a draw keeps its rounds: SIGTERM back in hand fires from a full magazine", kept_reload == "" and c.ammo_of(7, "sigterm") == [5, 20], "%s %s" % [kept_reload, c.ammo_of(7, "sigterm")])
 	# The cheat: empty SIGTERM, fire the cannon a while, come back: no reload happened.
-	var at := 8.5
-	while c.ammo_of(7, "sigterm")[0] > 0 and at < 30.0:
+	var at := 11.5
+	while c.ammo_of(7, "sigterm")[0] > 0 and at < 40.0:
 		shoot.call("sigterm", at)
 		at += 0.7
 	c.draw(7, 0, "terminal_cannon", 0, at)
@@ -323,7 +328,7 @@ func _pellet_checks() -> void:
 	for i in 2000:
 		var dirs := s.pellet_directions(aim, rng)
 		count_ok = count_ok and dirs.size() == 9
-		first_ok = first_ok and dirs[0] == aim
+		first_ok = first_ok and dirs[0].is_equal_approx(aim)
 		for k in range(1, dirs.size()):
 			var a := dirs[k].angle_to(aim)
 			inside = inside and a <= cone + EPS and absf(dirs[k].length() - 1.0) < EPS
@@ -335,11 +340,19 @@ func _pellet_checks() -> void:
 	print("WEAPON pellets: 2000 shots, widest %.3f deg of %.1f, mean %.3f of the cone (2/3 for an even spread over the disc), quadrants %s" % [rad_to_deg(widest), s.spread_degrees, mean, quadrants])
 	_check("SIGTERM fires 9 pellets: the first straight down the aim, the others inside the 6 degree cone, unit length", count_ok and first_ok and inside)
 	_check("the pellets spread evenly over the cone: they reach its edge, average two thirds out, and fill all four quarters", widest > cone * 0.98 and mean > 0.62 and mean < 0.71 and quadrants.min() > 0.23 * n and quadrants.max() < 0.27 * n)
+	var long_aim := aim * 1.009
+	var widest_long := 0.0
+	var all_unit := true
+	for i in 2000:
+		for d in s.pellet_directions(long_aim, rng):
+			widest_long = maxf(widest_long, d.angle_to(aim))
+			all_unit = all_unit and absf(d.length() - 1.0) < EPS
+	_check("an aim 0.9%% too long (within the host's tolerance) narrows nothing: every pellet unit length, the cone still reaching its full 6 degrees and no further (%.3f; a narrowed one stops near 5.947)" % rad_to_deg(widest_long), all_unit and widest_long > cone * 0.997 and widest_long <= cone + EPS)
 	var probe := RandomNumberGenerator.new()
 	probe.seed = 5
 	var before := probe.state
 	var single: PackedVector3Array = _cannon.pellet_directions(aim, probe)
-	_check("the cannon fires one ray straight down the aim and draws nothing from the generator", single.size() == 1 and single[0] == aim and probe.state == before)
+	_check("the cannon fires one ray straight down the aim and draws nothing from the generator", single.size() == 1 and single[0].is_equal_approx(aim) and probe.state == before)
 	var at := {0.0: 14.0, 4.0: 14.0, 12.0: 9.52, 14.0: 8.4, 24.0: 2.8, 40.0: 2.8}
 	var wrong := PackedStringArray()
 	for d in at:
@@ -682,6 +695,14 @@ func _fresh_match_checks() -> void:
 	var cid: int = cs.my_id
 	await _frames(2)
 	_check("a match starts fresh on both sides: practice shots before joining (SIGTERM at %d) do not carry in; the cannon drawn, everything full, as the host counts" % practiced, joined and practiced == 4 and cp.inventory.current == 0 and cp.inventory.mags[1] == 6 and cp.inventory.reserves[1] == 24 and hs.combat.drawn_by(cid) == "terminal_cannon" and hs.combat.ammo_of(cid, "sigterm") == [6, 24])
+	# A draw the host took in before this side heard it holds the player (sent in the moment
+	# between joining and the first roster): the first roster's draw of slot 1 undoes it.
+	hs.combat.draw(cid, 0, "sigterm", 0, hs.get("_clock"))
+	cs.set("_weapons_synced", false)
+	hs._send_roster()
+	var undone := await _until(func(): return hs.combat.drawn_by(cid) == "terminal_cannon", 2000)
+	_check("a draw the host took before this side's first roster is undone by the draw of slot 1 that roster sends: both sides on the cannon", undone and cp.inventory.current == 0)
+	await _frames(_frames_for(0.35))
 	cp.select_slot(1)
 	await _settle(cp, 0.5)
 	cp.get_node("Head").rotation.x = 1.2
@@ -725,7 +746,32 @@ func _fresh_match_checks() -> void:
 	client["main"] = main3
 	await _frames(3)
 	var back = main3.get_node("Player")
+	back.assume_captured = true
 	_check("a respawn that lands while the joiner's arena is away still refills: the next arena's player is alive with SIGTERM drawn and full, as the host counts", killed and back.alive and back.inventory.current == 1 and back.inventory.mags[1] == 6 and back.inventory.reserves[1] == 24 and hs.combat.ammo_of(cid, "sigterm") == [6, 24], "killed %s alive %s mags %s" % [killed, back.alive, back.inventory.mags])
+	# A draw that crosses the joiner's death: the host refuses it (dead), the joiner's own
+	# screen took it; the respawn hands back the weapon the host counts in hand.
+	await _until(func(): return hs.protect_left.get(cid, 0.0) <= 0.0 and hs.protect_left.get(1, 0.0) <= 0.0, 4000)
+	back.respawn_at(main3.to_global(Vector3(SHOOTER_X, STAND_Y, LINE_Z)))
+	hp.respawn_at(host["main"].to_global(Vector3(SHOOTER_X + 1.5, STAND_Y, LINE_Z)))
+	await _until(func(): return hs._eye_of(cid).distance_to(Vector3(SHOOTER_X, STAND_Y + hp.eye_height(), LINE_Z)) < 0.05)
+	await _settle(hp, 1.0)
+	_aim(hp, hs.avatars.get(cid).global_position)
+	await _fire(hp)
+	var killed_again := await _until(func(): return hs.dead.get(cid, false), 2000)
+	var dead_before: int = hs.combat.drops.get("dead", 0)
+	back.inventory.select(0)  # this side drew the cannon a moment before it heard of its death
+	back.call("_show_weapon")
+	cs._draw.rpc_id(1, cs.lives.get(cid, 0), "terminal_cannon")
+	var refused := await _until(func(): return hs.combat.drops.get("dead", 0) > dead_before, 2000)
+	await _until(func(): return not cs.dead.get(cid, true), 4000)
+	await _frames(3)
+	var after_held: int = back.inventory.current
+	back.get_node("Head").rotation.x = 1.2
+	var seq_now: int = hs.combat.states[cid]["last_seq"]
+	cs.fire_seq = seq_now
+	await _fire(back)
+	var believed_after := await _until(func(): return hs.combat.states[cid]["last_seq"] == seq_now + 1, 2000)
+	_check("a draw that crossed the joiner's death (refused by the host as dead) is reconciled at the respawn: the joiner holds SIGTERM again, as the host counts, and its next shot is believed", killed_again and refused and after_held == 1 and hs.combat.drawn_by(cid) == "sigterm" and believed_after and back.weapon_tuning().id == "sigterm", "killed %s refused %s held %d believed %s" % [killed_again, refused, after_held, believed_after])
 	await _drop(client)
 	await _drop(host)
 

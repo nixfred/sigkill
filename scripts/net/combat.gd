@@ -90,6 +90,7 @@ func draw(id: int, life: int, weapon: String, known_life: int, now: float) -> St
 	var s: Dictionary = states[id]
 	if weapon == s["drawn"]:
 		return ""
+	_finish_reload(s, now)  # a reload whose time is up has put its rounds in; only one still running stops
 	s["drawn"] = weapon
 	s["ready_at"] = now + swap_s * (1.0 - tuning.fire_rate_tolerance)
 	s["reloading"] = ""

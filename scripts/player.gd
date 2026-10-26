@@ -480,6 +480,15 @@ func refill_weapons() -> void:
 	inventory.refill()
 
 
+## Holds the weapon with `id` at once, ready (a respawn with the weapon the host says is in
+## hand). Nothing is sent: the host already knows. False for a weapon not in the loadout.
+func hold_weapon(id: String) -> bool:
+	if not inventory.hold(inventory.slot_of(id)):
+		return false
+	_show_weapon()
+	return true
+
+
 ## Takes over `other`'s weapons and their state, when it holds the same loadout: the session
 ## hands a match's inventory to the new arena after an R reload, so R never refills ammo
 ## mid-match. False when the loadouts differ.

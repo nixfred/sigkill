@@ -77,6 +77,19 @@ func select(slot: int) -> bool:
 	return true
 
 
+## Holds the weapon in `slot` at once, ready, nothing running: a new life taking the weapon
+## the host says is in hand. False when there is no such slot.
+func hold(slot: int) -> bool:
+	if slot < 0 or slot >= defs.size():
+		return false
+	if slot != current:
+		last = current
+		current = slot
+	swap_left = 0.0
+	reload_left = 0.0
+	return true
+
+
 ## The next (`step` 1) or previous (-1) slot, wrapping round.
 func cycle(step: int) -> bool:
 	if defs.size() < 2:
