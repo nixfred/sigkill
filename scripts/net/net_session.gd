@@ -132,6 +132,9 @@ var dead := {}
 var protect_left := {}
 var last_killer := {}
 var respawn_left := {}
+## Each player's life number: up by one at every respawn, carried in every state packet,
+## so a position sent before a respawn and arriving after it is known for what it is.
+var lives := {}
 ## Shot intents this player sent (or, hosting, fired), numbered from 1 per session.
 var fire_seq := 0
 
@@ -500,6 +503,7 @@ func _clear_players() -> void:
 	protect_left = {}
 	last_killer = {}
 	respawn_left = {}
+	lives = {}
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -589,7 +593,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	players.erase(id)
 	combat.remove_player(id)
-	for table in [health, dead, protect_left, last_killer, respawn_left]:
+	for table in [health, dead, protect_left, last_killer, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
 	_send_roster()
@@ -644,28 +648,32 @@ func _send_roster() -> void:
 	var names := PackedStringArray()
 	var healths := PackedFloat32Array()
 	var deads := PackedByteArray()
+	var protects := PackedFloat32Array()
+	var life_numbers := PackedInt32Array()
 	for id in players:
 		ids.append(id)
 		slots.append(players[id]["slot"])
 		names.append(players[id]["name"])
 		healths.append(combat.health_of(id))
 		deads.append(0 if combat.alive(id) else 1)
+		protects.append(combat.states[id]["protect_left"])
+		life_numbers.append(lives.get(id, 0))
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_roster.rpc_id(id, ids, slots, names, healths, deads)
+			_roster.rpc_id(id, ids, slots, names, healths, deads, protects, life_numbers)
 
 
 @rpc("authority", "call_remote", "reliable")
-func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray) -> void:
+func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray, protects: PackedFloat32Array, life_numbers: PackedInt32Array) -> void:
 	if state != State.JOINED:
 		return
 	var n := ids.size()
-	if n < 1 or n > _t.max_players or slots.size() != n or names.size() != n or healths.size() != n or deads.size() != n:
+	if n < 1 or n > _t.max_players or slots.size() != n or names.size() != n or healths.size() != n or deads.size() != n or protects.size() != n or life_numbers.size() != n:
 		return
 	var next := {}
 	for i in n:
-		if ids[i] < 1 or slots[i] < 1 or slots[i] > SLOT_LAST or not is_finite(healths[i]) or healths[i] < 0.0 or healths[i] > _ct.max_health:
+		if ids[i] < 1 or slots[i] < 1 or slots[i] > SLOT_LAST or not is_finite(healths[i]) or healths[i] < 0.0 or healths[i] > _ct.max_health or not is_finite(protects[i]) or protects[i] < 0.0 or life_numbers[i] < 0:
 			return
 		next[ids[i]] = {"slot": slots[i], "name": names[i] if Tuning.name_ok(names[i]) else assigned_name("", slots[i])}
 	if not next.has(my_id) or not next.has(1):
@@ -674,7 +682,9 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 	for i in n:
 		health[ids[i]] = healths[i]
 		dead[ids[i]] = deads[i] != 0
-	for table in [health, dead, protect_left, last_killer, respawn_left]:
+		protect_left[ids[i]] = protects[i]
+		lives[ids[i]] = life_numbers[i]
+	for table in [health, dead, protect_left, last_killer, respawn_left, lives]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -699,36 +709,46 @@ func _send_state() -> void:
 	var yaw: float = _player.rotation.y
 	var pitch: float = _player.view_pitch() if _player.has_method("view_pitch") else 0.0
 	var vel: Vector3 = _player.velocity if "velocity" in _player else Vector3.ZERO
+	var life: int = lives.get(my_id, 0)
 	var connected := multiplayer.get_peers()
 	if state == State.HOSTING:
 		for id in players:
 			if id != 1 and connected.has(id):
-				_remote_state.rpc_id(id, 1, _seq, pos, yaw, pitch, vel)
+				_remote_state.rpc_id(id, 1, life, _seq, pos, yaw, pitch, vel)
 	elif connected.has(1):
-		_state.rpc_id(1, _seq, pos, yaw, pitch, vel)
+		_state.rpc_id(1, _seq, life, pos, yaw, pitch, vel)
 	sent += 1
 
 
-## A joiner's own movement, to the host.
+## A joiner's own movement, to the host. Untyped on purpose: a packet of the wrong types
+## is dropped here, never an engine error.
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
+func _state(seq: Variant, life: Variant, pos: Variant, yaw: Variant, pitch: Variant, vel: Variant) -> void:
 	if state != State.HOSTING:
+		return
+	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(pos) != TYPE_VECTOR3 or typeof(yaw) != TYPE_FLOAT or typeof(pitch) != TYPE_FLOAT or typeof(vel) != TYPE_VECTOR3:
 		return
 	var from := multiplayer.get_remote_sender_id()
 	if from == 1 or not players.has(from) or not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
+		return
+	# A dead player goes nowhere, and a position from a past life is a packet that was in
+	# flight when the respawn happened.
+	if combat != null and (not combat.alive(from) or life != lives.get(from, 0)):
 		return
 	received += 1
 	_apply_remote(from, seq, pos, yaw, pitch, vel)
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and id != from and connected.has(id):
-			_remote_state.rpc_id(id, from, seq, pos, yaw, pitch, vel)
+			_remote_state.rpc_id(id, from, life, seq, pos, yaw, pitch, vel)
 
 
 ## A player's movement, from the host.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
+func _remote_state(id: int, life: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
 	if state != State.JOINED or id == my_id or not players.has(id) or not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
+		return
+	if dead.get(id, false) or life != lives.get(id, 0):
 		return
 	received += 1
 	_apply_remote(id, seq, pos, yaw, pitch, vel)
@@ -781,10 +801,14 @@ func _on_fire_intent(origin: Vector3, direction: Vector3) -> void:
 		_fire.rpc_id(1, fire_seq, local_origin, local_dir)
 
 
-## A joiner's intent to fire, to the host.
+## A joiner's intent to fire, to the host. Untyped on purpose: a packet of the wrong types
+## is dropped and counted here, never an engine error.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire(seq: int, origin: Vector3, dir: Vector3) -> void:
+func _fire(seq: Variant, origin: Variant, dir: Variant) -> void:
 	if state != State.HOSTING or combat == null:
+		return
+	if typeof(seq) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
+		combat.validate(0, 0, Vector3.ZERO, Vector3.ZERO, Vector3.INF, _clock)  # counted: no such shot
 		return
 	_handle_fire(multiplayer.get_remote_sender_id(), seq, origin, dir)
 
@@ -813,10 +837,12 @@ func _handle_fire(shooter: int, seq: int, origin: Vector3, dir: Vector3) -> void
 		else:
 			victim_health = outcome["health"]
 			killed = outcome["killed"]
-	_mirror_from_combat()
+	# The death is told after the shot, so the mirror learns of it then: the avatar must
+	# play its derezz, not be hidden first by the health update.
 	_broadcast_shot(shooter, origin, ray["end"], hit, victim_health)
 	if killed:
 		_broadcast_death(hit, shooter, dir)
+	_mirror_from_combat()
 
 
 ## Where the host believes `id`'s eye is, in arena space: its own camera for itself, the
@@ -841,9 +867,9 @@ func _raycast(shooter: int, origin: Vector3, dir: Vector3) -> Dictionary:
 	var far := from + along * _weapon.fire_range
 	var query := PhysicsRayQueryParameters3D.create(from, far, _weapon.hit_mask | PLAYER_LAYER_MASK)
 	var exclude: Array[RID] = []
-	if shooter == 1:
-		exclude.append(_player.get_rid())
-	else:
+	if shooter == 1 or not combat.alive(1):
+		exclude.append(_player.get_rid())  # the shooter's own body, or the host's corpse
+	if shooter != 1:
 		var own = avatars.get(shooter)
 		if own != null and is_instance_valid(own):
 			exclude.append(own.hit_rid())
@@ -926,11 +952,12 @@ func _do_respawn(id: int) -> void:
 	var pos := _pick_spawn(id)
 	combat.respawn(id)
 	_mirror_from_combat()
-	_apply_respawn(id, pos, _ct.spawn_protection_s, combat.health_of(id))
+	var life: int = lives.get(id, 0) + 1
+	_apply_respawn(id, life, pos, _ct.spawn_protection_s, combat.health_of(id))
 	var connected := multiplayer.get_peers()
 	for peer in players:
 		if peer != 1 and connected.has(peer):
-			_respawn.rpc_id(peer, id, pos, _ct.spawn_protection_s, combat.health_of(id))
+			_respawn.rpc_id(peer, id, life, pos, _ct.spawn_protection_s, combat.health_of(id))
 
 
 ## The arena's spawn point farthest from the nearest living opponent, in arena space.
@@ -958,18 +985,20 @@ func _pick_spawn(id: int) -> Vector3:
 	return Combat.farthest_spawn(spawns, threats)
 
 
-## A player is back, from the host: where, how long safe, with what health.
+## A player is back, from the host: its new life number, where, how long safe, with what
+## health.
 @rpc("authority", "call_remote", "reliable")
-func _respawn(id: int, pos: Vector3, protect_s: float, new_health: float) -> void:
-	if state != State.JOINED or not players.has(id) or not pos.is_finite() or not is_finite(protect_s) or protect_s < 0.0 or not is_finite(new_health) or new_health <= 0.0 or new_health > _ct.max_health:
+func _respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float) -> void:
+	if state != State.JOINED or not players.has(id) or life < 0 or not pos.is_finite() or not is_finite(protect_s) or protect_s < 0.0 or not is_finite(new_health) or new_health <= 0.0 or new_health > _ct.max_health:
 		return
-	_apply_respawn(id, pos, protect_s, new_health)
+	_apply_respawn(id, life, pos, protect_s, new_health)
 
 
-func _apply_respawn(id: int, pos: Vector3, protect_s: float, new_health: float) -> void:
+func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float) -> void:
 	dead[id] = false
 	health[id] = new_health
 	protect_left[id] = protect_s
+	lives[id] = life
 	respawn_left.erase(id)
 	if id == my_id:
 		if _player != null and is_instance_valid(_player):
@@ -1033,11 +1062,11 @@ static func sane(pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> bool:
 	return absf(yaw) <= YAW_LAST and absf(pitch) <= PITCH_LAST and vel.length() <= SPEED_LAST
 
 
-## The name a player is shown under: the one it asked for when it is one the game can
-## show and not the placeholder, else "Daemon-<slot>". Never anything from the system.
-static func assigned_name(requested: String, slot: int) -> String:
-	if Tuning.name_ok(requested) and requested != PLACEHOLDER:
-		return requested
+## The name a player is shown under: "Daemon-<slot>", always. A requested name is read
+## and checked but never used for the name, so no joiner can call itself Daemon-1 or
+## borrow another player's name; the slot alone tells players apart. Never anything from
+## the system.
+static func assigned_name(_requested: String, slot: int) -> String:
 	return "%s%d" % [DAEMON, slot]
 
 

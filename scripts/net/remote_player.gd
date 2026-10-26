@@ -131,6 +131,7 @@ func _ready() -> void:
 	capsule.height = HIT_HEIGHT
 	_hit_shape = CollisionShape3D.new()
 	_hit_shape.shape = capsule
+	_hit_shape.disabled = true  # nothing to hit until the player's first position is known
 	_hit.add_child(_hit_shape)
 	add_child(_hit)
 	visible = false
@@ -148,6 +149,8 @@ func push_sample(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)
 	if not visible:
 		visible = true
 		_apply(pos, yaw, pitch)
+		if not dead:
+			_hit_shape.set_deferred("disabled", false)
 
 
 func _process(delta: float) -> void:

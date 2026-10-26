@@ -46,6 +46,7 @@ func _run() -> void:
 	await _solo_checks()
 	await _match_checks()
 	await _forgery_checks()
+	await _late_join_checks()
 	await _leave_checks()
 	await _layout_checks()
 	await _cleanup()
@@ -78,7 +79,8 @@ func _combat_tuning() -> Resource:
 
 
 ## A side of the game in its own branch: {branch, session, main, player, hud, combat_hud}.
-func _branch(name: String, offset: Vector3) -> Dictionary:
+## With `arena` false only the session is made (a joiner with nothing to show).
+func _branch(name: String, offset: Vector3, arena: bool = true, max_players: int = 2, display_name: String = "player") -> Dictionary:
 	var api := SceneMultiplayer.new()
 	var branch := Node3D.new()
 	branch.name = name
@@ -87,16 +89,21 @@ func _branch(name: String, offset: Vector3) -> Dictionary:
 	set_multiplayer(api, branch.get_path())
 	var session := Session.new()
 	session.name = Session.NODE_NAME
-	session.tuning = _net_tuning()
+	var net := _net_tuning()
+	net.max_players = max_players
+	net.display_name = display_name
+	session.tuning = net
 	session.combat_tuning = _combat_tuning()
 	branch.add_child(session)
+	_branches.append(branch)
+	if not arena:
+		return {"branch": branch, "session": session}
 	var main = MainScene.instantiate()
 	branch.add_child(main)
 	var out := {"branch": branch, "session": session, "main": main, "player": main.get_node("Player"), "hud": main.get_node("Hud"), "combat_hud": main.get_node("Hud").combat_hud()}
 	out["player"].assume_captured = true
 	out["player"].get("_rng").seed = 7
 	main.get_node("Hud").guide().focus_check = func(): return false
-	_branches.append(branch)
 	return out
 
 
@@ -230,7 +237,7 @@ func _source_checks() -> void:
 	var handle := _body(session, "_handle_fire")
 	_check("damage is applied in one place, the host's _handle_fire, after validate() and the host's own raycast; joiners never call it", session.count("damage_player(") == 1 and handle.contains("combat.validate(shooter, seq, origin, dir, eye, _clock) != \"\"") and handle.contains("_raycast(shooter, origin, dir)") and handle.contains("combat.damage_player(hit, shooter)") and handle.begins_with("\nfunc _handle_fire") and handle.contains("if state != State.HOSTING or combat == null"))
 	_check("the host's own shot takes the same path as a joiner's: _on_fire_intent hands it to _handle_fire, a joiner's intent arrives through the any_peer _fire RPC into _handle_fire", _body(session, "_on_fire_intent").contains("_handle_fire(1, fire_seq, local_origin, local_dir)") and _body(session, "_fire").contains("_handle_fire(multiplayer.get_remote_sender_id(), seq, origin, dir)") and session.count("_handle_fire(") == 3)
-	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire is the only any_peer one", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: int, origin: Vector3, dir: Vector3)') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
+	_check("results go out only from the host: _shot, _death and _respawn are authority RPCs; _fire, untyped and type-checked, is the only any_peer one besides _state", session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _fire(seq: Variant, origin: Variant, dir: Variant)') and _body(session, "_fire").contains("typeof(seq) != TYPE_INT or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _shot(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _death(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _respawn(') and session.count('"any_peer"') == 2)
 	var hud := _code("res://scripts/net/combat_hud.gd")
 	_check("the HUD shows only confirmed results: the hit marker and the flash come from shot_confirmed, the feed from player_died, never from the local cannon", hud.contains("s.shot_confirmed.connect(_on_shot)") and hud.contains("s.player_died.connect(_on_death)") and not hud.contains("shot_fired") and hud.count("confirm_hit()") == 1)
 	var names := _code("res://scripts/net/net_session.gd")
@@ -287,6 +294,20 @@ func _solo_checks() -> void:
 	await _fire(side["player"])
 	await _frames(2)
 	_check("solo: the combat line, feed, flash and banner stay hidden, and the cannon still derezzes a dummy in one shot", hud.line_text() == "" and hud.feed_text().is_empty() and hud.flash_left() == 0.0 and hud.banner_text() == "" and side["player"].shots_fired == 1 and side["player"].hits_landed == 1 and not dummy.is_hittable() and side["session"].fire_seq == 0)
+	var p = side["player"]
+	for i in 20:
+		p.drive_input(Vector2(0, -1))
+		await physics_frame
+	var running: float = p.horizontal_speed()
+	p.set_alive(false)
+	var stopped: float = p.horizontal_speed()
+	var at: Vector3 = p.position
+	for i in 10:
+		p.drive_input(Vector2(0, -1), true, true, true)
+		await physics_frame
+	var drift: float = Vector2(p.position.x - at.x, p.position.z - at.z).length()
+	p.set_alive(true)
+	_check("a derezzed body stops where it is: momentum gone at once, and no input moves, jumps, slides or fires it until it is alive again", running > 3.0 and stopped == 0.0 and drift < 0.01 and p.shots_fired == 1 and not p.is_sliding(), "running %.2f stopped %.2f drift %.3f" % [running, stopped, drift])
 	await _drop(side)
 
 
@@ -324,6 +345,16 @@ func _match_checks() -> void:
 	print("COMBAT death: host dead %s/%s, derezz effects in the joiner's arena %d, feed host %s joiner %s" % [hs.dead[1], cs.dead[1], _derezz_count(client), hhud.feed_text(), chud.feed_text()])
 	_check("four hits derezz the host: dead on both sides at 0 health, its player takes no input, its avatar on the joiner is hidden and the derezz effect plays there", hs.dead[1] and cs.dead[1] and hs.health[1] == 0.0 and cs.health[1] == 0.0 and not hp.alive and not hp.get("_viewmodel").visible and target.dead and not target.get("_body").visible and _derezz_count(client) == 1)
 	_check("the kill feed on both sides names the players in SIGKILL's words", hhud.feed_text() == PackedStringArray(["SIGKILL sent by Daemon-2 to Daemon-1"]) and chud.feed_text() == PackedStringArray(["SIGKILL sent by Daemon-2 to Daemon-1"]) and hhud.line_text().begins_with("DEREZZED by Daemon-2   respawn in") and hhud.banner_text().begins_with("[ DEREZZED by Daemon-2 ]"))
+	# A shot through the host's corpse goes on past it: here into the room, to the dummy.
+	var ends: Array = []
+	var end_hook := func(_s: int, _h: int, _o: Vector3, e: Vector3) -> void:
+		ends.append(e)
+	cs.shot_confirmed.connect(end_hook)
+	await _frames(SHOT_FRAMES)
+	_aim(cp, Vector3(1000.0, 1.65, -15.0))
+	await _shoot(cp, host, client)
+	cs.shot_confirmed.disconnect(end_hook)
+	_check("the dead host's body stops no shot: a ray through the corpse ends far beyond it", not ends.is_empty() and ends[-1].z < 0.0 and (ends[-1] - cp.position).length() > 15.0, "end %s" % (ends[-1] if not ends.is_empty() else Vector3.INF))
 	# The dead host cannot fire.
 	var seq_before: int = hs.combat.states[1]["last_seq"]
 	var shots_before: int = hp.shots_fired
@@ -336,7 +367,7 @@ func _match_checks() -> void:
 	var at: Vector3 = hp.position
 	var far: float = Vector2(at.x - cp.position.x, at.z - cp.position.z).length()
 	print("COMBAT respawn: host at %s, %.1f m from the joiner; protection %.2f s on the host, %.2f on the joiner" % [at, far, hs.protect_left.get(1, 0.0), cs.protect_left.get(1, 0.0)])
-	_check("after the delay the host respawns at a spawn point far from the joiner, alive with full health on both sides, protected, the avatar back", respawned and hp.alive and far > 25.0 and (at - Vector3(15, 0.95, -15)).length() < 0.6 or (at - Vector3(-15, 0.95, -15)).length() < 0.6 and hs.health[1] == 100.0 and cs.health[1] == 100.0 and hs.protect_left[1] > 0.0 and cs.protect_left[1] > 0.0 and target.visible and not target.dead and target.protected and hhud.line_text().begins_with("health 100   spawn protection") and hhud.banner_text() == "", "at %s far %.1f alive %s" % [at, far, hp.alive])
+	_check("after the delay the host respawns at a spawn point far from the joiner, alive with full health on both sides, protected, the avatar back", respawned and hp.alive and far > 25.0 and ((at - Vector3(15, 0.95, -15)).length() < 0.6 or (at - Vector3(-15, 0.95, -15)).length() < 0.6) and hs.health[1] == 100.0 and cs.health[1] == 100.0 and hs.protect_left[1] > 0.0 and cs.protect_left[1] > 0.0 and target.visible and not target.dead and target.protected and hhud.line_text().begins_with("health 100   spawn protection") and hhud.banner_text() == "", "at %s far %.1f alive %s" % [at, far, hp.alive])
 	# A shot during protection does nothing; one after it damages.
 	await _until(func(): return target.visible and (target.position - hp.position).length() < 0.6)
 	_aim(cp, target.global_position + Vector3(0, 0.3, 0))
@@ -438,11 +469,81 @@ func _forgery_checks() -> void:
 	var shots_before: int = cp.shots_fired
 	await _fire(cp)
 	await _frames(2)
-	_check("the host derezzes the joiner through the same path; a dead joiner's intent is dropped as dead, its own cannon stays silent and its screen says who got it", died and not cp.alive and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("dead", 0) == 1 and cp.shots_fired == shots_before and client["combat_hud"].line_text().begins_with("DEREZZED by Daemon-1") and client["combat_hud"].feed_text() == PackedStringArray(["SIGKILL sent by Daemon-1 to Daemon-2"]), "alive %s drops %s line '%s'" % [cp.alive, hs.combat.drops, client["combat_hud"].line_text()])
+	_check("the host derezzes the joiner through the same path, with the derezz effect on the host's own screen; a dead joiner's intent is dropped as dead, its own cannon stays silent and its screen says who got it", died and _derezz_count(host) == 1 and mine.dead and not cp.alive and hs.combat.dropped == dropped_before + 1 and hs.combat.drops.get("dead", 0) == 1 and cp.shots_fired == shots_before and client["combat_hud"].line_text().begins_with("DEREZZED by Daemon-1") and client["combat_hud"].feed_text() == PackedStringArray(["SIGKILL sent by Daemon-1 to Daemon-2"]), "alive %s derezz %d drops %s line '%s'" % [cp.alive, _derezz_count(host), hs.combat.drops, client["combat_hud"].line_text()])
+	# Wrong types from a joiner: dropped and counted, never an engine error.
+	dropped_before = hs.combat.dropped
+	cs._fire.rpc_id(1, "junk", Vector3.ZERO, up)
+	cs._fire.rpc_id(1, 30, "junk", up)
+	cs._fire.rpc_id(1, 30, eye, 7)
+	cs._state.rpc_id(1, "junk", 0, eye, 0.0, 0.0, Vector3.ZERO)
+	await _until(func(): return hs.combat.dropped >= dropped_before + 3, 2000)
+	_check("intents and positions of the wrong types are dropped as malformed, three counted, with nothing applied", hs.combat.dropped == dropped_before + 3 and hs.combat.drops.get("no_player", 0) >= 4, str(hs.combat.drops))
+	var corpse: Vector3 = mine.latest_position()
+	var old_life: int = cs.lives.get(cid, 0)
 	var back := await _until(func(): return not cs.dead.get(cid, true) and cp.alive, 3000)
-	_check("the joiner respawns too, far from the host, alive on its own screen", back and cp.alive and cs.health[cid] == 100.0 and Vector2(cp.position.x - hp.position.x, cp.position.z - hp.position.z).length() > 15.0)
+	await _frames(2)
+	_check("the joiner respawns too, far from the host, alive on its own screen, in a new life on both sides", back and cp.alive and cs.health[cid] == 100.0 and Vector2(cp.position.x - hp.position.x, cp.position.z - hp.position.z).length() > 15.0 and cs.lives[cid] == old_life + 1 and hs.lives[cid] == old_life + 1)
+	# A position from the past life, still in flight at the respawn, cannot drag the avatar back.
+	await _until(func(): return mine.visible and (mine.latest_position() - cp.position).length() < 0.1)
+	var stale_seq: int = mine.get("_last_seq") + 1
+	cs._state.rpc_id(1, stale_seq, old_life, corpse, 0.0, 0.0, Vector3.ZERO)
+	await _frames(4)
+	_check("a position from the past life is ignored: the respawned avatar stays at the spawn", (mine.latest_position() - cp.position).length() < 0.1 and (mine.latest_position() - corpse).length() > 10.0, "avatar %s corpse %s" % [mine.latest_position(), corpse])
 	await _until(func(): return client["combat_hud"].feed_text().is_empty(), 4000)
 	_check("the kill feed entry fades out after its time", client["combat_hud"].feed_text().is_empty() and client["combat_hud"].entries.is_empty())
+	await _drop(client)
+	await _drop(host)
+
+
+## A third session joining mid-match sees protection and lives; a joiner asking to be
+## Daemon-1 is Daemon-3; a newcomer with no position yet cannot be shot.
+func _late_join_checks() -> void:
+	var host := _branch("Host4", Vector3.ZERO, true, 3)
+	var client := _branch("Client4", CLIENT_OFFSET, true, 3)
+	await _frames(2)
+	await _join(host, client)
+	var hs: Session = host["session"]
+	var cs: Session = client["session"]
+	var cp = client["player"]
+	var hp = host["player"]
+	# A newcomer whose position nobody has yet: its avatar's hit volume is off.
+	var late := _branch("Late", Vector3.ZERO, false, 3, "Daemon-1")
+	await _frames(2)
+	late["session"].join("127.0.0.1:%d" % hs.listen_port())
+	await _until(func(): return late["session"].state == Session.State.JOINED and hs.players.size() == 3)
+	await _frames(2)
+	var lid: int = late["session"].my_id
+	var phantom: RemotePlayer = _avatar(host, lid)
+	var shape_off: bool = phantom != null and not phantom.visible and phantom.get("_hit_shape").disabled
+	hp.respawn_at(Vector3(0, 1.65, 4))
+	_aim(hp, Vector3(0, 0.5, 0))
+	await _fire(hp)
+	await _frames(SHOT_FRAMES)
+	_check("a newcomer with no position yet is named by its slot (Daemon-3, though it asked to be Daemon-1) and cannot be shot at the origin where its hidden avatar waits", hs.players[lid]["name"] == "Daemon-3" and late["session"].my_name() == "Daemon-3" and shape_off and hs.health[lid] == 100.0, "name %s shape off %s health %.0f" % [hs.players.get(lid, {}).get("name", "?"), shape_off, hs.health.get(lid, -1.0)])
+	await _drop(late)
+	# The host dies and respawns protected; a session joining then sees the protection and the life.
+	for i in 20:
+		cp.drive_input(Vector2(0, 1))
+		await physics_frame
+	hp.respawn_at(Vector3(0, 0.95, 6))
+	await _frames(3)
+	var target: RemotePlayer = _avatar(client, 1)
+	await _until(func(): return target.visible and (target.position - hp.position).length() < 0.3)
+	for i in 4:
+		_aim(cp, target.global_position + Vector3(0, 0.3, 0))
+		await _fire(cp)
+		await _frames(SHOT_FRAMES)
+	await _until(func(): return hs.dead.get(1, false), 3000)
+	await _until(func(): return not hs.dead.get(1, true), 3000)
+	var late2 := _branch("Late2", Vector3.ZERO, false, 3)
+	await _frames(1)
+	late2["session"].join("127.0.0.1:%d" % hs.listen_port())
+	await _until(func(): return late2["session"].state == Session.State.JOINED and late2["session"].players.size() == 3)
+	await _frames(1)
+	var ls: Session = late2["session"]
+	print("COMBAT late join: host protection %.2f s on the host, %.2f on the newcomer; host life %d/%d" % [hs.protect_left.get(1, 0.0), ls.protect_left.get(1, 0.0), hs.lives.get(1, -1), ls.lives.get(1, -1)])
+	_check("a session joining while the host is freshly respawned sees the protection left and the host's life number", ls.protect_left.get(1, 0.0) > 0.0 and absf(ls.protect_left[1] - hs.protect_left[1]) < 0.1 and ls.lives.get(1, -1) == 1 and hs.lives[1] == 1 and ls.health[1] == 100.0 and not ls.dead[1])
+	await _drop(late2)
 	await _drop(client)
 	await _drop(host)
 

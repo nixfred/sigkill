@@ -212,7 +212,7 @@ func _source_checks() -> void:
 	var session := _code("res://scripts/net/net_session.gd")
 	_check("its only sockets are the one ENet peer a host or a joiner makes and the port probes that bind and close at once", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 2 and session.count("probe.bind(") == 2 and session.count("probe.close()") == 2 and session.count("create_server(") == 1 and session.count("create_client(") == 1 and all.count("create_server(") == 1 and all.count("create_client(") == 1)
 	_check("Godot's relay stays off and objects are never decoded: nothing moves between players without the host's code", session.contains("m.server_relay = false") and session.contains("m.allow_object_decoding = false"))
-	_check("seven RPCs, all with numbers, names and ids only: the roster from the host, state to the host, state from the host, and the combat four (C14)", session.count("@rpc(") == 7 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray)') and session.contains('@rpc("any_peer", "call_remote", "unreliable_ordered")\nfunc _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)') and session.contains('@rpc("authority", "call_remote", "unreliable_ordered")\nfunc _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)'))
+	_check("seven RPCs, all with numbers, names and ids only: the roster from the host, state to the host, state from the host, and the combat four (C14)", session.count("@rpc(") == 7 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray, protects: PackedFloat32Array, life_numbers: PackedInt32Array)') and session.contains('@rpc("any_peer", "call_remote", "unreliable_ordered")\nfunc _state(seq: Variant, life: Variant, pos: Variant, yaw: Variant, pitch: Variant, vel: Variant)') and session.contains('@rpc("authority", "call_remote", "unreliable_ordered")\nfunc _remote_state(id: int, life: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)'))
 	_check("what is sent about a player is its position, body yaw, view pitch and velocity, read from the player node and nothing else", session.contains("var pos: Vector3 = _player.position") and session.contains("var yaw: float = _player.rotation.y") and session.contains("_player.view_pitch()") and session.contains("_player.velocity") and session.count(".rpc_id(") == 8 and session.count(".rpc(") == 0)
 	var keys := FileAccess.get_file_as_string("res://scripts/controls.gd")
 	var users := PackedStringArray()
@@ -258,7 +258,7 @@ func _helper_checks() -> void:
 	var ctrl_name := Session.hello_bytes(1, "x")
 	ctrl_name.set(5, 0x07)
 	_check("junk, short, wrong-magic and wrong-length packets parse to nothing; an ok reply needs a slot and a shown name; a name with a control byte becomes the placeholder", junk.is_empty() and Session.parse_reply(ok_no_slot).is_empty() and Session.parse_reply(ok_bad_name).is_empty() and Session.parse_hello(ctrl_name) == {"version": 1, "name": "player"}, ", ".join(junk))
-	_check("names: a shown name is kept, the placeholder or a name the game cannot show becomes Daemon-<slot>", Session.assigned_name("spike", 2) == "spike" and Session.assigned_name("player", 2) == "Daemon-2" and Session.assigned_name("", 1) == "Daemon-1" and Session.assigned_name("x".repeat(40), 3) == "Daemon-3" and Session.assigned_name("a" + char(0xE9) + "b", 2) == "Daemon-2")
+	_check("names: every player is Daemon-<slot>, whatever it asked for: a shown name, the placeholder, Daemon-1 or one the game cannot show", Session.assigned_name("spike", 2) == "Daemon-2" and Session.assigned_name("Daemon-1", 2) == "Daemon-2" and Session.assigned_name("player", 2) == "Daemon-2" and Session.assigned_name("", 1) == "Daemon-1" and Session.assigned_name("x".repeat(40), 3) == "Daemon-3" and Session.assigned_name("a" + char(0xE9) + "b", 2) == "Daemon-2")
 	_check("sequence numbers: 1 up to 2^31 - 1 count, 0, negatives and 2^63 - 1 do not; a first sample sets the baseline whatever its number, then only newer and at most 10000 ahead", Session.seq_sane(1) and Session.seq_sane(2147483646) and not Session.seq_sane(0) and not Session.seq_sane(-1) and not Session.seq_sane(2147483647) and not Session.seq_sane(9223372036854775807) and RemotePlayer.seq_ok(15000, -1) and RemotePlayer.seq_ok(5, 4) and not RemotePlayer.seq_ok(4, 4) and not RemotePlayer.seq_ok(20000, 4) and not RemotePlayer.seq_ok(9223372036854775807, -1) and not RemotePlayer.seq_ok(9223372036854775807, 5))
 	var v := Vector3(1, 2, 3)
 	_check("state packets with NaN, infinity, a position beyond the world, a yaw past a full turn, a pitch past straight up or an impossible speed are refused", Session.sane(v, 0.5, -0.5, v) and Session.sane(v, -TAU, PI * 0.5, v) and not Session.sane(Vector3(NAN, 0, 0), 0.0, 0.0, v) and not Session.sane(v, INF, 0.0, v) and not Session.sane(v, 1e300, 0.0, v) and not Session.sane(v, 7.0, 0.0, v) and not Session.sane(v, 0.0, 2.0, v) and not Session.sane(Vector3(20000, 0, 0), 0.0, 0.0, v) and not Session.sane(v, 0.0, 0.0, Vector3(500, 0, 0)))
@@ -392,7 +392,7 @@ func _session_checks() -> void:
 		var at: Vector3 = back.position
 		var yaw: float = back.rotation.y
 		var args: Array = item[1]
-		cs._state.rpc_id(1, last_seq + 1, args[0], args[1], args[2], args[3])
+		cs._state.rpc_id(1, last_seq + 1, 0, args[0], args[1], args[2], args[3])
 		var moved := false
 		for i in delay_frames + FRAMES_PER_SEND:
 			await physics_frame
@@ -407,9 +407,9 @@ func _session_checks() -> void:
 	_check("and the real stream flows again once the joiner has a player to send", flowing >= 3 and (back.position - cp.position).length() < 0.05, "%d packets, %.3f m off" % [flowing, (back.position - cp.position).length()])
 	# One sane-looking packet with a giant sequence number must not put the real stream behind it.
 	var last: int = back.get("_last_seq")
-	cs._state.rpc_id(1, last + 5000000, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
-	cs._state.rpc_id(1, 9223372036854775807, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
-	cs._state.rpc_id(1, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, last + 5000000, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, 9223372036854775807, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, 0, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
 	await _frames(delay_frames + FRAMES_PER_SEND)
 	var not_jumped: bool = (back.position - cp.position).length() < 0.05
 	for i in 30:

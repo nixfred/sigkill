@@ -165,6 +165,12 @@ func _look(relative: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	if not _scripted_input:
 		_read_player_input()
+	if not alive:
+		# Derezzed: neither the keyboard nor a test's scripted input moves the body.
+		_move_input = Vector2.ZERO
+		_jump_pressed = false
+		_slide_pressed = false
+		_fire_pressed = false
 	_step_movement(delta)
 	_step_camera(delta)
 	_step_weapon(delta)
@@ -357,7 +363,8 @@ func respawn_at(pos: Vector3) -> void:
 	_fire_queued = false
 
 
-## Alive or derezzed (C14). Derezzed: no input counts and the cannon is out of view.
+## Alive or derezzed (C14). Derezzed: no input counts, the body stops where it is (a slide
+## ends, momentum goes; it still falls if in the air) and the cannon is out of view.
 func set_alive(on: bool) -> void:
 	alive = on
 	if _viewmodel != null:
@@ -368,6 +375,9 @@ func set_alive(on: bool) -> void:
 		_slide_pressed = false
 		_fire_pressed = false
 		_fire_queued = false
+		velocity = Vector3(0.0, minf(velocity.y, 0.0), 0.0)
+		_sliding = false
+		_air_speed_cap = 0.0
 
 
 ## Where the eyes are, in world space, right now.
