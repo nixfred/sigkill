@@ -13,6 +13,9 @@
 // leading glyph with a fading tail of tail_length glyphs, then a dark gap, repeating down
 // the column; it steps one cell at a time like the film. Each glyph is a 4 by 6 bit grid,
 // mirrored left to right so it reads like a character, re-rolled flicker_rate times a second.
+// Every hash is an integer hash (PCG) of small integers: cell coordinates, a salt and a
+// flicker tick wrapped at 1024, so nothing in it grows with TIME. A float hash loses its
+// fractional bits as its inputs grow and would have switched every glyph off within an hour.
 //
 // Uniform defaults mirror resources/code_rain.tres and scripts/palette.gd so the material
 // previews in the editor; the driver sets every value at runtime.
@@ -24,8 +27,17 @@ render_mode specular_disabled;
 // Size of the enemy array. CodeRainTuning.MAX_ENEMIES mirrors it.
 const int MAX_ENEMIES = 8;
 // Glyph bit grid: the cell is cut 6 across and 8 down, with a one-bit margin all round.
-const vec2 GLYPH_GRID = vec2(6.0, 8.0);
+const int GLYPH_COLS = 6;
+const int GLYPH_ROWS = 8;
 const float BIT_ON = 0.45;
+// Glyph shapes re-roll on a tick that wraps here, so the hash inputs stay small forever.
+const float TICK_WRAP = 1024.0;
+// Salts that keep each column roll apart.
+const int SALT_STREAM = 1;
+const int SALT_SPEED = 2;
+const int SALT_GAP = 3;
+const int SALT_PHASE = 4;
+const int SALT_FLICKER = 5;
 
 uniform vec4 enemies[MAX_ENEMIES];
 uniform int enemy_count = 0;
@@ -51,14 +63,17 @@ void vertex() {
 	world_normal = mat3(MODEL_MATRIX) * NORMAL;
 }
 
-float hash11(float n) {
-	return fract(sin(n * 127.1 + 311.7) * 43758.5453);
+// PCG integer hash. tests/code_rain_test.gd mirrors pcg() and hash3() to check their spread.
+uint pcg(uint v) {
+	uint state = v * 747796405u + 2891336453u;
+	uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
 }
 
-float hash21(vec2 p) {
-	p = fract(p * vec2(123.34, 456.21));
-	p += dot(p, p + 45.32);
-	return fract(p.x * p.y);
+// Hash of three integers to 0 to 1, with 24 bits of spread whatever their size.
+float hash3(int a, int b, int c) {
+	uint h = pcg(uint(a) + pcg(uint(b) + pcg(uint(c))));
+	return float(h >> 8u) * (1.0 / 16777216.0);
 }
 
 // How much rain this point gets, 0 to 1. An enemy's share fades with distance over
@@ -88,40 +103,42 @@ vec2 surface_uv() {
 	return vec2(across, world_pos.y);
 }
 
-// One glyph, 1 where a bit is lit. cell is the position inside the cell, 0 to 1 each way.
-float glyph(vec2 cell, float seed) {
-	vec2 g = floor(cell * GLYPH_GRID);
-	if (g.x < 1.0 || g.x > GLYPH_GRID.x - 2.0 || g.y < 1.0 || g.y > GLYPH_GRID.y - 2.0) {
+// One glyph, 1 where a bit is lit. cell is the position inside the cell, 0 to 1 each way;
+// column, row and tick pick the shape.
+float glyph(vec2 cell, int column, int row, int tick) {
+	ivec2 g = ivec2(floor(cell * vec2(float(GLYPH_COLS), float(GLYPH_ROWS))));
+	if (g.x < 1 || g.x > GLYPH_COLS - 2 || g.y < 1 || g.y > GLYPH_ROWS - 2) {
 		return 0.0;
 	}
-	float mirrored = min(g.x - 1.0, GLYPH_GRID.x - 2.0 - g.x);
-	return step(BIT_ON, hash21(vec2(mirrored, g.y) + seed * 7.31));
+	int mirrored = min(g.x - 1, GLYPH_COLS - 2 - g.x);
+	return step(BIT_ON, hash3(column, row, mirrored + GLYPH_ROWS * g.y + GLYPH_ROWS * GLYPH_ROWS * tick));
 }
 
 // Rain colour at this point before any intensity is applied.
 vec3 rain() {
 	vec2 uv = surface_uv() / glyph_size;
-	float column = floor(uv.x);
-	if (hash11(column) > column_density) {
+	int column = int(floor(uv.x));
+	if (hash3(column, SALT_STREAM, 0) > column_density) {
 		return vec3(0.0);
 	}
-	float row = floor(uv.y);
-	float speed = mix(fall_speed_min, fall_speed_max, hash11(column + 31.7));
-	float tail = floor(tail_length);
+	int row = int(floor(uv.y));
+	float speed = mix(fall_speed_min, fall_speed_max, hash3(column, SALT_SPEED, 0));
+	int tail = int(floor(tail_length));
 	// Head, tail, then a dark gap of half a tail to a full tail, repeating down the column.
-	float cycle = tail + floor(tail * (0.5 + hash11(column + 57.3)));
-	float step_count = floor(TIME * speed + hash11(column + 91.1) * cycle);
-	// 0 at the leading glyph, counting up the tail behind it.
-	float k = mod(row + step_count, cycle);
+	int cycle = tail + int(floor(float(tail) * (0.5 + hash3(column, SALT_GAP, 0))));
+	int step_count = int(floor(TIME * speed + hash3(column, SALT_PHASE, 0) * float(cycle)));
+	// 0 at the leading glyph, counting up the tail behind it. Float mod: it is defined for a
+	// negative row, and these values are small enough to be exact.
+	int k = int(mod(float(row + step_count), float(cycle)));
 	if (k >= tail) {
 		return vec3(0.0);
 	}
-	float seed = hash21(vec2(column, row)) * 97.0 + floor(TIME * flicker_rate + hash21(vec2(row, column)));
-	float bits = glyph(fract(uv), seed);
-	if (k < 1.0) {
+	int tick = int(mod(floor(TIME * flicker_rate + hash3(column, SALT_FLICKER, row) * 8.0), TICK_WRAP));
+	float bits = glyph(fract(uv), column, row, tick);
+	if (k == 0) {
 		return head_color.rgb * bits;
 	}
-	float fade = 1.0 - k / tail;
+	float fade = 1.0 - float(k) / float(tail);
 	return tail_color.rgb * (fade * fade * bits);
 }
 

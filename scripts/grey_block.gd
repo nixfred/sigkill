@@ -6,6 +6,8 @@ extends StaticBody3D
 const Palette = preload("res://scripts/palette.gd")
 ## Blocks that carry the code rain shader join this group for scripts/code_rain_driver.gd.
 const RAIN_GROUP := &"code_rain_surfaces"
+## The driver's own group: told to collect again whenever a block's material is rebuilt.
+const RAIN_DRIVER_GROUP := &"code_rain_driver"
 
 @export var size: Vector3 = Vector3(4.0, 3.0, 0.4):
 	set(value):
@@ -23,10 +25,7 @@ var _shape_node: CollisionShape3D
 
 func _enter_tree() -> void:
 	# Joined here, before the tree's node_added signal fires, so the rain driver sees it.
-	if kind != Palette.Surface.FLOOR:
-		add_to_group(RAIN_GROUP)
-	elif is_in_group(RAIN_GROUP):
-		remove_from_group(RAIN_GROUP)
+	_update_rain_group()
 
 
 func _ready() -> void:
@@ -54,3 +53,14 @@ func _refresh() -> void:
 	var shape := BoxShape3D.new()
 	shape.size = size
 	_shape_node.shape = shape
+	# A new material: the rain driver holds the old one, so it has to collect again.
+	_update_rain_group()
+	if is_inside_tree() and not Engine.is_editor_hint():
+		get_tree().call_group(RAIN_DRIVER_GROUP, "invalidate")
+
+
+func _update_rain_group() -> void:
+	if kind != Palette.Surface.FLOOR:
+		add_to_group(RAIN_GROUP)
+	elif is_in_group(RAIN_GROUP):
+		remove_from_group(RAIN_GROUP)

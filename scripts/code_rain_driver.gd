@@ -12,8 +12,9 @@ extends Node
 ## array holds, the nearest ones to the viewer are the ones sampled.
 ##
 ## Cost: runs in _physics_process, so at the fixed physics rate. The lists of blocks and
-## enemies are collected only when a block or target enters or leaves the tree. A tick
-## does no allocation: the slot arrays are preallocated and alternate, and nothing is
+## enemies are collected only when a block or target enters or leaves the tree, or a block
+## rebuilds its material; that collection allocates and uploads once. Every other tick
+## allocates nothing: the slot arrays are preallocated and alternate, and nothing is
 ## uploaded when no slot changed, so a settled arena costs a few comparisons a tick.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -23,6 +24,8 @@ const DEFAULT_TUNING_PATH := "res://resources/code_rain.tres"
 const SURFACE_GROUP := &"code_rain_surfaces"
 ## Target dummies, the enemies the walls react to.
 const TARGET_GROUP := &"targets"
+## The driver's own group. scripts/grey_block.gd calls invalidate() on it through this.
+const DRIVER_GROUP := &"code_rain_driver"
 ## Tuning values pushed into every surface material as they are.
 const TUNING_UNIFORMS := [
 	"falloff_radius", "min_intensity", "max_intensity", "column_density", "glyph_size",
@@ -65,6 +68,7 @@ func _ready() -> void:
 	_next.resize(Tuning.MAX_ENEMIES)
 	_chosen.resize(Tuning.MAX_ENEMIES)
 	_chosen_distance.resize(Tuning.MAX_ENEMIES)
+	add_to_group(DRIVER_GROUP)
 	var tree := get_tree()
 	tree.node_added.connect(_on_node_changed)
 	tree.node_removed.connect(_on_node_changed)
@@ -117,6 +121,12 @@ func upload_count() -> int:
 	return _uploads
 
 
+## Collect the blocks and targets again on the next tick. Blocks call it when their
+## material is rebuilt, so the driver never keeps feeding a material nothing shows.
+func invalidate() -> void:
+	_dirty = true
+
+
 func _on_node_changed(node: Node) -> void:
 	if node.is_in_group(TARGET_GROUP) or node.is_in_group(SURFACE_GROUP):
 		_dirty = true
@@ -133,7 +143,9 @@ func _physics_process(delta: float) -> void:
 			var rate: float = _t.fade_in_rate if want > w else _t.fade_out_rate
 			_weights[i] = move_toward(w, want, rate * delta)
 	# Sample the nearest targets to the viewer among those with any rain left.
-	var origin := viewer.global_position if viewer != null else Vector3.ZERO
+	var origin := Vector3.ZERO
+	if is_instance_valid(viewer) and viewer.is_inside_tree():
+		origin = viewer.global_position
 	var cap: int = _t.max_enemies_sampled
 	var count := 0
 	for i in _targets.size():

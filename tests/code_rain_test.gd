@@ -12,7 +12,9 @@ extends SceneTree
 ## and the nearest to the player win; a settled arena uploads nothing.
 ## Read-only: nothing outside this process is touched, and the headless renderer draws
 ## nothing. The shader's own pixels cannot be read back headless; the driver's intensity_at()
-## mirrors the shader's proximity() and this test holds the CPU side to the same numbers.
+## mirrors the shader's proximity() and this test holds the CPU side to the same numbers,
+## and _hash3() below mirrors the shader's integer glyph hash to show its spread does not
+## depend on the size of its inputs.
 
 const Palette = preload("res://scripts/palette.gd")
 const Dummy = preload("res://scripts/target_dummy.gd")
@@ -32,6 +34,11 @@ const RING_COUNT := 12  # extra dummies around the player for the cap check
 const RING_START := 2.0  # metres from the player to the first ring dummy
 const RING_STEP := 0.3
 const WALL_TOUCH_MIN := 0.98  # share of the maximum a wall touched by an enemy must show
+const BIT_ON := 0.45  # the shader's threshold for a lit glyph bit
+const TICK_WRAP := 1024  # the shader wraps its flicker tick here
+const HASH_CELLS := 60  # columns and rows sampled each side of the origin
+const HASH_SPREAD_TOLERANCE := 0.03
+const MASK32 := 0xFFFFFFFF
 
 var _fails := 0
 var _frame := 0
@@ -60,6 +67,7 @@ func _run() -> void:
 	await _fade_in_checks()
 	await _distance_checks()
 	await _settled_checks()
+	await _rebuild_checks()
 	await _derezz_checks()
 	await _respawn_checks()
 	await _cap_checks()
@@ -110,7 +118,51 @@ func _missing_tres_keys(script_path: String, tres_path: String) -> PackedStringA
 	return missing
 
 
+## Mirror of pcg() in shaders/code_rain.gdshader, on 32-bit unsigned arithmetic.
+static func _pcg(v: int) -> int:
+	v &= MASK32
+	var state := (v * 747796405 + 2891336453) & MASK32
+	var word := ((((state >> ((state >> 28) + 4)) ^ state) & MASK32) * 277803737) & MASK32
+	return ((word >> 22) ^ word) & MASK32
+
+
+## Mirror of hash3() in shaders/code_rain.gdshader: three integers to 0 to 1.
+static func _hash3(a: int, b: int, c: int) -> float:
+	var h := _pcg((a & MASK32) + _pcg((b & MASK32) + _pcg(c & MASK32)))
+	return float(h >> 8) / 16777216.0
+
+
+## Share of lit glyph bits over a block of cells at one flicker tick, as the shader rolls them.
+static func _lit_share(tick: int) -> float:
+	var lit := 0
+	var total := 0
+	for column in range(-HASH_CELLS, HASH_CELLS):
+		for row in range(-HASH_CELLS, HASH_CELLS):
+			for bit in 12:  # the 2 mirrored columns by 6 rows of one glyph
+				total += 1
+				if _hash3(column, row, (bit % 2) + 8 * (1 + bit / 2) + 64 * tick) >= BIT_ON:
+					lit += 1
+	return float(lit) / float(total)
+
+
+func _hash_checks() -> void:
+	var first := _lit_share(0)
+	var last := _lit_share(TICK_WRAP - 1)
+	var middle := _lit_share(TICK_WRAP / 2)
+	var expected := 1.0 - BIT_ON
+	var streams := 0
+	for column in range(-1000, 1000):
+		if _hash3(column, 1, 0) <= 0.6:
+			streams += 1
+	var stream_share := float(streams) / 2000.0
+	print("CODE RAIN hash: lit glyph bits %.4f at tick 0, %.4f at tick %d, %.4f at the last tick %d (threshold leaves %.2f); %.4f of 2000 columns carry a stream at density 0.6" % [first, middle, TICK_WRAP / 2, last, TICK_WRAP - 1, expected, stream_share])
+	_check("the glyph hash keeps its spread at the last flicker tick as at the first", absf(first - expected) < HASH_SPREAD_TOLERANCE and absf(middle - expected) < HASH_SPREAD_TOLERANCE and absf(last - expected) < HASH_SPREAD_TOLERANCE)
+	_check("the column hash carries about the tuned share of streams", absf(stream_share - 0.6) < HASH_SPREAD_TOLERANCE)
+	_check("the hash tells neighbouring cells apart", _hash3(3, 4, 5) != _hash3(4, 3, 5) and _hash3(3, 4, 5) != _hash3(3, 4, 6) and _hash3(-3, 4, 5) != _hash3(3, 4, 5))
+
+
 func _static_checks() -> void:
+	_hash_checks()
 	var rain_shader: Shader = load(RAIN_SHADER)
 	var rain_names := _uniform_names(rain_shader)
 	var missing := PackedStringArray()
@@ -216,6 +268,27 @@ func _wiring_checks() -> void:
 			if mat.get_shader_parameter(field) != _t.get(field):
 				off.append("%s.%s" % [block.name, field])
 	_check("every surface material carries every tuning value", off.is_empty(), ", ".join(off))
+
+
+## A block rebuilt at runtime gets a new material; the driver must find it and feed it.
+func _rebuild_checks() -> void:
+	var wall = _main.get_node("Arena/WallN")
+	var old_material: ShaderMaterial = wall.surface_material()
+	var old_count: int = _rain.surface_count()
+	wall.size = wall.size + Vector3(0.0, 0.5, 0.0)
+	await _step()
+	var new_material: ShaderMaterial = wall.surface_material()
+	_check("a wall resized at runtime gets a fresh material that the driver finds and feeds", new_material != old_material and new_material.get_shader_parameter("falloff_radius") == _t.falloff_radius and new_material.get_shader_parameter("enemy_count") == _rain.slot_count() and new_material.get_shader_parameter("enemies") == _rain.slots() and _rain.surface_count() == old_count, "surfaces %d, enemy_count %s" % [_rain.surface_count(), str(new_material.get_shader_parameter("enemy_count"))])
+	wall.size = wall.size - Vector3(0.0, 0.5, 0.0)
+	await _step()
+	var crate = _main.get_node("Arena/CrateA")
+	crate.kind = Palette.Surface.FLOOR
+	await _step()
+	var dropped: int = _rain.surface_count()
+	var grouped_as_floor: bool = crate.is_in_group(Driver.SURFACE_GROUP)
+	crate.kind = Palette.Surface.CRATE
+	await _step()
+	_check("a block turned into a floor leaves the rain group and the driver, and comes back when turned back", dropped == old_count - 1 and not grouped_as_floor and crate.is_in_group(Driver.SURFACE_GROUP) and _rain.surface_count() == old_count and crate.surface_material().get_shader_parameter("enemy_count") == _rain.slot_count(), "%d while a floor (in the group: %s), %d after" % [dropped, grouped_as_floor, _rain.surface_count()])
 
 
 func _fade_in_checks() -> void:
