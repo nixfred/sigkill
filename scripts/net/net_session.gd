@@ -105,6 +105,9 @@ const ROOM_BUSY := "the room service is busy: try again in a moment"
 const ROOM_BAD_REPLY := "the room service answered in a way this version does not understand"
 const ROOM_NO_CODE := "no room code (%s): LAN join by address still works"
 const ROOM_ALL_TAKEN := "every code drawn was taken"
+## Until relay hosting is decided (docs/RELAY.md), a room code may lead only to this machine,
+## the LAN or a tailnet: never to a public address a rendezvous names.
+const ROOM_NOT_LOCAL := "that room is outside your LAN or tailnet; online rooms aren't live yet"
 
 enum State { OFF, HOSTING, RESOLVING, CONNECTING, JOINED, FAILED, ROOM }
 enum Verdict { OK, VERSION, FULL }
@@ -207,6 +210,9 @@ var _room_attempts := 0
 var _room_port := 0
 var _room_left_ms := 0.0
 var _launch_checked := false
+## A --join taken before this node was ready (the arena makes the session a frame late):
+## the parsed result, applied in _ready.
+var _launch_pending := {}
 var _weapon: WeaponTuningScript
 ## The host's clock for the fire rate, in seconds of game time.
 var _clock := 0.0
@@ -247,6 +253,10 @@ func _ready() -> void:
 	_ct = usable_combat_tuning(combat_tuning)
 	_rt = usable_room_tuning(room_tuning)
 	_rv = rendezvous if rendezvous != null else rendezvous_for(_rt)
+	if not _launch_pending.is_empty():
+		var pending := _launch_pending
+		_launch_pending = {}
+		_apply_launch(pending)
 	var shipped_weapon = load(WEAPON_PATH)
 	_weapon = shipped_weapon if shipped_weapon is WeaponTuningScript and shipped_weapon.problems().is_empty() else WeaponTuningScript.new()
 	var m := multiplayer as SceneMultiplayer
@@ -426,11 +436,18 @@ func take_launch_join(args: PackedStringArray) -> bool:
 	var parsed := RoomCode.parse_args(args)
 	if parsed.is_empty():
 		return false
+	if _rv == null:
+		_launch_pending = parsed  # not ready yet: _ready applies it
+	else:
+		_apply_launch(parsed)
+	return true
+
+
+func _apply_launch(parsed: Dictionary) -> void:
 	if parsed.has("error"):
 		_fail(parsed["error"])
 	else:
 		join_room(parsed["code"])
-	return true
 
 
 ## Connects to what the player typed: "ip", "ip:port", "host", "host:port" or "[v6]:port".
@@ -612,15 +629,21 @@ func _tick_room_code(delta: float) -> void:
 			_room_left_ms -= delta * 1000.0
 			if _room_left_ms <= 0.0:
 				_rv.cancel()
+				_rv.close(_room_wanted, protocol, _room_port)  # it may have been taken in all the same
 				_room_request = ""
 				notice = ROOM_NO_CODE % ROOM_UNREACHABLE
 				changed.emit()
 			return
 		_room_request = ""
 		if done.get("ok", false):
+			var given = done.get("expires_in_s", 0)
+			if not (given is int) or given <= 0:
+				_rv.close(_room_wanted, protocol, _room_port)  # held for no time: release it
+				notice = ROOM_NO_CODE % ROOM_BAD_REPLY
+				changed.emit()
+				return
 			room_code = _room_wanted
-			var given := int(done.get("expires_in_s", 0))
-			room_expires_s = float(mini(given, _rt.code_ttl_s) if given > 0 else _rt.code_ttl_s)
+			room_expires_s = float(mini(given, _rt.code_ttl_s))
 			notice = ""
 		elif done.get("error", "") == "taken" and _room_attempts < _rt.register_attempts:
 			_register_room()  # someone holds that one: draw another
@@ -657,6 +680,9 @@ func _tick_room_lookup(delta: float) -> void:
 	if not (address is String) or not address.is_valid_ip_address() or not (port is int) or port < 1 or port > PORT_LAST:
 		_fail(ROOM_BAD_REPLY)
 		return
+	if not local_address(address):
+		_fail(ROOM_NOT_LOCAL)
+		return
 	state = State.OFF  # from here it is the C13 join, to the address the rendezvous gave
 	if join(("[%s]:%d" if address.contains(":") else "%s:%d") % [address, port]):
 		address_text = "room " + code
@@ -682,10 +708,15 @@ func _room_error_text(done: Dictionary) -> String:
 	return ROOM_UNREACHABLE
 
 
-## Stops any rendezvous request and releases this room's code.
+## Stops any rendezvous request and releases this room's code, and a code whose
+## registration was still unanswered (it may have been taken all the same).
 func _end_room() -> void:
+	if _rv == null:
+		return
 	if _room_request != "":
 		_rv.cancel()
+		if _room_request == "register":
+			_rv.close(_room_wanted, protocol, _room_port)
 	if room_code != "" and _rv.is_live():
 		_rv.close(room_code, protocol, _room_port)
 	_room_request = ""
@@ -1342,6 +1373,30 @@ func _drop_avatar(id: int) -> void:
 
 
 # --- Pure helpers, checked on their own by the test. ---
+
+## True for an address on this machine, a private LAN or a tailnet: IPv4 loopback, 10/8,
+## 172.16/12, 192.168/16, the 100.64/10 shared range tailnets use, link-local 169.254/16;
+## IPv6 loopback, unique-local fc00::/7 and link-local fe80::/10. A rendezvous may only send
+## a joiner to one of these until relay hosting is decided.
+static func local_address(ip: String) -> bool:
+	if not ip.is_valid_ip_address():
+		return false
+	if ip.contains(":"):
+		var low := ip.to_lower()
+		if low == "::1":
+			return true
+		var head := low.split(":")[0]
+		if head.length() < 3:
+			return false
+		var first := head.hex_to_int() if head.is_valid_hex_number() else -1
+		if head.length() == 4 and first >= 0:
+			return (first & 0xFE00) == 0xFC00 or (first & 0xFFC0) == 0xFE80
+		return false
+	var o := ip.split(".")
+	var a := int(o[0])
+	var b := int(o[1])
+	return a == 127 or a == 10 or (a == 172 and b >= 16 and b <= 31) or (a == 192 and b == 168) or (a == 100 and b >= 64 and b <= 127) or (a == 169 and b == 254)
+
 
 ## True for a sequence number a sender could have counted to.
 static func seq_sane(seq: int) -> bool:

@@ -75,6 +75,12 @@ class Server:
 	var silent := false
 	## The next this many registrations are answered "taken".
 	var force_taken := 0
+	## Requests are carried out but never answered (a lost reply).
+	var mute := false
+	## A non-negative value replaces the seconds left in every ok reply.
+	var left_override := -1
+	## Replaces the address in every ok resolve reply, when set.
+	var address_override := ""
 	var rooms := {}
 	## Every request: {op, code, protocol, port, from, size}.
 	var log: Array = []
@@ -100,7 +106,7 @@ class Server:
 			if silent:
 				continue
 			var reply := _answer(req, from_ip, from_port)
-			if reply.is_empty():
+			if reply.is_empty() or mute:
 				continue
 			_udp.set_dest_address(from_ip, from_port)
 			_udp.put_packet(reply)
@@ -119,7 +125,7 @@ class Server:
 				if live:
 					return Codec.reply_bytes(Status.TAKEN, code, 0, 0, 0, "")
 				rooms[code] = {"address": from_ip, "port": req["port"], "protocol": req["protocol"], "until": now_s() + ttl_s, "owner": "%s:%d" % [from_ip, from_port]}
-				return Codec.reply_bytes(Status.OK, code, req["protocol"], req["port"], ttl_s, from_ip)
+				return Codec.reply_bytes(Status.OK, code, req["protocol"], req["port"], left_override if left_override >= 0 else ttl_s, from_ip)
 			Op.RESOLVE:
 				if room == null:
 					return Codec.reply_bytes(Status.UNKNOWN, code, 0, 0, 0, "")
@@ -127,7 +133,7 @@ class Server:
 					return Codec.reply_bytes(Status.EXPIRED, code, 0, 0, 0, "")
 				if room["protocol"] != req["protocol"]:
 					return Codec.reply_bytes(Status.VERSION, code, room["protocol"], 0, 0, "")
-				return Codec.reply_bytes(Status.OK, code, room["protocol"], room["port"], int(room["until"] - now_s()), room["address"])
+				return Codec.reply_bytes(Status.OK, code, room["protocol"], room["port"], int(room["until"] - now_s()), address_override if address_override != "" else room["address"])
 			Op.CLOSE:
 				if room != null and room["owner"] == "%s:%d" % [from_ip, from_port]:
 					rooms.erase(code)
@@ -142,13 +148,17 @@ class Client:
 	extends "res://scripts/net/rendezvous_client.gd"
 	var timeout_ms := 4000
 	var sent: Array = []
+	## Replies that came from anywhere but the server, ignored.
+	var strays := 0
 	var _udp := PacketPeerUDP.new()
+	var _server_port := 0
 	var _pending := ""
 	var _code := ""
 	var _started := 0
 	var _requests := 0
 
 	func _init(server_port: int) -> void:
+		_server_port = server_port
 		_udp.bind(0, LOCALHOST)
 		_udp.set_dest_address(LOCALHOST, server_port)
 
@@ -180,7 +190,11 @@ class Client:
 		if _pending == "":
 			return {}
 		while _udp.get_available_packet_count() > 0:
-			var reply := Codec.parse_reply(_udp.get_packet())
+			var data := _udp.get_packet()
+			if _udp.get_packet_ip() != LOCALHOST or _udp.get_packet_port() != _server_port:
+				strays += 1  # only the server answers
+				continue
+			var reply := Codec.parse_reply(data)
 			if reply.is_empty():
 				_pending = ""
 				return {"ok": false, "error": "bad_reply"}

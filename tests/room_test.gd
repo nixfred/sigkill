@@ -56,6 +56,7 @@ func _run() -> void:
 	await _live_checks()
 	await _error_checks()
 	await _expiry_checks()
+	await _edge_checks()
 	await _launch_checks()
 	await _panel_checks()
 	await _unchanged_checks()
@@ -150,6 +151,13 @@ func _until(condition: Callable, ms: int = WATCHDOG_MS) -> bool:
 func _frames(n: int) -> void:
 	for i in n:
 		await physics_frame
+
+
+## Lets the fake server read anything still in its socket (a CLOSE from a dropped branch),
+## then empties its log.
+func _fresh_log() -> void:
+	await _frames(3)
+	_server.log.clear()
 
 
 func _key(keycode: Key, unicode: int = 0) -> void:
@@ -254,7 +262,7 @@ func _source_checks() -> void:
 	var to_rv := PackedStringArray()
 	for call in ["_rv.register(", "_rv.resolve(", "_rv.close("]:
 		to_rv.append(str(session.count(call)))
-	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each, close(code, protocol, port) where a code is released (leaving, and a fresh code)", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and Array(to_rv) == ["1", "1", "2"], ", ".join(to_rv))
+	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each; close(code, protocol, port) wherever a code is released: leaving, a fresh code, and an unanswered, timed-out or zero-time registration", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and session.count("_rv.close(_room_wanted, protocol, _room_port)") == 3 and Array(to_rv) == ["1", "1", "5"], ", ".join(to_rv))
 	var keys := FileAccess.get_file_as_string("res://scripts/controls.gd")
 	var users := PackedStringArray()
 	for action in InputMap.get_actions():
@@ -391,7 +399,7 @@ func _null_checks() -> void:
 
 ## A live (fake) rendezvous on 127.0.0.1: the host registers, a joiner resolves and joins.
 func _live_checks() -> void:
-	_server.log.clear()
+	await _fresh_log()
 	var host := _branch("Host", Vector3.ZERO, _client())
 	var joiner := _branch("Joiner", CLIENT_OFFSET, _client())
 	await _frames(2)
@@ -446,7 +454,7 @@ func _error_checks() -> void:
 	await _frames(2)
 	var s: Session = side["session"]
 	var rv: Fake.Client = side["rv"]
-	_server.log.clear()
+	await _fresh_log()
 	var lines := PackedStringArray()
 	# A typo never reaches the rendezvous.
 	s.join_room("K7R2MZ")
@@ -493,7 +501,7 @@ func _error_checks() -> void:
 	print("ROOM errors as shown: ", " | ".join(lines))
 	await _drop(side)
 	# A taken code: the host draws another.
-	_server.log.clear()
+	await _fresh_log()
 	_server.force_taken = 2
 	var host := _branch("TakenHost", Vector3.ZERO, _client(), false)
 	await _frames(2)
@@ -505,13 +513,19 @@ func _error_checks() -> void:
 	_check("a code that is taken is redrawn: three registrations, three different codes, the third one kept", got and drawn.size() == 3 and drawn[0] != drawn[1] and drawn[1] != drawn[2] and host["session"].room_code == drawn[2], ", ".join(drawn))
 	await _drop(host)
 	_server.force_taken = 6
+	await _fresh_log()
 	var stubborn := _branch("Stubborn", Vector3.ZERO, _client(), false)
 	await _frames(2)
 	stubborn["session"].host(0)
 	await _until(func(): return stubborn["session"].notice != "")
+	await _frames(30)
 	_server.force_taken = 0
 	var gave_up: String = stubborn["session"].notice
-	_check("after five taken codes the host stops drawing and says so; it keeps hosting, and LAN join still works", stubborn["session"].room_code == "" and gave_up == Session.ROOM_NO_CODE % Session.ROOM_ALL_TAKEN and stubborn["session"].state == Session.State.HOSTING and _server.log.size() >= 5, gave_up)
+	var registrations := 0
+	for entry in _server.log:
+		if entry["op"] == Fake.Op.REGISTER:
+			registrations += 1
+	_check("after exactly five taken codes the host stops drawing and says so, and asks no more; it keeps hosting, and LAN join still works", stubborn["session"].room_code == "" and gave_up == Session.ROOM_NO_CODE % Session.ROOM_ALL_TAKEN and stubborn["session"].state == Session.State.HOSTING and registrations == 5 and _server.log.size() == 5, "%s; %d registrations" % [gave_up, registrations])
 	await _drop(stubborn)
 
 
@@ -556,7 +570,107 @@ func _expiry_checks() -> void:
 	await _drop(capped)
 
 
+## Room requests cut short, odd answers, and addresses outside the LAN.
+func _edge_checks() -> void:
+	# Leaving before the registration is answered: the code is released all the same.
+	await _fresh_log()
+	var quick := _branch("Quick", Vector3.ZERO, _client(), false)
+	await _frames(2)
+	quick["session"].host(0)
+	quick["session"].leave()
+	await _frames(6)
+	var drawn: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
+	_check("leaving before the registration is answered still releases the code the rendezvous took", drawn != "" and _server.log[0]["op"] == Fake.Op.REGISTER and not _server.rooms.has(drawn) and _server.log.size() == 2 and _server.log[1]["op"] == Fake.Op.CLOSE and _server.log[1]["code"] == drawn, str(_server.log))
+	await _drop(quick)
+	# A registration whose answer is lost: given up on the timeout, and released.
+	await _fresh_log()
+	_server.mute = true
+	var lost := _branch("Lost", Vector3.ZERO, _client(), false)
+	await _frames(2)
+	lost["session"].host(0)
+	await _until(func(): return lost["session"].notice != "")
+	await _frames(4)
+	_server.mute = false
+	var took: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
+	_check("a registration whose answer is lost: the host gives up on the timeout, says so, and releases the code", took != "" and lost["session"].notice == Session.ROOM_NO_CODE % Session.ROOM_UNREACHABLE and lost["session"].room_code == "" and not _server.rooms.has(took), "%s %s" % [lost["session"].notice, _server.log])
+	await _drop(lost)
+	# An ok answer that gives the code no time at all: refused and released.
+	await _fresh_log()
+	_server.left_override = 0
+	var zero := _branch("Zero", Vector3.ZERO, _client(), false)
+	await _frames(2)
+	zero["session"].host(0)
+	await _until(func(): return zero["session"].notice != "")
+	await _frames(4)
+	_server.left_override = -1
+	var zero_code: String = _server.log[0]["code"] if not _server.log.is_empty() else ""
+	_check("an ok answer with no time left: no code shown, the registration released", zero_code != "" and zero["session"].room_code == "" and zero["session"].notice == Session.ROOM_NO_CODE % Session.ROOM_BAD_REPLY and not _server.rooms.has(zero_code), "%s %s" % [zero["session"].notice, _server.log])
+	await _drop(zero)
+	# A rendezvous naming an address outside the LAN: refused, no connection made.
+	var host := _branch("FarHost", Vector3.ZERO, _client(), false)
+	await _frames(2)
+	host["session"].host(0)
+	await _until(func(): return host["session"].room_code != "")
+	_server.address_override = "2001:db8::5"  # the IPv6 documentation range: a public address, no real host
+	var joiner := _branch("FarJoiner", CLIENT_OFFSET, _client(), false)
+	await _frames(2)
+	joiner["session"].join_room(host["session"].room_code)
+	await _until(func(): return joiner["session"].state == Session.State.FAILED)
+	_server.address_override = ""
+	_check("a room the rendezvous places outside the LAN or a tailnet is refused, and nothing connects", joiner["session"].error == Session.ROOM_NOT_LOCAL and joiner["session"].get("_enet") == null, joiner["session"].error)
+	await _drop(joiner)
+	await _drop(host)
+	# Which addresses count as local. The IPv4 cases are built from their four numbers: they are
+	# the private ranges themselves (RFC 1918, RFC 6598) and documentation space, not hosts.
+	var v4 := func(a: int, b: int, c: int, d: int) -> String: return "%d.%d.%d.%d" % [a, b, c, d]
+	var local := [v4.call(127, 0, 0, 1), v4.call(10, 1, 2, 3), v4.call(172, 16, 0, 1), v4.call(172, 31, 255, 254), v4.call(192, 168, 1, 20), v4.call(100, 64, 0, 1), v4.call(100, 127, 1, 1), v4.call(169, 254, 3, 4), "::1", "fd7a:115c:a1e0::1", "fe80::1"]
+	var far := [v4.call(203, 0, 113, 5), v4.call(172, 32, 0, 1), v4.call(100, 128, 0, 1), v4.call(192, 169, 1, 1), v4.call(8, 8, 4, 4), "2001:db8::5", "fe00::1", "::ffff:1", "not an ip", ""]
+	var wrong := PackedStringArray()
+	for ip in local:
+		if not Session.local_address(ip):
+			wrong.append("refused " + ip)
+	for ip in far:
+		if Session.local_address(ip):
+			wrong.append("accepted " + ip)
+	_check("local means loopback, the private ranges, the tailnet range and link-local, IPv4 and IPv6; everything else is not", wrong.is_empty(), ", ".join(wrong))
+	# A reply from anywhere but the server is ignored by the fake client.
+	var probe := _client()
+	var stranger := PacketPeerUDP.new()
+	stranger.bind(0, "127.0.0.1")
+	probe.resolve("K7R2MX", Session.PROTOCOL)
+	var probe_port: int = probe.get("_udp").get_local_port()
+	stranger.set_dest_address("127.0.0.1", probe_port)
+	stranger.put_packet(Fake.Codec.reply_bytes(Fake.Status.OK, "K7R2MX", Session.PROTOCOL, 4444, 60, "127.0.0.1"))
+	var answer: Array = [{}]
+	await _until(func():
+		answer[0] = probe.poll()
+		return not answer[0].is_empty())
+	stranger.close()
+	probe.shut()
+	_check("the test fake trusts answers only from its own server on 127.0.0.1", probe.strays >= 1 and answer[0].get("error", "") == "unknown", "%d strays, %s" % [probe.strays, answer[0]])
+
+
 func _launch_checks() -> void:
+	# --join taken before the session is ready, as on a real first launch (the arena makes the
+	# session a frame late): kept, then applied once it is ready.
+	var early := Session.new()
+	early.name = Session.NODE_NAME
+	var api := SceneMultiplayer.new()
+	var branch := Node3D.new()
+	branch.name = "Early"
+	root.add_child(branch)
+	set_multiplayer(api, branch.get_path())
+	_branches.append(branch)
+	early.tuning = _net_tuning()
+	early.room_tuning = _room_tuning()
+	var took_early := early.take_launch_join(PackedStringArray(["--join", "sigkill://join/ABC23P"]))
+	var state_before: int = early.state
+	branch.add_child(early)
+	await _frames(2)
+	_check("a --join that arrives before the session is ready is kept and applied once it is: no error, the not-live line", took_early and state_before == Session.State.OFF and early.state == Session.State.FAILED and early.error == NullRendezvous.NOT_LIVE)
+	branch.free()
+	_branches.erase(branch)
+	await process_frame
 	var host := _branch("LaunchHost", Vector3.ZERO, _client(), false)
 	await _frames(2)
 	host["session"].host(0)
