@@ -364,7 +364,7 @@ func _fire() -> void:
 			normal = -forward
 		var collider = result["collider"]
 		if is_instance_valid(collider) and collider.has_method("hit"):
-			hit_target = collider.call("hit", _w.damage, end_point) == true
+			hit_target = collider.call("hit", _w.damage, end_point, forward) == true
 		CannonFx.spawn_impact(fx_root, end_point, normal, hit_target, _w)
 
 	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)

@@ -78,15 +78,16 @@ func health() -> float:
 
 
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,
-## false if the dummy is derezzing or respawning. `point` is where the shot struck.
-func hit(damage: float, point: Vector3 = Vector3.INF) -> bool:
+## false if the dummy is derezzing or respawning. `point` is where the shot struck and
+## `direction` the way it travelled; both are optional.
+func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> bool:
 	if state != State.ALIVE:
 		return false
 	_health -= damage
 	if _health > 0.0:
 		_pulse()
 		return true
-	_start_derezz(point)
+	_start_derezz(point, direction)
 	return true
 
 
@@ -104,19 +105,20 @@ func _physics_process(delta: float) -> void:
 			_finish_respawn()
 
 
-func _start_derezz(point: Vector3) -> void:
+func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	state = State.DEREZZING
 	_state_time = 0.0
 	_shape.set_deferred("disabled", true)
 	_body.visible = false
 	_tag.visible = false
 	set_physics_process(true)
-	# The voxels get a push along the killing shot, when we know where it struck.
-	var shot := Vector3.ZERO
-	if point.is_finite():
+	# The voxels get a push along the killing shot: its real direction when the shooter
+	# gives one, otherwise from where it struck toward the body's centre.
+	var shot := Vector3(direction.x, 0.0, direction.z)
+	if shot.is_zero_approx() and point.is_finite():
 		shot = _body.global_position - point
 		shot.y = 0.0
-		shot = shot.normalized()
+	shot = shot.normalized()
 	var fx := DerezzFx.new()
 	_fx_root().add_child(fx)
 	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)

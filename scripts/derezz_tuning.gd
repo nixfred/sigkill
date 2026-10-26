@@ -30,8 +30,10 @@ extends Resource
 @export var gravity: float = 9.8
 ## Share of downward speed kept as a bounce when a voxel hits the ground, from 0 to 1.
 @export_range(0.0, 1.0) var bounce: float = 0.3
-## Share of sideways speed kept on each bounce, from 0 to 1.
+## Share of sideways speed kept each time a voxel touches the ground, from 0 to 1.
 @export_range(0.0, 1.0) var ground_friction: float = 0.6
+## Physics layers the voxels land on: the world.
+@export_flags_3d_physics var ground_mask: int = 1
 ## Slowest tumble, in degrees per second.
 @export var spin_min_degrees: float = 180.0
 ## Fastest tumble, in degrees per second.
@@ -54,6 +56,8 @@ extends Resource
 
 ## Highest voxel cap allowed, so a typo can never make a death stall a frame.
 const MAX_VOXELS_LIMIT := 2048
+## Every one of the 32 physics layers.
+const PHYSICS_LAYERS_ALL := 0xFFFFFFFF
 ## Float fields that must be finite and 0 or more.
 const NON_NEGATIVE := [
 	"voxel_size", "glow_fraction", "obsidian_glow", "glow_energy", "burst_speed", "burst_up",
@@ -83,4 +87,6 @@ func problems() -> PackedStringArray:
 		out.append("lifetime_min must be above 0 and not exceed lifetime_max")
 	if fade_power <= 0.0:
 		out.append("fade_power must be above 0")
+	if ground_mask < 1 or ground_mask > PHYSICS_LAYERS_ALL:
+		out.append("ground_mask must name at least one of the 32 physics layers")
 	return out
