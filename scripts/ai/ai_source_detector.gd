@@ -206,15 +206,17 @@ class GpuState:
 		smi_sleep_usec = sleep_usec
 
 	## Reads what nvidia-smi has written, and drains and drops its stderr, until it exits,
-	## the deadline passes or `job` (if given) is cancelled. Both are checked on every pass,
-	## so even an nvidia-smi that never stops writing cannot hold the thread. Once it has
-	## exited, everything left in the pipe goes through the output cap. True once exited.
+	## the deadline passes or `job` (if given) is cancelled. Exit is checked first on every
+	## pass, so a process that has exited is always collected, even by a check that does
+	## not wait; the deadline and cancel are checked on every pass too, so even an
+	## nvidia-smi that never stops writing cannot hold the thread. Once it has exited,
+	## everything left in its pipe goes through the output cap. True once exited.
 	func pump(deadline: int, job: Object) -> bool:
 		while true:
 			var chunk := smi_stdout.get_buffer(smi_cap)
 			smi_stderr.get_buffer(smi_cap)
 			keep(chunk)
-			if chunk.is_empty() and not OS.is_process_running(smi_pid):
+			if not OS.is_process_running(smi_pid):
 				while true:
 					var rest := smi_stdout.get_buffer(smi_cap)
 					if rest.is_empty():

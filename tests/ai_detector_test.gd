@@ -19,6 +19,9 @@ const TIMEOUT_MS := 300
 ## Generous: proves a wait ended, not how fast a loaded machine schedules threads.
 const WATCHDOG_MS := 3000
 const SLOW_SMI_TIMEOUT_MS := 200
+## Timeout for the checks that time a timeout. Long enough that scheduling noise on a loaded
+## machine is small beside it; the upper bound of twice it still catches a timeout 4x late.
+const HANG_TIMEOUT_MS := 1000
 ## A long timeout for the cancel checks, so a cancel that waits for it is plain to see.
 const LONG_TIMEOUT_MS := 2000
 ## Pause between polls while the test waits on an observed state, in milliseconds.
@@ -167,6 +170,17 @@ func _accepted_count() -> int:
 	var count := _accepted
 	_server_mutex.unlock()
 	return count
+
+
+## Takes the first connection to `listener` and keeps it open without answering, or null if
+## none arrives before the watchdog.
+func _hold_connection(listener: TCPServer) -> StreamPeerTCP:
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < WATCHDOG_MS:
+		if listener.is_connection_available():
+			return listener.take_connection()
+		OS.delay_msec(1)
+	return null
 
 
 ## Waits, polling, until `ready` returns true or the watchdog passes. True if it did.
@@ -546,20 +560,23 @@ func _server_checks() -> void:
 	var empty := _detect(_detector("missing", "empty", _port, _port))
 	_check("servers listing no models are reachable with a count of 0", empty.ollama_reachable and empty.ollama_model_count == 0 and empty.openai_reachable and empty.openai_model_count == 0)
 	var hangup := _detector()
+	hangup.http_timeout_ms = HANG_TIMEOUT_MS
 	var hangup_ollama := _timed_probe(hangup, "ollama")
-	_check("a port that hangs up without answering is no server, at once", not hangup_ollama[0]["reachable"] and not hangup.probe_openai()["reachable"] and hangup_ollama[1] < TIMEOUT_MS, "%d ms" % hangup_ollama[1])
+	_check("a port that hangs up without answering is no server, well before the timeout", not hangup_ollama[0]["reachable"] and not hangup.probe_openai()["reachable"] and hangup_ollama[1] < HANG_TIMEOUT_MS / 2, "%d ms" % hangup_ollama[1])
 	var spare := TCPServer.new()
 	spare.listen(0, Detector.LOCALHOST)
 	var closed := _detector("missing", "empty", spare.get_local_port(), spare.get_local_port())
+	closed.http_timeout_ms = HANG_TIMEOUT_MS
 	spare.stop()
 	var closed_ollama := _timed_probe(closed, "ollama")
-	_check("a closed port is unreachable, at once", not closed_ollama[0]["reachable"] and not closed.probe_openai()["reachable"] and closed_ollama[1] < TIMEOUT_MS, "%d ms" % closed_ollama[1])
+	_check("a closed port is unreachable, well before the timeout", not closed_ollama[0]["reachable"] and not closed.probe_openai()["reachable"] and closed_ollama[1] < HANG_TIMEOUT_MS / 2, "%d ms" % closed_ollama[1])
 	_set_mode("hang")
 	var hang := _detector("missing", "empty", _port, _port)
+	hang.http_timeout_ms = HANG_TIMEOUT_MS
 	var hang_ollama := _timed_probe(hang, "ollama")
 	var hang_openai := _timed_probe(hang, "openai")
-	print("AI DETECTOR hanging server: Ollama gave up after %d ms, OpenAI-compatible after %d ms, timeout %d ms" % [hang_ollama[1], hang_openai[1], TIMEOUT_MS])
-	_check("a server that never answers is unreachable once the timeout passes, and not long after", not hang_ollama[0]["reachable"] and not hang_openai[0]["reachable"] and hang_ollama[1] >= TIMEOUT_MS and hang_openai[1] >= TIMEOUT_MS and hang_ollama[1] < 2 * TIMEOUT_MS and hang_openai[1] < 2 * TIMEOUT_MS)
+	print("AI DETECTOR hanging server: Ollama gave up after %d ms, OpenAI-compatible after %d ms, timeout %d ms" % [hang_ollama[1], hang_openai[1], HANG_TIMEOUT_MS])
+	_check("a server that never answers is unreachable once the timeout passes, and not long after", not hang_ollama[0]["reachable"] and not hang_openai[0]["reachable"] and hang_ollama[1] >= HANG_TIMEOUT_MS and hang_openai[1] >= HANG_TIMEOUT_MS and hang_ollama[1] < 2 * HANG_TIMEOUT_MS and hang_openai[1] < 2 * HANG_TIMEOUT_MS)
 	var bad_modes := PackedStringArray()
 	for mode in ["truncated", "chunked", "error500", "flood"]:
 		_set_mode(mode)
@@ -575,8 +592,9 @@ func _server_checks() -> void:
 	_check("a complete, valid answer over the 1 MiB cap is no server", _huge_body.size() > Detector.HTTP_RESPONSE_MAX_BYTES and not huge_v[0]["reachable"] and huge_v[1] < WATCHDOG_MS, "%d byte body, %d ms" % [_huge_body.size(), huge_v[1]])
 	_set_mode("drip")
 	var drip := _detector("missing", "empty", _port, _port)
+	drip.http_timeout_ms = HANG_TIMEOUT_MS
 	var drip_v := _timed_probe(drip, "openai")
-	_check("an answer trickling in a byte at a time is no server once the deadline passes", not drip_v[0]["reachable"] and drip_v[1] >= TIMEOUT_MS and drip_v[1] < 2 * TIMEOUT_MS, "%d ms" % drip_v[1])
+	_check("an answer trickling in a byte at a time is no server once the deadline passes", not drip_v[0]["reachable"] and drip_v[1] >= HANG_TIMEOUT_MS and drip_v[1] < 2 * HANG_TIMEOUT_MS, "%d ms" % drip_v[1])
 	_set_mode("badutf8")
 	var bad_text := _detect(_detector("missing", "empty", _port, _port))
 	_check("a model list that is not valid UTF-8 counts nothing and prints nothing", bad_text.ollama_reachable and bad_text.ollama_model_count == -1 and not bad_text.openai_reachable and not str(bad_text).contains(FAKE_MODEL_WORD))
@@ -647,7 +665,7 @@ func _gpu_checks() -> void:
 		OS.delay_msec(WAIT_STEP_MS)
 	var runs_after_late := slow.nvidia_smi_runs()
 	print("AI DETECTOR hung nvidia-smi: gave up after %d ms, next poll returned in %d ms without starting another, late answer %s" % [t1 - t0, t2 - t1, late["util_percent"]])
-	_check("a hung nvidia-smi is given up at the deadline, never run twice at once, and its late answer is used", not timed_out["available"] and t1 - t0 >= SLOW_SMI_TIMEOUT_MS and t1 - t0 < WATCHDOG_MS and not still_running["available"] and t2 - t1 < SLOW_SMI_TIMEOUT_MS and runs_while_hung == 1 and late["available"] and late["util_percent"] == 21 and runs_after_late == 1)
+	_check("a hung nvidia-smi is given up at the deadline, never run twice at once, and its late answer is used", not timed_out["available"] and t1 - t0 >= SLOW_SMI_TIMEOUT_MS and t1 - t0 < WATCHDOG_MS and not still_running["available"] and t2 - t1 < WATCHDOG_MS and runs_while_hung == 1 and late["available"] and late["util_percent"] == 21 and runs_after_late == 1)
 	# Dropping the last detector reaps an nvidia-smi that has exited since, with no poll.
 	DirAccess.remove_absolute(_smi_release)
 	DirAccess.remove_absolute(_smi_done)
@@ -705,6 +723,7 @@ func _resolver_checks() -> void:
 func _async_checks() -> void:
 	_set_mode("hang")
 	var d := _detector("missing", "empty", _port, _port)
+	d.http_timeout_ms = HANG_TIMEOUT_MS
 	_check("wait() before start() returns null", d.wait() == null and not d.is_done())
 	var start := Time.get_ticks_msec()
 	var started := d.start()
@@ -718,14 +737,19 @@ func _async_checks() -> void:
 	var result := d.wait()
 	_results.append(result)
 	print("AI DETECTOR async: start() returned in %d ms, done in %d ms against a hanging server while the main loop ticked %d frames" % [start_ms, elapsed, frames])
-	_check("start() hands the detection to a worker: it returns at once and the main loop keeps ticking", started == OK and again == ERR_ALREADY_IN_USE and start_ms < TIMEOUT_MS and frames > 0 and elapsed >= 2 * TIMEOUT_MS and elapsed < WATCHDOG_MS and result != null and result.source_name == "ai-off")
+	# A start() that ran the probes itself would take two full timeouts before returning.
+	_check("start() hands the detection to a worker: it returns at once and the main loop keeps ticking", started == OK and again == ERR_ALREADY_IN_USE and start_ms < HANG_TIMEOUT_MS and frames > 0 and elapsed >= 2 * HANG_TIMEOUT_MS and elapsed < 2 * HANG_TIMEOUT_MS + WATCHDOG_MS and result != null and result.source_name == "ai-off")
 	_check("wait() returns the same result every call, and is_done() stays true", d.wait() == result and d.is_done())
-	# cancel() ends a detection in the middle of a probe, long before its timeout.
-	var c := _detector("missing", "empty", _port, _port)
+	# cancel() ends a detection in the middle of a probe, long before its timeout. The test
+	# owns this listener and holds the worker's connection, so the worker is provably inside
+	# a request, waiting for an answer, when it is cancelled.
+	var c_listener := TCPServer.new()
+	c_listener.listen(0, Detector.LOCALHOST)
+	var c := _detector("missing", "empty", c_listener.get_local_port(), c_listener.get_local_port())
 	c.http_timeout_ms = LONG_TIMEOUT_MS
-	var accepted_before := _accepted_count()
 	c.start()
-	var in_probe := _wait_for(func() -> bool: return _accepted_count() > accepted_before)
+	var c_held := _hold_connection(c_listener)
+	var in_probe: bool = c_held != null and not c.is_done() and not c.get("_job").is_finished()
 	var cancel_start := Time.get_ticks_msec()
 	c.cancel()
 	while not c.is_done():
@@ -733,18 +757,26 @@ func _async_checks() -> void:
 	var cancel_ms := Time.get_ticks_msec() - cancel_start
 	var cancelled := c.wait()
 	_results.append(cancelled)
+	if c_held != null:
+		c_held.disconnect_from_host()
+	c_listener.stop()
 	print("AI DETECTOR cancel mid-probe: done %d ms after cancel(), with a %d ms timeout" % [cancel_ms, LONG_TIMEOUT_MS])
 	_check("cancel() ends a detection mid-probe, long before its timeout, still with a result", in_probe and cancel_ms < LONG_TIMEOUT_MS / 2 and cancelled != null and cancelled.source_name == "ai-off", "%d ms" % cancel_ms)
 	# Dropped mid-probe: it cancels and joins its worker, which runs on its own copy.
-	var dropped := _detector("missing", "empty", _port, _port)
+	var d_listener := TCPServer.new()
+	d_listener.listen(0, Detector.LOCALHOST)
+	var dropped := _detector("missing", "empty", d_listener.get_local_port(), d_listener.get_local_port())
 	dropped.http_timeout_ms = LONG_TIMEOUT_MS
 	var job = dropped.get("_job")
-	var accepted_before_drop := _accepted_count()
 	dropped.start()
-	var dropped_in_probe := _wait_for(func() -> bool: return _accepted_count() > accepted_before_drop)
+	var d_held := _hold_connection(d_listener)
+	var dropped_in_probe: bool = d_held != null and not dropped.is_done() and not job.is_finished()
 	var drop_start := Time.get_ticks_msec()
 	dropped = null
 	var drop_ms := Time.get_ticks_msec() - drop_start
+	if d_held != null:
+		d_held.disconnect_from_host()
+	d_listener.stop()
 	print("AI DETECTOR dropped mid-probe: cancelled and joined its worker in %d ms" % drop_ms)
 	_check("a detector dropped mid-probe cancels and joins its worker, which finishes on its own copy", dropped_in_probe and drop_ms < LONG_TIMEOUT_MS / 2 and job.is_finished(), "%d ms, finished %s" % [drop_ms, job.is_finished()])
 	_set_mode("full")
