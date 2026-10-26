@@ -48,6 +48,8 @@ const ENET_SLACK := 2
 const ENET_TIMEOUT_LIMIT := 32
 const WORLD_LAST := 10000.0
 const SPEED_LAST := 200.0
+## Sequence numbers count up from 1 per session and never reach this.
+const SEQ_LAST := 2147483647
 const PITCH_LAST := PI * 0.5 + 0.01
 ## A body yaw is an angle Godot already wrapped: never past one full turn either way.
 const YAW_LAST := TAU + 0.01
@@ -212,6 +214,7 @@ func host(port: int = -1) -> bool:
 	multiplayer.multiplayer_peer = _enet
 	my_id = 1
 	players = {1: {"slot": 1, "name": assigned_name(_t.display_name, 1)}}
+	_seq = 0
 	error = ""
 	notice = ""
 	address_text = ""
@@ -236,6 +239,7 @@ func join(text: String) -> bool:
 	_refusal = ""
 	error = ""
 	players = {}
+	_seq = 0
 	if parsed["ip"]:
 		_connect(parsed["host"])
 	else:
@@ -600,7 +604,7 @@ func _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> v
 	if state != State.HOSTING:
 		return
 	var from := multiplayer.get_remote_sender_id()
-	if from == 1 or not players.has(from) or not sane(pos, yaw, pitch, vel):
+	if from == 1 or not players.has(from) or not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
 		return
 	received += 1
 	_apply_remote(from, seq, pos, yaw, pitch, vel)
@@ -613,7 +617,7 @@ func _state(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> v
 ## A player's movement, from the host.
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _remote_state(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
-	if state != State.JOINED or id == my_id or not players.has(id) or not sane(pos, yaw, pitch, vel):
+	if state != State.JOINED or id == my_id or not players.has(id) or not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
 		return
 	received += 1
 	_apply_remote(id, seq, pos, yaw, pitch, vel)
@@ -645,6 +649,11 @@ func _drop_avatar(id: int) -> void:
 
 
 # --- Pure helpers, checked on their own by the test. ---
+
+## True for a sequence number a sender could have counted to.
+static func seq_sane(seq: int) -> bool:
+	return seq >= 1 and seq < SEQ_LAST
+
 
 ## True when every number of a state packet is one a player could have.
 static func sane(pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> bool:

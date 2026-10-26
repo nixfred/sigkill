@@ -18,11 +18,16 @@ const VISOR_HEIGHT := 0.55
 const VISOR_FORWARD := -0.28
 const TAG_HEIGHT := 1.25
 const FEET := 0.9
-const SAMPLES_KEPT := 12
+## Samples are kept back to the one just before the drawn moment, whatever the delay and
+## the rate; this cap only bounds memory against a flood.
+const SAMPLES_LAST := 256
 ## The most a sequence number may jump past the last one accepted: packets lost for over
 ## eight minutes at 20 a second. A bigger jump is one bad packet, dropped, so it can never
-## put the real stream behind it.
+## put the real stream behind it. The first sample sets the baseline, whatever its number.
 const SEQ_JUMP_LAST := 10000
+## Sequence numbers are counted up from 1 and never reach this; anything at or past it is
+## no sequence number at all, and the session refuses it before it gets here.
+const SEQ_LAST := 2147483647
 ## A sample's shape: {t, pos, yaw, pitch, vel}.
 
 ## Shown above the body.
@@ -97,8 +102,7 @@ func push_sample(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3)
 		return
 	_last_seq = seq
 	samples.append({"t": _clock, "pos": pos, "yaw": yaw, "pitch": pitch, "vel": vel})
-	while samples.size() > SAMPLES_KEPT:
-		samples.pop_front()
+	_trim()
 	if not visible:
 		visible = true
 		_apply(pos, yaw, pitch)
@@ -108,6 +112,7 @@ func _process(delta: float) -> void:
 	_clock += delta
 	if samples.is_empty():
 		return
+	_trim()
 	var at := _clock - interp_delay_s
 	var newest: Dictionary = samples[-1]
 	if at >= newest["t"]:
@@ -138,6 +143,20 @@ func view_pitch() -> float:
 	return _head.rotation.x
 
 
-## True for the next sequence number to accept after `last`: newer, and not absurdly so.
+## Drops samples older than the one just before the drawn moment, and bounds the buffer.
+func _trim() -> void:
+	var at := _clock - interp_delay_s
+	while samples.size() > 2 and samples[1]["t"] <= at:
+		samples.pop_front()
+	while samples.size() > SAMPLES_LAST:
+		samples.pop_front()
+
+
+## True for a sequence number to accept after `last`: any first one, else newer and not
+## absurdly far ahead. `seq` is in range already (the session refuses the rest).
 static func seq_ok(seq: int, last: int) -> bool:
+	if seq < 0 or seq >= SEQ_LAST:
+		return false
+	if last < 0:
+		return true
 	return seq > last and seq - last <= SEQ_JUMP_LAST

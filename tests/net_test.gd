@@ -259,6 +259,7 @@ func _helper_checks() -> void:
 	ctrl_name.set(5, 0x07)
 	_check("junk, short, wrong-magic and wrong-length packets parse to nothing; an ok reply needs a slot and a shown name; a name with a control byte becomes the placeholder", junk.is_empty() and Session.parse_reply(ok_no_slot).is_empty() and Session.parse_reply(ok_bad_name).is_empty() and Session.parse_hello(ctrl_name) == {"version": 1, "name": "player"}, ", ".join(junk))
 	_check("names: a shown name is kept, the placeholder or a name the game cannot show becomes player <slot>", Session.assigned_name("spike", 2) == "spike" and Session.assigned_name("player", 2) == "player 2" and Session.assigned_name("", 1) == "player 1" and Session.assigned_name("x".repeat(40), 3) == "player 3" and Session.assigned_name("aéb", 2) == "player 2")
+	_check("sequence numbers: 1 up to 2^31 - 1 count, 0, negatives and 2^63 - 1 do not; a first sample sets the baseline whatever its number, then only newer and at most 10000 ahead", Session.seq_sane(1) and Session.seq_sane(2147483646) and not Session.seq_sane(0) and not Session.seq_sane(-1) and not Session.seq_sane(2147483647) and not Session.seq_sane(9223372036854775807) and RemotePlayer.seq_ok(15000, -1) and RemotePlayer.seq_ok(5, 4) and not RemotePlayer.seq_ok(4, 4) and not RemotePlayer.seq_ok(20000, 4) and not RemotePlayer.seq_ok(9223372036854775807, -1) and not RemotePlayer.seq_ok(9223372036854775807, 5))
 	var v := Vector3(1, 2, 3)
 	_check("state packets with NaN, infinity, a position beyond the world, a yaw past a full turn, a pitch past straight up or an impossible speed are refused", Session.sane(v, 0.5, -0.5, v) and Session.sane(v, -TAU, PI * 0.5, v) and not Session.sane(Vector3(NAN, 0, 0), 0.0, 0.0, v) and not Session.sane(v, INF, 0.0, v) and not Session.sane(v, 1e300, 0.0, v) and not Session.sane(v, 7.0, 0.0, v) and not Session.sane(v, 0.0, 2.0, v) and not Session.sane(Vector3(20000, 0, 0), 0.0, 0.0, v) and not Session.sane(v, 0.0, 0.0, Vector3(500, 0, 0)))
 
@@ -356,6 +357,27 @@ func _session_checks() -> void:
 	var client_run: float = (cp.position - from).length()
 	var back_off: float = (back.position - cp.position).length()
 	_check("the host sees the joiner move too, in the joiner's own arena space", client_run > 3.0 and back.visible and back_off < 0.05 and hs.received > 0, "ran %.2f, avatar %.3f off" % [client_run, back_off])
+	# A long delay: the buffer keeps enough samples that the avatar still glides, a second behind.
+	back.interp_delay_s = 1.0
+	var long_from: Vector3 = cp.position
+	var long_host: Array = []
+	var long_avatar: Array = []
+	var deepest := 0
+	for i in 150:
+		cp.drive_input(Vector2(0, 1) if i < 90 else Vector2.ZERO)  # back toward the spawn: open floor
+		await physics_frame
+		long_host.append(cp.position)
+		long_avatar.append(back.position)
+		deepest = maxi(deepest, back.samples.size())
+	var long_worst := 0.0
+	var long_step := 0.0
+	for i in range(70, 150):
+		long_worst = maxf(long_worst, (long_avatar[i] - long_host[i - 60]).length())
+		long_step = maxf(long_step, (long_avatar[i] - long_avatar[i - 1]).length())
+	print("NET long delay: with a 1000 ms delay the buffer held up to %d samples; the avatar stayed within %.3f m of where the player was 60 frames earlier, largest step %.3f m" % [deepest, long_worst, long_step])
+	_check("with a 1000 ms delay the buffer keeps the samples it needs (over 20) and the avatar still glides a second behind, with no jumps", deepest >= 20 and long_worst < 0.5 and long_step < step_cap and (long_host[89] - long_from).length() > 5.0, "deepest %d, worst %.3f, step %.3f" % [deepest, long_worst, long_step])
+	back.interp_delay_s = cs.tuning_in_use().interp_delay_ms / 1000.0
+	await _frames(delay_frames + FRAMES_PER_SEND * 3)
 	# Hostile state packets over the wire, with sequence numbers in range: the host refuses
 	# them, the avatar's transform stays finite and the real stream keeps flowing after them.
 	var last: int = back.get("_last_seq")
@@ -375,23 +397,32 @@ func _session_checks() -> void:
 	# One sane-looking packet with a giant sequence number must not put the real stream behind it.
 	last = back.get("_last_seq")
 	cs._state.rpc_id(1, last + 5000000, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, 9223372036854775807, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
+	cs._state.rpc_id(1, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
 	await _frames(delay_frames + FRAMES_PER_SEND)
 	var not_jumped: bool = (back.position - cp.position).length() < 0.05
 	for i in 30:
 		cp.drive_input(Vector2(0, -1))
 		await physics_frame
 	await _frames(delay_frames + FRAMES_PER_SEND * 3)
-	_check("a packet with a sequence number far ahead is dropped by the avatar, which goes on following the real ones", not_jumped and back.dropped >= 1 and (back.position - cp.position).length() < 0.05 and RemotePlayer.seq_ok(5, 4) and not RemotePlayer.seq_ok(4, 4) and not RemotePlayer.seq_ok(20000, 4), "%.3f m off after moving on, dropped %d" % [(back.position - cp.position).length(), back.dropped])
+	_check("packets with a sequence number far ahead, the largest int or zero are dropped (by the avatar or before it), which goes on following the real ones", not_jumped and back.dropped >= 1 and (back.position - cp.position).length() < 0.05 and back.get("_last_seq") < 2147483647, "%.3f m off after moving on, dropped %d, last seq %d" % [(back.position - cp.position).length(), back.dropped, back.get("_last_seq")])
 	# The joiner leaves: the host sees it at once.
 	cs.leave()
 	var seen := await _until(func(): return hs.players.size() == 1 and hs.avatars.is_empty())
 	_check("the joiner leaving is seen by the host: the roster shrinks to player 1, its avatar is gone, the host keeps hosting", seen and cs.state == Session.State.OFF and hs.state == Session.State.HOSTING and not is_instance_valid(back) or (seen and back.is_queued_for_deletion()), "host players %s" % hs.players)
 	await _frames(2)
-	# A second join after leaving.
+	# A second join after leaving, with both counters high: the joiner's own starts over, the
+	# host's is taken as the baseline.
+	hs.set("_seq", 30000)
+	cs.set("_seq", 30000)
 	cs.join(_address(host))
 	var again := await _joined(host, client)
-	_check("the same joiner can join again after leaving, as player 2 once more", again and cs.my_name() == "player 2" and _avatar(client, 1) is RemotePlayer)
-	# The joiner's arena is replaced (what R does): the session stays, the avatar comes back.
+	var again_avatar: RemotePlayer = _avatar(client, 1)
+	var seen_again := await _until(func(): return again_avatar != null and again_avatar.visible and _avatar(host, cs.my_id) != null and _avatar(host, cs.my_id).visible)
+	_check("the same joiner can join again after leaving, as player 2 once more, and both avatars show despite the old counters", again and cs.my_name() == "player 2" and seen_again and cs.get("_seq") < 1000 and again_avatar.get("_last_seq") > 30000, "joiner seq %d, host avatar last %d" % [cs.get("_seq"), again_avatar.get("_last_seq") if again_avatar != null else -1])
+	# The joiner's arena is replaced (what R does): the session stays, the avatar comes back,
+	# even with the host's counter long past the jump bound.
+	hs.set("_seq", 50000)
 	var old_main = client["main"]
 	old_main.free()
 	await _frames(FRAMES_PER_SEND * 2)
@@ -405,7 +436,7 @@ func _session_checks() -> void:
 	hp.drive_input(Vector2(0, 1))
 	await physics_frame
 	var shown := await _until(func(): return fresh != null and is_instance_valid(fresh) and fresh.visible)
-	_check("the arena replaced under a live session: still joined, the host's avatar is back in the new arena and moves again", cs.state == Session.State.JOINED and fresh is RemotePlayer and fresh.get_parent() == main2.get_node("Players") and shown and main2.get_node("Hud").net_hud().session == cs)
+	_check("the arena replaced under a live session: still joined, the host's avatar is back in the new arena and moves again, with the host's counter already past 50000", cs.state == Session.State.JOINED and fresh is RemotePlayer and fresh.get_parent() == main2.get_node("Players") and shown and fresh.get("_last_seq") > 50000 and main2.get_node("Hud").net_hud().session == cs, "last seq %d" % (fresh.get("_last_seq") if fresh != null else -1))
 	# The host leaves: the joiner sees it.
 	hs.leave()
 	var left := await _until(func(): return cs.state == Session.State.FAILED)
