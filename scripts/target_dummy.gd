@@ -8,6 +8,7 @@ extends StaticBody3D
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
+const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const DEFAULT_DEREZZ_PATH := "res://resources/derezz.tres"
 
 enum State { ALIVE, DEREZZING, RESPAWNING }
@@ -103,14 +104,29 @@ func _physics_process(delta: float) -> void:
 			_finish_respawn()
 
 
-func _start_derezz(_point: Vector3) -> void:
+func _start_derezz(point: Vector3) -> void:
 	state = State.DEREZZING
 	_state_time = 0.0
 	_shape.set_deferred("disabled", true)
 	_body.visible = false
 	_tag.visible = false
 	set_physics_process(true)
+	# The voxels get a push along the killing shot, when we know where it struck.
+	var shot := Vector3.ZERO
+	if point.is_finite():
+		shot = _body.global_position - point
+		shot.y = 0.0
+		shot = shot.normalized()
+	var fx := DerezzFx.new()
+	_fx_root().add_child(fx)
+	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)
 	downed.emit(self)
+
+
+## Where world-space effects live: the running scene, or the dummy's parent in tests.
+func _fx_root() -> Node:
+	var scene := get_tree().current_scene
+	return scene if scene != null else get_parent()
 
 
 func _begin_rematerialise() -> void:
