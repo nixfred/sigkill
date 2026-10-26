@@ -27,6 +27,8 @@ const OLLAMA_PS_PATH := "/api/ps"
 const LMSTUDIO_V1_PATH := "/api/v1/models"
 const LMSTUDIO_V0_PATH := "/api/v0/models"
 const LOADED_STATE := "loaded"
+## LM Studio model types that can chat; its listings also hold embedding models.
+const CHAT_TYPES := ["llm", "vlm"]
 const CHAT_PATH := "/v1/chat/completions"
 const MODEL_NAME_MAX := 256
 const MS_PER_SECOND := 1000.0
@@ -162,7 +164,10 @@ static func _parsed(body: Variant) -> Array:
 ## /api/ps gives {"models": [{"model" or "name": ...}]}, loaded models only. LM Studio's
 ## /api/v1/models gives {"models": [{"key": ..., "loaded_instances": [{"id": ...}]}]} and
 ## its /api/v0/models {"data": [{"id": ..., "state": "loaded" or "not-loaded"}]}; only a
-## loaded instance or a "loaded" state counts.
+## loaded instance or a "loaded" state counts, and only for a model whose "type" can chat
+## ("llm" or "vlm"), so a loaded embedding model is never picked. Ollama's /api/ps does not
+## say whether a model can chat; if the first loaded one cannot, the chat request fails
+## and the answer is bad_response, never a load.
 static func loaded_model(listing: Variant, path: String) -> Array:
 	var entries = Json.field(listing, "data" if path == LMSTUDIO_V0_PATH else "models")
 	if not (entries is Array):
@@ -171,6 +176,8 @@ static func loaded_model(listing: Variant, path: String) -> Array:
 		var names := []
 		if path == OLLAMA_PS_PATH:
 			names = [Json.field(entry, "model"), Json.field(entry, "name")]
+		elif not _can_chat(entry):
+			continue
 		elif path == LMSTUDIO_V1_PATH:
 			names = [Json.field(Json.item(Json.field(entry, "loaded_instances"), 0), "id")]
 		elif path == LMSTUDIO_V0_PATH:
@@ -181,6 +188,11 @@ static func loaded_model(listing: Variant, path: String) -> Array:
 			if name is String and not (name as String).is_empty() and (name as String).length() <= MODEL_NAME_MAX:
 				return [true, name]
 	return [true, ""]
+
+
+static func _can_chat(entry: Variant) -> bool:
+	var type = Json.field(entry, "type")
+	return type is String and CHAT_TYPES.has(type)
 
 
 ## The chat request: the model, the fixed preamble as the system message, the stats and

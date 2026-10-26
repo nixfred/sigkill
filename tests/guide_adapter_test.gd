@@ -29,6 +29,7 @@ const HANG_TIMEOUT_MS := 1000
 const FAKE_MODEL_WORD := "fake-model"
 const LOADED_MODEL := "fake-model-loaded:1b"
 const LISTED_MODEL := "fake-model-listed"
+const EMBED_MODEL := "fake-model-embed"
 const SENTINEL := "late sentinel"
 const CLAUDE_EXPECTED := ["-p", "--tools", "", "--permission-mode", "dontAsk", "--permission-prompts", "none", "--strict-mcp-config", "--safe-mode", "--disable-slash-commands", "--no-session-persistence", "--output-format", "text", "--system-prompt"]
 const CLAUDE_FORBIDDEN := ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "bypassPermissions", "acceptEdits", "auto", "--allowedTools", "--allowed-tools", "--add-dir", "--mcp-config", "--plugin-dir", "--plugin-url", "--agents", "--continue", "--resume", "--bg", "omarchy-agent", "omarchy-agent-prompt"]
@@ -448,9 +449,10 @@ func _server_state() -> Array:
 	return state
 
 
-## The fake server's answer. LM Studio's own listings put one unloaded model first, so an
-## adapter that took the first listed model would pick the wrong one; /v1/models lists only
-## that unloaded model, as LM Studio does with just-in-time loading on.
+## The fake server's answer. LM Studio's own listings put a loaded embedding model and an
+## unloaded chat model before the loaded chat model, so an adapter that took the first
+## loaded or the first listed model would pick the wrong one; /v1/models lists only the
+## unloaded model, as LM Studio does with just-in-time loading on.
 func _reply(mode: String, method: String, path: String) -> PackedByteArray:
 	var body := ""
 	var status := "200 OK"
@@ -461,16 +463,18 @@ func _reply(mode: String, method: String, path: String) -> PackedByteArray:
 		match mode:
 			"jit":
 				body = '{"models":[{"type":"llm","key":"%s","loaded_instances":[]},{"type":"llm","key":"%s","loaded_instances":[]}]}' % [LISTED_MODEL, LOADED_MODEL]
+			"embedonly":
+				body = '{"models":[{"type":"embedding","key":"%s","loaded_instances":[{"id":"%s","config":{}}]},{"key":"%s","loaded_instances":[{"id":"%s","config":{}}]}]}' % [EMBED_MODEL, EMBED_MODEL, LISTED_MODEL, LISTED_MODEL]
 			"v0", "v0hostile", "generic":
 				status = missing
 			_:
-				body = '{"models":[{"type":"llm","key":"%s","loaded_instances":[]},{"type":"llm","key":"%s","loaded_instances":[{"id":"%s","config":{}}]}]}' % [LISTED_MODEL, LOADED_MODEL, LOADED_MODEL]
+				body = '{"models":[{"type":"embedding","key":"%s","loaded_instances":[{"id":"%s","config":{}}]},{"type":"llm","key":"%s","loaded_instances":[]},{"type":"llm","key":"%s","loaded_instances":[{"id":"%s","config":{}}]}]}' % [EMBED_MODEL, EMBED_MODEL, LISTED_MODEL, LOADED_MODEL, LOADED_MODEL]
 	elif path == Local.LMSTUDIO_V0_PATH:
 		match mode:
 			"v0":
-				body = '{"object":"list","data":[{"id":"%s","state":"not-loaded"},{"id":"%s","state":"loaded"}]}' % [LISTED_MODEL, LOADED_MODEL]
+				body = '{"object":"list","data":[{"id":"%s","type":"embeddings","state":"loaded"},{"id":"%s","type":"llm","state":"not-loaded"},{"id":"%s","type":"vlm","state":"loaded"}]}' % [EMBED_MODEL, LISTED_MODEL, LOADED_MODEL]
 			"v0hostile":
-				body = '{"object":"list","data":[{"id":"%s","state":5},{"id":["x"],"state":"loaded"},{"id":7,"state":null},"loaded"]}' % LISTED_MODEL
+				body = '{"object":"list","data":[{"id":"%s","type":"llm","state":5},{"id":["x"],"type":"llm","state":"loaded"},{"id":7,"type":"llm","state":null},{"id":"%s","type":5,"state":"loaded"},{"id":"%s","state":"loaded"},"loaded"]}' % [LISTED_MODEL, LISTED_MODEL, LISTED_MODEL]
 			_:
 				status = missing
 	elif path == V1_MODELS:
@@ -579,7 +583,7 @@ func _local_checks() -> void:
 	_set_mode("loaded")
 	var lms := await _ask(_local(Local.KIND_OPENAI), "")
 	var lms_requests: Array = _server_state()[2]
-	_check("LM Studio 0.4+: /api/v1/models, an unloaded listed model is skipped and the loaded instance used", lms["ok"] and _paths(lms_requests) == [Local.LMSTUDIO_V1_PATH, Local.CHAT_PATH] and Json.parse(lms_requests[1]["body"])[1]["model"] == LOADED_MODEL, str(_paths(lms_requests)))
+	_check("LM Studio 0.4+: /api/v1/models, a loaded embedding model and an unloaded chat model are skipped, the loaded chat model used", lms["ok"] and _paths(lms_requests) == [Local.LMSTUDIO_V1_PATH, Local.CHAT_PATH] and Json.parse(lms_requests[1]["body"])[1]["model"] == LOADED_MODEL, str(_paths(lms_requests)))
 	_set_mode("jit")
 	var jit := await _ask(_local(Local.KIND_OPENAI), "")
 	var jit_requests: Array = _server_state()[2]
@@ -587,7 +591,11 @@ func _local_checks() -> void:
 	_set_mode("v0")
 	var v0 := await _ask(_local(Local.KIND_OPENAI), "")
 	var v0_requests: Array = _server_state()[2]
-	_check("older LM Studio: /api/v0/models, only a model whose state is loaded", v0["ok"] and _paths(v0_requests) == [Local.LMSTUDIO_V1_PATH, Local.LMSTUDIO_V0_PATH, Local.CHAT_PATH] and Json.parse(v0_requests[2]["body"])[1]["model"] == LOADED_MODEL, str(_paths(v0_requests)))
+	_check("older LM Studio: /api/v0/models, only a chat model (llm or vlm) whose state is loaded", v0["ok"] and _paths(v0_requests) == [Local.LMSTUDIO_V1_PATH, Local.LMSTUDIO_V0_PATH, Local.CHAT_PATH] and Json.parse(v0_requests[2]["body"])[1]["model"] == LOADED_MODEL, str(_paths(v0_requests)))
+	_set_mode("embedonly")
+	var embed := await _ask(_local(Local.KIND_OPENAI), "")
+	var embed_requests: Array = _server_state()[2]
+	_check("only an embedding model or an untyped model is loaded: needs_consent, no chat request", not embed["ok"] and embed["error_kind"] == "needs_consent" and _paths(embed_requests) == [Local.LMSTUDIO_V1_PATH], str(_paths(embed_requests)))
 	_set_mode("generic")
 	var generic := await _ask(_local(Local.KIND_OPENAI), "")
 	var generic_requests: Array = _server_state()[2]
@@ -595,7 +603,7 @@ func _local_checks() -> void:
 	_set_mode("v0hostile")
 	var odd := await _ask(_local(Local.KIND_OPENAI), "")
 	var odd_requests: Array = _server_state()[2]
-	_check("a listing with wrongly typed ids and states is skipped quietly: needs_consent", not odd["ok"] and odd["error_kind"] == "needs_consent" and not _paths(odd_requests).has(Local.CHAT_PATH), str(_paths(odd_requests)))
+	_check("a listing with wrongly typed ids, types and states is skipped quietly: needs_consent", not odd["ok"] and odd["error_kind"] == "needs_consent" and not _paths(odd_requests).has(Local.CHAT_PATH), str(_paths(odd_requests)))
 	_set_mode("hostile")
 	var hostile := await _ask(_local(Local.KIND_OLLAMA), "")
 	_check("a hostile answer (NUL escape, lone surrogate, 1e999999 tokens) is read quietly; tokens per second unknown", hostile["ok"] and hostile["tokens_per_sec"] == -1.0 and String(hostile["text"]).begins_with("zero"))
