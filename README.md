@@ -38,10 +38,10 @@ SIGKILL is a first-person shooter that runs natively on Omarchy, the Arch and Hy
 You play the nixfred `>_` hexagon, deep inside your own machine, hunting rogue daemons, zombie processes and runaway apps. The world has three visual registers that share one space:
 
 - **Tron** where the system is healthy: a pure black void, glowing light grids, neon edges on every surface. Teal and mint are yours; red and amber are hostile. **Built:** the greybox arena already has the black void, the glowing floor grid and the neon edges.
-- **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near. **Planned** (C8 code-rain walls, C21 code-rain vision).
+- **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near. **Built:** the greybox walls rain glyphs around every live dummy, and the rain fades when it derezzes. Code-rain vision is **Planned** (C21).
 - **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage. **Planned** (C36 ruins art kit).
 
-In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with target dummies that derezz into voxels when killed and then respawn.
+In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with target dummies that derezz into voxels when killed and then respawn, and walls that rain code wherever a dummy stands near them.
 
 ### Why a big studio can't ship this
 
@@ -64,7 +64,7 @@ A studio game has to be the same on every machine. SIGKILL is different on every
   </tr>
 </table>
 
-Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, and target dummies that derezz into voxels and respawn. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
+Built today: the greybox arena with the Tron look, tight movement, the terminal cannon, target dummies that derezz into voxels and respawn, and Matrix code rain on the walls near enemies. Everything else on this page is labeled with its real status, and the roadmap below tracks it chunk by chunk.
 
 ## Story
 
@@ -201,7 +201,7 @@ The rules that make this safe, in plain words:
 ### Built: the Tron arena
 
 - **Floor grid**, `shaders/floor_grid.gdshader`. A spatial shader that works in world space: the vertex stage passes `MODEL_MATRIX * VERTEX` to the fragment stage, so every floor block shares one continuous grid. Lines run along X and Z with 1 m cells and a brighter major line every 8 m, set by `GRID_CELL` and `GRID_MAJOR_EVERY` in `scripts/palette.gd`. Line coverage is anti-aliased with `fwidth`, and once a pixel is wider than a line the line's energy is spread over that pixel, so the far floor fades into the dark instead of shimmering. The lines are emission on a near-black base, which is what the glow pass blooms.
-- **Neon edges**, `shaders/neon_edge.gdshader`. Glowing outlines on every greybox block except the floor, which has its own grid shader, and on the target dummies, found without normals or extra geometry. In local space, a point on a flat face sits at distance zero from its own face plane, so the second-smallest plane distance is its distance to the nearest edge. A box has three plane families; the dummies' hexagonal prism has four, three side-plane pairs plus the caps. Edge width and colour are uniforms, and every block gets its own material sized to its half extents. On the hexagon the side faces meet at 120 degrees, so the plane distance underestimates the true distance along a face and the vertical edges draw about 15 percent wider than the rims.
+- **Neon edges**, `shaders/neon_edge.gdshaderinc`. Glowing outlines on every greybox block except the floor, which has its own grid shader, and on the target dummies, found without normals or extra geometry. The edge maths lives in that include file; `shaders/neon_edge.gdshader` is the plain look the dummies use, and the code rain shader below includes the same maths for the blocks. In local space, a point on a flat face sits at distance zero from its own face plane, so the second-smallest plane distance is its distance to the nearest edge. A box has three plane families; the dummies' hexagonal prism has four, three side-plane pairs plus the caps. Edge width and colour are uniforms, and every block gets its own material sized to its half extents. On the hexagon the side faces meet at 120 degrees, so the plane distance underestimates the true distance along a face and the vertical edges draw about 15 percent wider than the rims.
 - **Environment**, `scenes/arena.tscn`. One WorldEnvironment: a black background, glow in screen blend with an HDR threshold of 0.5 so emissive edges bloom while faces stay dark, black exponential fog at density 0.02 so distance fades into the void, and the filmic tonemapper. SSAO, SSR and SDFGI are off to keep it cheap.
 - **Colour**, `scripts/palette.gd`. The single source for every material and environment colour, and the factory for every material: void `#000000`, base `#05080a`, teal `#19d3c5` and mint `#7dffcf` for the player side, hostile red `#ff3355` and amber `#ffb000`. `scripts/main.gd` applies the exact palette colours to the environment at runtime; the scene file carries approximations only so the editor previews the look. Two light colours still live in their scenes: the sun in `scenes/main.tscn` and the room light in `scenes/arena.tscn`.
 - **Cannon effects**, `scripts/cannon_fx.gd`. The beam, the muzzle flash and its light, the impact flash and the sparks use unlit, over-bright materials so the glow pass picks them up. Sparks are CPU particles launched along the surface normal: hostile hits spark amber, the world sparks mint. Every effect frees itself when its lifetime ends.
@@ -217,12 +217,14 @@ The rules that make this safe, in plain words:
 
 The kill feed is not part of this chunk; it arrives with synced combat (C14). Like the rest of the look, the derezz has only run headless so far. Under `--headless` Godot keeps no MultiMesh data to read back, so the test checks the voxel state, and through a test hook the transform and colour each frame builds from it for the MultiMesh. Whether they reach the screen, and how it looks, stays unverified until the first windowed capture.
 
-### Planned: code rain
+### Built: code rain on the walls
 
-- **Code rain (C8):** a Matrix code-rain wall shader whose intensity rises when enemies are near.
-- **Code-rain vision (C21)** and **bullet time with motion trails (C18)** build on it and on the derezz.
+- **The shader**, `shaders/code_rain.gdshader`. Every greybox block but the floor carries it: the neon edge look, plus Matrix glyph streams that bleed through the block when a daemon is near. With no enemy in reach it produces exactly the neon edge result. The glyphs are original and procedural, no fonts or textures: each face is cut into a world-space grid of glyph cells, so streams run across block seams; each column rolls a hash for whether it carries a stream, its speed and its phase; a stream is a bright leading glyph, a fading tail and a dark gap, stepping down one cell at a time like the film; each glyph is a four by six bit grid mirrored left to right so it reads like a character, re-rolled a few times a second.
+- **Reach** is per pixel. The shader holds up to eight enemies, each a world position and a weight, and every pixel measures its own distance to each one: a share that fades to nothing at the falloff radius, combined like independent chances so two enemies never push it past full. The rain pools on the part of a wall nearest the enemy, on both sides of it, which is what makes it bleed through.
+- **The driver**, `scripts/code_rain_driver.gd`, one node in the arena. It fills the enemy slots from the live target dummies and uploads them to every block material as one small uniform array. The weight is the part that moves in time: it climbs at the fade-in rate while the dummy is alive and falls at the fade-out rate once it derezzes, so the rain never pops and never overshoots; distance does the rest in the shader. When more enemies are alive than the slots hold, the nearest to the player win. It runs at the fixed physics rate. It collects the blocks and targets again only when one enters or leaves the tree or a block rebuilds its material, and that collection is the one place it allocates or uploads unconditionally; an ordinary tick allocates nothing and uploads nothing when no slot changed.
+- **Tuning**, `scripts/code_rain_tuning.gd` with `resources/code_rain.tres`: the falloff radius, the minimum and maximum intensity, the enemy cap, the fade-in and fade-out rates, column density, glyph size, the fall speed range, tail length, flicker rate, brightness, and the head and tail colours, which default to the palette's Matrix green.
 
-No code-rain shader exists in the repo yet.
+Like the rest of the look, the rain has only run headless so far: the shader compiles under the dummy renderer, and the test checks GDScript mirrors of the falloff maths and the glyph hash, which prove the design and the numbers the driver uploads, not the pixels the shader draws. Nobody has seen a glyph on a real screen. The look, the glyph density and the brightness stay unverified until the first windowed capture. Code-rain vision (C21), seeing enemies through walls, and bullet time with motion trails (C18) build on this.
 
 ### Where the look is heading
 
@@ -285,22 +287,24 @@ sigkill/
 ├── project.godot               Godot 4.7 project: main scene, physics layer names, Forward+, black clear colour
 ├── scenes/
 │   ├── main.tscn               Root level: sun light, arena, player and HUD
-│   ├── arena.tscn              Greybox arena, its WorldEnvironment, and the four target dummies
+│   ├── arena.tscn              Greybox arena, its WorldEnvironment, the four target dummies and the code rain driver
 │   ├── player.tscn             First-person player: capsule, head, camera, muzzle marker, both tuning resources
 │   ├── grey_block.tscn         One greybox building block
 │   ├── target_dummy.tscn       Hexagonal-prism target dummy with a floating tag
 │   └── hud.tscn                Canvas layer for the code-built HUD
 ├── scripts/
-│   ├── main.gd                 Wires targets and player to the HUD, applies palette colours, R respawns targets
+│   ├── main.gd                 Wires targets, player, HUD and the rain driver, applies palette colours, R respawns targets
 │   ├── player.gd               Movement, slide, head bob, FOV kick, mouse look, cannon, recoil, the test hook
 │   ├── controls.gd             The input map, registered in code
 │   ├── movement_tuning.gd      MovementTuning: the exposed movement and camera tuning, validated
 │   ├── weapon_tuning.gd        WeaponTuning: the exposed cannon tuning, validated
 │   ├── derezz_tuning.gd        DerezzTuning: the exposed derezz and respawn tuning, validated
+│   ├── code_rain_tuning.gd     CodeRainTuning: the exposed code rain tuning, validated
 │   ├── palette.gd              Every colour, plus the material factory
-│   ├── grey_block.gd           Builds a block's mesh, collision and neon material; previews in the editor
+│   ├── grey_block.gd           Builds a block's mesh, collision and material; registers for code rain; previews in the editor
 │   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
 │   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death; self-freeing
+│   ├── code_rain_driver.gd     Feeds live enemy positions and faded weights to the code rain shader
 │   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair and hit marker
 │   ├── crosshair.gd            Crosshair drawn in code; kicks on every shot
 │   ├── hit_marker.gd           Diagonal hit marker, shown only on a confirmed hit
@@ -309,15 +313,19 @@ sigkill/
 │   └── check.sh                The headless quality gate
 ├── shaders/
 │   ├── floor_grid.gdshader     World-space glowing floor grid
-│   └── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms
+│   ├── neon_edge.gdshaderinc   The neon edge maths, shared by the two shaders below
+│   ├── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms; the dummies' look
+│   └── code_rain.gdshader      Neon edges plus Matrix code rain near enemies; the blocks' look
 ├── resources/
 │   ├── movement_tuning.tres    Default movement tuning
 │   ├── terminal_cannon.tres    Default terminal cannon tuning
-│   └── derezz.tres             Default derezz tuning
+│   ├── derezz.tres             Default derezz tuning
+│   └── code_rain.tres          Default code rain tuning
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
 │   ├── cannon_test.gd          Headless cannon test
-│   └── derezz_test.gd          Headless derezz test
+│   ├── derezz_test.gd          Headless derezz test
+│   └── code_rain_test.gd       Headless code rain test
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
     ├── DESIGN.md               Decisions log and design notes
@@ -327,13 +335,14 @@ sigkill/
 
 ### Tuning resources
 
-Feel is data, not code. Three custom resources hold the exposed tuning parameters for player movement, the camera, the cannon and the derezz, each with a default instance: the player scene loads the first two, and every target dummy loads the third. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
+Feel is data, not code. Four custom resources hold the exposed tuning parameters for player movement, the camera, the cannon, the derezz and the code rain, each with a default instance: the player scene loads the first two, every target dummy loads the third, and the arena's rain driver loads the fourth. Some numbers live elsewhere on purpose or for now: gravity comes from the project settings, the player's collision capsule from its scene, and HUD sizes and the dummies' hit pulse from their own scripts.
 
 - **MovementTuning**, `scripts/movement_tuning.gd` with `resources/movement_tuning.tres`. Groups: Ground, Air, Slide, Camera, Head bob, World. Walk speed, acceleration and friction, gravity scale, jump, air control, the whole slide (threshold, burst, friction, timer, cooldown, slide-jump cap, lowered camera), mouse sensitivity and pitch limit, FOV and its kick, head bob and its on/off toggle, fall respawn height.
 - **WeaponTuning**, `scripts/weapon_tuning.gd` with `resources/terminal_cannon.tres`. Groups: Firing, Viewmodel, Recoil, Beam, Muzzle flash, Impact, Hit marker, Audio. Cooldown, range, damage and hit layers, the cannon's size and kick, recoil and its caps and recovery, every effect's size, brightness and lifetime, the hit marker, and every parameter of the synthesised sounds including a master volume.
+- **CodeRainTuning**, `scripts/code_rain_tuning.gd` with `resources/code_rain.tres`. Groups: Reach, Fade, Glyphs, Colours. The falloff radius, the minimum and maximum intensity, the enemy cap, the fade-in and fade-out rates, column density, glyph size, fall speed range, tail length, flicker rate, brightness, head and tail colours.
 - **DerezzTuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`. Groups: Voxels, Motion, Fade, Respawn. The voxel cap and size, the share that glows red and the obsidian tint, glow brightness, burst, upward and shot-push speeds, spread, gravity, bounce, ground friction and the ground layers, the tumble range, the shortest and longest voxel life and the fade curve, the respawn delay and the regrow time.
 
-All three resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate or a voxel cap of zero, the player or the dummy prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
+All four resources validate themselves on load with `problems()`. If a value would break the game, for example a negative easing rate, a voxel cap of zero or a fade rate of zero, the player, the dummy or the rain driver prints a warning and falls back to the built-in defaults instead of misbehaving. `scripts/player.gd` itself holds no movement or cannon numbers at all, and every material colour comes from `scripts/palette.gd`.
 
 ### How the checks work
 
@@ -345,6 +354,7 @@ All three resources validate themselves on load with `problems()`. If a value wo
 4. **Movement test**, `tests/movement_test.gd`.
 5. **Cannon test**, `tests/cannon_test.gd`.
 6. **Derezz test**, `tests/derezz_test.gd`.
+7. **Code rain test**, `tests/code_rain_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -353,8 +363,9 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 - **Movement test.** A flat floor and the real player scene. Measures the start and the stop in frames, repeats them at 60 Hz and 120 Hz to prove nothing depends on the frame rate, and covers the slide (threshold, burst, timer, cooldown boundary, same-frame jump), slide-jump momentum, air control, head bob scaling and its toggle, the FOV kick, and the tuning fallback.
 - **Cannon test.** The real main scene. Fires at the real dummy, then the wall behind it, then the open sky, and checks the hit, the hit marker, recoil and its recovery at 60 Hz and 120 Hz, each effect's own lifetime, misses without a marker, the cooldown boundary, the pitch clamp including mouse look, the synthesised sounds, the tuning fallback, and that no orphan nodes are left behind.
 - **Derezz test.** The real main scene. Kills a real dummy with the real cannon and checks the state machine, collision, the voxel cap, the burst and the fade, the effect freeing itself on time, hits ignored while derezzing and while respawning, and the respawn at full health in the same spot. It also runs one seeded derezz at 30 and at 144 frames per second and requires identical voxels. It checks that the voxels follow the shot's own direction, both from a real cannon shot grazing a dummy's side and from a direct hit, and that voxels knocked off the raised platform settle on the floor below and never in mid-air. Finally it runs 20 rapid kill cycles with no leaked or orphaned nodes, and confirms every tuning resource file lists every tunable of its script.
+- **Code rain test.** The shader and tuning load and validate, then the real main scene: every block but the floor carries the rain shader and receives the tuning and the enemy slots; with no enemy the intensity is the minimum, at an enemy the maximum, at the radius nothing, and it never rises with distance; the rain fades in and out at the tuned rates, converges exactly and never overshoots; a derezzed dummy stops counting and a respawned one counts again; more enemies than the cap stay bounded, nearest to the player first; a settled arena uploads nothing. Headless Godot cannot read a shader's pixels, so the test checks GDScript mirrors of the falloff maths and the glyph hash instead; the shader itself is only known to compile.
 
-Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, and more. Each one makes `scripts/check.sh` exit 1.
+Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, and more. Each one makes `scripts/check.sh` exit 1.
 
 ### The Codex bug run
 
@@ -432,6 +443,7 @@ Exit 0 means every step passed, 1 means a problem was found, 2 means the gate it
 godot --headless --path . --fixed-fps 60 --script res://tests/movement_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/cannon_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/derezz_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/code_rain_test.gd
 ```
 
 ## Safety and privacy
@@ -453,7 +465,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | Milestone | Chunks | Status |
 |---|---|---|
 | M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
-| M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls | 🔧 In progress |
+| M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls (`3ee66b1`) | ✅ Done |
 | M2 Your AI | C9 AI source detector · C9b agent adapters · C10 boot sequence · C11 guide HUD · C12 coaching and roasts | ⬜ Planned |
 | M3 Multiplayer | C13 LAN and tailnet · C14 synced combat · C15 room codes, invite links and relay | ⬜ Planned |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM · C17 SIGKILL rail rifle · C18 bullet time · C19 fork bomb · C20 light trails · C21 code-rain vision · C22 root vs user and `sudo` · C23 spectate as top · C24 to C32 the shell-command weapons · C33 unlocks, mods and skins | ⬜ Planned |
