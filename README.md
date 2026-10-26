@@ -11,7 +11,7 @@
   <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-ff3355?labelColor=05080a">
 </p>
 
-A native linux FPS for Omarchy. You are the nixfred `>_` hexagon, deep inside your own machine, hunting rogue daemons, zombie processes and runaway apps. Tron light-grid arenas, Matrix code rain, fast arena gunplay, and your OWN local AI riding along as your guide. Play solo against daemons or jump into a match with a friend across the internet in seconds.
+A native linux FPS for Omarchy. You are the nixfred `>_` hexagon, deep inside your own machine, hunting rogue daemons, zombie processes and runaway apps. cyberpunk ruins, Tron light-grid arenas, Matrix code rain, a story campaign, a big command-line arsenal, fast arena gunplay, and your OWN local AI riding along as your guide. Play solo against daemons or jump into a match with a friend across the internet in seconds.
 
 ## The vibe
 
@@ -34,7 +34,7 @@ A native linux FPS for Omarchy. You are the nixfred `>_` hexagon, deep inside yo
   <tr>
     <td align="center" width="33%">🟦<br><b>Tron arena</b><br>Black void, glowing light grid, neon edges on every surface.</td>
     <td align="center" width="33%">📡<br><b>Signal weapons</b><br>SIGTERM shotgun, SIGHUP confusion grenade, the SIGKILL railgun.</td>
-    <td align="center" width="33%">🧠<br><b>Your REAL local AI</b><br>The model already running on your machine rides along as your guide.</td>
+    <td align="center" width="33%">🧠<br><b>Your REAL AI</b><br>The coding agent you already picked in Omarchy rides along as your guide.</td>
   </tr>
   <tr>
     <td align="center">🌐<br><b>One-click multiplayer</b><br>Internet matches by room code. No port forwarding.</td>
@@ -54,7 +54,7 @@ Runs from source today. Packaged builds (AppImage, AUR) are planned and not avai
 - Godot 4.x from pacman (the project is built against 4.7)
 - A Vulkan-capable GPU and driver
 - git
-- Optional, coming in M2: Ollama or LM Studio for the AI guide
+- Optional, coming in M2: the AI guide uses your Omarchy default agent (Claude Code and Codex first), with a local model server such as Ollama or LM Studio as the fallback
 
 **Quickstart (Omarchy / Arch)**
 

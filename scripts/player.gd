@@ -4,6 +4,9 @@ extends CharacterBody3D
 ## Movement feel lives in one resource: scripts/movement_tuning.gd, with the default
 ## instance in resources/movement_tuning.tres. Every movement and camera number comes
 ## from it. All motion is scaled by delta, so it feels the same at any physics rate.
+## The cannon works the same way: scripts/weapon_tuning.gd, default instance
+## resources/terminal_cannon.tres, with its effects in scripts/cannon_fx.gd and its
+## synthesised sounds in scripts/sfx_synth.gd.
 ##
 ## Mouse rules: the mouse is captured only after the player clicks into the window.
 ## Esc, or the window losing focus, releases it. The game never grabs the mouse on
@@ -13,29 +16,34 @@ const Palette = preload("res://scripts/palette.gd")
 const Controls = preload("res://scripts/controls.gd")
 const Tuning = preload("res://scripts/movement_tuning.gd")
 const DEFAULT_TUNING_PATH := "res://resources/movement_tuning.tres"
+const Weapon = preload("res://scripts/weapon_tuning.gd")
+const CannonFx = preload("res://scripts/cannon_fx.gd")
+const Sfx = preload("res://scripts/sfx_synth.gd")
+const DEFAULT_WEAPON_PATH := "res://resources/terminal_cannon.tres"
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
 
-# --- Terminal cannon constants. Weapon feel is chunk C6; none of these are movement. ---
-const FIRE_COOLDOWN := 0.16
-const FIRE_RANGE := 120.0
-const CANNON_DAMAGE := 1.0
-const HIT_MASK := 5  # physics layers: 1 = world, 3 = targets (value 4)
-const BEAM_RADIUS := 0.012
-const BEAM_SECONDS := 0.12
-const IMPACT_SECONDS := 0.18
-const VIEWMODEL_REST_Z := -0.45
-# --- End of terminal cannon constants. ---
-
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
+## Terminal cannon tuning. Leave empty to use resources/terminal_cannon.tres.
+@export var weapon: Resource
+
+## Round stats, counted for the HUD now and for round-stat coaching later.
+var shots_fired := 0
+var hits_landed := 0
 
 var _t: Tuning
+var _w: Weapon
 var _spawn: Transform3D
-var _last_shot := -INF
 var _fire_queued := false
 var _viewmodel: MeshInstance3D
+var _rng := RandomNumberGenerator.new()
+var _cooldown_left := 0.0
+var _recoil := Vector2.ZERO  # pitch and yaw kick in radians, applied to the camera
+var _viewmodel_kick := 0.0
+var _fire_sfx: AudioStreamPlayer
+var _hit_sfx: AudioStreamPlayer
 
 # Movement state.
 var _sliding := false
@@ -52,6 +60,7 @@ var _fov_kick := 0.0
 var _move_input := Vector2.ZERO
 var _jump_pressed := false
 var _slide_pressed := false
+var _fire_pressed := false
 var _scripted_input := false
 
 @onready var _head: Node3D = $Head
@@ -77,7 +86,25 @@ func _ready() -> void:
 	_spawn = global_transform
 	_head.position.y = _t.stand_head_height
 	_camera.fov = _t.base_fov
+
+	if not (weapon is Weapon):
+		weapon = load(DEFAULT_WEAPON_PATH)
+	_w = weapon as Weapon
+	if _w == null:
+		push_error("player: no weapon tuning resource at " + DEFAULT_WEAPON_PATH)
+		set_physics_process(false)
+		set_process_unhandled_input(false)
+		return
+	var weapon_issues := _w.problems()
+	if not weapon_issues.is_empty():
+		for issue in weapon_issues:
+			push_warning("weapon tuning: " + issue + "; using the built-in defaults instead")
+		_w = Weapon.new()
+	_rng.randomize()
+	_muzzle.position = _w.muzzle_offset
 	_build_viewmodel()
+	_fire_sfx = _make_sfx_player(Sfx.fire_zap(_w))
+	_hit_sfx = _make_sfx_player(Sfx.hit_blip(_w))
 
 
 func _notification(what: int) -> void:
@@ -99,14 +126,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseMotion:
-		var motion := event as InputEventMouseMotion
-		var pitch_limit := deg_to_rad(_t.pitch_limit_degrees)
-		rotate_y(-motion.relative.x * _t.mouse_sensitivity)
-		_head.rotation.x = clampf(
-			_head.rotation.x - motion.relative.y * _t.mouse_sensitivity, -pitch_limit, pitch_limit
-		)
+		_look((event as InputEventMouseMotion).relative)
 	elif event.is_action_pressed("fire"):
 		_fire_queued = true
+
+
+## Mouse look: yaw on the body, pitch on the head, clamped to the pitch limit. The recoil
+## on the camera is re-clamped straight away, so aim plus recoil never tips the view past
+## the limit, not even between physics ticks.
+func _look(relative: Vector2) -> void:
+	var pitch_limit := deg_to_rad(_t.pitch_limit_degrees)
+	rotate_y(-relative.x * _t.mouse_sensitivity)
+	_head.rotation.x = clampf(_head.rotation.x - relative.y * _t.mouse_sensitivity, -pitch_limit, pitch_limit)
+	_apply_recoil()
 
 
 # --- Movement and camera. Every number below comes from the tuning resource. ---
@@ -116,31 +148,29 @@ func _physics_process(delta: float) -> void:
 		_read_player_input()
 	_step_movement(delta)
 	_step_camera(delta)
+	_step_weapon(delta)
 	# Presses are one-shot. Scripted input lasts exactly one physics frame, then the
 	# keyboard takes over again.
 	_jump_pressed = false
 	_slide_pressed = false
+	_fire_pressed = false
 	if _scripted_input:
 		_move_input = Vector2.ZERO
 		_scripted_input = false
-
-	# Shots are resolved here, inside the physics step, so the ray query is safe.
-	if _fire_queued:
-		_fire_queued = false
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			_fire()
 
 	if global_position.y < _t.fall_respawn_height:
 		_respawn()
 
 
 ## Test hook: supplies the input for the next physics frame only, instead of the
-## keyboard. jump and slide are one-shot presses. Used by tests/movement_test.gd.
-func drive_input(move: Vector2, jump: bool = false, slide: bool = false) -> void:
+## keyboard and mouse. jump, slide and fire are one-shot presses. Used by the tests in
+## tests/.
+func drive_input(move: Vector2, jump: bool = false, slide: bool = false, fire: bool = false) -> void:
 	_scripted_input = true
 	_move_input = move.limit_length(1.0)
 	_jump_pressed = jump
 	_slide_pressed = slide
+	_fire_pressed = fire
 
 
 ## True while a slide is running.
@@ -158,10 +188,15 @@ func _read_player_input() -> void:
 		_move_input = Vector2.ZERO
 		_jump_pressed = false
 		_slide_pressed = false
+		_fire_pressed = false
+		_fire_queued = false
 		return
 	_move_input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	_jump_pressed = Input.is_action_just_pressed("jump")
 	_slide_pressed = Input.is_action_just_pressed("slide")
+	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.
+	_fire_pressed = _fire_queued
+	_fire_queued = false
 
 
 func _step_movement(delta: float) -> void:
@@ -280,6 +315,7 @@ func _respawn() -> void:
 	_sliding = false
 	_slide_cooldown_left = 0.0
 	_air_speed_cap = 0.0
+	_recoil = Vector2.ZERO
 
 
 func _release_mouse() -> void:
@@ -287,99 +323,99 @@ func _release_mouse() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-# --- Terminal cannon. Weapon feel is chunk C6; the numbers below are not movement. ---
+# --- Terminal cannon. Every number below comes from the weapon tuning resource. ---
+
+## The weapon tuning in use: the shipped resource, or the built-in defaults if it was bad.
+func weapon_tuning() -> Resource:
+	return _w
+
+
+func _step_weapon(delta: float) -> void:
+	_cooldown_left = maxf(_cooldown_left - delta, 0.0)
+	# Recover first, then apply any new shot, so a shot's kick is the same size at any
+	# physics rate. Mouse aim is never touched, so the view settles back on target.
+	_recoil = _recoil.lerp(Vector2.ZERO, _smoothing(_w.recoil_recovery, delta))
+	_viewmodel_kick = lerpf(_viewmodel_kick, 0.0, _smoothing(_w.viewmodel_recovery, delta))
+	# The ray is cast from the camera exactly as the player sees it, clamp included.
+	_apply_recoil()
+	if _fire_pressed and _cooldown_left <= 0.0:
+		_fire()
+		_apply_recoil()
+	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, 0.0, _w.viewmodel_kick_back * _viewmodel_kick)
+	_viewmodel.rotation.x = deg_to_rad(_w.viewmodel_kick_pitch_degrees) * _viewmodel_kick
+
 
 func _fire() -> void:
-	var now := Time.get_ticks_msec() / 1000.0
-	if now - _last_shot < FIRE_COOLDOWN:
-		return
-	_last_shot = now
-
+	_cooldown_left = _w.fire_cooldown
+	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
-	var far_point := origin + forward * FIRE_RANGE
-
-	var query := PhysicsRayQueryParameters3D.create(origin, far_point, HIT_MASK)
+	var far_point := origin + forward * _w.fire_range
+	var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
 	var result := get_world_3d().direct_space_state.intersect_ray(query)
 
 	var end_point := far_point
 	var hit_target := false
+	var fx_root := _fx_root()
 	if not result.is_empty():
 		end_point = result["position"]
+		var normal: Vector3 = result["normal"]
+		if normal.is_zero_approx():
+			normal = -forward
 		var collider = result["collider"]
 		if is_instance_valid(collider) and collider.has_method("hit"):
-			collider.call("hit", CANNON_DAMAGE, end_point)
-			hit_target = true
-		_spawn_impact(end_point)
+			hit_target = collider.call("hit", _w.damage, end_point) == true
+		CannonFx.spawn_impact(fx_root, end_point, normal, hit_target, _w)
 
-	_spawn_beam(_muzzle.global_position, end_point)
-	_kick_viewmodel()
+	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
+	CannonFx.spawn_muzzle_flash(_muzzle, _w)
+	_kick()
+	_fire_sfx.play()
+	if hit_target:
+		hits_landed += 1
+		_hit_sfx.play()
 	shot_fired.emit(hit_target)
+
+
+## Puts the recoil on the camera, clamped so aim plus recoil stays within the pitch limit.
+func _apply_recoil() -> void:
+	var pitch_room := maxf(deg_to_rad(_t.pitch_limit_degrees) - _head.rotation.x, 0.0)
+	_recoil.x = minf(_recoil.x, pitch_room)
+	_camera.rotation = Vector3(_recoil.x, _recoil.y, 0.0)
+
+
+## Camera kick up plus a small random yaw, both capped, and a cannon jolt.
+func _kick() -> void:
+	var max_pitch := deg_to_rad(_w.recoil_max_pitch_degrees)
+	var max_yaw := deg_to_rad(_w.recoil_max_yaw_degrees)
+	var yaw := deg_to_rad(_rng.randf_range(-_w.recoil_yaw_degrees, _w.recoil_yaw_degrees))
+	_recoil.x = minf(_recoil.x + deg_to_rad(_w.recoil_pitch_degrees), max_pitch)
+	_recoil.y = clampf(_recoil.y + yaw, -max_yaw, max_yaw)
+	_viewmodel_kick = 1.0
+
+
+## Where world-space effects live: the running scene, or the player's parent in tests.
+func _fx_root() -> Node:
+	var scene := get_tree().current_scene
+	return scene if scene != null else get_parent()
 
 
 func _build_viewmodel() -> void:
 	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.09, 0.09, 0.5)
+	mesh.size = _w.viewmodel_size
 	_viewmodel = MeshInstance3D.new()
 	_viewmodel.name = "TerminalCannon"
 	_viewmodel.mesh = mesh
-	_viewmodel.material_override = Palette.glow(Palette.TEAL, 0.6)
+	_viewmodel.material_override = Palette.glow(Palette.TEAL, _w.viewmodel_glow_energy)
 	_viewmodel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_viewmodel.position = Vector3(0.22, -0.2, VIEWMODEL_REST_Z)
+	_viewmodel.position = _w.viewmodel_offset
 	_camera.add_child(_viewmodel)
 
 
-func _kick_viewmodel() -> void:
-	var tween := create_tween()
-	tween.tween_property(_viewmodel, "position:z", VIEWMODEL_REST_Z, 0.09).from(VIEWMODEL_REST_Z + 0.07)
-
-
-func _spawn_beam(start: Vector3, finish: Vector3) -> void:
-	var length := start.distance_to(finish)
-	if length < 0.1:
-		return
-	var pivot := Node3D.new()
-	get_tree().current_scene.add_child(pivot)
-	pivot.global_position = start.lerp(finish, 0.5)
-	var dir := (finish - start) / length
-	var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < 0.98 else Vector3.RIGHT
-	pivot.look_at(finish, up)
-
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = BEAM_RADIUS
-	cyl.bottom_radius = BEAM_RADIUS
-	cyl.height = length
-	cyl.radial_segments = 6
-	cyl.rings = 1
-	var mat := Palette.unlit_alpha(Palette.MINT)
-	var beam := MeshInstance3D.new()
-	beam.mesh = cyl
-	beam.material_override = mat
-	beam.rotation_degrees = Vector3(90.0, 0.0, 0.0)  # cylinder axis Y -> pivot's -Z
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pivot.add_child(beam)
-
-	var tween := pivot.create_tween()
-	tween.tween_property(mat, "albedo_color:a", 0.0, BEAM_SECONDS)
-	tween.tween_callback(pivot.queue_free)
-
-
-func _spawn_impact(point: Vector3) -> void:
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.09
-	sphere.height = 0.18
-	sphere.radial_segments = 8
-	sphere.rings = 4
-	var mat := Palette.unlit_alpha(Palette.MINT)
-	var flash := MeshInstance3D.new()
-	flash.mesh = sphere
-	flash.material_override = mat
-	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_tree().current_scene.add_child(flash)
-	flash.global_position = point
-
-	var tween := flash.create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(flash, "scale", Vector3.ONE * 2.2, IMPACT_SECONDS)
-	tween.tween_property(mat, "albedo_color:a", 0.0, IMPACT_SECONDS)
-	tween.chain().tween_callback(flash.queue_free)
+func _make_sfx_player(stream: AudioStream) -> AudioStreamPlayer:
+	var sfx := AudioStreamPlayer.new()
+	sfx.stream = stream
+	sfx.volume_db = Sfx.volume_db(_w.master_volume)
+	sfx.max_polyphony = _w.sfx_polyphony
+	add_child(sfx)
+	return sfx

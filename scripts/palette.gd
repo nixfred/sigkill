@@ -81,6 +81,20 @@ static func unlit_alpha(color: Color) -> StandardMaterial3D:
 	return mat
 
 
+## Unlit, translucent and over-bright, for effects that should bloom: beams, flashes,
+## sparks. energy scales the colour above 1 so the glow pass picks it up.
+static func unlit_glow(color: Color, energy: float) -> StandardMaterial3D:
+	return unlit_alpha(Color(color.r * energy, color.g * energy, color.b * energy, color.a))
+
+
+## Opacity ramp for particles: fully visible at birth, gone by the end of their life.
+static func fade_out_ramp() -> Gradient:
+	var ramp := Gradient.new()
+	ramp.set_color(0, FLASH)
+	ramp.set_color(1, Color(FLASH, 0.0))
+	return ramp
+
+
 static func mono_font() -> Font:
 	if _mono == null:
 		_mono = SystemFont.new()

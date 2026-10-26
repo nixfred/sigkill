@@ -25,6 +25,7 @@ func _ready() -> void:
 	for dummy in dummies:
 		dummy.connect("downed", _on_target_downed)
 	_player.shot_fired.connect(_on_shot_fired)
+	_hud.set_weapon_tuning(_player.weapon_tuning())
 	_hud.set_targets(_remaining, _total)
 
 
@@ -52,5 +53,4 @@ func _on_target_downed(_dummy: Node3D) -> void:
 
 
 func _on_shot_fired(hit_target: bool) -> void:
-	if hit_target:
-		_hud.ping()
+	_hud.on_shot(hit_target)

@@ -38,18 +38,20 @@ func _ready() -> void:
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 
 
-## Called by the player's cannon through the ray hit.
-func hit(damage: float, _point: Vector3 = Vector3.ZERO) -> void:
+## Called by the player's cannon through the ray hit. Returns true if the hit landed,
+## false if the dummy was already on its way out.
+func hit(damage: float, _point: Vector3 = Vector3.ZERO) -> bool:
 	if _dead:
-		return
+		return false
 	_health -= damage
 	if _health > 0.0:
 		_pulse()
-		return
+		return true
 	_dead = true
 	_shape.set_deferred("disabled", true)
 	downed.emit(self)
 	_despawn()
+	return true
 
 
 func _pulse() -> void:

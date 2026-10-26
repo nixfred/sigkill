@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="WeaponTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon_tuning.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+fire_cooldown = 0.16
+fire_range = 120.0
+damage = 1.0
+hit_mask = 5
+viewmodel_size = Vector3(0.09, 0.09, 0.5)
+viewmodel_offset = Vector3(0.22, -0.2, -0.45)
+muzzle_offset = Vector3(0.22, -0.2, -0.7)
+viewmodel_glow_energy = 0.6
+viewmodel_kick_back = 0.07
+viewmodel_kick_pitch_degrees = 6.0
+viewmodel_recovery = 18.0
+recoil_pitch_degrees = 1.6
+recoil_yaw_degrees = 0.6
+recoil_max_pitch_degrees = 8.0
+recoil_max_yaw_degrees = 3.0
+recoil_recovery = 10.0
+beam_radius = 0.012
+beam_sides = 6
+beam_energy = 3.0
+beam_lifetime = 0.12
+beam_min_length = 0.1
+muzzle_flash_radius = 0.07
+muzzle_flash_energy = 6.0
+muzzle_flash_lifetime = 0.06
+muzzle_light_energy = 4.0
+muzzle_light_range = 4.0
+impact_flash_radius = 0.09
+impact_flash_grow = 2.2
+impact_flash_energy = 4.0
+impact_flash_lifetime = 0.18
+spark_count = 24
+spark_lifetime = 0.35
+spark_speed_min = 3.0
+spark_speed_max = 7.0
+spark_spread_degrees = 55.0
+spark_gravity = 9.8
+spark_size = 0.025
+spark_energy = 5.0
+hit_marker_seconds = 0.25
+hit_marker_size = 9.0
+hit_marker_gap = 5.0
+hit_marker_thickness = 2.0
+sfx_polyphony = 4
+sfx_mix_rate = 44100
+sfx_attack_seconds = 0.002
+fire_sfx_seconds = 0.14
+fire_start_hz = 1600.0
+fire_end_hz = 180.0
+fire_decay = 22.0
+hit_sfx_seconds = 0.09
+hit_hz = 2200.0
+hit_second_ratio = 1.5
+hit_decay = 35.0
