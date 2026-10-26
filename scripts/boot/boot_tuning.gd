@@ -18,8 +18,6 @@ const Palette = preload("res://scripts/palette.gd")
 @export_group("Handshake")
 ## How often the "thinking" spinner turns while the AI is asked.
 @export var spinner_frame_ms: int = 90
-## Most characters of the AI's answer shown on the boot screen.
-@export var answer_max_chars: int = 72
 ## Demo-data mode only: how long the fake handshake "thinks" before its canned answer.
 @export var demo_link_ms: int = 900
 ## Demo-data mode only: the latency shown for the canned answer.
@@ -58,8 +56,6 @@ const CPS_LAST := 5000.0
 const PAUSE_LAST_MS := 5000
 const SPINNER_FIRST_MS := 30
 const SPINNER_LAST_MS := 1000
-const ANSWER_FIRST := 8
-const ANSWER_LAST := 200
 const DEMO_LAST_MS := 10000
 const GPU_FIRST_MS := 1000
 const GPU_LAST_MS := 60000
@@ -77,8 +73,6 @@ func problems() -> PackedStringArray:
 		out.append("line_pause_ms must be between 0 and %d" % PAUSE_LAST_MS)
 	if spinner_frame_ms < SPINNER_FIRST_MS or spinner_frame_ms > SPINNER_LAST_MS:
 		out.append("spinner_frame_ms must be between %d and %d" % [SPINNER_FIRST_MS, SPINNER_LAST_MS])
-	if answer_max_chars < ANSWER_FIRST or answer_max_chars > ANSWER_LAST:
-		out.append("answer_max_chars must be between %d and %d" % [ANSWER_FIRST, ANSWER_LAST])
 	for field in ["demo_link_ms", "demo_latency_ms"]:
 		var value: int = get(field)
 		if value < 0 or value > DEMO_LAST_MS:

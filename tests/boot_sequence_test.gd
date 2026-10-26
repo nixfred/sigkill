@@ -21,11 +21,15 @@ const BOOT_TUNING_PATH := "res://resources/boot.tres"
 const FIXTURES := "res://tests/fixtures/ai"
 const ARENA := "res://scenes/main.tscn"
 const WATCHDOG_MS := 8000
-const STUB_ANSWER := "Link up, hunter."
+const STUB_ANSWER := "Linked. Let's clear this arena."
 const LEAK_MODEL := "fake-model-secret:7b"
 const LEAK_HOST := "fake-host-01"
 const LEAK_USER := "fakeuser"
 const LEAK_PATH := "/fake/people/someone/bin/fakeagent"
+## The same kinds of names without a digit or a slash, which a character filter would pass.
+const LEAK_USER_WORD := "Fakeuser"
+const LEAK_HOST_WORD := "fakehost"
+const LEAK_MODEL_WORD := "Fakemodel"
 const SOURCE_NEVER := ["OS.execute", "OS.create_process", "OS.kill", "OS.shell_open", "execute_with_pipe", "StreamPeerTCP", "HTTPRequest", "HTTPClient", "TCPServer", "UDPServer", "JSON.parse"]
 
 var _fails := 0
@@ -57,6 +61,10 @@ class FakeDetector:
 	var finds := 0
 	var cancels := 0
 	var gpu_calls := 0
+	var gpu_running := 0
+	## How long each GPU reading takes unless cancelled; 0 answers at once.
+	var slow_ms := 0
+	var cancelled := false
 	var mutex := Mutex.new()
 
 	func start() -> Error:
@@ -71,7 +79,10 @@ class FakeDetector:
 		return result
 
 	func cancel() -> void:
+		mutex.lock()
 		cancels += 1
+		cancelled = true
+		mutex.unlock()
 
 	func find_command(_command: String) -> String:
 		finds += 1
@@ -80,9 +91,28 @@ class FakeDetector:
 	func poll_gpu() -> Dictionary:  # runs on the boot screen's GPU worker thread
 		mutex.lock()
 		gpu_calls += 1
+		gpu_running += 1
 		var out := reading.duplicate()
 		mutex.unlock()
+		# Like the C9 reader waiting on nvidia-smi: slow, but it gives up at a cancel.
+		var t0 := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t0 < slow_ms:
+			mutex.lock()
+			var stop := cancelled
+			mutex.unlock()
+			if stop:
+				break
+			OS.delay_msec(5)
+		mutex.lock()
+		gpu_running -= 1
+		mutex.unlock()
 		return out
+
+	func running() -> int:
+		mutex.lock()
+		var n := gpu_running
+		mutex.unlock()
+		return n
 
 	func gpu_count() -> int:
 		mutex.lock()
@@ -98,7 +128,7 @@ class StubAdapter:
 	var name := "claude"
 	var kind := ""
 	var mode := "ok"
-	var answer := "Link up, hunter."
+	var answer := "Linked. Let's clear this arena."
 	var tps := -1.0
 	var ask_calls := 0
 	var begins := 0
@@ -146,7 +176,7 @@ func _run() -> void:
 	await process_frame
 	_tuning_checks()
 	_settings_checks()
-	_screen_line_checks()
+	_handshake_line_checks()
 	_source_checks()
 	await _line_checks()
 	await _consent_checks()
@@ -155,6 +185,8 @@ func _run() -> void:
 	await _demo_checks()
 	await _gpu_checks()
 	await _privacy_checks()
+	await _layout_checks()
+	await _exit_checks()
 	await _handoff_checks()
 	await _cleanup_screens()
 	print("BOOT: %d checks" % _checks)
@@ -423,15 +455,18 @@ func _settings_checks() -> void:
 	_check("a damaged settings file counts as never asked, quietly: binary, a key twice, a bad value, an unknown source, half a file, oversized", bad.is_empty(), ", ".join(bad))
 
 
-func _screen_line_checks() -> void:
-	var cut := Boot.screen_line("Ready to hunt the rogue daemons in every corner of this arena tonight", 40)
-	var refused := PackedStringArray()
-	for text in ["Running at /fake/people/someone", "Hi from fake-host-01", "user@box", "I am model:7b", "see host.lan now", "Version 3 online", "path C:\\fake", "snake_case"]:
-		if Boot.screen_line(text, 72) != "":
-			refused.append(text)
-	_check("the screen filter keeps a plain sentence and its first line only", Boot.screen_line("  Link up, hunter. Let's go!\nsecond line /etc", 72) == "Link up, hunter. Let's go!")
-	_check("the screen filter refuses paths, digits, colons, at signs, dotted names and underscores", refused.is_empty(), ", ".join(refused))
-	_check("a long answer is cut at a word, the ellipsis inside the cap", cut == "Ready to hunt the rogue daemons in..." and cut.length() <= 40 and Boot.screen_line("Hunt them all down now", 22) == "Hunt them all down now", cut)
+func _handshake_line_checks() -> void:
+	var exact := PackedStringArray()
+	for line in Boot.HANDSHAKE_LINES:
+		if Boot.handshake_line(line) != line or not Boot.HANDSHAKE_TEXT.contains(line):
+			exact.append(line)
+	_check("every handshake line is named in the fixed prompt and matches itself", exact.is_empty() and Boot.HANDSHAKE_LINES.has(Boot.DEMO_ANSWER), ", ".join(exact))
+	_check("quotes, markdown marks, letter case, extra spaces and later lines around a picked line are ignored", Boot.handshake_line("  \"online.   DAEMONS beware.\"  \nand a second line") == "Online. Daemons beware." and Boot.handshake_line("**Link up. Ready to hunt.**") == "Link up. Ready to hunt." and Boot.handshake_line("> Linked. Let's clear this arena.") == "Linked. Let's clear this arena.")
+	var shown := PackedStringArray()
+	for text in ["Welcome %s on %s. I am %s." % [LEAK_USER_WORD, LEAK_HOST_WORD, LEAK_MODEL_WORD], "Link up. Ready to hunt, %s." % LEAK_USER_WORD, "Online on %s." % LEAK_HOST_WORD, "I am %s." % LEAK_MODEL_WORD, LEAK_PATH, "", "Link up. Ready to hunt. Also, hello."]:
+		if Boot.handshake_line(text) != "":
+			shown.append(text)
+	_check("anything else is no handshake line at all: names of people, machines and models, paths, empty, extra words", shown.is_empty(), ", ".join(shown))
 
 
 ## Source with its comments cut off, so a scan sees code, not the notes explaining it.
@@ -466,7 +501,7 @@ func _source_checks() -> void:
 			found.append(word)
 	_check("the boot screen starts no program, opens no socket and stops nothing itself", found.is_empty(), ", ".join(found))
 	var boot := _code("res://scripts/boot/boot_sequence.gd")
-	_check("the registry is asked in one place, after the headless guard has returned", boot.count("Registry.adapter_for(") == 1 and boot.contains("\tif _guarded:\n\t\treturn null\n\treturn Registry.adapter_for(_found, detector, _guide_tuning)"))
+	_check("the registry is asked in one place, on the adapter worker, after the headless guard has returned", boot.count("adapter_for(") == 1 and boot.contains("\t\tif guarded:\n\t\t\treturn\n\t\tadapter = RegistryScript.adapter_for(found, detector, tuning)") and boot.contains("_adapter_thread.start(_adapter_job.run)"))
 	_check("a real detector is made in one place, only when not guarded", boot.count("Detector.new()") == 1 and boot.contains("\tif detector == null and not _guarded:\n\t\tdetector = Detector.new()"))
 	_check("the AI switch is set in one place, on the screen's own copy, right before the one ask", boot.count("ai_enabled = true") == 1 and boot.contains("\t_guide_tuning.ai_enabled = true\n\tvar started: Dictionary = _adapter.ask(") and boot.count(".ask(") == 1)
 
@@ -630,12 +665,7 @@ func _gpu_checks() -> void:
 
 func _privacy_checks() -> void:
 	_save("privacy.cfg", "ollama", true)
-	var real := _fixture_detector(_tmp.path_join("agent-path"), "empty", _port)
-	var leaky := "Running %s on %s for %s at %s" % [LEAK_MODEL, LEAK_HOST, LEAK_USER, LEAK_PATH]
-	var s := _boot(real, {"name": "local", "kind": "ollama", "answer": leaky}, "privacy.cfg")
-	var ok: bool = await _finish(s)
-	var shown: PackedStringArray = s["boot"].screen_text()
-	var forbidden := [LEAK_MODEL, "fake-model", LEAK_HOST, LEAK_USER, LEAK_PATH, "/fake", ProjectSettings.globalize_path("res://"), _tmp]
+	var forbidden := [LEAK_MODEL, "fake-model", LEAK_HOST, LEAK_USER, LEAK_PATH, "/fake", LEAK_USER_WORD, LEAK_HOST_WORD, LEAK_MODEL_WORD, ProjectSettings.globalize_path("res://"), _tmp]
 	for env in ["HOME", "USER", "LOGNAME"]:
 		var value := OS.get_environment(env)
 		if value.length() > 2:
@@ -643,14 +673,64 @@ func _privacy_checks() -> void:
 	var host := FileAccess.get_file_as_string("/proc/sys/kernel/hostname").strip_edges()
 	if host.length() > 2:
 		forbidden.append(host)
-	var leaks := PackedStringArray()
-	for line in shown:
-		for word in forbidden:
-			if line.contains(word):
-				leaks.append(word)
+	var answers := {
+		"everything": "Running %s on %s for %s at %s" % [LEAK_MODEL, LEAK_HOST, LEAK_USER, LEAK_PATH],
+		"a user name": "Welcome back, %s." % LEAK_USER_WORD,
+		"a host name": "Hello from %s." % LEAK_HOST_WORD,
+		"a model name": "I am %s, ready." % LEAK_MODEL_WORD,
+	}
+	for kind in answers:
+		var real := _fixture_detector(_tmp.path_join("agent-path"), "empty", _port)
+		var s := _boot(real, {"name": "local", "kind": "ollama", "answer": answers[kind]}, "privacy.cfg")
+		var ok: bool = await _finish(s)
+		var shown: PackedStringArray = s["boot"].screen_text()
+		var leaks := PackedStringArray()
+		for line in shown:
+			for word in forbidden:
+				if line.findn(word) >= 0:
+					leaks.append(word)
+		_check("an answer with %s, and the seeded setting and server, put nothing private on screen" % kind, ok and leaks.is_empty() and shown.has("> " + Boot.LINK_UP) and shown.has("Omarchy default agent: not one SIGKILL knows."), "leaks %s, lines %s" % [", ".join(leaks), str(s["boot"].lines())])
+		await _drop(s)
 	_paths_seen()
-	_check("seeded private strings (a path in the agent setting, model, host and user names from the server, all of them in the answer) never reach the screen", ok and leaks.is_empty() and shown.has("> " + Boot.LINK_UP) and shown.has("Omarchy default agent: not one SIGKILL knows."), "leaks %s, lines %s" % [", ".join(leaks), str(s["boot"].lines())])
-	await _drop(s)
+
+
+func _layout_checks() -> void:
+	# A headless --script run starts with a 64x64 window: give it the project's own size,
+	# then a small window, and check nothing is pushed off either.
+	var project_size := Vector2i(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var before := root.size
+	_save("layout.cfg", "claude", true)
+	var reading := {"available": true, "util_percent": 100, "vram_used_mib": 16777216, "vram_total_mib": 16777216, "temp_c": 200}
+	for size in [project_size, Vector2i(960, 540)]:
+		root.size = size
+		var s := _boot(_fake(_found(Found.AgentState.KNOWN, "claude", true), reading), {"name": "claude", "mode": "hang"}, "layout.cfg")
+		await _until(func(): return s["boot"].lines().size() >= 2 and s["boot"].gpu_line() != "")
+		for i in 3:
+			await process_frame
+		var screen: Rect2 = s["boot"].get_viewport_rect()
+		var outside := PackedStringArray()
+		var shown := 0
+		for label in s["boot"].find_children("*", "Label", true, false):
+			if not label.is_visible_in_tree() or label.text.is_empty():
+				continue
+			shown += 1
+			if not screen.encloses(label.get_global_rect()):
+				outside.append("%s %s" % [label.text.left(24), label.get_global_rect()])
+		_check("at %dx%d every line, the spinner, the widest GPU readout and the hint sit inside the screen" % [size.x, size.y], screen.size == Vector2(size) and shown >= 5 and outside.is_empty(), "%d labels; outside: %s" % [shown, ", ".join(outside)])
+		await _drop(s)
+	root.size = before
+
+
+func _exit_checks() -> void:
+	var slow := _fake(_found(Found.AgentState.UNSET, "", false), {"available": true, "util_percent": 5, "vram_used_mib": 1, "vram_total_mib": 2, "temp_c": 30})
+	slow.slow_ms = 3000
+	var s := _boot(slow, {}, "exit.cfg")
+	var busy: bool = await _until(func(): return s["boot"].gpu_busy())
+	var t0 := Time.get_ticks_msec()
+	s["boot"].free()
+	var took := Time.get_ticks_msec() - t0
+	print("BOOT exit: a screen freed during a 3000 ms GPU reading was gone in %d ms" % took)
+	_check("a screen freed mid GPU reading cancels the reader and joins its worker at once, not after the reading", busy and took < 1000 and slow.cancels >= 1 and slow.running() == 0, "%d ms" % took)
 
 
 func _handoff_checks() -> void:
@@ -686,10 +766,4 @@ func _cleanup_screens() -> void:
 	for boot in _screens:
 		if is_instance_valid(boot):
 			boot.queue_free()
-	# A GPU reading still running when a screen went is joined by a reaper node.
-	await _until(func():
-		for child in root.get_children():
-			if child.get_script() == Boot.ThreadReaper:
-				return false
-		return true)
 	await process_frame

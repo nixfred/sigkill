@@ -5,8 +5,11 @@ extends Control
 ## Esc or Enter skips straight to the arena at any point.
 ##
 ## Never blocks the main thread: the detector runs on its own worker (start/is_done/wait),
-## each GPU reading runs on a short worker thread of its own (nvidia-smi can take a second),
-## and the handshake adapter is polled once a frame. The arena loads in the background.
+## the adapter is chosen on a worker too (the registry looks the agent's command up along
+## the PATH), each GPU reading runs on a short worker thread of its own (nvidia-smi can take
+## a second), and the handshake adapter is polled once a frame. The arena loads in the
+## background. Leaving cancels the detector and joins every worker, which takes about a
+## millisecond, since the C9 reader gives up at a cancel.
 ##
 ## The AI is called only with the player's yes. Before the first call to a source, the
 ## screen names it and says what it gets, and waits for Y (allow) or N (keep AI off); the
@@ -14,6 +17,9 @@ extends Control
 ## tuning's ai_enabled switch is set only on this screen's own copy, and only after a yes.
 ## The handshake is one call through the C9b registry with the request builder, a fixed
 ## prompt and no player data at all; a timeout or an error falls back to the scripted line.
+## The prompt asks the AI to answer with one of SIGKILL's own HANDSHAKE_LINES; the screen
+## shows SIGKILL's copy of the line it picked, or "Link up." for anything else, so the AI's
+## own words, which could name a person, a machine or a model, never reach the screen.
 ## A local server with nothing loaded is never asked to load anything.
 ##
 ## Headless guard (hard rule): in any headless run, or with the user argument --no-ai, no
@@ -26,8 +32,8 @@ extends Control
 ## everywhere, agent "claude", fake GPU numbers, a canned answer and latency. No detector,
 ## no settings file, no process, no network. The mode for screenshots and trailers.
 ##
-## On screen: fixed lines, an agent name from the detector's known list, numbers, fixed
-## error words, and an answer that passes screen_line(). Never a path, host name, user
+## On screen: fixed lines, an agent name from the detector's known list, numbers, short
+## lowercase error words, and a line from HANDSHAKE_LINES. Never a path, host name, user
 ## name or model name.
 
 signal finished(skipped: bool)
@@ -53,22 +59,27 @@ const NOT_LOADED_LINE := "Local model available, not loaded. Load it later from 
 const CONSENT_KEYS := "[Y] allow   [N] keep AI off"
 const LEAVING_LINE := "Entering the arena..."
 const LINK_UP := "Link up."
-## The whole handshake prompt: fixed, with no player data at all.
-const HANDSHAKE_TEXT := "Boot handshake. Greet the player in one short line of under twelve words to show the link works. Do not name any model, version, file, folder, user or machine."
+## The only answers the screen shows. The handshake asks the AI to reply with one of them.
+const HANDSHAKE_LINES := [
+	"Link up. Ready to hunt.",
+	"Online. Daemons beware.",
+	"Linked. Let's clear this arena.",
+	"Guide online. Stay low and keep moving.",
+	"Link up. Daemons detected. Let's go hunting.",
+]
+## The whole handshake prompt: fixed, with no player data at all, naming HANDSHAKE_LINES.
+const HANDSHAKE_TEXT := "Boot handshake. Reply with exactly one of these lines, word for word, and nothing else: Link up. Ready to hunt. | Online. Daemons beware. | Linked. Let's clear this arena. | Guide online. Stay low and keep moving. | Link up. Daemons detected. Let's go hunting."
+## Characters stripped from both ends of an answer before it is matched.
+const ANSWER_WRAPPING := " \t\"'`*>"
 const SPINNER := ["|", "/", "-", "\\"]
-## Characters an answer may hold to be shown: ASCII letters, spaces and plain punctuation.
-## No digits, slashes, colons, underscores or at signs, so no path, address, version or
-## model tag gets on screen; an answer with anything else shows LINK_UP instead.
-const SCREEN_PUNCTUATION := " .,!?'-()"
 const ERROR_WORD_MAX := 24
-const ELLIPSIS := "..."
 
 const DEMO_AGENT := "claude"
-const DEMO_ANSWER := "Link up. Daemons detected. Let's go hunting."
+const DEMO_ANSWER := "Link up. Daemons detected. Let's go hunting."  # one of HANDSHAKE_LINES
 const DEMO_GPU := {"available": true, "source": "demo", "util_percent": 41, "vram_used_mib": 3072, "vram_total_mib": 8192, "temp_c": 58}
 const DEMO_UTIL_SWING := 7
 
-enum Phase { DETECTING, CONSENT, LINKING, CLOSING, LEAVING, DONE }
+enum Phase { DETECTING, CHOOSING, CONSENT, LINKING, CLOSING, LEAVING, DONE }
 
 # Set these before the node enters the tree; the defaults are the real ones.
 ## BootTuning; null for resources/boot.tres.
@@ -117,6 +128,8 @@ var _gpu_wait_ms := 0.0
 var _gpu_thread: Thread
 var _gpu_reads := 0
 var _demo_ticks := 0
+var _adapter_job: AdapterJob
+var _adapter_thread: Thread
 
 
 func _ready() -> void:
@@ -126,7 +139,7 @@ func _ready() -> void:
 	demo = demo or args.has("--demo")
 	var headless := DisplayServer.get_name() == "headless"
 	_guarded = headless or args.has("--no-ai")
-	_skip_reason = "headless run" if headless else "--no-ai"
+	_skip_reason = ("headless run" if headless else "--no-ai") if _guarded else "the detector gave no answer"
 	_build_screen()
 	if headless and not demo and detector == null and adapter_factory.is_null():
 		print("SIGKILL boot: headless run, AI link skipped, straight to the arena")
@@ -159,6 +172,8 @@ func _process(delta: float) -> void:
 	match _phase:
 		Phase.DETECTING:
 			_poll_detection()
+		Phase.CHOOSING:
+			_poll_choosing()
 		Phase.CLOSING:
 			_continue_ms -= ms
 			if _continue_ms <= 0.0:
@@ -183,9 +198,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _exit_tree() -> void:
 	_stop_link()
+	# Cancel first: the C9 reader then gives up at once, so the joins below take about a
+	# millisecond even with an nvidia-smi still running (it is left to exit on its own).
 	if detector != null and detector.has_method("cancel"):
 		detector.cancel()
-	_release_gpu_thread()
+	for worker in [_gpu_thread, _adapter_thread]:
+		if worker != null and worker.is_started():
+			worker.wait_to_finish()
+	_gpu_thread = null
+	_adapter_thread = null
 
 
 ## What is on screen, line by line, for tests: every line's whole text, then the spinner,
@@ -218,6 +239,11 @@ func gpu_reads() -> int:
 	return _gpu_reads
 
 
+## True while a GPU reading is running on its worker.
+func gpu_busy() -> bool:
+	return _gpu_thread != null and _gpu_thread.is_alive()
+
+
 ## The adapter the handshake uses, or null.
 func adapter() -> Variant:
 	return _adapter
@@ -244,30 +270,34 @@ static func usable_tuning(candidate: Resource) -> Resource:
 	return BootTuningScript.new()
 
 
-## The first line of `answer` if it is safe to show: letters, spaces and plain punctuation
-## only, and a dot only at the end of a sentence (so no host.name or file.ext), cut at a
-## word to at most `max_chars`, ellipsis included. "" when it holds anything else.
-static func screen_line(answer: String, max_chars: int) -> String:
-	var first := answer.strip_edges().get_slice("\n", 0).strip_edges()
-	if first.is_empty():
+## SIGKILL's own copy of the HANDSHAKE_LINES entry `answer` picked, or "" if it picked none.
+## Only the first line counts; quotes, spaces and markdown marks around it, letter case and
+## runs of spaces are ignored. The answer itself is never returned.
+static func handshake_line(answer: String) -> String:
+	var picked := _plain(answer.strip_edges().get_slice("\n", 0))
+	if picked.is_empty():
 		return ""
-	for i in first.length():
-		var c := first.unicode_at(i)
-		var letter := (c >= 0x41 and c <= 0x5A) or (c >= 0x61 and c <= 0x7A)
-		if not letter and not SCREEN_PUNCTUATION.contains(first[i]):
-			return ""
-		if first[i] == "." and i + 1 < first.length() and not (first[i + 1] == " " or first[i + 1] == "."):
-			return ""
-	if first.length() > max_chars:
-		# The ellipsis counts against the cap; a word that would be cut is dropped whole.
-		var room := max_chars - ELLIPSIS.length()
-		var cut := first.substr(0, room)
-		if first[room] != " ":
-			var space := cut.rfind(" ")
-			if space > 0:
-				cut = cut.substr(0, space)
-		first = cut.strip_edges() + ELLIPSIS
-	return first
+	for line in HANDSHAKE_LINES:
+		if _plain(line) == picked:
+			return line
+	return ""
+
+
+static func _plain(text: String) -> String:
+	var words := PackedStringArray()
+	for word in _unwrap(text).to_lower().split(" ", false):
+		words.append(word.strip_edges())
+	return " ".join(words)
+
+
+static func _unwrap(text: String) -> String:
+	var first := 0
+	var last := text.length()
+	while first < last and ANSWER_WRAPPING.contains(text[first]):
+		first += 1
+	while last > first and ANSWER_WRAPPING.contains(text[last - 1]):
+		last -= 1
+	return text.substr(first, last - first)
 
 
 ## A copy of the shipped guide tuning with the AI switch off; only a yes turns it on.
@@ -292,17 +322,20 @@ func _build_screen() -> void:
 	_spinner.visible = false
 	add_child(_spinner)
 	_spinner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 48)
+	_spinner.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_spinner.position.y -= 72.0
 	_gpu_label = _make_label(_t.text_color, _t.line_font_size)
 	_gpu_label.visible = false
 	add_child(_gpu_label)
 	_gpu_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 48)
+	_gpu_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_gpu_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var hint := _make_label(_t.text_color, _t.hint_font_size)
 	hint.text = HINT
 	hint.modulate = Color(1.0, 1.0, 1.0, _t.hint_alpha)
 	add_child(hint)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 48)
+	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
 func _make_label(color: Color, size: int) -> Label:
@@ -372,7 +405,28 @@ func _route() -> void:
 		_say("Omarchy default agent: %s. Linking..." % DEMO_AGENT)
 		_begin_link()
 		return
-	_adapter = _make_adapter()
+	_adapter_job = AdapterJob.new()
+	_adapter_job.factory = adapter_factory
+	_adapter_job.found = _found
+	_adapter_job.detector = detector
+	_adapter_job.tuning = _guide_tuning
+	_adapter_job.guarded = _guarded
+	_adapter_thread = Thread.new()
+	if _adapter_thread.start(_adapter_job.run) != OK:
+		_adapter_thread = null
+		_adapter_job.run()
+	_phase = Phase.CHOOSING
+
+
+## Once the adapter is chosen: the agent line, then the link, the question or the fallback.
+func _poll_choosing() -> void:
+	if _adapter_thread != null:
+		if _adapter_thread.is_alive():
+			return
+		_adapter_thread.wait_to_finish()
+		_adapter_thread = null
+	_adapter = _adapter_job.adapter
+	_adapter_job = null
 	_say(_agent_line())
 	if _adapter == null:
 		if _guarded and _found.source != Found.Source.SCRIPTED:
@@ -394,14 +448,6 @@ func _route() -> void:
 			_say("Allow SIGKILL to call %s? It gets only game stats and what you type." % _who, _t.prompt_color)
 			_say(CONSENT_KEYS, _t.prompt_color)
 			_phase = Phase.CONSENT
-
-
-func _make_adapter() -> Variant:
-	if not adapter_factory.is_null():
-		return adapter_factory.call(_found, detector, _guide_tuning)
-	if _guarded:
-		return null  # headless guard: never the registry, so never a real agent or server
-	return Registry.adapter_for(_found, detector, _guide_tuning)
 
 
 func _agent_line() -> String:
@@ -460,7 +506,8 @@ func _poll_link(ms: float) -> void:
 func _link_done(done: Dictionary) -> void:
 	_spinner.visible = false
 	if done.get("ok", false):
-		var line := screen_line(String(done.get("text", "")), _t.answer_max_chars)
+		var text = done.get("text", "")
+		var line := handshake_line(text) if text is String else ""
 		_say("> " + (line if line != "" else LINK_UP))
 		var info := "answered in %d ms" % int(done.get("latency_ms", -1))
 		var rate := float(done.get("tokens_per_sec", -1.0))
@@ -516,7 +563,7 @@ func _spin() -> void:
 
 
 func _tick_gpu(ms: float) -> void:
-	if not _gpu_on:
+	if not _gpu_on or _left:
 		return
 	if _gpu_thread != null:
 		if _gpu_thread.is_alive():
@@ -590,22 +637,6 @@ func _stop_link() -> void:
 		_adapter.cancel()
 
 
-## A GPU reading still running when the screen goes is handed to a node that outlives it
-## and joins the thread once it ends, so leaving never waits on nvidia-smi.
-func _release_gpu_thread() -> void:
-	if _gpu_thread == null:
-		return
-	var reaper := ThreadReaper.new()
-	reaper.thread = _gpu_thread
-	reaper.keep = detector
-	_gpu_thread = null
-	if is_inside_tree():
-		get_tree().root.add_child.call_deferred(reaper)
-	else:
-		reaper.thread.wait_to_finish()
-		reaper.free()
-
-
 func _leave(skipped: bool) -> void:
 	if _left:
 		return
@@ -637,15 +668,23 @@ func _finish_leaving() -> void:
 	get_tree().change_scene_to_file(next_scene)
 
 
-## Joins a worker thread once it has ended, then frees itself. Holds what the thread uses.
-class ThreadReaper:
-	extends Node
-	var thread: Thread
-	var keep: RefCounted
+## Chooses the handshake adapter off the main thread: a test's factory if one was handed
+## in; otherwise, unless the headless guard is on, the C9b registry, which looks the agent's
+## command up along the PATH. The screen holds the job until its thread is joined.
+class AdapterJob:
+	extends RefCounted
+	const RegistryScript = preload("res://scripts/ai/guide_registry.gd")
+	var factory := Callable()
+	var found
+	var detector
+	var tuning: Resource
+	var guarded := false
+	var adapter = null
 
-	func _process(_delta: float) -> void:
-		if thread != null and not thread.is_alive():
-			thread.wait_to_finish()
-			thread = null
-			keep = null
-			queue_free()
+	func run() -> void:
+		if not factory.is_null():
+			adapter = factory.call(found, detector, tuning)
+			return
+		if guarded:
+			return  # headless guard: never the registry, so never a real agent or server
+		adapter = RegistryScript.adapter_for(found, detector, tuning)

@@ -7,7 +7,6 @@ script = ExtResource("1_boot")
 chars_per_second = 90.0
 line_pause_ms = 180
 spinner_frame_ms = 90
-answer_max_chars = 72
 demo_link_ms = 900
 demo_latency_ms = 842
 gpu_interval_ms = 1000
