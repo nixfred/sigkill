@@ -240,6 +240,13 @@ var _pellets_rng := RandomNumberGenerator.new()
 ## During a match: the weapons and ammo of the player whose arena went away (an R reload),
 ## handed to the next player that attaches.
 var _kept_inventory: RefCounted = null
+## Joiner: weapon intents (draws, reloads, shots) sent to the host this session. Host: the
+## same, received from each player, id -> count. The host's ammo reply after each one names
+## the count it has handled, and a joiner takes only a reply that has caught up with all it
+## sent: a late one is stale. One that comes while the arena is away waits for the next.
+var _sent_actions := 0
+var _actions_from := {}
+var _ammo_pending := {}
 ## The host's clock for the fire rate, in seconds of game time.
 var _clock := 0.0
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
@@ -398,6 +405,9 @@ func attach(arena: Node, player: Node) -> void:
 			player.hold_weapon(_pending_weapon)
 	_pending_spawn = Vector3.INF
 	_pending_weapon = ""
+	if not _ammo_pending.is_empty() and _ammo_pending["life"] == lives.get(my_id, 0) and _ammo_pending["handled"] == _sent_actions and player.has_method("take_ammo"):
+		_apply_ammo(_ammo_pending)  # a count that came while the arena was away
+	_ammo_pending = {}
 	_attached_at = _clock
 	if player.has_method("set_alive"):
 		player.set_alive(not dead.get(my_id, false))
@@ -852,6 +862,9 @@ func _clear_players() -> void:
 	_roster_seen = false
 	_weapons_synced = false
 	_kept_inventory = null
+	_sent_actions = 0
+	_actions_from = {}
+	_ammo_pending = {}
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -930,6 +943,7 @@ func _on_peer_connected(id: int) -> void:
 	_pending.erase(id)
 	_set_peer_timeout(id)
 	combat.add_player(id)
+	_actions_from[id] = 0
 	_mirror_from_combat()
 	_spawn_avatar(id)
 	_send_roster()
@@ -941,6 +955,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	players.erase(id)
 	combat.remove_player(id)
+	_actions_from.erase(id)
 	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
@@ -1164,6 +1179,7 @@ func _on_weapon_drawn(weapon: String) -> void:
 	if state == State.HOSTING:
 		_handle_draw(1, lives.get(my_id, 0), weapon)
 	elif state == State.JOINED and _weapons_synced and multiplayer.get_peers().has(1):
+		_sent_actions += 1
 		_draw.rpc_id(1, lives.get(my_id, 0), weapon)
 
 
@@ -1171,6 +1187,7 @@ func _on_reload_started(weapon: String) -> void:
 	if state == State.HOSTING:
 		_handle_reload(1, lives.get(my_id, 0), weapon)
 	elif state == State.JOINED and _weapons_synced and multiplayer.get_peers().has(1):
+		_sent_actions += 1
 		_reload.rpc_id(1, lives.get(my_id, 0), weapon)
 
 
@@ -1182,8 +1199,9 @@ func _draw(life: Variant, weapon: Variant) -> void:
 		return
 	if typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING:
 		combat.draw(0, 0, "", 0, _clock)  # counted: no such draw
-		return
-	_handle_draw(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+	else:
+		_handle_draw(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+	_ack_actions(multiplayer.get_remote_sender_id())
 
 
 ## A joiner started a reload, to the host.
@@ -1193,44 +1211,70 @@ func _reload(life: Variant, weapon: Variant) -> void:
 		return
 	if typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING:
 		combat.reload(0, 0, "", 0, _clock)  # counted: no such reload
-		return
-	_handle_reload(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+	else:
+		_handle_reload(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1))
+	_ack_actions(multiplayer.get_remote_sender_id())
 
 
 func _handle_draw(id: int, life: int, weapon: String) -> void:
-	if state != State.HOSTING or combat == null:
-		return
-	if combat.draw(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock) == "" and combat.stopped_reload != "":
-		_send_ammo(id, combat.stopped_reload)  # its own game may have finished that reload
+	if state == State.HOSTING and combat != null:
+		combat.draw(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
 
 
 func _handle_reload(id: int, life: int, weapon: String) -> void:
-	if state != State.HOSTING or combat == null:
+	if state == State.HOSTING and combat != null:
+		combat.reload(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
+
+
+## One more weapon intent handled from `id`: the host's count of its magazines goes back to
+## it with the number handled so far. The host's own player needs none: nothing lies between
+## it and the host's count.
+func _ack_actions(id: int) -> void:
+	if id == 1 or not players.has(id):
 		return
-	var why := combat.reload(id if players.has(id) else 0, life, weapon, lives.get(id, 0), _clock)
-	if (why == Combat.DROP_RELOAD or why == Combat.DROP_WEAPON) and combat.weapons.has(weapon):
-		_send_ammo(id, weapon)  # refused here: its own game must not finish it either
+	_actions_from[id] = _actions_from.get(id, 0) + 1
+	_send_ammo(id)
 
 
-## The host's count of `id`'s magazine and reserve for `weapon`, to that player alone. The
-## host's own player needs none: nothing lies between it and the host's count.
-func _send_ammo(id: int, weapon: String) -> void:
-	if id == 1 or not players.has(id) or not multiplayer.get_peers().has(id):
+## The host's count of `id`'s magazine and reserve for every weapon that has one, to that
+## player alone, with the intents handled from it so far.
+func _send_ammo(id: int) -> void:
+	if not multiplayer.get_peers().has(id):
 		return
-	var ammo: Array = combat.ammo_of(id, weapon)
-	_ammo.rpc_id(id, lives.get(id, 0), weapon, ammo[0], ammo[1])
+	var ids := PackedStringArray()
+	var mags := PackedInt32Array()
+	var reserves := PackedInt32Array()
+	for def in _weapon_list:
+		if def.has_magazine():
+			var ammo: Array = combat.ammo_of(id, def.id)
+			ids.append(def.id)
+			mags.append(ammo[0])
+			reserves.append(ammo[1])
+	_ammo.rpc_id(id, lives.get(id, 0), _actions_from.get(id, 0), ids, mags, reserves)
 
 
-## The host's count for one of this player's weapons: this side takes it.
+## The host's count of this player's magazines once it has handled `handled` of this side's
+## intents: taken when that is all this side has sent in this life, else stale and dropped.
 @rpc("authority", "call_remote", "reliable")
-func _ammo(life: int, weapon: String, mag: int, reserve: int) -> void:
-	if state != State.JOINED or life != lives.get(my_id, 0) or not _weapons.has(weapon):
+func _ammo(life: int, handled: int, ids: PackedStringArray, mags: PackedInt32Array, reserves: PackedInt32Array) -> void:
+	if state != State.JOINED or life != lives.get(my_id, 0) or handled != _sent_actions:
 		return
-	var def: WeaponDefScript = _weapons[weapon]
-	if not def.has_magazine() or mag < 0 or mag > def.magazine_size or (reserve != WeaponDefScript.INFINITE and (reserve < 0 or reserve > def.reserve_ammo)):
+	if ids.size() != mags.size() or ids.size() != reserves.size() or ids.size() > _weapon_list.size():
 		return
+	for i in ids.size():
+		var def = _weapons.get(ids[i])
+		if def == null or not def.has_magazine() or mags[i] < 0 or mags[i] > def.magazine_size or (reserves[i] != WeaponDefScript.INFINITE and (reserves[i] < 0 or reserves[i] > def.reserve_ammo)):
+			return
+	var count := {"life": life, "handled": handled, "ids": ids, "mags": mags, "reserves": reserves}
 	if _player != null and is_instance_valid(_player) and _player.has_method("take_ammo"):
-		_player.take_ammo(weapon, mag, reserve)
+		_apply_ammo(count)
+	else:
+		_ammo_pending = count  # the arena is away: the next player takes it
+
+
+func _apply_ammo(count: Dictionary) -> void:
+	for i in count["ids"].size():
+		_player.take_ammo(count["ids"][i], count["mags"][i], count["reserves"][i])
 
 
 ## This player fired (scripts/player.gd): the intent goes to the host, which, when this is
@@ -1248,6 +1292,7 @@ func _on_fire_intent(origin: Vector3, direction: Vector3, weapon: String) -> voi
 	if state == State.HOSTING:
 		_handle_fire(1, fire_seq, life, weapon, local_origin, local_dir)
 	elif multiplayer.get_peers().has(1):
+		_sent_actions += 1
 		_fire.rpc_id(1, fire_seq, life, weapon, local_origin, local_dir)
 
 
@@ -1259,8 +1304,9 @@ func _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: V
 		return
 	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
 		combat.validate(0, 0, 0, "", Vector3.ZERO, Vector3.ZERO, Vector3.INF, 0, _clock)  # counted: no such shot
-		return
-	_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)
+	else:
+		_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)
+	_ack_actions(multiplayer.get_remote_sender_id())
 
 
 ## The one authority path: validate, draw the pellets, raycast each in the host's world,

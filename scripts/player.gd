@@ -485,17 +485,15 @@ func refill_weapons() -> void:
 	inventory.refill()
 
 
-## Takes the host's count for the weapon with `id` (C16): its magazine and reserve, and no
-## reload of it running here, since the host is not running one. False for a weapon not in
-## the loadout.
+## Takes the host's count for the weapon with `id` (C16): its magazine and reserve. A reload
+## running here goes on and moves what the new count leaves room for. False for a weapon not
+## in the loadout.
 func take_ammo(id: String, mag: int, reserve: int) -> bool:
 	var slot := inventory.slot_of(id)
 	if slot < 0:
 		return false
 	inventory.mags[slot] = mag
 	inventory.reserves[slot] = reserve
-	if slot == inventory.current:
-		inventory.reload_left = 0.0
 	return true
 
 

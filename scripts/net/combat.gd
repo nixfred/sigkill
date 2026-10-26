@@ -21,8 +21,8 @@ extends RefCounted
 ## starts when the draw is done; its rounds move only when its time is up). Every believed shot spends a round. All timing is less
 ## the tolerance for jitter, so the host is never stricter than an honest player's game.
 ## Where the wire can still put the two apart (a reload's message so late that it arrives
-## with the draw after it, or a reload refused), the session sends the player the host's
-## count for that weapon and the player's game takes it.
+## with the draw after it, a reload refused), the session's ammo replies put the player's
+## counts back to the host's.
 ## A new life refills everything. Damage is worked out per pellet by the session from the
 ## weapon's falloff and applied here once per victim and shot.
 
@@ -52,9 +52,6 @@ var tuning: Tuning
 var weapons := {}
 var first_weapon := ""
 var swap_s := 0.3
-## The weapon whose running reload the last draw stopped, or "": the session tells that
-## player what the host counts for it then, in case its own game had finished that reload.
-var stopped_reload := ""
 ## Every player the host knows, id -> {health, dead, respawn_left, protect_left,
 ## last_fire, last_seq, kills, deaths, drawn, ready_at, reloading, reload_done_at, ammo};
 ## drawn is the weapon in hand, ready_at when its draw is done, reloading the weapon being
@@ -94,11 +91,9 @@ func draw(id: int, life: int, weapon: String, known_life: int, now: float) -> St
 	if not weapons.has(weapon):
 		return _drop(DROP_WEAPON)
 	var s: Dictionary = states[id]
-	stopped_reload = ""
 	if weapon == s["drawn"]:
 		return ""
 	_finish_reload(s, now)  # a reload whose time is up has put its rounds in; only one still running stops
-	stopped_reload = s["reloading"]
 	s["drawn"] = weapon
 	s["ready_at"] = now + swap_s * (1.0 - tuning.fire_rate_tolerance)
 	s["reloading"] = ""
