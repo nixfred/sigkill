@@ -378,24 +378,35 @@ func _session_checks() -> void:
 	_check("with a 1000 ms delay the buffer keeps the samples it needs (over 20) and the avatar still glides a second behind, with no jumps", deepest >= 20 and long_worst < 0.5 and long_step < step_cap and (long_host[89] - long_from).length() > 5.0, "deepest %d, worst %.3f, step %.3f" % [deepest, long_worst, long_step])
 	back.interp_delay_s = cs.tuning_in_use().interp_delay_ms / 1000.0
 	await _frames(delay_frames + FRAMES_PER_SEND * 3)
-	# Hostile state packets over the wire, with sequence numbers in range: the host refuses
-	# them, the avatar's transform stays finite and the real stream keeps flowing after them.
-	var last: int = back.get("_last_seq")
-	var avatar_yaw: float = back.rotation.y
-	cs._state.rpc_id(1, last + 1, cp.position, 1e300, 0.0, Vector3.ZERO)
-	cs._state.rpc_id(1, last + 2, Vector3(NAN, 0, 0), 0.0, 0.0, Vector3.ZERO)
-	cs._state.rpc_id(1, last + 3, cp.position, 0.0, 0.0, Vector3(9999, 0, 0))
+	# Hostile state packets over the wire, one at a time with the joiner's own stream paused
+	# (no player to read): the host accepts none, the avatar takes none and does not move.
+	var paused_player = cs.get("_player")
+	cs.set("_player", null)
+	await _frames(FRAMES_PER_SEND + 1)
+	var bad := [["a yaw of 1e300", [cp.position, 1e300, 0.0, Vector3.ZERO]], ["a NaN position", [Vector3(NAN, 0, 0), 0.0, 0.0, Vector3.ZERO]], ["an impossible speed", [cp.position, 0.0, 0.0, Vector3(9999, 0, 0)]], ["a pitch past straight up", [cp.position, 0.0, 2.0, Vector3.ZERO]], ["a position beyond the world", [Vector3(20000, 0, 0), 0.0, 0.0, Vector3.ZERO]]]
+	var leaked := PackedStringArray()
+	for item in bad:
+		var host_got: int = hs.received
+		var avatar_got: int = back.received
+		var last_seq: int = back.get("_last_seq")
+		var at: Vector3 = back.position
+		var yaw: float = back.rotation.y
+		var args: Array = item[1]
+		cs._state.rpc_id(1, last_seq + 1, args[0], args[1], args[2], args[3])
+		var moved := false
+		for i in delay_frames + FRAMES_PER_SEND:
+			await physics_frame
+			moved = moved or (back.position - at).length() > 0.0001 or absf(back.rotation.y - yaw) > 0.0001 or not back.transform.basis.is_finite()
+		if hs.received != host_got or back.received != avatar_got or back.get("_last_seq") != last_seq or moved:
+			leaked.append("%s: host +%d, avatar +%d, last seq %d -> %d, moved %s" % [item[0], hs.received - host_got, back.received - avatar_got, last_seq, back.get("_last_seq"), moved])
+	_check("a joiner's packet with a yaw of 1e300, a NaN position, an impossible speed, a pitch past straight up or a position beyond the world, sent alone, is refused on the host: not applied, not counted, the avatar never moves", leaked.is_empty(), "; ".join(leaked))
+	cs.set("_player", paused_player)
 	var got_before: int = hs.received
-	var worst_yaw := 0.0
-	var finite := true
-	for i in delay_frames + FRAMES_PER_SEND * 3:
-		await physics_frame
-		worst_yaw = maxf(worst_yaw, absf(back.rotation.y - avatar_yaw))
-		finite = finite and back.transform.basis.is_finite() and back.position.is_finite()
+	await _frames(delay_frames + FRAMES_PER_SEND * 3)
 	var flowing: int = hs.received - got_before
-	_check("a joiner's packets with a yaw of 1e300, a NaN position or an impossible speed are refused on the host: the avatar keeps its finite transform on every frame and the real stream keeps flowing", finite and worst_yaw < 0.01 and (back.position - cp.position).length() < 0.05 and flowing >= 3, "worst yaw change %.3f, %.3f m off, %d real packets after" % [worst_yaw, (back.position - cp.position).length(), flowing])
+	_check("and the real stream flows again once the joiner has a player to send", flowing >= 3 and (back.position - cp.position).length() < 0.05, "%d packets, %.3f m off" % [flowing, (back.position - cp.position).length()])
 	# One sane-looking packet with a giant sequence number must not put the real stream behind it.
-	last = back.get("_last_seq")
+	var last: int = back.get("_last_seq")
 	cs._state.rpc_id(1, last + 5000000, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
 	cs._state.rpc_id(1, 9223372036854775807, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
 	cs._state.rpc_id(1, 0, cp.position + Vector3(0, 0, -3), 0.0, 0.0, Vector3.ZERO)
@@ -547,6 +558,7 @@ func _hud_checks() -> void:
 	var guide = client["hud"].guide()
 	var cp = client["player"]
 	ch.toggle()
+	var roast_before: bool = client["hud"].guide().session_link().roast_on()
 	await _key(KEY_J, 0x6A)
 	var box_open: bool = ch.is_typing() and cp.input_blocked and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and guide.other_box_open
 	await _key(KEY_T, 0x74)
@@ -562,7 +574,7 @@ func _hud_checks() -> void:
 	var joined := await _joined(host, client)
 	await _frames(2)
 	print("NET HUD joiner panel:\n", ch.panel_text())
-	_check("J opens the address box: the mouse is free, the player takes no input, T, O and B are just letters in it; Enter joins", box_open and letters == "tob" and guide_quiet and not client["hud"].guide().session_link().roast_on() and typed == "127.0.0.1:%d" % port and joined and not ch.is_typing() and not cp.input_blocked and not guide.other_box_open and ch.is_open(), "box %s letters '%s' quiet %s typed '%s' joined %s" % [box_open, letters, guide_quiet, typed, joined])
+	_check("J opens the address box: the mouse is free, the player takes no input, T, O and B are just letters in it; Enter joins", box_open and letters == "tob" and guide_quiet and client["hud"].guide().session_link().roast_on() == roast_before and typed == "127.0.0.1:%d" % port and joined and not ch.is_typing() and not cp.input_blocked and not guide.other_box_open and ch.is_open(), "box %s letters '%s' quiet %s typed '%s' joined %s" % [box_open, letters, guide_quiet, typed, joined])
 	_check("the joiner's panel and both net lines show the session", ch.panel_text().contains("Joined 127.0.0.1:%d.\nplayers 2/2: player 1, player 2 (you)" % port) and ch.panel_text().ends_with(NetHud.JOINED_KEYS) and ch.line_text() == NetHud.NET_JOINED % [2, 2] and hh.line_text() == NetHud.NET_HOSTING % [port, 2, 2], ch.panel_text().c_escape())
 	await _key(KEY_L, 0x6C)
 	var left := await _until(func(): return host["session"].players.size() == 1)
