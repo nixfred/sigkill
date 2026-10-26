@@ -152,7 +152,7 @@ func _hit_checks() -> void:
 	var pitch := cam.rotation.x
 	var yaw := cam.rotation.y
 	_check("the shot registered as a hit", _shots == [true] and _player.hits_landed == 1 and _player.shots_fired == 1, str(_shots))
-	_check("the dummy took the damage", dummy.get("_dead") == true)
+	_check("the dummy took the damage and stopped being hittable", dummy.call("is_hittable") == false)
 	_check("hit marker is showing", _hud.hit_marker_alpha() > 0.5, "%.2f" % _hud.hit_marker_alpha())
 	_check("the shot frame shows the full kick, recoil_pitch_degrees up", absf(pitch - deg_to_rad(_w.recoil_pitch_degrees)) < EPS, "%.3f deg" % rad_to_deg(pitch))
 	_check("recoil added a small yaw within its limit", absf(yaw) > 0.0 and absf(yaw) <= deg_to_rad(_w.recoil_yaw_degrees) + EPS, "%.3f deg" % rad_to_deg(yaw))
@@ -195,7 +195,7 @@ func _hit_checks() -> void:
 	_check("recoil recovered smoothly back to rest", recovered_at > 1 and cam.rotation.length() < 0.02 * pitch, "%.4f deg left" % rad_to_deg(cam.rotation.length()))
 	_check("hit marker faded out on time", marker_gone_at > 1 and marker_gone_at <= _frames_for(_w.hit_marker_seconds) + 2)
 	_check("every effect freed after its lifetime, and not before", fx_gone_at >= _frames_for(_longest_effect()) - 2 and fx_gone_at <= _frames_for(_longest_effect()) + 3)
-	_check("the hit dummy despawned", get_nodes_in_group("targets").size() == targets_before - 1)
+	_check("the hit dummy is derezzing, so the next shot can pass through it", is_instance_valid(dummy) and dummy.call("is_hittable") == false and get_nodes_in_group("targets").size() == targets_before)
 
 
 func _miss_checks() -> void:

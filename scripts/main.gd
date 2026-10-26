@@ -24,6 +24,7 @@ func _ready() -> void:
 	_remaining = _total
 	for dummy in dummies:
 		dummy.connect("downed", _on_target_downed)
+		dummy.connect("respawned", _on_target_respawned)
 	_player.shot_fired.connect(_on_shot_fired)
 	_hud.set_weapon_tuning(_player.weapon_tuning())
 	_hud.set_targets(_remaining, _total)
@@ -49,6 +50,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_target_downed(_dummy: Node3D) -> void:
 	_remaining -= 1
+	_hud.set_targets(_remaining, _total)
+
+
+func _on_target_respawned(_dummy: Node3D) -> void:
+	_remaining += 1
 	_hud.set_targets(_remaining, _total)
 
 

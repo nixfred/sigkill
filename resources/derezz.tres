@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="DerezzTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/derezz_tuning.gd" id="1_derezz"]
+
+[resource]
+script = ExtResource("1_derezz")
+max_voxels = 160
+voxel_size = 0.11
+glow_fraction = 0.55
+obsidian_glow = 0.12
+glow_energy = 4.0
+burst_speed = 3.0
+burst_up = 2.5
+hit_push = 2.0
+spread = 1.0
+gravity = 9.8
+bounce = 0.3
+ground_friction = 0.6
+spin_min_degrees = 180.0
+spin_max_degrees = 720.0
+lifetime_min = 0.9
+lifetime_max = 1.4
+fade_power = 2.0
+respawn_delay = 2.5
+rematerialise_seconds = 0.4
