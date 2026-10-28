@@ -36,9 +36,11 @@ const DIVE_S := 0.7
 const DIVE_NEAR := 0.4
 const DIVE_FAR := 1.1
 const DIVE_PULL := 10.0
-## A hit's scatter, in m/s, and its reach, in metres.
+## A hit's scatter: the push, in m/s, its reach, in metres, and how long the swarm may fly faster
+## than its top speed to get away, in seconds.
 const SCATTER := 4.5
 const SCATTER_M := 1.6
+const SCATTER_S := 0.6
 ## Trails: how often each insect's trail takes a new point, in seconds; wing beats a second.
 const TRAIL_STEP_S := 0.1
 const WING_HZ := 11.0
@@ -187,6 +189,8 @@ func _fly(t: float, dt: float) -> void:
 				_sep[i] -= push
 				_sep[j] += push
 	var axis := Vector3(0.4 * sin(0.3 * t + _p[2]), 1.0, 0.4 * cos(0.23 * t + _p[2])).normalized()
+	# Just after a hit the scatter may outrun the top speed, easing back to it.
+	var fastest := SPEED_MAX + SCATTER * maxf(0.0, 1.0 - since(_hit_at) / SCATTER_S)
 	for i in INSECTS:
 		var p := _pos[i]
 		var v := _vel[i]
@@ -210,8 +214,8 @@ func _fly(t: float, dt: float) -> void:
 			force += Vector3.UP * FLOOR_PUSH * (0.25 - above) / 0.25
 		v += force * dt
 		var speed := v.length()
-		if speed > SPEED_MAX:
-			v *= SPEED_MAX / speed
+		if speed > fastest:
+			v *= fastest / speed
 		elif speed < SPEED_MIN:
 			v = (v / speed if speed > 0.0001 else axis.cross(radial)) * SPEED_MIN
 		p += v * dt

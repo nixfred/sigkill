@@ -30,6 +30,7 @@ const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
 const Dummy = preload("res://scripts/target_dummy.gd")
 const Zombie = preload("res://scripts/daemons/zombie_process.gd")
+const Swarm = preload("res://scripts/daemons/runaway_swarm.gd")
 const ART_DIR := "res://scripts/daemons/"
 const TYPES := ["rogue_daemon", "zombie_process", "runaway_swarm"]
 ## A2's daemons' sizes (the diagonal of the box round each, in metres, at 1afcdb7), and how many
@@ -393,6 +394,11 @@ func _hit_checks(arts: Dictionary) -> void:
 		var point := art.global_position + Vector3(0.3, 0.2, 0.6)
 		var local := art.to_local(point)
 		var fleeing_before := _fleeing(art, local) if type == "runaway_swarm" else 0.0
+		var near := PackedInt32Array()
+		if type == "runaway_swarm":
+			for i in art.boids().size():
+				if art.boids()[i].distance_to(local) < 1.0:
+					near.append(i)
 		art.react(point, Vector3(0.0, 0.0, -1.0))
 		var flashed: bool = art.hit_glow() == 1.0 and art.sets()[0].get_instance_shader_parameter("hit") == 1.0
 		var own := true
@@ -402,20 +408,29 @@ func _hit_checks(arts: Dictionary) -> void:
 		var knocked := 0.0
 		var sprayed := 0
 		var reared := 0.0
+		var scattered := 0.0
 		for f in 12:
 			await process_frame
 			knocked = maxf(knocked, art.recoil().length())
 			sprayed = maxi(sprayed, art.spraying())
 			if type == "rogue_daemon":
 				reared = maxf(reared, art.rear())
+			if f == 2 and not near.is_empty():
+				# Three frames on, the insects that were near the shot still fly faster than the
+				# swarm's top speed: the scatter outruns it for a moment (self-review pass 2).
+				for i in near:
+					scattered = maxf(scattered, art.velocities()[i].length())
 		if type == "rogue_daemon":
 			own = reared > 0.3
+		elif type == "runaway_swarm":
+			print("ENEMY MOTION hit: the swarm's %d insects near the shot, the fastest at %.2f m/s three frames on (its top speed %.1f m/s)" % [near.size(), scattered, Swarm.SPEED_MAX])
+			own = own and near.size() >= 3 and scattered > Swarm.SPEED_MAX * 1.5
 		for f in ceili(maxf(DaemonArt.RECOIL_S, DaemonArt.SPRAY_S) * 60.0) + 2:
 			await process_frame
 		var settled := art.recoil() == Vector3.ZERO and art.spraying() == 0
 		if not (flashed and knocked > DaemonArt.RECOIL_M * 0.5 and sprayed == DaemonArt.SPRAY and own and settled):
-			reacted.append("%s flash %s knock %.3f spray %d own %s settled %s" % [type, flashed, knocked, sprayed, own, settled])
-	_check("acceptance: a hit reacts on every type: the flash at once, the body knocked back and springing to rest, a spray of glowing shards from where it struck that is gone after %.2f s, and the type's own (the rogue rears, the swarm flees the shot)" % DaemonArt.SPRAY_S, reacted.is_empty(), "; ".join(reacted))
+			reacted.append("%s flash %s knock %.3f spray %d own %s settled %s fastest %.2f m/s" % [type, flashed, knocked, sprayed, own, settled, scattered])
+	_check("acceptance: a hit reacts on every type: the flash at once, the body knocked back and springing to rest, a spray of glowing shards from where it struck that is gone after %.2f s, and the type's own (the rogue rears; the swarm flees the shot, the insects near it outrunning its top speed by half again three frames later)" % DaemonArt.SPRAY_S, reacted.is_empty(), "; ".join(reacted))
 
 
 ## Frames go by and nothing is made: no object, no node, the same meshes, MultiMeshes and materials.
