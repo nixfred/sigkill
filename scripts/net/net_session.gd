@@ -84,6 +84,19 @@ extends Node
 ## player joins. Only while its word is "on" does the host draw that player's pellets
 ## straight; the slow-mo look stays on that player's own screen. Protocol 4.
 ##
+## The fork bomb (C19): the host owns the whole chain. A player's throw goes to the host as
+## its own request, _throw (life, weapon, origin, aim, untyped and type-checked: never a shot
+## intent), checked against the host's view of the thrower's eye and aim, its bombs and the
+## fork bomb's interval, its cap of live bomblets and the cover it stands against
+## (scripts/net/combat.gd). The host then runs the chain in its own world
+## (scripts/weapons/fork_bomb.gd), judges every blast against the players' bodies with
+## nothing of the level between (never the thrower: no self-damage) and tells everyone the
+## damage and the deaths as for a shot of the fork bomb, so the kill feed names "fork bomb".
+## To every joiner it sends one seed per throw, _bomb (throw id, thrower, weapon, seed,
+## origin, aim), from which their screen draws the same chain and the same scatter, and each
+## blast as it happens, _blast (throw id, generation, index, where): a joiner's chain goes off
+## only on that word and never judges anything. Protocol 5.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -108,6 +121,9 @@ const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
+const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+## What a fork bomb's blast does not see through: the level.
+const BLAST_SIGHT_MASK := 1
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/net.tres"
@@ -122,7 +138,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 4
+const PROTOCOL := 5
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -291,6 +307,11 @@ var _weapon_list: Array = []
 var _swap_s := 0.3
 ## The host's own generator for pellets: a joiner never picks where its pellets go.
 var _pellets_rng := RandomNumberGenerator.new()
+## Draws each throw's seed (C19); the throws so far (each one's id), and the chains this
+## arena runs or draws, throw id -> {chain, thrower}.
+var _seeds := RandomNumberGenerator.new()
+var _throws := 0
+var _chains := {}
 ## During a match: the weapons and ammo of the player whose arena went away (an R reload),
 ## handed to the next player that attaches.
 var _kept_inventory: RefCounted = null
@@ -353,6 +374,7 @@ func _ready() -> void:
 		_weapons[def.id] = def
 	_swap_s = ArsenalScript.usable_timing(shipped_arsenal).swap_s
 	_pellets_rng.randomize()
+	_seeds.randomize()
 	var m := multiplayer as SceneMultiplayer
 	if m == null:
 		return
@@ -481,6 +503,8 @@ func attach(arena: Node, player: Node) -> void:
 		player.weapon_drawn.connect(_on_weapon_drawn)
 	if player.has_signal("reload_started") and not player.reload_started.is_connected(_on_reload_started):
 		player.reload_started.connect(_on_reload_started)
+	if player.has_signal("throw_intent") and not player.throw_intent.is_connected(_on_throw_intent):
+		player.throw_intent.connect(_on_throw_intent)
 	var stop = player.get("sigstop")
 	if stop != null and stop.has_signal("intent"):
 		stop.session = self
@@ -1079,6 +1103,8 @@ func _clear_players() -> void:
 	_actions_from = {}
 	_ammo_pending = {}
 	_stop_word = []
+	_chains = {}
+	_throws = 0
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -1590,6 +1616,179 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	for victim in killed:
 		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
+
+
+## This player threw a fork bomb (C19): the request goes to the host, which, when this is the
+## host, is the same check every other player's throw gets. Only the throw goes: the host
+## runs the chain.
+func _on_throw_intent(origin: Vector3, direction: Vector3, weapon: String) -> void:
+	if not is_online() or _arena == null or not is_instance_valid(_arena):
+		return
+	if state == State.JOINED and not _weapons_synced:
+		return  # the host does not count this player's weapons yet
+	var local_origin: Vector3 = _arena.to_local(origin)
+	var local_dir: Vector3 = (_arena.global_transform.basis.inverse() * direction).normalized()
+	var life: int = lives.get(my_id, 0)
+	if state == State.HOSTING:
+		_handle_throw(1, life, weapon, local_origin, local_dir)
+	elif multiplayer.get_peers().has(1):
+		_sent_actions += 1
+		_throw.rpc_id(1, life, weapon, local_origin, local_dir)
+
+
+## A joiner's throw, to the host. Untyped like _fire: wrong types are counted, never an
+## engine error.
+@rpc("any_peer", "call_remote", "reliable")
+func _throw(life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
+		combat.throw(0, 0, "", Vector3.ZERO, Vector3.ZERO, Vector3.INF, Vector3.ZERO, 0, _clock, 0)  # counted: no such throw
+	else:
+		_handle_throw(multiplayer.get_remote_sender_id(), life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)
+	_ack_actions(multiplayer.get_remote_sender_id())
+
+
+## The host's check of a throw, then the chain: run here, judged here, told to everyone.
+func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	var eye := _eye_of(id) if players.has(id) else Vector3.INF
+	if not eye.is_finite():
+		combat.throw(0, life, weapon, origin, dir, eye, Vector3.ZERO, 0, _clock, 0)  # counted: nothing known of it
+		return
+	if id != 1 and origin.is_finite() and _obstructed(id, eye, origin, BLAST_SIGHT_MASK):
+		combat.drop_after(Combat.DROP_ORIGIN)  # a throw from behind the cover it stands against
+		return
+	var live := ForkBomb.live_of(_arena, _bomb_key(id))
+	if combat.throw(id, life, weapon, origin, dir, eye, _view_of(id), lives.get(id, 0), _clock, live) != "":
+		return
+	_throws += 1
+	var seed := _seeds.randi()
+	_spawn_chain(_throws, id, weapon, seed, origin, dir, true)
+	var connected := multiplayer.get_peers()
+	for peer in players:
+		if peer != 1 and connected.has(peer):
+			_bomb.rpc_id(peer, _throws, id, weapon, seed, origin, dir)
+
+
+## A throw the host believed, to every joiner: its seed, so its screen draws the same chain.
+@rpc("authority", "call_remote", "reliable")
+func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3) -> void:
+	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not _weapons[weapon].is_thrown():
+		return
+	if throw_id < 1 or _chains.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
+		return
+	_spawn_chain(throw_id, thrower, weapon, seed, origin, dir, false)
+
+
+## A blast of a throw, from the host: where, which generation and which bomblet of it.
+@rpc("authority", "call_remote", "reliable")
+func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
+	if state != State.JOINED or not at.is_finite() or not _chains.has(throw_id):
+		return
+	var held: Dictionary = _chains[throw_id]
+	if is_instance_valid(held["chain"]):
+		held["chain"].apply_blast(gen, index, _arena.to_global(at))
+	if gen == 0 and held["thrower"] == my_id and _player_ready():
+		_player.fork_bomb_burst.emit()
+
+
+## A chain in this arena: the host's, which decides (fuses, contacts, the judge), or a
+## joiner's, which only draws on the host's word. The thrower's own body is never hit.
+func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
+	var def: WeaponDefScript = _weapons[weapon]
+	var never: Array[RID] = []
+	if thrower == my_id and _player != null and is_instance_valid(_player):
+		never.append(_player.get_rid())
+	var avatar = avatars.get(thrower)
+	if avatar != null and is_instance_valid(avatar):
+		never.append(avatar.hit_rid())
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var judge := _judge_blast.bind(thrower, weapon) if deciding else Callable()
+	var chain := ForkBomb.spawn(_arena, def.projectile, _arena.to_global(origin), ForkBomb.throw_velocity(def.projectile, along), seed, _bomb_key(thrower), deciding, def.light_skin, never, judge)
+	chain.target_mask = PLAYER_LAYER_MASK | RemotePlayer.HIT_LAYER
+	_chains[throw_id] = {"chain": chain, "thrower": thrower}
+	chain.finished.connect(func(): _chains.erase(throw_id))
+	if deciding:
+		chain.blasted.connect(_on_chain_blasted.bind(throw_id, thrower))
+
+
+## A blast of a chain the host runs, to every joiner; the thrower's callout when it is the
+## host's own first.
+func _on_chain_blasted(gen: int, index: int, at: Vector3, throw_id: int, thrower: int) -> void:
+	var local: Vector3 = _arena.to_local(at)
+	var connected := multiplayer.get_peers()
+	for peer in players:
+		if peer != 1 and connected.has(peer):
+			_blast.rpc_id(peer, throw_id, gen, index, local)
+	if gen == 0 and thrower == my_id and _player_ready():
+		_player.fork_bomb_burst.emit()
+
+
+## The host's judgement of one blast (`at`, world space) of `thrower`'s chain: every living
+## player but the thrower whose body's middle is within the blast's radius with nothing of
+## the level in between takes the tuning's damage for its distance; told as a shot of the
+## fork bomb, and each kill as a death by it.
+func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: String) -> void:
+	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player):
+		return
+	var tuning: Resource = _weapons[weapon].projectile
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var hits := PackedInt32Array()
+	var healths := PackedFloat32Array()
+	var killed := PackedInt32Array()
+	for id in players:
+		if id == thrower or not combat.alive(id):
+			continue
+		var middle := Vector3.INF
+		if id == 1:
+			middle = _player.global_position
+		else:
+			var avatar = avatars.get(id)
+			if avatar != null and is_instance_valid(avatar) and avatar.visible:
+				middle = _arena.to_global(avatar.latest_position())
+		if not middle.is_finite():
+			continue
+		var amount: float = tuning.damage_at(at.distance_to(middle))
+		if amount <= 0.0:
+			continue
+		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, BLAST_SIGHT_MASK)
+		if not space.intersect_ray(sight).is_empty():
+			continue  # a wall between: the blast does not reach
+		var before := combat.health_of(id)
+		var outcome := combat.damage_player(id, thrower, amount)
+		if outcome.is_empty():
+			continue
+		hits.append(id)
+		healths.append(outcome["health"])
+		if outcome["killed"]:
+			killed.append(id)
+		combat.add_meter(thrower, (before - outcome["health"]) / _ct.max_health, outcome["killed"])
+	if hits.is_empty():
+		return
+	var local: Vector3 = _arena.to_local(at)
+	_broadcast_shot(thrower, weapon, local, PackedVector3Array([local]), hits, healths)
+	for victim in killed:
+		_broadcast_death(victim, thrower, Vector3.UP, weapon)
+	_mirror_from_combat()
+
+
+## The live-cap key of a thrower's bomblets in this arena.
+func _bomb_key(id: int) -> String:
+	return "p%d" % id
+
+
+## Where the host believes `id` looks, a unit vector in arena space: its own view for
+## itself, the newest one a joiner sent; ZERO when nothing is known yet.
+func _view_of(id: int) -> Vector3:
+	if id == 1:
+		if _player == null or not is_instance_valid(_player):
+			return Vector3.ZERO
+		var pitch: float = _player.view_pitch() if _player.has_method("view_pitch") else 0.0
+		return (Basis(Vector3.UP, _player.rotation.y) * Basis(Vector3.RIGHT, pitch) * Vector3.FORWARD).normalized()
+	var avatar = avatars.get(id)
+	return avatar.latest_view() if avatar != null and is_instance_valid(avatar) and avatar.has_method("latest_view") else Vector3.ZERO
 
 
 ## Going online (C18): a solo SIGSTOP ends at once, right here, so not one frame of the

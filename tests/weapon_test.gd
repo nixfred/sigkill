@@ -94,7 +94,7 @@ func _def_checks() -> void:
 	_check("the built-in defaults are the cannon: WeaponDef.new() is a usable weapon", WeaponDefScript.new().problems().is_empty() and WeaponDefScript.new().id == "terminal_cannon")
 	var bad_slots: Array[String] = [""]
 	var cases := [
-		[s, "fire_mode", WeaponDefScript.FireMode.PROJECTILE, "not built yet"],
+		[s, "fire_mode", WeaponDefScript.FireMode.PROJECTILE, "a thrown weapon"],  # built since C19: SIGTERM thrown has no projectile tuning
 		[s, "fire_mode", WeaponDefScript.FireMode.BEAM, "not built yet"],
 		[s, "pellet_count", 1, "pellets must number"],
 		[s, "pellet_count", 40, "pellets must number"],
@@ -129,8 +129,9 @@ func _def_checks() -> void:
 
 func _arsenal_checks() -> void:
 	var shipped = load(ARSENAL_PATH)
-	# C17 adds the SIGKILL rail as slot 3 (tests/rail_test.gd covers it).
-	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 3 and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.swap_s == 0.3, str(shipped.problems()))
+	# C17 adds the SIGKILL rail as slot 3 (tests/rail_test.gd covers it), C19 the fork bomb as
+	# slot 4 (tests/fork_bomb_test.gd).
+	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, the fork bomb in slot 4, a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 4 and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.loadout[3].id == "fork_bomb" and shipped.swap_s == 0.3, str(shipped.problems()))
 	var bad_sig: Resource = _sigterm.duplicate()
 	bad_sig.pellet_count = 0
 	var mixed := Arsenal.new()
@@ -437,16 +438,20 @@ func _solo_checks() -> void:
 		await physics_frame
 	var inv = p.inventory
 	# C17: every slot's key, the drawn one named; the third line shows the ult meter when idle.
-	_check("the player starts with the cannon drawn and the strip says so", inv.current == 0 and p.weapon_tuning() == _cannon and wh.slots_text() == "[1 cannon]  2  3" and wh.ammo_text() == "cannon  inf" and wh.state_text() == wh.meter_text() and wh.meter_text().begins_with("kill -9 ["), "%s | %s | %s" % [wh.slots_text(), wh.ammo_text(), wh.state_text()])
+	# C19: the fork bomb's slot shows its bombs, "4(2)".
+	_check("the player starts with the cannon drawn and the strip says so", inv.current == 0 and p.weapon_tuning() == _cannon and wh.slots_text() == "[1 cannon]  2  3  4(2)" and wh.ammo_text() == "cannon  inf" and wh.state_text() == wh.meter_text() and wh.meter_text().begins_with("kill -9 ["), "%s | %s | %s" % [wh.slots_text(), wh.ammo_text(), wh.state_text()])
 	await _key(KEY_2)
-	_check("key 2 draws SIGTERM: the strip shows it drawn, its 6 and 24, and its fiction line", inv.current == 1 and p.weapon_tuning() == _sigterm and wh.slots_text() == "1  [2 SIGTERM]  3" and wh.ammo_text() == "SIGTERM  6 / 24" and wh.state_text() == "SIGTERM: please exit.", "%s | %s | %s" % [wh.slots_text(), wh.ammo_text(), wh.state_text()])
+	_check("key 2 draws SIGTERM: the strip shows it drawn, its 6 and 24, and its fiction line", inv.current == 1 and p.weapon_tuning() == _sigterm and wh.slots_text() == "1  [2 SIGTERM]  3  4(2)" and wh.ammo_text() == "SIGTERM  6 / 24" and wh.state_text() == "SIGTERM: please exit.", "%s | %s | %s" % [wh.slots_text(), wh.ammo_text(), wh.state_text()])
 	await _key(KEY_Q)
 	var after_q: int = inv.current
 	await _key(KEY_Q)
 	var after_q2: int = inv.current
-	# C17: three slots, so the wheel reaches the rail (slot 3) before it wraps.
+	# C17: three slots, so the wheel reaches the rail (slot 3); C19: four, so it reaches the
+	# fork bomb (slot 4) before it wraps.
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_down: int = inv.current
+	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
+	var after_fourth: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_wrap: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
@@ -455,7 +460,7 @@ func _solo_checks() -> void:
 	var after_up: int = inv.current
 	await _key(KEY_7)
 	var after_seven: int = inv.current
-	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slot 3 and wraps, 7 (no such slot) does nothing", after_q == 0 and after_q2 == 1 and after_down == 2 and after_wrap == 0 and after_back == 2 and after_up == 1 and after_seven == 1, "%d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_wrap, after_back, after_up, after_seven])
+	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slots 3 and 4 and wraps, 7 (no such slot) does nothing", after_q == 0 and after_q2 == 1 and after_down == 2 and after_fourth == 3 and after_wrap == 0 and after_back == 3 and after_up == 2 and after_seven == 2, "%d %d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_fourth, after_wrap, after_back, after_up, after_seven])
 	# The swap, timed to the frame: fire is held from the draw on, aimed at the open sky so
 	# no dummy is spent before the point-blank check.
 	await _settle(p, 0.5)
@@ -579,7 +584,7 @@ func _solo_checks() -> void:
 	twin.weapon = _sigterm
 	twin.position = Vector3(0.0, 40.0, -35.0)
 	main.add_child(twin)
-	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 2 and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail", str(twin.inventory.defs.map(func(d): return d.id)))
+	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail and the fork bomb), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 3 and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail" and twin.inventory.defs[2].id == "fork_bomb", str(twin.inventory.defs.map(func(d): return d.id)))
 	twin.queue_free()
 	await physics_frame
 	# R in solo play: a fresh arena, a fresh inventory.
@@ -1052,7 +1057,7 @@ func _layout_checks() -> void:
 			if not strip.is_ancestor_of(label) and label.get_parent() is Control and label.get_parent().name == "Root" and label.text.begins_with("WASD") and strip.get_global_rect().intersects(rect):
 				wrong.append("the hint under the strip")
 		var state: String = host["hud"].weapon_hud().state_text()
-		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything (the strip's fourth line SIGSTOP's, C18)" % [size.x, size.y], strip_labels == 6 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
+		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything (the strip's fourth line SIGSTOP's, C18; four slots, C19)" % [size.x, size.y], strip_labels == 7 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
 		await _drop(host)
 	root.size = before
 

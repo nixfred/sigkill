@@ -32,6 +32,9 @@ extends Control
 ## logic too and never held back by the pace. A round's end stops it at once (solo the world
 ## is back to full speed for the break) and a new round fills its meter.
 ##
+## The fork bomb (C19): the first blast of each of this player's throws is called out
+## ":(){ :|:& };:", game logic, over the pace; a new round gives the bombs back.
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -55,6 +58,7 @@ const MISSES_LINE := "%d misses in a row. Let the crosshair settle."
 const KILL9_LINE := "kill -9"
 const SIGSTOP_LINE := "SIGSTOP"
 const SIGCONT_LINE := "SIGCONT"
+const FORK_BOMB_LINE := ":(){ :|:& };:"
 
 enum Phase { ROUND, BREAK }
 
@@ -135,7 +139,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	var stop = player.get("sigstop")
@@ -228,6 +232,8 @@ func _start_round(number: int) -> void:
 		_player.reset_meter()
 	if _player != null and is_instance_valid(_player) and _player.has_method("refill_sigstop"):
 		_player.refill_sigstop()
+	if _player != null and is_instance_valid(_player) and _player.has_method("refill_bombs"):
+		_player.refill_bombs()
 	phase = Phase.ROUND
 	_left_s = _t.round_seconds
 	_since_callout_s = INF
@@ -302,6 +308,11 @@ func _on_sigcont() -> void:
 	_callout("sigcont", true)
 
 
+## The first blast of a throw of the fork bomb: called out at once, whatever the pace.
+func _on_fork_bomb() -> void:
+	_callout("fork_bomb", true)
+
+
 ## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
 ## whatever the pace, as "kill -9" is).
 func _callout(word: String, now: bool = false) -> void:
@@ -325,6 +336,8 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = SIGSTOP_LINE
 		"sigcont":
 			last_callout = SIGCONT_LINE
+		"fork_bomb":
+			last_callout = FORK_BOMB_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

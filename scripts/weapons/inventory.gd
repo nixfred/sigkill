@@ -14,6 +14,10 @@ extends RefCounted
 ## what the player's other weapons do (scripts/player.gd solo, the host's results in a
 ## match), kept across swaps, emptied by the ult's one shot, and reset by a new life, a death
 ## and a new round. The ult fires only with the meter full.
+##
+## Thrown weapons (C19, the fork bomb): their magazine is their bombs, with nothing in reserve.
+## A quick throw (G) spends one from the thrown weapon's own slot without drawing it, by its
+## own interval alone (try_throw()); a new life and a new round give the bombs back.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
@@ -101,6 +105,36 @@ func add_meter(amount: float) -> void:
 
 func reset_meter() -> void:
 	meter = 0.0
+
+
+## The slot of the loadout's thrown weapon (the fork bomb), or -1 when it has none.
+func thrown_slot() -> int:
+	for i in defs.size():
+		if defs[i].is_thrown():
+			return i
+	return -1
+
+
+## A quick throw from slot `slot` (a thrown weapon), drawn or not: "" when one is spent (its
+## interval set), otherwise why not: "empty" with none left, "cooldown" inside its interval.
+## Nothing else blocks it: no draw or reload of the weapon in hand.
+func try_throw(slot: int) -> String:
+	if slot < 0 or slot >= defs.size() or not defs[slot].is_thrown():
+		return BLOCK_EMPTY
+	if cooldowns[slot] > 0.0:
+		return BLOCK_COOLDOWN
+	if mags[slot] <= 0:
+		return BLOCK_EMPTY
+	mags[slot] -= 1
+	cooldowns[slot] = defs[slot].fire_cooldown
+	return ""
+
+
+## Every thrown weapon's bombs back to full (a new round, C19).
+func refill_thrown() -> void:
+	for i in defs.size():
+		if defs[i].is_thrown():
+			mags[i] = defs[i].magazine_size
 
 
 ## The drawn weapon.

@@ -3,7 +3,7 @@ extends Resource
 ## The weapons every player holds and how swapping between them feels (C16): the loadout,
 ## slot 1 first, and the swap, reload and draw numbers shared by every weapon. The default
 ## instance is resources/arsenal.tres: the terminal cannon in slot 1, SIGTERM in slot 2, the
-## SIGKILL rail rifle, the ult, in slot 3 (C17).
+## SIGKILL rail rifle, the ult, in slot 3 (C17), the fork bomb, thrown, in slot 4 (C19).
 ## Each weapon's own numbers stay in its WeaponDef (scripts/weapons/weapon_def.gd).
 ## Units are seconds, metres and degrees.
 

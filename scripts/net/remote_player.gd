@@ -200,6 +200,15 @@ func latest_position() -> Vector3:
 	return samples[-1]["pos"] if not samples.is_empty() else position
 
 
+## Where the player looked in the newest sample, a unit vector in arena space (body yaw, view
+## pitch), or ZERO when nothing has come yet (C19: the host judges a throw's aim by it).
+func latest_view() -> Vector3:
+	if samples.is_empty():
+		return Vector3.ZERO
+	var newest: Dictionary = samples[-1]
+	return (Basis(Vector3.UP, newest["yaw"]) * Basis(Vector3.RIGHT, newest["pitch"]) * Vector3.FORWARD).normalized()
+
+
 func hit_rid() -> RID:
 	return _hit.get_rid()
 

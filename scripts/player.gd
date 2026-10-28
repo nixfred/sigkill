@@ -31,6 +31,14 @@ extends CharacterBody3D
 ## global slows; while the host says SIGSTOP is on, shots go steady: zero spread, zero
 ## recoil. A death empties its meter.
 ##
+## The fork bomb (C19), slot 4: fire with it drawn throws one on an arc, and G throws one
+## without drawing it (its own interval and its two bombs alone count). Solo the throw is its
+## own chain here (scripts/weapons/fork_bomb.gd), and its blasts hurt this arena's daemons
+## in their radius with nothing of the level in between; in a match only the intent goes to
+## the session (throw_intent) and the host runs the chain. The first blast of each throw of
+## this player is the ":(){ :|:& };:" callout (fork_bomb_burst). A new round gives the bombs
+## back, as a new life does.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -49,6 +57,11 @@ const Inventory = preload("res://scripts/weapons/inventory.gd")
 const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Sigstop = preload("res://scripts/abilities/sigstop.gd")
+const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+## A daemon's middle, above its feet: where a blast aims at it.
+const DUMMY_MIDDLE_M := 0.9
+## A throw leaves this far in front of the eyes.
+const THROW_AHEAD_M := 0.4
 ## Added to the host's remaining reload or draw time when this side's has to wait for it:
 ## three physics frames at 60 Hz.
 const TIMING_MARGIN_S := 0.05
@@ -73,6 +86,11 @@ signal menu_requested
 ## another player once the host confirms the kill. `headshot` when the rail struck it in the
 ## head zone.
 signal rail_kill(headshot: bool)
+## A throw of the fork bomb (C19): where from, which way, which weapon. In a match the host
+## runs the chain from it; solo this player runs its own.
+signal throw_intent(origin: Vector3, direction: Vector3, weapon: String)
+## The first blast of a throw of this player's: the round HUD's ":(){ :|:& };:".
+signal fork_bomb_burst
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -113,6 +131,9 @@ var _w: WeaponDefScript  # the drawn weapon
 var _a: Arsenal
 var _spawn: Transform3D
 var _fire_queued := false
+var _throw_queued := false
+var _throw_pressed := false
+var _bomb_rng := RandomNumberGenerator.new()
 var _viewmodel: MeshInstance3D  # the drawn weapon's
 var _viewmodels: Array[MeshInstance3D] = []
 var _rng := RandomNumberGenerator.new()
@@ -206,6 +227,7 @@ func _ready() -> void:
 	_rng.randomize()
 	_pellet_rng.randomize()
 	_shake_rng.randomize()
+	_bomb_rng.randomize()
 	SettingsApply.ensure_buses()
 	for def in inventory.defs:
 		_viewmodels.append(_build_viewmodel(def))
@@ -254,6 +276,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_weapon(-1)
 	elif event.is_action_pressed("sigstop"):
 		sigstop.press()
+	elif event.is_action_pressed("throw_bomb"):
+		_throw_queued = true
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):
@@ -383,6 +407,8 @@ func _read_player_input() -> void:
 		_slide_pressed = false
 		_fire_pressed = false
 		_fire_queued = false
+		_throw_pressed = false
+		_throw_queued = false
 		# A held crouch or aim lets go; a toggled one stays as it was until the player is back.
 		_crouching = _crouching and _crouch_toggles and alive
 		_aiming = _aiming and _aim_toggles and alive
@@ -395,6 +421,8 @@ func _read_player_input() -> void:
 	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.
 	_fire_pressed = _fire_queued
 	_fire_queued = false
+	_throw_pressed = _throw_queued
+	_throw_queued = false
 
 
 ## `delta` is the player's own time; `own_rate` how much faster than the world's it runs
@@ -706,7 +734,7 @@ func _step_weapon(delta: float) -> void:
 	_apply_recoil()
 	if _charge_left > 0.0:
 		_step_charge(delta)
-	elif _fire_pressed and alive:
+	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
 		if _w.charge_s > 0.0:
 			if inventory.fire_block() == "":
 				_charge_left = _w.charge_s  # the shot goes off when the charge is done
@@ -718,6 +746,9 @@ func _step_weapon(delta: float) -> void:
 				_apply_recoil()
 			elif why == Inventory.BLOCK_EMPTY:
 				reload_started.emit(_w.id)  # fire on an empty magazine started a reload
+	if _throw_pressed and alive:
+		quick_throw()
+	_throw_pressed = false
 	# A weapon being drawn rises from below; one being reloaded tips over and back.
 	var drop := _a.swap_drop_m * (1.0 - inventory.swap_progress())
 	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, -drop, _w.viewmodel_kick_back * _viewmodel_kick)
@@ -808,10 +839,13 @@ func is_head_hit(point: Vector3) -> bool:
 
 
 ## One shot of the drawn weapon: one ray for a single shot, one per pellet for SIGTERM, each
-## pellet's damage eased by its distance; the rail's one piercing ray. Hits on this
-## machine's own dummies land here (and, solo, fill the ult meter); in a match the host
-## judges every shot at another player from the intent alone.
+## pellet's damage eased by its distance; the rail's one piercing ray; a thrown weapon throws
+## (C19). Hits on this machine's own dummies land here (and, solo, fill the ult meter); in a
+## match the host judges every shot at another player from the intent alone.
 func _fire() -> void:
+	if _w.is_thrown():
+		_throw_from(inventory.current)
+		return
 	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
@@ -905,6 +939,79 @@ func _meter_from(dummy: Node, before: float) -> void:
 	var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
 	var share: float = clampf(before - float(dummy.call("health")), 0.0, before) / float(max_health)
 	inventory.add_meter(meter_gain(share, killed))
+
+
+## G: one fork bomb thrown from its own slot without drawing it (C19). False when there is
+## none to throw (no thrown weapon, none left, inside its interval, or derezzed).
+func quick_throw() -> bool:
+	var slot := inventory.thrown_slot()
+	if slot < 0 or not alive or _bombs_full(slot) or inventory.try_throw(slot) != "":
+		return false
+	_throw_from(slot)
+	return true
+
+
+## True solo while this player's live bomblets are at the fork bomb's cap: no throw, and no
+## bomb spent (in a match the host keeps the cap).
+func _bombs_full(slot: int) -> bool:
+	var tuning: Resource = inventory.defs[slot].projectile
+	return not match_meter and tuning != null and ForkBomb.live_of(_fx_root(), "solo") >= tuning.live_cap
+
+
+## A throw of the thrown weapon in `slot`, its bomb already spent: from just in front of the
+## eyes along the aim. Solo its chain runs here, judged by _judge_blast(); in a match the
+## intent goes to the session and the host runs it.
+func _throw_from(slot: int) -> void:
+	var def: WeaponDefScript = inventory.defs[slot]
+	var forward := -_camera.global_transform.basis.z
+	var origin := _camera.global_position + forward * THROW_AHEAD_M
+	_sfx[slot][0].play()
+	if slot == inventory.current:
+		_viewmodel_kick = 1.0
+	throw_intent.emit(origin, forward, def.id)
+	if match_meter:
+		return
+	var never: Array[RID] = [get_rid()]
+	var chain := ForkBomb.spawn(_fx_root(), def.projectile, origin, ForkBomb.throw_velocity(def.projectile, forward), _bomb_rng.randi(), "solo", true, def.light_skin, never, _judge_blast.bind(def))
+	chain.blasted.connect(_on_bomb_blasted)
+
+
+## The first blast of a throw (generation 0): the callout.
+func _on_bomb_blasted(gen: int, _index: int, _at: Vector3) -> void:
+	if gen == 0:
+		fork_bomb_burst.emit()
+
+
+## Solo, a blast of this player's fork bomb: every daemon of this arena within its radius,
+## with nothing of the level between the blast and the daemon's middle, takes the tuning's
+## damage for its distance (the thrower is never hurt: no self-damage). A daemon it hurts
+## fills the ult meter as the other weapons do.
+func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> void:
+	var tuning: Resource = def.projectile
+	var root := _fx_root()
+	var space := get_world_3d().direct_space_state
+	for dummy in get_tree().get_nodes_in_group("targets"):
+		if not root.is_ancestor_of(dummy) or not dummy.has_method("hit") or (dummy.has_method("is_alive") and not dummy.call("is_alive")):
+			continue
+		var middle: Vector3 = (dummy as Node3D).global_position + Vector3.UP * DUMMY_MIDDLE_M
+		var amount: float = tuning.damage_at(at.distance_to(middle))
+		if amount <= 0.0:
+			continue
+		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, 1)
+		if not space.intersect_ray(sight).is_empty():
+			continue  # a wall between: the blast does not reach
+		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
+		if dummy.call("hit", amount, middle, (middle - at).normalized()) == true and not match_meter:
+			var max_health = dummy.get("max_health")
+			if max_health is float and max_health > 0.0:
+				var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
+				inventory.add_meter(meter_gain(clampf(before - float(dummy.call("health")), 0.0, before) / max_health, killed))
+
+
+## The bombs back to full: a new round (C19). In a match the host's count decides.
+func refill_bombs() -> void:
+	if inventory != null and not match_meter:
+		inventory.refill_thrown()
 
 
 ## Puts the drawn weapon in view, with its muzzle and its sounds.

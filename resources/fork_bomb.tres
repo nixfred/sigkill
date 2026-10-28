@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ForkBombTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/fork_bomb_tuning.gd" id="1_fork"]
+
+[resource]
+script = ExtResource("1_fork")
+throw_speed = 13.0
+throw_lift = 3.0
+gravity = 14.0
+bounce = 0.35
+generations = 4
+fuse_s = 1.2
+child_fuse_s = 0.5
+scatter_speed = 3.5
+scatter_lift = 2.5
+scatter_spread_degrees = 25.0
+radius_m = 4.0
+damage = 22.0
+falloff_floor = 0.3
+live_cap = 16
+ring_s = 0.35
+ring_radius_m = 1.2
+ring_shrink = 0.85
+ring_brighten = 0.4
+ring_energy = 4.0
+bomb_radius_m = 0.12
+wait_s = 1.5

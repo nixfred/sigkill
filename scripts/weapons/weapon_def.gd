@@ -19,15 +19,22 @@ extends "res://scripts/weapon_tuning.gd"
 ## no magazine, no reserve, no reload, but a meter (ult_meter points) that damage and kills
 ## with the other weapons fill, one full meter for one shot. Every default is off, so the
 ## terminal cannon and SIGTERM are exactly as they were.
+##
+## Thrown weapons (C19): fire_mode PROJECTILE throws instead of casting rays. The fork bomb
+## (resources/fork_bomb_weapon.tres) is one: its magazine is its bombs (2, no reserve: a new
+## life and a new round give them back), and every number of its chain is the
+## ForkBombTuning it names in projectile (resources/fork_bomb.tres). damage is unused for a
+## thrown weapon: the blasts' damage is the tuning's.
 
 const Palette = preload("res://scripts/palette.gd")
+const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
 enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
-## The fire modes built so far. Projectile and beam weapons come with later chunks.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS]
+## The fire modes built so far: projectile since C19 (the fork bomb). Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -64,8 +71,8 @@ const PIERCE_LAST := 16
 @export var kill_word: String = "SIGKILL"
 
 @export_group("Mode")
-## How a shot travels. Hitscan single and hitscan pellets are built; projectile and beam
-## are reserved for later weapons and refused until then.
+## How a shot travels. Hitscan single, hitscan pellets and projectile (thrown, C19) are
+## built; beam is reserved for a later weapon and refused until then.
 @export var fire_mode: FireMode = FireMode.HITSCAN_SINGLE
 ## Pellets per shot: 1 for a single shot, 2 or more for pellets. The first pellet flies
 ## straight along the aim, the others scatter inside the cone.
@@ -119,6 +126,11 @@ const PIERCE_LAST := 16
 ## Meter gained for each kill with the other weapons.
 @export var ult_per_kill: float = 0.0
 
+@export_group("Projectile")
+## A thrown weapon's chain, a ForkBombTuning (C19): resources/fork_bomb.tres for the fork bomb.
+## Empty for every other weapon.
+@export var projectile: Resource = null
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -136,7 +148,16 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single and hitscan pellets" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets and projectile" % fire_mode)
+	elif fire_mode == FireMode.PROJECTILE:
+		if not (projectile is ForkBombTuning):
+			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
+		elif not projectile.problems().is_empty():
+			out.append("a thrown weapon's projectile tuning is refused: %s" % projectile.problems()[0])
+		if pellet_count != 1 or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+			out.append("a thrown weapon throws one at a time from a magazine: 1 pellet, a magazine, no pierce, charge or ult")
+	elif projectile != null:
+		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
 		out.append("a single shot has exactly 1 pellet")
 	elif fire_mode == FireMode.HITSCAN_PELLETS and (pellet_count < 2 or pellet_count > PELLETS_LAST):
@@ -196,6 +217,11 @@ func has_magazine() -> bool:
 ## True for the ult: a meter instead of ammo.
 func is_ult() -> bool:
 	return ult_meter > 0.0
+
+
+## True for a thrown weapon (C19): the fork bomb.
+func is_thrown() -> bool:
+	return fire_mode == FireMode.PROJECTILE
 
 
 ## The meter this ult gains from a hit with another weapon that took `share` of a target's

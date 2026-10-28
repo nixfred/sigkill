@@ -15,6 +15,7 @@ extends RefCounted
 ## Esc, never a Ctrl, Alt or Super key or chord (Ctrl+Alt above all, the desktop's), and a
 ## bind that another action or a fixed key already uses is shown as a conflict. SIGSTOP
 ## bullet time (C18): F starts it and F again ends it (SIGCONT), rebindable like the rest.
+## The fork bomb (C19): G throws one without drawing it, rebindable as "Fork bomb".
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -32,6 +33,7 @@ const REBINDABLE := [
 	["fire", "fire"], ["aim", "aim"], ["reload", "reload"], ["weapon_last", "last weapon"],
 	["reset_arena", "respawn"], ["ask_ai", "ask your AI"], ["toggle_ai", "AI on/off"],
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
+	["throw_bomb", "Fork bomb"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -81,6 +83,7 @@ static func ensure() -> void:
 	_key("reload", [KEY_E])
 	_key("crouch", [KEY_X])
 	_key("sigstop", [KEY_F])
+	_key("throw_bomb", [KEY_G])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

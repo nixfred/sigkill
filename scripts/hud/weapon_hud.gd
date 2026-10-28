@@ -17,6 +17,9 @@ extends Control
 ## theme's colours with the key that works it: "F SIGSTOP [####......]" in teal when a press
 ## would start it, dimmed while the meter is below the start's share, "F SIGCONT [...]" in
 ## mint while it runs.
+##
+## The fork bomb (C19): its slot shows its bombs left even when another weapon is drawn
+## ("4(2)"), since G throws one from there, and drawn its ammo line reads "fork bomb  2 left".
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -24,6 +27,8 @@ const Controls = preload("res://scripts/controls.gd")
 
 const SLOT := "%d"
 const SLOT_DRAWN := "[%d %s]"
+const SLOT_THROWN := "%d(%d)"
+const THROWN_LINE := "%s  %d left"
 const AMMO_LINE := "%s  %s / %s"
 const AMMO_ENDLESS := "%s  inf"
 const ENDLESS := "inf"
@@ -137,7 +142,8 @@ func _refresh() -> void:
 		label.visible = i < inv.slot_count()
 		if not label.visible:
 			continue
-		label.text = ("  " if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else SLOT % (i + 1))
+		var plain: String = (SLOT_THROWN % [i + 1, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % (i + 1)
+		label.text = ("  " if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else plain)
 		var ult: bool = inv.defs[i].is_ult()
 		label.add_theme_color_override("font_color", inv.defs[i].skin_beam() if ult and inv.meter_ready() else Palette.MINT)
 		label.modulate = Color(1, 1, 1, DIM if ult and not inv.meter_ready() else 1.0)
@@ -158,6 +164,8 @@ func _refresh() -> void:
 	var reserve: int = inv.reserves[inv.current]
 	if def.is_ult():
 		_ammo.text = (ULT_READY % def.short_name) if inv.meter_ready() else (ULT_FILLING % [def.short_name, floori(inv.meter_share() * 100.0)])
+	elif def.is_thrown():
+		_ammo.text = THROWN_LINE % [def.short_name, mag]
 	elif not def.has_magazine():
 		_ammo.text = AMMO_ENDLESS % def.short_name
 	else:

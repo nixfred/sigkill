@@ -38,6 +38,15 @@ extends RefCounted
 ## believed only with the meter at its start share; an empty-meter or otherwise forged start
 ## is dropped and counted as "sigstop". While a player's SIGSTOP is on, its pellets fly
 ## straight (the session asks sigstop_on()). A death empties the meter and ends SIGSTOP.
+##
+## The fork bomb (C19): a throw is its own request, not a shot (throw()), drawn or not, so a
+## quick throw (G) counts too. The host believes one only from a living player in its life,
+## with a unit aim within AIM_TOLERANCE_DEG of the view the host last had of it, an origin
+## near the host's view of its eye, a bomb left in the host's count, the fork bomb's interval
+## kept and the player under its cap of live bomblets; then it spends the bomb and runs the
+## chain itself. A forged or empty throw is dropped and counted as for a shot ("empty",
+## "origin", "aim", "rate", "live_cap"). A fork bomb named in a shot intent is a "weapon"
+## drop: it is thrown, never fired. A new life refills its bombs as every magazine.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -63,6 +72,11 @@ const DROP_RELOAD := "reload"
 const DROP_EMPTY := "empty"
 const DROP_METER := "meter"
 const DROP_SIGSTOP := "sigstop"
+const DROP_AIM := "aim"
+const DROP_LIVE := "live_cap"
+## How far a throw's aim may stray from the view the host last had of the thrower, in degrees:
+## the view lags by a send interval and the network's delay.
+const AIM_TOLERANCE_DEG := 45.0
 ## Below a full meter by less than this still counts as full: float sums of shares.
 const METER_EPS := 0.0001
 
@@ -265,7 +279,7 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_LIFE)
 	if not seq_ok(seq, s["last_seq"]):
 		return _drop(DROP_SEQ)
-	if not weapons.has(weapon) or weapon != s["drawn"]:
+	if not weapons.has(weapon) or weapon != s["drawn"] or weapons[weapon].is_thrown():
 		return _drop(DROP_WEAPON)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
 		return _drop(DROP_SHAPE)
@@ -283,6 +297,36 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_METER)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
+	return ""
+
+
+## `id` throws `weapon` (the fork bomb, C19) in its life `life` from `origin` along `dir`,
+## given the host's view of its eye and of its aim (`view`, a unit vector, or ZERO for none
+## known yet: then the aim is not judged), the life the host knows it is in, the clock and the
+## bomblets it has live now: "" when the host believes it, the bomb spent; otherwise why not,
+## counted.
+func throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3, eye: Vector3, view: Vector3, known_life: int, now: float, live: int) -> String:
+	var why := _alive_in(id, life, known_life)
+	if why != "":
+		return why
+	if not weapons.has(weapon) or not weapons[weapon].is_thrown():
+		return _drop(DROP_WEAPON)
+	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
+		return _drop(DROP_SHAPE)
+	var def: WeaponDefScript = weapons[weapon]
+	var a: Dictionary = states[id]["ammo"][weapon]
+	if not rate_ok(now, a["last_fire"], def.fire_cooldown, tuning.fire_rate_tolerance):
+		return _drop(DROP_RATE)
+	if a["mag"] <= 0:
+		return _drop(DROP_EMPTY)
+	if live >= def.projectile.live_cap:
+		return _drop(DROP_LIVE)
+	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
+		return _drop(DROP_ORIGIN)
+	if not view.is_zero_approx() and rad_to_deg(view.angle_to(dir)) > AIM_TOLERANCE_DEG:
+		return _drop(DROP_AIM)
+	a["mag"] -= 1
+	a["last_fire"] = now
 	return ""
 
 

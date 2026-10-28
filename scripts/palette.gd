@@ -25,9 +25,11 @@ const VIOLET := Color(0.615686275, 0.360784314, 1.0)  # #9d5cff SIGTERM body and
 const VIOLET_HI := Color(0.847058824, 0.749019608, 1.0)  # #d8bfff SIGTERM beam and flash
 const ICE := Color(0.639215686, 0.933333333, 1.0)  # #a3eeff SIGKILL rail body and light (C17)
 const ICE_HI := Color(0.917647059, 0.992156863, 1.0)  # #eafdff SIGKILL rail beam: near white
+const FORK := Color(1.0, 0.301960784, 1.0)  # #ff4dff fork bomb body and bomblets (C19)
+const FORK_HI := Color(1.0, 0.8, 1.0)  # #ffccff fork bomb blast rings
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff
