@@ -1,12 +1,16 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2 or a3):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3 or a2b):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
 ## the pillars; a3, the arena: a wide overview from above, the skyline and the void from off its
 ## north-east corner, then in play the west corridor, the lair's front, and one wider view, daemons
-## ahead and a weapon in hand. After each still it prints what the GPU drew for it (draw calls,
-## primitives, objects, and the same for shadows). A tool, never part of the game.
+## ahead and a weapon in hand; a2b, the daemons as creatures: each one's hero view from a free
+## camera and a strip of three stills of its motion side by side (the rogue daemon's through a rear
+## and its strike), one view in play with all three kinds in it, and the rogue daemon's death in
+## shards.
+## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
+## same for shadows). A tool, never part of the game.
 ##
 ## It draws, so it never runs headless, and it never runs on a real desktop: run it from a clean
 ## copy on a private virtual display, sound off, with user data in a temporary folder, as
@@ -55,6 +59,23 @@ const A3_OVERVIEW_FOV := 60.0
 const A3_SKYLINE_AT := Vector3(31.0, 10.0, -29.0)
 const A3_SKYLINE_LOOK := Vector3(-60.0, 2.0, -95.0)
 const A3_VIEWS := [["corridor", Vector3(-17.5, 0.95, 18.0), Vector3(-17.5, 1.6, -6.0)], ["slab", Vector3(3.5, 0.95, -1.0), Vector3(-1.5, 2.0, -8.0)], ["gameplay", Vector3(-2.0, 0.95, 18.5), Vector3(-10.5, 1.6, 7.0)]]
+## a2b: each daemon's hero view: its name, its target, the free camera and the point it looks at
+## (arena space); then its motion strip: the frames before each of its three stills, counted from
+## the hero still (for the rogue daemon, from the start of its next rear).
+const A2B_HEROES := [["rogue", "DummyA", Vector3(2.9, 1.25, -11.2), Vector3(0.0, 1.0, -15.0), [10, 30, 30]], ["zombie", "DummyB", Vector3(-16.1, 1.45, 9.3), Vector3(-17.5, 1.05, 5.0), [12, 12, 12]], ["swarm", "DummyD", Vector3(-4.6, 2.5, 15.6), Vector3(-8.0, 1.9, 12.0), [8, 8, 8]]]
+const A2B_FOV := 50.0
+## a2b: the part of each still a strip keeps (the middle, where the daemon is), and the longest the
+## rogue daemon is waited for to rear, in frames.
+const A2B_CROP := Rect2i(400, 90, 1120, 900)
+const A2B_REAR_WAIT := 480
+## a2b: the view in play (where the player stands and the point it looks at, arena space); the
+## death's free camera and look, its target, and the frames after the killing shot for its still.
+const A2B_GAMEPLAY_AT := Vector3(-3.0, 0.95, 18.0)
+const A2B_GAMEPLAY_LOOK := Vector3(-0.5, 1.2, 0.0)
+const A2B_SHATTER_AT := Vector3(3.4, 1.5, -10.6)
+const A2B_SHATTER_LOOK := Vector3(0.0, 1.0, -15.0)
+const A2B_SHATTER_TARGET := "DummyA"
+const A2B_SHATTER_FRAMES := 14
 
 var _main: Node
 var _player: Node
@@ -93,6 +114,11 @@ func _run() -> void:
 		return
 	if _set == "a3":
 		await _a3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "a2b":
+		await _a2b()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -192,23 +218,64 @@ func _a3() -> void:
 		await _save("a3-" + view[0])
 
 
-## A still from a free camera at `at` looking at `look` (arena space), the player and the HUD hidden.
-func _free_view(name: String, at: Vector3, look: Vector3) -> void:
-	var hud: CanvasLayer = _main.get_node("Hud")
+## a2b: each daemon's hero view and its motion strip from a free camera, then the view in play
+## with all three kinds in it, then the rogue daemon's death in shards.
+func _a2b() -> void:
+	for hero in A2B_HEROES:
+		var cam := _free_camera(hero[2], hero[3], A2B_FOV)
+		await _frames(40)
+		await _save("a2b-" + hero[0])
+		if hero[0] == "rogue":
+			var art: Node = _main.get_node("Arena/Targets/" + hero[1]).art_node()
+			var waited := 0
+			while art.rear() < 0.02 and waited < A2B_REAR_WAIT:
+				await _frames(1)
+				waited += 1
+		var stills: Array[Image] = []
+		for wait in hero[4]:
+			await _frames(wait)
+			stills.append(await _grab())
+		await _save_strip("a2b-%s-motion" % hero[0], stills)
+		_free_camera_done(cam)
+	await _stand(A2B_GAMEPLAY_AT, _main.to_global(A2B_GAMEPLAY_LOOK))
+	await _save("a2b-gameplay")
+	var cam := _free_camera(A2B_SHATTER_AT, A2B_SHATTER_LOOK, A2B_FOV)
+	await _frames(30)
+	var dummy: Node3D = _main.get_node("Arena/Targets/" + A2B_SHATTER_TARGET)
+	dummy.hit(100.0, dummy.global_position + Vector3(0.4, 1.2, 0.5), Vector3(-0.6, 0.0, -1.0).normalized())
+	await _frames(A2B_SHATTER_FRAMES)
+	await _save("a2b-shatter")
+	_free_camera_done(cam)
+
+
+## A free camera at `at` looking at `look` (arena space), made current, the player and the HUD
+## hidden.
+func _free_camera(at: Vector3, look: Vector3, fov: float) -> Camera3D:
 	var cam := Camera3D.new()
-	cam.fov = A3_OVERVIEW_FOV
+	cam.fov = fov
 	_main.add_child(cam)
 	cam.global_position = _main.to_global(at)
 	cam.look_at(_main.to_global(look), Vector3.UP)
 	cam.current = true
-	hud.visible = false
+	_main.get_node("Hud").visible = false
 	_player.visible = false
-	await _frames(30)
-	await _save(name)
+	return cam
+
+
+## Back to the player's own camera and the HUD.
+func _free_camera_done(cam: Camera3D) -> void:
 	cam.current = false
 	cam.queue_free()
-	hud.visible = true
+	_main.get_node("Hud").visible = true
 	_player.visible = true
+
+
+## A still from a free camera at `at` looking at `look` (arena space), the player and the HUD hidden.
+func _free_view(name: String, at: Vector3, look: Vector3) -> void:
+	var cam := _free_camera(at, look, A3_OVERVIEW_FOV)
+	await _frames(30)
+	await _save(name)
+	_free_camera_done(cam)
 
 
 ## Stands the player at `at` (arena space) looking at `target` (world space), settled.
@@ -228,9 +295,26 @@ func _frames(n: int) -> void:
 		await physics_frame
 
 
-func _save(name: String) -> void:
+## What is on screen now, once it is drawn.
+func _grab() -> Image:
 	await RenderingServer.frame_post_draw
 	var image := root.get_texture().get_image()
+	image.convert(Image.FORMAT_RGBA8)
+	return image
+
+
+## Stills side by side, each cut to A2B_CROP, as one image.
+func _save_strip(name: String, stills: Array[Image]) -> void:
+	var strip := Image.create(A2B_CROP.size.x * stills.size(), A2B_CROP.size.y, false, Image.FORMAT_RGBA8)
+	for i in stills.size():
+		strip.blit_rect(stills[i], A2B_CROP, Vector2i(A2B_CROP.size.x * i, 0))
+	strip.save_png(OUT.path_join(name + ".png"))
+	_shots += 1
+	print("capture: %s, %d stills side by side" % [name, stills.size()])
+
+
+func _save(name: String) -> void:
+	var image := await _grab()
 	image.save_png(OUT.path_join(name + ".png"))
 	_shots += 1
 	var drawn := []

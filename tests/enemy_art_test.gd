@@ -1,5 +1,6 @@
 extends SceneTree
-## Headless enemy art test for SIGKILL (A2). scripts/check.sh runs it, and any FAIL exits 1.
+## Headless enemy art test for SIGKILL (A2, its checks moved onto A2b's creatures). scripts/check.sh
+## runs it, and any FAIL exits 1.
 ##
 ##   godot --headless --path . --fixed-fps 60 --script res://tests/enemy_art_test.gd
 ##
@@ -9,11 +10,12 @@ extends SceneTree
 ## nothing while it is drawn; its shaders run on the daemon's own clock, not the wall clock; the hit
 ## volume is byte for byte as it was before A2 (the dummy's collision shape, layer and mask, and the
 ## arena's dummies' places), and nothing under the art can collide; the avatars' derezz is the same
-## effect. Each type built alone: inside a triangle budget, a few draw calls, three different shapes,
-## its core in its own palette colour, every daemon of every type sharing one obsidian, one core and
-## one glyph material; turning by transforms only, the meshes never rebuilt; its clock at the game's
-## pace (half as fast at half the engine's time, as SIGSTOP makes it); the hit flash and the
-## rematerialise glitch reaching the shaders. In the real arena: each dummy drawn by its art, its hex
+## effect. Each type built alone: inside its own triangle and draw-call budget, three different
+## shapes, its core in its own palette colour, every daemon of every type sharing one obsidian, one
+## core, one trail and one glyph material; moving by transforms only, the meshes never rebuilt; its
+## clock at the game's pace (half as fast at half the engine's time, as SIGSTOP makes it); the hit
+## flash and the rematerialise glitch reaching the shaders. (Since A2b each type is a posed creature,
+## tests/enemy_motion_test.gd checks its motion.) In the real arena: each dummy drawn by its art, its hex
 ## volume by no camera; a grep mark sweeping the lock onto the marked daemon alone; a hit that does
 ## not kill flashing it; a kill's derezz with its flash, freeing itself on time, the daemon back after
 ## the respawn delay, glitching as it grows, whole again after the rematerialise time.
@@ -29,10 +31,8 @@ const Dummy = preload("res://scripts/target_dummy.gd")
 const ART_DIR := "res://scripts/daemons/"
 const TYPES := {"rogue_daemon": Palette.HOSTILE_RED, "zombie_process": Palette.HOSTILE_AMBER, "runaway_swarm": Palette.HOSTILE_RED}
 const ARENA_ART := {"DummyA": "rogue_daemon", "DummyB": "zombie_process", "DummyC": "zombie_process", "DummyD": "runaway_swarm"}
-## A daemon's budget, in triangles, and the most draw calls one may make.
+## The fewest triangles a daemon may take (each type sets its own most, triangles and draw calls).
 const TRIANGLES_FIRST := 120
-const TRIANGLES_LAST := 2500
-const DRAWS_LAST := 10
 ## The hit volume as it was before A2 (15e777d), byte for byte.
 const SHAPE_TEXT := "[sub_resource type=\"CylinderShape3D\" id=\"CylinderShape3D_dummy\"]\nheight = 1.8\nradius = 0.55\n"
 const SHAPE_NODE_TEXT := "[node name=\"Shape\" type=\"CollisionShape3D\" parent=\".\"]\nposition = Vector3(0, 0.9, 0)\nshape = SubResource(\"CylinderShape3D_dummy\")\n"
@@ -40,14 +40,14 @@ const ROOT_TEXT := "[node name=\"TargetDummy\" type=\"StaticBody3D\" groups=[\"t
 const PLACES := ["[node name=\"DummyA\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(0, 0, -15)\n", "[node name=\"DummyB\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(-17.5, 0, 5)\n", "[node name=\"DummyC\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(12, 0, 5)\n", "[node name=\"DummyD\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(-8, 1, 12)\n"]
 const EPS := 0.0005
 
-## A type with an empty core layer and an empty turning layer (self-review pass 2): it must build and
-## turn with no error.
-class EmptyLayers extends DaemonArt:
+## A type with no parts of its own and no glyphs, which never poses (A2's self-review pass 2, on
+## A2b's rig): it must build and draw with no error, its hit spray its only set.
+class NoParts extends DaemonArt:
 	func _build() -> void:
-		layer(0.0)
-		var turning := layer(0.3)
-		layer(0.5)
-		shell_spike(turning, Vector3(0.0, -0.5, 0.0), Vector3(0.0, 0.5, 0.0), 0.1, 4)
+		glyph_count = 0
+
+	func _pose(_t: float, _delta: float) -> void:
+		pass
 
 
 var _fails := 0
@@ -117,22 +117,25 @@ func _source_checks() -> void:
 	_check("acceptance: the art code is cosmetic only: no OS call, no file or folder access, no thread, socket or network, no wall clock, nothing loaded at run time, no RPC", found.is_empty() and code.length() > 9000, ", ".join(found))
 	var art := _code(ART_DIR + "daemon_art.gd")
 	var held := ""
-	for name in ["_process", "_send", "_marked", "flash", "set_unstable"]:
+	for name in ["_process", "_send", "_marked", "flash", "react", "set_unstable", "_pose_spray", "put", "bone", "orient", "present", "brighten", "conceal"]:
 		held += _body(art, name)
 	held += _body(dummy_script, "_physics_process") + _body(dummy_script, "_pulse")
 	var rebuilt := PackedStringArray()
 	for word in ["SurfaceTool", "commit(", "ArrayMesh", "Mesh.new", ".new(", "add_child", "duplicate", "_build", "Material"]:
 		if held.contains(word):
 			rebuilt.append(word)
-	_check("acceptance: nothing is rebuilt while a daemon is drawn: what runs each frame (its turns, its bob, its clock, the flash, the lock, the glitch) makes no mesh, node or material", rebuilt.is_empty() and held.length() > 1200, ", ".join(rebuilt))
+	_check("acceptance: nothing is rebuilt while a daemon is drawn: what runs each frame (its posing, its clock, the flash, the recoil and the spray, the lock, the glitch) makes no mesh, node or material", rebuilt.is_empty() and held.length() > 1200, ", ".join(rebuilt))
 	var shaders := {}
-	for name in ["daemon_shell", "daemon_core", "daemon_glyphs", "derezz_voxel"]:
+	for name in ["daemon_shell", "daemon_core", "daemon_glyphs", "daemon_split", "daemon_trail", "derezz_voxel"]:
 		shaders[name] = _shader_code("res://shaders/%s.gdshader" % name)
-	var clocked := true
-	for name in ["daemon_shell", "daemon_core", "daemon_glyphs"]:
+	var glitch := _shader_code("res://shaders/daemon_glitch.gdshaderinc")
+	var clocked := not glitch.contains("TIME") and glitch.contains("global uniform float daemon_clock")
+	for name in ["daemon_shell", "daemon_core", "daemon_split"]:
 		var text: String = shaders[name]
-		clocked = clocked and text.contains("instance uniform float clock") and not text.contains("TIME")
-	_check("acceptance: the daemons' shaders are in the repo and run on each daemon's own clock (an instance uniform at the game's pace, so SIGSTOP slows them), never the wall clock; the derezz voxels' shader too", clocked and not (shaders["derezz_voxel"] as String).contains("TIME") and (shaders["derezz_voxel"] as String).contains("discard"))
+		var raw := FileAccess.get_file_as_string("res://shaders/%s.gdshader" % name)
+		clocked = clocked and raw.contains("\n#include \"res://shaders/daemon_glitch.gdshaderinc\"\n") and not text.contains("TIME")
+	clocked = clocked and (shaders["daemon_glyphs"] as String).contains("global uniform float daemon_clock") and not (shaders["daemon_glyphs"] as String).contains("TIME") and not (shaders["daemon_trail"] as String).contains("TIME")
+	_check("acceptance: the daemons' shaders are in the repo and run on the daemons' shared clock (a shader global stepped at the game's pace, so SIGSTOP slows them), never the wall clock; the derezz voxels' shader too", clocked and not (shaders["derezz_voxel"] as String).contains("TIME") and (shaders["derezz_voxel"] as String).contains("discard"))
 	var dummy_scene := FileAccess.get_file_as_string("res://scenes/target_dummy.tscn")
 	var places_ok := true
 	for place in PLACES:
@@ -156,6 +159,7 @@ func _type_checks() -> void:
 	var report := PackedStringArray()
 	var shell_mats := {}
 	var core_mats := {}
+	var trail_mats := {}
 	var glyph_mats := {}
 	for type in TYPES:
 		var art := DaemonArt.make(load(ART_DIR + type + ".gd"))
@@ -167,48 +171,49 @@ func _type_checks() -> void:
 		var art: DaemonArt = arts[type]
 		var tris := art.triangles()
 		var draws := art.draw_calls()
-		report.append("%s %d triangles, %d draw calls" % [type, tris, draws])
-		if tris < TRIANGLES_FIRST or tris > TRIANGLES_LAST or draws > DRAWS_LAST:
+		report.append("%s %d triangles, %d draw calls (budget %d, %d)" % [type, tris, draws, art.budget_triangles, art.budget_draw_calls])
+		if tris < TRIANGLES_FIRST or tris > art.budget_triangles or draws > art.budget_draw_calls:
 			budget.append("%s %d/%d" % [type, tris, draws])
-		var box := _bounds(art)
+		var box := art.pose_bounds()
 		shapes["%d %d %d %d" % [roundi(box.size.x * 100.0), roundi(box.size.y * 100.0), roundi(box.size.z * 100.0), tris]] = type
-		var core := art.core_node()
-		var core_mat: Material = core.mesh.surface_get_material(0) if core != null and core.mesh.get_surface_count() > 0 else null
-		if core_mat == null or (core_mat as ShaderMaterial).shader.resource_path.get_file() != "daemon_core.gdshader" or core.get_instance_shader_parameter("core_color") != TYPES[type]:
+		var core := art.core_set()
+		var core_mat := core.material_override as ShaderMaterial if core != null else null
+		if core_mat == null or core_mat.shader.resource_path.get_file() != "daemon_core.gdshader" or core.get_instance_shader_parameter("core_color") != TYPES[type]:
 			cores.append(type)
 		for node in art.find_children("*", "GeometryInstance3D", true, false):
-			if node is MeshInstance3D:
-				var m: Mesh = (node as MeshInstance3D).mesh
-				for s in m.get_surface_count():
-					var mat := m.surface_get_material(s) as ShaderMaterial
-					var file := mat.shader.resource_path.get_file() if mat != null else ""
-					if file == "daemon_shell.gdshader":
-						shell_mats[mat.get_instance_id()] = true
-					elif file == "daemon_core.gdshader":
-						core_mats[mat.get_instance_id()] = true
-					else:
-						shared.append("%s %s" % [type, file])
+			var mat := (node as GeometryInstance3D).material_override as ShaderMaterial
+			var file := mat.shader.resource_path.get_file() if mat != null else ""
+			if not node is MultiMeshInstance3D:
+				shared.append("%s %s is no MultiMesh" % [type, node.name])
+			elif file == "daemon_shell.gdshader" and mat.next_pass is ShaderMaterial and (mat.next_pass as ShaderMaterial).shader.resource_path.get_file() == "daemon_split.gdshader":
+				shell_mats[mat.get_instance_id()] = true
+			elif file == "daemon_core.gdshader":
+				core_mats[mat.get_instance_id()] = true
+			elif file == "daemon_trail.gdshader":
+				trail_mats[mat.get_instance_id()] = true
+			elif file == "daemon_glyphs.gdshader":
+				glyph_mats[mat.get_instance_id()] = true
 			else:
-				glyph_mats[(node as GeometryInstance3D).material_override.get_instance_id()] = true
+				shared.append("%s %s" % [type, file])
 	print("ENEMY ART types: " + "; ".join(report))
-	_check("acceptance: every type inside the budget: %d to %d triangles and at most %d draw calls" % [TRIANGLES_FIRST, TRIANGLES_LAST, DRAWS_LAST], budget.is_empty(), ", ".join(budget))
+	_check("acceptance: every type inside its budget: at least %d triangles, and no more triangles or draw calls than it allows" % TRIANGLES_FIRST, budget.is_empty(), ", ".join(budget))
 	_check("acceptance: three different shapes: no two types share their size and triangle count", shapes.size() == TYPES.size(), str(shapes.size()))
 	_check("acceptance: every core glows in its type's own palette colour through the shared core shader: hostile red for the rogue daemon and the swarm, hostile amber for the zombie", cores.is_empty(), ", ".join(cores))
-	_check("acceptance: every daemon of every type shares one obsidian, one core and one glyph material (instance uniforms, no shader of its own)", shared.is_empty() and shell_mats.size() == 1 and core_mats.size() == 1 and glyph_mats.size() == 1, "%s; %d %d %d" % [", ".join(shared), shell_mats.size(), core_mats.size(), glyph_mats.size()])
+	_check("acceptance: every daemon of every type shares one obsidian (its split the next pass), one core, one trail and one glyph material (instance uniforms, no shader of its own), every part in a MultiMesh", shared.is_empty() and shell_mats.size() == 1 and core_mats.size() == 1 and trail_mats.size() == 1 and glyph_mats.size() == 1, "%s; %d %d %d %d" % [", ".join(shared), shell_mats.size(), core_mats.size(), trail_mats.size(), glyph_mats.size()])
 	var meshes := _mesh_ids(arts.values())
 	var turns := {}
 	for type in arts:
-		turns[type] = _layer_bases(arts[type])
+		turns[type] = _poses(arts[type])
 	var clock_before: float = arts["rogue_daemon"].clock()
 	for i in 60:
 		await process_frame
 	var clock_full: float = arts["rogue_daemon"].clock() - clock_before
 	var turned := 0
 	for type in arts:
-		var now := _layer_bases(arts[type])
+		var now := _poses(arts[type])
 		for k in now.size():
 			turned += 1 if not now[k].is_equal_approx(turns[type][k]) else 0
-	_check("acceptance: drawn, the daemons turn and bob by their nodes alone: layers turned, and every mesh the very one it was built with", _mesh_ids(arts.values()) == meshes and turned >= 6, "%d layers turned" % turned)
+	_check("acceptance: drawn, the daemons move by their parts' transforms alone: parts moved, and every mesh and MultiMesh the very one it was built with", _mesh_ids(arts.values()) == meshes and turned >= 60, "%d parts moved" % turned)
 	Engine.time_scale = 0.5
 	clock_before = arts["rogue_daemon"].clock()
 	for i in 60:
@@ -217,7 +222,10 @@ func _type_checks() -> void:
 	Engine.time_scale = 1.0
 	_check("acceptance: a daemon's clock runs at the game's pace: half as far at half the engine's time, as SIGSTOP slows the world alone", clock_full > 0.9 and absf(clock_half - clock_full * 0.5) < 0.02, "%.3f s then %.3f s" % [clock_full, clock_half])
 	var rogue: DaemonArt = arts["rogue_daemon"]
-	var shell: GeometryInstance3D = rogue.find_children("Mesh", "MeshInstance3D", true, false)[1]
+	var shell: GeometryInstance3D = null
+	for i in rogue.sets().size():
+		if shell == null and rogue.set_look(i) == DaemonArt.Look.SHELL:
+			shell = rogue.sets()[i]
 	rogue.flash()
 	var flashed: bool = is_equal_approx(rogue.hit_glow(), 1.0) and is_equal_approx(shell.get_instance_shader_parameter("hit"), 1.0) and is_equal_approx(rogue.glyphs().get_instance_shader_parameter("hit"), 1.0)
 	for i in ceili(DaemonArt.FLASH_S * 60.0) + 2:
@@ -227,35 +235,25 @@ func _type_checks() -> void:
 	var glitching: bool = is_equal_approx(shell.get_instance_shader_parameter("unstable"), 0.7)
 	rogue.set_unstable(0.0)
 	_check("a hit's flash and the rematerialise glitch reach the shaders: the flash at once, gone after %.2f s" % DaemonArt.FLASH_S, flashed and faded and glitching)
-	var sparse := EmptyLayers.new()
+	var sparse := NoParts.new()
 	sparse.setup(null)
 	world.add_child(sparse)
 	for i in 30:
 		await process_frame
-	_check("a type with an empty core layer and an empty turning layer builds, draws and turns (an error here fails the gate)", sparse.core_node() == null and sparse.triangles() == 24 and sparse.draw_calls() == 2)
+	sparse.react(Vector3(0.0, 1.0, 1.0), Vector3.FORWARD)
+	for i in 40:
+		await process_frame
+	_check("a type with no parts of its own, no glyphs and no pose builds, draws and reacts (an error here fails the gate): its spray its only set", sparse.part_count() == DaemonArt.SPRAY and sparse.sets().size() == 1 and sparse.glyphs() == null and sparse.draw_calls() == 1 and sparse.triangles() == DaemonArt.SPRAY * 30)
 
 
-## The bases of a daemon's turning layers' meshes and of its glyphs, in order.
-func _layer_bases(art: DaemonArt) -> Array:
+## Every part's transform of a daemon and its glyphs' basis, in order.
+func _poses(art: DaemonArt) -> Array:
 	var out := []
-	for node in art.find_children("Mesh", "MeshInstance3D", true, false):
-		out.append((node as Node3D).basis)
+	for id in art.part_count():
+		out.append(art.part_transform(id))
 	if art.glyphs() != null:
-		out.append(art.glyphs().basis)
+		out.append(Transform3D(art.glyphs().basis, Vector3.ZERO))
 	return out
-
-
-func _bounds(art: DaemonArt) -> AABB:
-	var box := AABB()
-	var first := true
-	for node in art.find_children("*", "MeshInstance3D", true, false):
-		var m := (node as MeshInstance3D).mesh
-		if m == null or m.get_surface_count() == 0:
-			continue
-		var b: AABB = art.global_transform.affine_inverse() * (node as Node3D).global_transform * m.get_aabb()
-		box = b if first else box.merge(b)
-		first = false
-	return box
 
 
 # --- In the real arena. ---

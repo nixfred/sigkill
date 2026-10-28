@@ -3,7 +3,9 @@ extends StaticBody3D
 ## derezzes, then rematerialises at its spot with full health. Its hit volume is a hexagonal
 ## prism (the Shape, and the Body's hex mesh, which is its size and centre for everything that
 ## measures it); since A2 what is seen of it is its art (scripts/daemons/), built under the Body
-## and drawn instead of the hex, so it hides and grows back with it. The art is visual only.
+## and drawn instead of the hex, so it hides and grows back with it; since A2b the art is a
+## creature that recoils and sprays shards at a hit and bursts into its own parts at the death,
+## over the derezz. The art is visual only.
 ## States: ALIVE, DEREZZING (collision off, hidden, not hittable), RESPAWNING (growing
 ## back, still not hittable), then ALIVE again. Only an ALIVE dummy can be hit, so it dies
 ## exactly once per life. It never moves or attacks. The tag text is invented flavour only;
@@ -55,6 +57,7 @@ func _ready() -> void:
 	_body.add_child(_art)
 
 	_tag.text = tag_text
+	_tag.position.y = _art.tag_height  # clear of the creature (A2b)
 	_tag.font = Palette.mono_font()
 	_tag.font_size = 48
 	_tag.pixel_size = 0.006
@@ -110,7 +113,7 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 		return false
 	_health -= damage
 	if _health > 0.0:
-		_pulse()
+		_pulse(point, direction)
 		return true
 	_start_derezz(point, direction)
 	return true
@@ -148,6 +151,7 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	var fx := DerezzFx.new()
 	_fx_root().add_child(fx)
 	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)
+	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
 	downed.emit(self)
 
 
@@ -186,9 +190,9 @@ func reset_for_round() -> void:
 	_health = max_health
 
 
-## A hit that did not kill: the art flares (A2).
-func _pulse() -> void:
-	_art.flash()
+## A hit that did not kill: the art flares (A2), recoils and sprays shards from where it struck (A2b).
+func _pulse(point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> void:
+	_art.react(point, direction)
 
 
 ## The daemon's art (A2), for the checks.

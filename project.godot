@@ -30,3 +30,12 @@ window/size/viewport_height=720
 
 renderer/rendering_method="forward_plus"
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
+
+[shader_globals]
+
+; The daemons' shared shader clock (A2b): stepped once a frame at the game's pace by
+; scripts/daemons/daemon_art.gd, read by every daemon shader.
+daemon_clock={
+"type": "float",
+"value": 0.0
+}

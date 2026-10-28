@@ -255,18 +255,23 @@ func _wiring_checks() -> void:
 				wrong.append(block.name)
 	_check("every block but the floor carries the code rain shader and is registered", rain_blocks > 0 and floor_blocks == 1 and wrong.is_empty() and _rain.surface_count() == rain_blocks, "%d rain blocks, %d floors, driver has %d, wrong: %s" % [rain_blocks, floor_blocks, _rain.surface_count(), ", ".join(wrong)])
 	var dummies := get_nodes_in_group(&"targets")
-	# Since A2 a dummy is drawn by its daemon art under its Body, whose hex is its volume only.
+	# Since A2 a dummy is drawn by its daemon art under its Body, whose hex is its volume only; since
+	# A2b the art's parts are MultiMeshes drawn with their material override.
 	var dummy_shaders := {}
 	var drawn_volumes := 0
 	for dummy in dummies:
 		var body := dummy.get_node("Body") as MeshInstance3D
 		drawn_volumes += 1 if body.layers != 0 else 0
-		for part in body.find_children("*", "MeshInstance3D", true, false):
-			var m: Mesh = (part as MeshInstance3D).mesh
-			for i in m.get_surface_count():
-				var mat := m.surface_get_material(i) as ShaderMaterial
-				if mat != null:
-					dummy_shaders[mat.shader.resource_path.get_file()] = true
+		for part in body.find_children("*", "GeometryInstance3D", true, false):
+			var over := (part as GeometryInstance3D).material_override as ShaderMaterial
+			if over != null:
+				dummy_shaders[over.shader.resource_path.get_file()] = true
+			if part is MeshInstance3D:
+				var m: Mesh = (part as MeshInstance3D).mesh
+				for i in m.get_surface_count():
+					var mat := m.surface_get_material(i) as ShaderMaterial
+					if mat != null:
+						dummy_shaders[mat.shader.resource_path.get_file()] = true
 	_check("the four dummies are drawn by their daemon art (A2: the shared obsidian and core shaders), never by the code rain shader, their hex volume by no camera", dummies.size() == 4 and _rain.target_count() == 4 and dummy_shaders.has("daemon_shell.gdshader") and dummy_shaders.has("daemon_core.gdshader") and not dummy_shaders.has("code_rain.gdshader") and drawn_volumes == 0, str(dummy_shaders.keys()))
 	var off := PackedStringArray()
 	for block in blocks:

@@ -88,29 +88,47 @@ const VIEWMODEL_CELL_M := 0.045
 const VIEWMODEL_HEX_CELL_M := 0.022
 const VIEWMODEL_LINE_M := 0.0016
 const POLYMER_ROUGHNESS := 0.85
-# Daemon look (A2): the shells' true edges (glow and width in pixels), rim, scanlines (per metre, width as a share, climb in m/s), flash
-# and lock; the glitch (ticks a second, the share of ticks that glitch, bands per metre, how far a
-# band jumps and splits, in metres); the core's energy, breath and flash; the glyphs' energy,
-# flicker and flash.
-const DAEMON_EDGE_ENERGY := 2.4
-const DAEMON_EDGE_PX := 1.3
-const DAEMON_RIM_ENERGY := 0.5
+# Daemon look (A2, heavier in A2b): the shells' true edges (glow and width in pixels; a wire part's,
+# a ghost's), rim, scanlines (per metre, width as a share, climb in m/s), flash and lock; the
+# glitch (ticks a second, the share of ticks that glitch, bands per metre, how far a band jumps and
+# splits, in metres; the scanline tear's ticks, share, bands and push; the share of ticks a part
+# snaps and how far); the split pass (its glow, its offset in pixels, the pull toward the camera
+# in metres, a ghost's share); presence cells per metre; the core's energy, breath and flash; the
+# trails' energy; the glyphs' energy, flicker and flash.
+const DAEMON_EDGE_ENERGY := 3.0
+const DAEMON_EDGE_PX := 1.4
+const DAEMON_WIRE_PX := 1.8
+const DAEMON_WIRE_ENERGY := 2.8
+const DAEMON_GHOST_ENERGY := 1.8
+const DAEMON_RIM_ENERGY := 0.6
 const DAEMON_RIM_POWER := 5.0
-const DAEMON_SCAN_ENERGY := 0.3
+const DAEMON_SCAN_ENERGY := 0.35
 const DAEMON_SCAN_PER_M := 12.0
 const DAEMON_SCAN_WIDTH := 0.05
 const DAEMON_SCAN_SPEED := 0.35
 const DAEMON_FLASH_ENERGY := 6.0
 const DAEMON_LOCK_ENERGY := 3.0
 const DAEMON_GLITCH_RATE := 9.0
-const DAEMON_GLITCH_SHARE := 0.05
+const DAEMON_GLITCH_SHARE := 0.08
 const DAEMON_GLITCH_BANDS_PER_M := 7.0
-const DAEMON_JITTER_M := 0.018
-const DAEMON_SPLIT_M := 0.012
+const DAEMON_JITTER_M := 0.035
+const DAEMON_SPLIT_M := 0.02
+const DAEMON_TEAR_RATE := 14.0
+const DAEMON_TEAR_SHARE := 0.05
+const DAEMON_TEAR_BANDS_PER_M := 24.0
+const DAEMON_TEAR_M := 0.06
+const DAEMON_PART_SHARE := 0.02
+const DAEMON_PART_JUMP_M := 0.05
+const DAEMON_SPLIT_ENERGY := 3.0
+const DAEMON_SPLIT_PX := 6.0
+const DAEMON_SPLIT_PULL_M := 0.12
+const DAEMON_GHOST_SPLIT := 0.35
+const DAEMON_CELLS_PER_M := 28.0
 const DAEMON_CORE_ENERGY := 4.0
-const DAEMON_CORE_BREATH := 0.18
+const DAEMON_CORE_BREATH := 0.25
 const DAEMON_CORE_BREATH_HZ := 0.6
 const DAEMON_CORE_FLASH_ENERGY := 10.0
+const DAEMON_TRAIL_ENERGY := 4.0
 const DAEMON_GLYPH_ENERGY := 3.0
 const DAEMON_GLYPH_FLICKER := 4.0
 const DAEMON_GLYPH_FLASH_ENERGY := 6.0
@@ -178,6 +196,8 @@ const VIEWMODEL_SHADER := "viewmodel_metal"
 const DAEMON_SHELL_SHADER := "daemon_shell"
 const DAEMON_CORE_SHADER := "daemon_core"
 const DAEMON_GLYPH_SHADER := "daemon_glyphs"
+const DAEMON_SPLIT_SHADER := "daemon_split"
+const DAEMON_TRAIL_SHADER := "daemon_trail"
 const DEREZZ_VOXEL_SHADER := "derezz_voxel"
 const ARENA_PANEL_SHADER := "arena_panel"
 const ARENA_LIGHT_SHADER := "arena_light"
@@ -290,18 +310,20 @@ static func viewmodel_hot(color: Color, energy: float) -> StandardMaterial3D:
 	return mat
 
 
-## The obsidian of every daemon (A2): one material for all of them; each daemon's clock, flash,
-## lock and glitch are instance uniforms.
+## The obsidian of every daemon (A2, A2b): one material for all of them, the RGB split its next
+## pass; each daemon's flash, lock, glitch, seed and edge colour are instance uniforms.
 static func daemon_shell_material() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = _shader(DAEMON_SHELL_SHADER)
 	mat.set_shader_parameter("obsidian", OBSIDIAN)
-	mat.set_shader_parameter("edge", HOSTILE_RED)
 	mat.set_shader_parameter("flash_color", HOSTILE_AMBER)
 	mat.set_shader_parameter("lock_color", COBALT)
 	mat.set_shader_parameter("split_color", GLITCH_SPLIT)
 	mat.set_shader_parameter("edge_energy", DAEMON_EDGE_ENERGY)
 	mat.set_shader_parameter("edge_px", DAEMON_EDGE_PX)
+	mat.set_shader_parameter("wire_px", DAEMON_WIRE_PX)
+	mat.set_shader_parameter("wire_energy", DAEMON_WIRE_ENERGY)
+	mat.set_shader_parameter("ghost_energy", DAEMON_GHOST_ENERGY)
 	mat.set_shader_parameter("rim_energy", DAEMON_RIM_ENERGY)
 	mat.set_shader_parameter("rim_power", DAEMON_RIM_POWER)
 	mat.set_shader_parameter("scan_energy", DAEMON_SCAN_ENERGY)
@@ -310,15 +332,24 @@ static func daemon_shell_material() -> ShaderMaterial:
 	mat.set_shader_parameter("scan_speed", DAEMON_SCAN_SPEED)
 	mat.set_shader_parameter("flash_energy", DAEMON_FLASH_ENERGY)
 	mat.set_shader_parameter("lock_energy", DAEMON_LOCK_ENERGY)
-	mat.set_shader_parameter("glitch_rate", DAEMON_GLITCH_RATE)
-	mat.set_shader_parameter("glitch_share", DAEMON_GLITCH_SHARE)
-	mat.set_shader_parameter("glitch_bands_per_m", DAEMON_GLITCH_BANDS_PER_M)
-	mat.set_shader_parameter("jitter_m", DAEMON_JITTER_M)
 	mat.set_shader_parameter("split_m", DAEMON_SPLIT_M)
+	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	_daemon_glitch(mat)
+	var split := ShaderMaterial.new()
+	split.shader = _shader(DAEMON_SPLIT_SHADER)
+	split.set_shader_parameter("split_color", GLITCH_SPLIT)
+	split.set_shader_parameter("split_energy", DAEMON_SPLIT_ENERGY)
+	split.set_shader_parameter("split_px", DAEMON_SPLIT_PX)
+	split.set_shader_parameter("edge_px", DAEMON_EDGE_PX)
+	split.set_shader_parameter("pull_m", DAEMON_SPLIT_PULL_M)
+	split.set_shader_parameter("ghost_split", DAEMON_GHOST_SPLIT)
+	_daemon_glitch(split)
+	mat.next_pass = split
 	return mat
 
 
-## Every daemon's core (A2): one material; the colour is each daemon's own instance uniform.
+## Every daemon's glowing parts (A2, A2b): one material; the colour is each daemon's own instance
+## uniform.
 static func daemon_core_material() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = _shader(DAEMON_CORE_SHADER)
@@ -327,6 +358,17 @@ static func daemon_core_material() -> ShaderMaterial:
 	mat.set_shader_parameter("breath_hz", DAEMON_CORE_BREATH_HZ)
 	mat.set_shader_parameter("flash_energy", DAEMON_CORE_FLASH_ENERGY)
 	mat.set_shader_parameter("flash_color", FLASH)
+	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	_daemon_glitch(mat)
+	return mat
+
+
+## A swarm's light trails (A2b): one material, added on top, in each daemon's own colour.
+static func daemon_trail_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DAEMON_TRAIL_SHADER)
+	mat.set_shader_parameter("energy", DAEMON_TRAIL_ENERGY)
+	mat.set_shader_parameter("head_color", FLASH)
 	return mat
 
 
@@ -339,6 +381,20 @@ static func daemon_glyph_material() -> ShaderMaterial:
 	mat.set_shader_parameter("flicker_rate", DAEMON_GLYPH_FLICKER)
 	mat.set_shader_parameter("flash_energy", DAEMON_GLYPH_FLASH_ENERGY)
 	return mat
+
+
+## The glitch every daemon shader shares (A2b, shaders/daemon_glitch.gdshaderinc), set on `mat`.
+static func _daemon_glitch(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("glitch_rate", DAEMON_GLITCH_RATE)
+	mat.set_shader_parameter("glitch_share", DAEMON_GLITCH_SHARE)
+	mat.set_shader_parameter("glitch_bands_per_m", DAEMON_GLITCH_BANDS_PER_M)
+	mat.set_shader_parameter("jitter_m", DAEMON_JITTER_M)
+	mat.set_shader_parameter("tear_rate", DAEMON_TEAR_RATE)
+	mat.set_shader_parameter("tear_share", DAEMON_TEAR_SHARE)
+	mat.set_shader_parameter("tear_bands_per_m", DAEMON_TEAR_BANDS_PER_M)
+	mat.set_shader_parameter("tear_m", DAEMON_TEAR_M)
+	mat.set_shader_parameter("part_share", DAEMON_PART_SHARE)
+	mat.set_shader_parameter("part_jump_m", DAEMON_PART_JUMP_M)
 
 
 ## A derezz's voxels (A2): glowing edges round a dimmer face in each voxel's colour, breaking up

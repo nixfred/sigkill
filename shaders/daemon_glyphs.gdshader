@@ -4,10 +4,11 @@
 // second. Original and procedural: no font, no texture. The glyph MultiMesh turns slowly as a
 // node, so the glyphs orbit with no per-frame data at all.
 //
-// One material for every daemon: its clock (the game's pace, so SIGSTOP slows the flicker) and its
-// hit flash are instance uniforms; each glyph's own salt is in its instance's custom data. Every
-// hash is an integer hash (PCG) of small integers, the tick wrapped at 1024. Defaults only mirror
-// scripts/palette.gd, which sets every value at runtime.
+// One material for every daemon: the time is the shared shader global daemon_clock (the game's pace,
+// so SIGSTOP slows the flicker), offset by the daemon's seed; its hit flash and its seed are
+// instance uniforms pinned to the slots every daemon shader shares (A2b); each glyph's own salt is
+// in its instance's custom data. Every hash is an integer hash (PCG) of small integers, the tick
+// wrapped at 1024. Defaults only mirror scripts/palette.gd, which sets every value at runtime.
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
 
@@ -16,8 +17,10 @@ uniform float energy : hint_range(0.0, 32.0) = 3.0;
 uniform float flicker_rate : hint_range(0.0, 30.0) = 4.0;
 uniform float flash_energy : hint_range(0.0, 32.0) = 6.0;
 
-instance uniform float clock = 0.0;
-instance uniform float hit = 0.0;
+global uniform float daemon_clock;
+
+instance uniform float hit : instance_index(0) = 0.0;
+instance uniform float seed : instance_index(3) = 0.0;
 
 varying float salt;
 
@@ -45,7 +48,7 @@ void fragment() {
 	if (col > 1) {
 		col = 3 - col; // mirrored left to right, so it reads like a character
 	}
-	int tick = int(mod(floor(clock * flicker_rate + salt * 13.0), 1024.0));
+	int tick = int(mod(floor((daemon_clock + seed * 97.0) * flicker_rate + salt * 13.0), 1024.0));
 	uint bits = pcg(uint(int(salt * 4093.0) & 0xffff) * 1031u + uint(tick));
 	int bit = (cell.y - 1) * 2 + col;
 	if (((bits >> uint(bit)) & 1u) == 0u) {
