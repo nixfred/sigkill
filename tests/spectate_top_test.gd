@@ -370,7 +370,7 @@ func _match_checks() -> void:
 	var below: bool = host["combat_hud"].banner_rect().position.y >= htop.panel_rect().end.y
 	_check("acceptance: derezzed in a match, the table is up at once without Tab (the joiner, alive, has none): the killer first by K (1), the host Z with D 1, \"1 zombie\", %CPU 100.0 and 0.0, load 1.00, the host's own row in reverse video; the death banner still shown, below the table", down and h_up and not c_up and h_me.size() == 9 and h_them.size() == 9 and _index(hl, "Daemon-2") == 0 and h_them[6] == "1" and h_me[2] == "Z" and h_me[7] == "1" and h_me[4] == "0" and hl[1] == "Tasks: 2 total, 1 running, 0 stopped, 1 zombie" and h_them[3] == "100.0" and h_me[3] == "0.0" and hl[0].ends_with("2 users, load average: 1.00, 1.00, 1.00") and htop.own_row() == 1 and banner.begins_with("[ DEREZZED by Daemon-2 ]") and below, "\n" + "\n".join(hl))
 	await _until(func(): return not hs.dead.get(1, false), 8000)
-	_check("acceptance: it goes away the moment the player respawns: hidden on the first frame alive, the banner back in its own place", not htop.is_showing() and host["combat_hud"].banner_text() == "")
+	_check("acceptance: it goes away the moment the player respawns: hidden on the first frame alive, the banner back in its own place and shape", not htop.is_showing() and host["combat_hud"].banner_text() == "" and host["combat_hud"].get("_banner_top") == -1.0 and is_equal_approx(host["combat_hud"].get("_banner").anchor_top, 0.38) and host["combat_hud"].get("_banner").get_theme_font_size("font_size") == 26, "%s %s %s %s '%s'" % [htop.is_showing(), host["combat_hud"].get("_banner_top"), host["combat_hud"].get("_banner").anchor_top, host["combat_hud"].get("_banner").get_theme_font_size("font_size"), host["combat_hud"].banner_text()])
 	# The joiner's view of it, from the host's word.
 	Input.action_press("show_top")
 	await _until(func(): return hs.protect_left.get(1, 0.0) <= 0.0, 6000)
@@ -509,6 +509,10 @@ func _layout_checks() -> void:
 		await _until(func(): return hs.avatars.has(cid) and cs.avatars.has(1) and hs.combat.has_player(cid) and cs.get("_weapons_synced"), 6000)
 		await _until(func(): return hs.protect_left.get(1, 0.0) <= 0.0 and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
 		var top: SpectateTop = host["hud"].spectate_top()
+		var hc = host["combat_hud"]
+		host["hud"].guide()._notice("word ".repeat(60), Color.WHITE, 60000)  # a long guide notice, bottom centre
+		for i in 3:
+			hc.entries.push_front({"killer": "Daemon-2", "victim": "Daemon-1", "word": "SIGKILL", "left": 30.0})
 		var dead := await _joiner_kills_host(host, client, cid)
 		await process_frame
 		await process_frame
@@ -524,13 +528,20 @@ func _layout_checks() -> void:
 				continue  # a full-width line, its text centred: the banner, the callout, the click line
 			if rect.intersects(table):
 				wrong.append("%s %s" % [label.text.left(24), rect])
-		var banner: Rect2 = host["combat_hud"].banner_rect()
+		var banner: Rect2 = hc.banner_rect()
+		var words: Rect2 = hc.banner_text_rect()
+		var guide_panel: Rect2 = host["hud"].guide().get("_panel").get_global_rect()
+		for label in hc.get("_feed_labels"):
+			if label.visible and label.get_global_rect().intersects(words):
+				wrong.append("feed under the banner: %s" % label.get_global_rect())
+		if host["hud"].guide().get("_panel").visible and guide_panel.intersects(words):
+			wrong.append("guide panel %s under the banner %s" % [guide_panel, words])
 		var lines := top.lines()
 		var widest := 0.0
 		for label in panel.find_children("*", "Label", true, false):
 			if label.is_visible_in_tree():
 				widest = maxf(widest, label.get_minimum_size().x)
-		_check("acceptance: at %dx%d the table fits: dead in a match it is inside the screen, full width, every line of it whole, under the status, round, net and combat lines; nothing else on the HUD under it; the death banner below it" % [size.x, size.y], dead and top.is_showing() and screen.encloses(table) and table.size.x >= screen.size.x - 40.0 and widest <= table.size.x and wrong.is_empty() and banner.position.y >= table.end.y and screen.encloses(Rect2(banner.position, Vector2(banner.size.x, 1.0))) and lines.size() == 5, "%s in %s, banner %s; %s" % [table, screen, banner, ", ".join(wrong)])
+		_check("acceptance: at %dx%d the table fits: dead in a match it is inside the screen, full width, every line of it whole, under the status, round, net and combat lines; nothing else on the HUD under it (a full kill feed and a long guide notice up); the death banner below it, one line, clear of the feed and the guide's panel" % [size.x, size.y], dead and top.is_showing() and screen.encloses(table) and table.size.x >= screen.size.x - 40.0 and widest <= table.size.x and wrong.is_empty() and banner.position.y >= table.end.y and screen.encloses(words) and words.size.x > 0.0 and hc.banner_text().begins_with("[ DEREZZED by Daemon-2 ]   respawn in ") and not hc.banner_text().contains("\n") and hc.feed_text().size() == 4 and host["hud"].guide().get("_panel").visible, "%s in %s, banner %s, guide %s; %s" % [table, screen, words, guide_panel, ", ".join(wrong)])
 		# The round's summary at this size: never with the table.
 		var round = host["hud"].round_hud()
 		var short = load("res://resources/announcer.tres").duplicate()

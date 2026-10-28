@@ -6,7 +6,9 @@ extends Control
 ## fading out; a flash of hostile red when they are hit; a mint border while they are
 ## freshly spawned and safe; and a centred banner while they are dead. The hit marker for a
 ## confirmed hit is the C6 one, through hud.gd. Everything here follows the host's confirmed
-## results, which arrive through the session's signals; nothing is guessed locally.
+## results, which arrive through the session's signals; nothing is guessed locally. While the
+## top table (C23, scripts/hud/spectate_top.gd) is up the banner sits just below it as one
+## smaller line.
 ## Shown only while a session is online; solo play sees none of it.
 
 const Session = preload("res://scripts/net/net_session.gd")
@@ -16,6 +18,11 @@ const HEALTH_LINE := "health %d"
 const PROTECT_LINE := "   spawn protection %.1f s"
 const DEAD_LINE := "DEREZZED by %s   respawn in %.1f s"
 const BANNER := "[ DEREZZED by %s ]\n\nrespawn in %.1f s"
+## The banner while the top table (C23) is up above it: one line, smaller, so it stays clear of
+## the guide's panel below it and the kill feed beside it.
+const BANNER_LINE := "[ DEREZZED by %s ]   respawn in %.1f s"
+const BANNER_FONT := 26
+const BANNER_LINE_FONT := 18
 const FEED_FIRST := "%s sent by %s"
 ## The cannon's signal: the feed's word when the weapon is not known.
 const DEFAULT_WORD := "SIGKILL"
@@ -43,6 +50,8 @@ var _feed_labels: Array = []
 var _flash: ColorRect
 var _border: PanelContainer
 var _banner: Label
+## Where the top table put the banner (its top, in pixels), or -1 for its own place.
+var _banner_top := -1.0
 
 
 func _ready() -> void:
@@ -104,21 +113,39 @@ func flash_left() -> float:
 
 
 ## Spectate as top (C23): with the top table up, the death banner sits `top` pixels from the
-## screen's top, just below it; a negative `top` puts it back in its own place.
+## screen's top, just below it, as one smaller line; a negative `top` puts it back in its own
+## place and shape.
 func place_banner(top: float) -> void:
+	var at := top if top >= 0.0 else -1.0
+	if at == _banner_top:
+		return  # (not the anchors: they are kept as 32-bit floats, never equal to 0.38 here)
+	_banner_top = at
 	var anchor := 0.0 if top >= 0.0 else BANNER_ANCHOR
 	var offset := top if top >= 0.0 else 0.0
-	if _banner.anchor_top == anchor and _banner.offset_top == offset:
-		return
-	_banner.set_anchor(SIDE_TOP, anchor, false, false)
-	_banner.set_anchor(SIDE_BOTTOM, anchor, false, false)
+	_banner.add_theme_font_size_override("font_size", BANNER_LINE_FONT if top >= 0.0 else BANNER_FONT)
+	_banner.anchor_top = anchor  # each pushes the other side along, so both end at `anchor`
+	_banner.anchor_bottom = anchor
 	_banner.offset_top = offset
 	_banner.offset_bottom = offset
+	_refresh()  # its text in the new shape at once
 
 
-## The death banner's rectangle on the screen.
+## The death banner's rectangle on the screen (as wide as the screen; its text is centred).
 func banner_rect() -> Rect2:
 	return _banner.get_global_rect()
+
+
+## The rectangle the banner's centred text takes on the screen, or an empty one while hidden.
+func banner_text_rect() -> Rect2:
+	if not _banner.visible:
+		return Rect2()
+	var font := _banner.get_theme_font("font")
+	var size := _banner.get_theme_font_size("font_size")
+	var wide := 0.0
+	for line in _banner.text.split("\n"):
+		wide = maxf(wide, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x)
+	var rect := _banner.get_global_rect()
+	return Rect2(rect.position.x + (rect.size.x - wide) * 0.5, rect.position.y, wide, _banner.get_combined_minimum_size().y)
 
 
 func line_text() -> String:
@@ -184,7 +211,7 @@ func _refresh(fade: float = -1.0) -> void:
 		var killer: String = session.last_killer_name.get(me, _name(session.last_killer.get(me, 0)))
 		var left: float = session.respawn_left.get(me, 0.0)
 		_line.text = DEAD_LINE % [killer, left]
-		_banner.text = BANNER % [killer, left]
+		_banner.text = (BANNER_LINE if _banner_top >= 0.0 else BANNER) % [killer, left]
 	else:
 		_line.text = HEALTH_LINE % roundi(session.health.get(me, 0.0)) + (PROTECT_LINE % protect if protect > 0.0 else "")
 	_line.add_theme_color_override("font_color", Palette.HOSTILE_AMBER if dead else Palette.MINT)
@@ -224,7 +251,7 @@ func _build() -> void:
 	_line = _label(self, 14, Palette.MINT)
 	_line.position = Vector2(18.0, 92.0)
 	_line.visible = false
-	_banner = _label(self, 26, Palette.HOSTILE_AMBER)
+	_banner = _label(self, BANNER_FONT, Palette.HOSTILE_AMBER)
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.anchor_left = 0.0
 	_banner.anchor_right = 1.0
