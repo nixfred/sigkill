@@ -55,6 +55,8 @@ var _held := false
 var _press := false
 var _look := 0.0
 var _calm := false
+## The comfort settings changed: the look is written again even if it has settled.
+var _restyle := false
 var _was_online := false
 var _layer: CanvasLayer
 var _cover: ColorRect
@@ -177,8 +179,13 @@ func _step_look(real: float) -> void:
 	var calm_now := _comfort()
 	if calm_now != _calm:
 		_calm = calm_now
+		_restyle = true  # the look's strength changes with it
 		_paint.set_shader_parameter("flicker_rate", 0.0 if _calm else _rain.flicker_rate)
-	_look = move_toward(_look, 1.0 if meter.on else 0.0, real / maxf(_t.fade_s, 0.001))
+	var look := move_toward(_look, 1.0 if meter.on else 0.0, real / maxf(_t.fade_s, 0.001))
+	if look == _look and not _restyle:
+		return  # settled: nothing to write this frame
+	_look = look
+	_restyle = false
 	_cover.color = Color.WHITE.lerp(_t.tint, look_strength())
 	_cover.visible = _look > 0.0
 	_paint.set_shader_parameter("strength", _look)
