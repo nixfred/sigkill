@@ -380,7 +380,7 @@ func _match_checks() -> void:
 	var hit := await _until(func(): return hs.combat.health_of(1) < 100.0, 4000)
 	var taken: float = 100.0 - hs.combat.health_of(1)
 	var cannon: Resource = load("res://resources/terminal_cannon.tres")
-	_check("acceptance: the host judges it: the root joiner's cannon shot takes %.1f off the host (1.5 times its %.0f), and the joiner's screen shows the host's number" % [taken, cannon.damage], hit and absf(taken - cannon.damage * 1.5) < EPS and await _until(func(): return absf(cs.health.get(1, 100.0) - hs.combat.health_of(1)) < EPS, 4000) and hs.combat.ammo_of(cid, "terminal_cannon") == shots_before, "%.3f" % taken)
+	_check("acceptance: the host judges it: the root joiner's cannon shot takes %.1f off the host (1.5 times its %.0f), and the joiner's screen shows the host's number; the joiner's own game never applies the scale in a match" % [taken, cannon.damage], hit and absf(taken - cannon.damage * 1.5) < EPS and cp.call("_damage_scale") == 1.0 and await _until(func(): return absf(cs.health.get(1, 100.0) - hs.combat.health_of(1)) < EPS, 4000) and hs.combat.ammo_of(cid, "terminal_cannon") == shots_before, "%.3f" % taken)
 	# A death ends it.
 	var died := await _host_kills_joiner(host, client, cid)
 	var ended := await _until(func(): return not hs.combat.root(cid) and not csudo.is_root() and not hs.avatars[cid].root, 4000)

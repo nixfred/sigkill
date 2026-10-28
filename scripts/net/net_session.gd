@@ -1490,6 +1490,8 @@ func _show_avatar_state(id: int) -> void:
 		return
 	avatar.health = health.get(id, _ct.max_health)
 	avatar.protected = protect_left.get(id, 0.0) > 0.0
+	if avatar.has_method("set_root") and avatar.root != (root_left.get(id, 0.0) > 0.0):
+		avatar.set_root(root_left.get(id, 0.0) > 0.0)  # an avatar made anew (an R reload) shows root too (C22)
 	if dead.get(id, false) and not avatar.dead:
 		avatar.hide_dead()
 
@@ -2207,11 +2209,6 @@ func _apply_sudo(id: int, charges: int, left: float) -> void:
 		if avatar != null and is_instance_valid(avatar) and avatar.has_method("set_root"):
 			avatar.set_root(left > 0.0)
 	combat_changed.emit()
-
-
-## True when the host's last word had `id` root.
-func combat_known_root(id: int) -> bool:
-	return root_left.get(id, 0.0) > 0.0
 
 
 ## How hard `id` hits as this side knows it: the host's own count while hosting, the host's

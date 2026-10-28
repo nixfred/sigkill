@@ -1071,9 +1071,12 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 				inventory.add_meter(meter_gain(clampf(minf(base, before), 0.0, before) / max_health, killed))  # at user's strength (C22)
 
 
-## How hard this player's weapons hit right now: root's damage_scale, or 1 as user (C22).
+## How hard this player's weapons hit right now, alone: root's damage_scale, or 1 as user
+## (C22). In a match always 1: only the host applies root's harder hits, where it judges them.
 func _damage_scale() -> float:
-	return sudo.damage_scale() if sudo != null and sudo.state != null else 1.0
+	if match_meter or sudo == null or sudo.state == null:
+		return 1.0
+	return sudo.damage_scale()
 
 
 ## A daemon of this arena went down: alone, a kill toward a sudo charge (C22).
