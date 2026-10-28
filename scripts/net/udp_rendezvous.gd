@@ -143,7 +143,10 @@ func _start(op: int, code: String, protocol: int, port: int) -> bool:
 	if not _pending.is_empty() or _host == "":
 		return false
 	_pending = {"op": op, "code": code, "protocol": protocol, "port": port, "started": Time.get_ticks_msec(), "cookie_tries": 0, "sent": false}
-	if _ip == "" and _lookup < 0 and not _lookup_failed:
+	if _ip == "" and _lookup < 0:
+		# Every request looks the name up again until it is found: one failed lookup (a network
+		# not up yet) never ends room codes for the session.
+		_lookup_failed = false
 		_lookup = IP.resolve_hostname_queue_item(_host, IP.TYPE_IPV4)
 	return true
 

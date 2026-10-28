@@ -9,7 +9,9 @@ extends RefCounted
 ## joiner resolves a code and gets the join port and the join token; the host closes its code
 ## with the host token. A source is believed only after a cookie round trip (its first request
 ## is answered with a cookie it must send back), and every request is exactly as big as the
-## largest reply, so the relay never amplifies.
+## largest reply, so the relay never amplifies. The cookie is stateless (an HMAC of the
+## source and a time window): a source not yet believed leaves nothing behind, so spoofed
+## addresses can never fill the rate table, and cookie replies are capped in all.
 ##
 ## Data ports (UDP, per room): the joiner's ENet talks to the join port and the host's ENet to
 ## the host-facing port of that joiner's slot; the relay forwards the datagrams untouched. A
@@ -17,8 +19,8 @@ extends RefCounted
 ## the host sees each joiner as a relay port and the joiner sees the host as the relay:
 ## neither ever learns the other's address.
 ##
-## Limits: per source address, registrations, resolutions and cookies a minute and live rooms
-## at once; rooms in all; players per room; a room code's life; idle paths dropped; a payload
+## Limits: per believed source address, registrations and resolutions a minute and live rooms
+## at once; cookie replies a minute in all; rooms in all; players per room; a room code's life; idle paths dropped; a payload
 ## cap on every datagram and a packet rate per room; every malformed or unexpected datagram
 ## dropped and counted. Addresses live in memory only: a joiner's for as long as its path
 ## carries traffic, a host's for its room's, a registering host's for its code's life (the
@@ -43,7 +45,7 @@ const SETTINGS := {
 	"idle_s": ["SIGKILL_RELAY_IDLE_S", "--idle-s", 60, 1, 3600],
 	"register_per_min": ["SIGKILL_RELAY_REGISTER_PER_MIN", "--register-per-min", 6, 1, 10000],
 	"resolve_per_min": ["SIGKILL_RELAY_RESOLVE_PER_MIN", "--resolve-per-min", 30, 1, 10000],
-	"hello_per_min": ["SIGKILL_RELAY_HELLO_PER_MIN", "--hello-per-min", 60, 1, 10000],
+	"hello_per_min": ["SIGKILL_RELAY_HELLO_PER_MIN", "--hello-per-min", 3000, 1, 1000000],
 	"max_clients": ["SIGKILL_RELAY_SOURCES", "--sources", 4096, 1, 1000000],
 	"max_payload": ["SIGKILL_RELAY_PAYLOAD_CAP", "--payload-cap", 1400, 100, 65000],
 	"room_pps": ["SIGKILL_RELAY_ROOM_PPS", "--room-pps", 400, 10, 100000],
@@ -89,7 +91,9 @@ var _control: PacketPeerUDP
 var _rooms := {}  # live code -> Room
 var _all: Array = []  # every Room that still holds its ports
 var _expired := {}  # code -> when it is forgotten
-var _clients := {}  # source address -> {"since", "register", "resolve", "hello"}
+var _clients := {}  # believed source address -> {"since", "register", "resolve"}
+var _hello_since := -INF
+var _hello_count := 0
 var _secret := PackedByteArray()
 var _crypto := Crypto.new()
 var _next_port := 0
@@ -233,19 +237,20 @@ func _on_control(data: PackedByteArray, ip: String, port: int, now: float) -> vo
 	if RoomCode.problem(req["code"]) != "":
 		counters["bad_code"] += 1  # the game checks every code before it sends one
 		return
-	var client = _client(ip, now)
-	if client == null:
-		_reply(ip, port, Wire.Status.BUSY, req["code"])
-		return
 	if req["op"] == Wire.Op.CLOSE:
 		_close(req)  # the host token is the proof; no reply, so nothing to reflect
 		return
 	if not _cookie_ok(req["cookie"], ip, port, now):
-		if not _spend(client, "hello", config["hello_per_min"]):
+		# Not believed yet: a cookie and nothing else, and no state kept for it.
+		if not _spend_hello(now):
 			counters["dropped_rate"] += 1
 			return
 		counters["cookies"] += 1
 		_reply(ip, port, Wire.Status.COOKIE, req["code"], 0, 0, 0, _cookie(ip, port, _window(now)))
+		return
+	var client = _client(ip, now)
+	if client == null:
+		_reply(ip, port, Wire.Status.BUSY, req["code"])
 		return
 	match req["op"]:
 		Wire.Op.REGISTER:
@@ -356,7 +361,7 @@ func _client(ip: String, now: float):
 		if _clients.size() >= config["max_clients"]:
 			counters["busy"] += 1
 			return null
-		rec = {"since": now, "register": 0, "resolve": 0, "hello": 0}
+		rec = {"since": now, "register": 0, "resolve": 0}
 		_clients[ip] = rec
 	return rec
 
@@ -366,6 +371,23 @@ func _spend(rec: Dictionary, what: String, per_min: int) -> bool:
 		return false
 	rec[what] += 1
 	return true
+
+
+## The cap on cookie replies, in all, per minute: the most a flood of first requests (from
+## real or spoofed sources) can make the relay send.
+func _spend_hello(now: float) -> bool:
+	if now - _hello_since >= RATE_WINDOW_S:
+		_hello_since = now
+		_hello_count = 0
+	if _hello_count >= config["hello_per_min"]:
+		return false
+	_hello_count += 1
+	return true
+
+
+## Sources believed and being rate-counted right now (the tests).
+func tracked_sources() -> int:
+	return _clients.size()
 
 
 func _window(now: float) -> int:

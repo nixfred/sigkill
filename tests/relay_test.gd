@@ -64,6 +64,7 @@ func _run() -> void:
 	GameSettings.current().reset()
 	_wire_checks()
 	_config_checks()
+	_stateless_cookie_checks()
 	_source_checks()
 	await _empty_url_checks()
 	await _match_checks()
@@ -117,7 +118,7 @@ func _wire_checks() -> void:
 
 func _config_checks() -> void:
 	var plain := RelayServer.config_from({}, PackedStringArray())
-	_check("the relay's defaults: 127.0.0.1 only, port 9010, system-picked data ports, 64 rooms of 4 players, 2 per address, 10-minute codes, 60 s idle, 1400-byte payloads", plain.get("bind") == LOCALHOST and plain.get("port") == 9010 and plain.get("data_first") == 0 and plain.get("max_rooms") == 64 and plain.get("max_players") == 4 and plain.get("rooms_per_ip") == 2 and plain.get("room_ttl_s") == 600 and plain.get("idle_s") == 60 and plain.get("max_payload") == 1400, str(plain))
+	_check("the relay's defaults: 127.0.0.1 only, port 9010, system-picked data ports, 64 rooms of 4 players, 2 per address, 10-minute codes, 60 s idle, 1400-byte payloads, 3000 cookie replies a minute in all", plain.get("hello_per_min") == 3000 and plain.get("bind") == LOCALHOST and plain.get("port") == 9010 and plain.get("data_first") == 0 and plain.get("max_rooms") == 64 and plain.get("max_players") == 4 and plain.get("rooms_per_ip") == 2 and plain.get("room_ttl_s") == 600 and plain.get("idle_s") == 60 and plain.get("max_payload") == 1400, str(plain))
 	var mixed := RelayServer.config_from({"SIGKILL_RELAY_PORT": "9100", "SIGKILL_RELAY_ROOMS": "8", "SIGKILL_RELAY_DATA_PORTS": "40000-40099", "SIGKILL_RELAY_BIND": "*"}, PackedStringArray(["--rooms", "9", "--idle-s", "30"]))
 	_check("environment variables set it and flags win over them; parsing never opens a socket", mixed.get("port") == 9100 and mixed.get("max_rooms") == 9 and mixed.get("idle_s") == 30 and mixed.get("data_first") == 40000 and mixed.get("data_last") == 40099 and mixed.get("bind") == "*", str(mixed))
 	var refused := PackedStringArray()
@@ -125,6 +126,34 @@ func _config_checks() -> void:
 		if not RelayServer.config_from({}, PackedStringArray(args)).has("error"):
 			refused.append(" ".join(args))
 	_check("bad settings are refused with a reason: no rooms, a port past 65535, a name to bind, a privileged or too-small data range, the control port inside it, one player, an unknown flag, a missing value, a giant payload", refused.is_empty(), ", ".join(refused))
+
+
+## The relay's own object in this process, on 127.0.0.1, for what a process cannot show:
+## that a source not yet believed leaves no state behind, and the cap on cookie replies.
+func _stateless_cookie_checks() -> void:
+	var config := RelayServer.config_from({}, PackedStringArray(["--port", str(_free_port()), "--bind", LOCALHOST, "--hello-per-min", "5"]))
+	if config.has("error"):
+		_check("the in-process relay's settings parse", false, config["error"])
+		return
+	var server := RelayServer.new(config)
+	var up := server.start() == ""
+	var asker := PacketPeerUDP.new()
+	asker.bind(0, LOCALHOST)
+	var code := RoomCode.generate()
+	var now := 100.0
+	var replies := 0
+	for i in 8:
+		server.call("_on_control", RelayWire.request_bytes(RelayWire.Op.RESOLVE, code, Session.PROTOCOL, 0, RelayWire.zero_token(), RelayWire.zero_token()), LOCALHOST, asker.get_local_port(), now)
+	OS.delay_msec(100)
+	while asker.get_available_packet_count() > 0:
+		asker.get_packet()
+		replies += 1
+	_check("first requests leave no state: eight from one source track no source at all, and only 5 cookies go out (the cap in all), the rest dropped", up and server.tracked_sources() == 0 and replies == 5 and server.counters["cookies"] == 5 and server.counters["dropped_rate"] == 3, "tracked %d, replies %d" % [server.tracked_sources(), replies])
+	var cookie: PackedByteArray = server.call("_cookie", LOCALHOST, asker.get_local_port(), server.call("_window", now))
+	server.call("_on_control", RelayWire.request_bytes(RelayWire.Op.RESOLVE, code, Session.PROTOCOL, 0, cookie, RelayWire.zero_token()), LOCALHOST, asker.get_local_port(), now)
+	_check("a source is tracked only once it sends its cookie back", server.tracked_sources() == 1 and server.counters["unknown"] == 1)
+	server.stop()
+	asker.close()
 
 
 func _source_checks() -> void:
@@ -258,6 +287,16 @@ func _match_checks() -> void:
 	cs.join_room(code)
 	var rejoined := await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2, 8000)
 	_check("acceptance 1: the typed code works as the link did: the joiner comes back into the same room, on the next free slot", rejoined and cs.address_text == "room " + code, "%s %s" % [cs.state_word(), cs.error])
+	# A relay named by host name: looked up without blocking (localhost, so no network).
+	var named := UdpRendezvous.new("udp://localhost:%d" % port)
+	var named_started := named.resolve(code, Session.PROTOCOL)
+	var named_done := {}
+	var t0 := Time.get_ticks_msec()
+	while named_done.is_empty() and Time.get_ticks_msec() - t0 < 4000:
+		named_done = named.poll()
+		await process_frame
+	named.shut()
+	_check("a relay named by host name works the same: localhost is looked up, the code resolves, the answer names the relay's own address", named_started and named_done.get("ok", false) and named_done.get("address", "") == LOCALHOST and named_done.get("relay", false), str(named_done))
 	cs.leave()
 	hs.leave()
 	await _frames(5)
