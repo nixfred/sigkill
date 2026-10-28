@@ -709,7 +709,7 @@ func _match_checks() -> void:
 	var cv: Dictionary = pair[1]
 	var taken: float = 100.0 - hs.combat.health_of(1)
 	var agreed := await _until(func(): return absf(cs.health.get(1, -1.0) - hs.combat.health_of(1)) < EPS, 4000)
-	_check("acceptance: a 127.0.0.1 match: the joiner marks the host (its claim, [1]) and fires; the host believes the claim, runs the dart and judges it (18 off the host), the joiner's dart only draws and lands nothing, and the joiner's screen shows the host's health", joined and drawn and marked > 0 and claims == PackedInt32Array([1]) and hs.marks_refused == refused_before and hv.get("authoritative", false) and not cv.get("authoritative", true) and hv.get("spawned", 0) == 1 and hv.get("landed", 0) == 1 and absf(taken - 18.0) < EPS and cv.get("landed", -1) == 0 and agreed, "marked %d claims %s, host %s, joiner %s, taken %.1f" % [marked, claims, hv, cv, taken])
+	_check("acceptance: a 127.0.0.1 match: the joiner marks the host (its claim, [1]) and fires; the host believes the claim, runs the dart and judges it (18 off the host), the joiner's dart only draws and lands nothing, and the joiner's screen shows the host's health", joined and drawn and marked > 0 and claims == PackedInt32Array([1]) and hs.marks_refused == refused_before and hv.get("authoritative", false) and not cv.get("authoritative", true) and hv.get("spawned", 0) == 1 and hv.get("landed", 0) == 1 and absf(taken - 18.0) < EPS and cv.get("landed", -1) == 0 and agreed, "marked %d claims %s, host %s, joiner %s, taken %.1f" % [marked, claims, _brief(hv), _brief(cv), taken])
 	_check("acceptance: the same darts on both screens: the joiner draws the host's dart from its seed and the believed mark, its first direction the same", not hv.get("directions", {}).is_empty() and hv.get("directions", {}) == cv.get("directions", {}) and cv.get("spawned", 0) == 1)
 	# A forged claim: behind the shooter, no such player, itself.
 	_place(client, Vector3(-14.0, STAND_Y, LINE_Z), Vector3(-1.0, 0.0, 0.0))
@@ -719,7 +719,7 @@ func _match_checks() -> void:
 	hs.call("_mirror_from_combat")
 	refused_before = hs.marks_refused
 	var forged := await _forged_shot(hs, cs, cp, client, PackedInt32Array([1, 999, cid]))
-	_check("acceptance: the host rejects a forged mark claim: the host behind the shooter, a player who does not exist and the shooter itself are all refused (3 counted); the shot still flies, one dart straight along the aim on both screens, and the host takes nothing", forged[0].get("spawned", 0) == 1 and forged[1].get("spawned", 0) == 1 and hs.marks_refused == refused_before + 3 and forged[0].get("turn_most", -1.0) == 0.0 and hs.combat.health_of(1) == 100.0, "%s %s refused %d" % [forged[0], forged[1], hs.marks_refused - refused_before])
+	_check("acceptance: the host rejects a forged mark claim: the host behind the shooter, a player who does not exist and the shooter itself are all refused (3 counted); the shot still flies, one dart straight along the aim on both screens, and the host takes nothing", forged[0].get("spawned", 0) == 1 and forged[1].get("spawned", 0) == 1 and hs.marks_refused == refused_before + 3 and forged[0].get("turn_most", -1.0) == 0.0 and hs.combat.health_of(1) == 100.0, "%s %s refused %d" % [_brief(forged[0]), _brief(forged[1]), hs.marks_refused - refused_before])
 	# Through a wall, and out of range, the host's check refuses a claim too.
 	_place(client, Vector3(-14.0, STAND_Y, LINE_Z), Vector3(1.0, 0.0, 0.0))
 	var cover := _wall(host["main"], host["main"].to_global(Vector3(-10.0, 2.0, LINE_Z)))
@@ -740,7 +740,7 @@ func _match_checks() -> void:
 	_place(host, Vector3(10.0, STAND_Y, LINE_Z), Vector3(-1.0, 0.0, 0.0))
 	await _frames(3)
 	var near: PackedInt32Array = hs.call("_accept_marks", cid, eye, (Vector3(10.0, STAND_Y, LINE_Z) - eye).normalized(), def, PackedInt32Array([1, 1]))
-	_check("acceptance: a claim through a wall is refused (the shot's one dart flies straight on to the wall), as is one 38 m off (past 35 m and its 1.5 m tolerance); at 29 m the same claim is believed, once (named twice, the second is refused)", hs.marks_refused == refused_before + 1 + 1 + 1 and walled[0].get("turn_most", -1.0) == 0.0 and too_far.is_empty() and near == PackedInt32Array([1]), "walled %s far %s near %s" % [walled[0], too_far, near])
+	_check("acceptance: a claim through a wall is refused (the shot's one dart flies straight on to the wall), as is one 38 m off (past 35 m and its 1.5 m tolerance); at 29 m the same claim is believed, once (named twice, the second is refused)", hs.marks_refused == refused_before + 1 + 1 + 1 and walled[0].get("turn_most", -1.0) == 0.0 and too_far.is_empty() and near == PackedInt32Array([1]), "walled %s far %s near %s" % [_brief(walled[0]), too_far, near])
 	# A believed mark whose player has left by the time the seed comes: the joiner still draws
 	# the shot's darts, that one straight, so its darts stay as many as the host's.
 	var gone_id := 77777
@@ -750,7 +750,7 @@ func _match_checks() -> void:
 	var drew: bool = left_vol != null
 	var left_store := _track(left_vol) if drew else {"done": false}
 	await _until(func(): return left_store["done"], 4000)
-	_check("a joiner told of a believed mark whose player has since left still draws the shot: both darts, the departed one's straight, so the fan matches the host's", drew and left_store.get("spawned", 0) == 2 and left_store.get("landed", -1) == 0 and not left_store.get("authoritative", true), str(left_store))
+	_check("a joiner told of a believed mark whose player has since left still draws the shot: both darts, the departed one's straight, so the fan matches the host's", drew and left_store.get("spawned", 0) == 2 and left_store.get("nearest", [0.0])[0] == INF and left_store.get("landed", -1) == 0 and not left_store.get("authoritative", true), _brief(left_store))
 	# A kill by grep, named in the feed on both screens.
 	_place(host, Vector3(-6.0, STAND_Y, LINE_Z), Vector3(-1.0, 0.0, 0.0))
 	_place(client, Vector3(-14.0, STAND_Y, LINE_Z), Vector3(1.0, 0.0, 0.0))
@@ -784,7 +784,7 @@ func _match_checks() -> void:
 	var own := await _match_shot(hs, cs, hp)
 	var own_taken: float = 100.0 - hs.combat.health_of(cid)
 	var mirrored := await _until(func(): return absf(cs.health.get(cid, -1.0) - hs.combat.health_of(cid)) < EPS, 4000)
-	_check("acceptance: the host's own grep shot takes the same path: it marks the joiner, its dart judges (%.1f off the joiner); the joiner's drawn dart meets its own body and decides nothing, and its screen shows the health the host says" % own_taken, host_marked > 0 and own[0].get("authoritative", false) and own[0].get("landed", 0) == 1 and absf(own_taken - 18.0) < EPS and not own[1].get("authoritative", true) and own[1].get("landed", -1) == 0 and own[1].get("struck", 0) == 1 and own[0].get("directions", {}) == own[1].get("directions", {}) and mirrored, "%s %s" % [own[0], own[1]])
+	_check("acceptance: the host's own grep shot takes the same path: it marks the joiner, its dart judges (%.1f off the joiner); the joiner's drawn dart meets its own body and decides nothing, and its screen shows the health the host says" % own_taken, host_marked > 0 and own[0].get("authoritative", false) and own[0].get("landed", 0) == 1 and absf(own_taken - 18.0) < EPS and not own[1].get("authoritative", true) and own[1].get("landed", -1) == 0 and own[1].get("struck", 0) == 1 and own[0].get("directions", {}) == own[1].get("directions", {}) and mirrored, "%s %s" % [_brief(own[0]), _brief(own[1])])
 	# A peer still on protocol 8 is refused.
 	var old := _branch("Old", OLD_OFFSET, 8)
 	var os: Session = old["session"]
@@ -861,6 +861,13 @@ func _snap(landed: int, v: Node, store: Dictionary, player: Node) -> void:
 	store["directions"] = v.directions.duplicate()
 	store["turn_most"] = v.turn_most
 	store["nearest"] = v.nearest.duplicate()
+
+
+## A volley's record without places: what a match check prints. A dart homing on an avatar
+## flies by where that avatar is drawn, which moves with the packets' real arrival times, so
+## only its counts and how each dart ended are the same on every run.
+func _brief(store: Dictionary) -> String:
+	return "%d darts, landed %d, struck %d, stopped %d, expired %d, deciding %s, ends %s" % [store.get("spawned", 0), store.get("landed", 0), store.get("struck", 0), store.get("stopped", 0), store.get("expired", 0), store.get("authoritative", false), store.get("ends", []).map(func(e): return e[3])]
 
 
 ## A slab of the level (layer 1), 0.2 m thick, 4 m high and wide, square to x, at `at`.
