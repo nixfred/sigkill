@@ -32,6 +32,10 @@ extends "res://relay/relay_server.gd"
 const HANDSHAKE_S := 5.0
 ## Longest a closing connection is kept to send its close.
 const CLOSING_S := 2.0
+## How long a link the relay closes stays open after the last message it was sent: the
+## engine sends a close ahead of queued messages, and the far side gives up whatever arrives
+## with one, so a host's last datagram (its goodbye) reaches its joiners before their close.
+const LINGER_S := 0.3
 ## Messages a link may hold for sending; a message is refused while the buffer is half full,
 ## so this count is never reached (Godot would print an error) even with the smallest one.
 const QUEUED_LAST := 16384
@@ -60,7 +64,8 @@ class WsRoom extends Room:
 
 var _tcp: TCPServer
 var _links: Array = []
-var _closing: Array = []  # [WebSocketPeer, until]
+## Links on their way out: {ws, close_at, until, closed}.
+var _closing: Array = []
 ## The link whose control request is being answered: _reply() goes to it.
 var _replying = null
 
@@ -93,8 +98,8 @@ func links_open() -> int:
 func stop() -> void:
 	for link in _links.duplicate():
 		_drop_link(link)
-	for pair in _closing:
-		pair[0].close()
+	for going in _closing:
+		going["ws"].close()
 	_closing.clear()
 	_all.clear()
 	_rooms.clear()
@@ -121,10 +126,15 @@ func poll(now: float) -> void:
 	for link in _links.duplicate():
 		if _links.has(link):
 			_poll_link(link, now)
-	for pair in _closing.duplicate():
-		pair[0].poll()
-		if pair[0].get_ready_state() == WebSocketPeer.STATE_CLOSED or now >= pair[1]:
-			_closing.erase(pair)
+	for going in _closing.duplicate():
+		var ws: WebSocketPeer = going["ws"]
+		ws.poll()
+		var late: bool = now >= going["until"]
+		if not going["closed"] and (late or (now >= going["close_at"] and ws.get_current_outbound_buffered_amount() == 0)):
+			ws.close()
+			going["closed"] = true
+		if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED or late:
+			_closing.erase(going)
 	if now >= _housekeeping_at:
 		_housekeeping_at = now + HOUSEKEEPING_S
 		_housekeeping(now)
@@ -358,9 +368,11 @@ func _housekeeping(now: float) -> void:
 ## answers "expired" and every joiner's link closes too. A joiner's slot comes free.
 func _drop_link(link: Link) -> void:
 	_links.erase(link)
-	if link.ws.get_ready_state() == WebSocketPeer.STATE_OPEN or link.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
+	if link.ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		link.ws.poll()
+		_closing.append({"ws": link.ws, "close_at": _now + LINGER_S, "until": _now + CLOSING_S, "closed": false})
+	elif link.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
 		link.ws.close()
-		_closing.append([link.ws, _now + CLOSING_S])
 	var room = link.hosting
 	if room != null:
 		link.hosting = null

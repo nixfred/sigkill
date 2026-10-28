@@ -78,6 +78,7 @@ func _run() -> void:
 	_source_checks()
 	await _scheme_checks()
 	await _empty_url_checks()
+	await _down_checks()
 	await _match_checks()
 	await _limit_checks()
 	await _bad_config_checks()
@@ -239,6 +240,22 @@ func _empty_url_checks() -> void:
 	await _frames(2)
 
 
+# --- A relay that is not there. ---
+
+func _down_checks() -> void:
+	var settings := GameSettings.current()
+	settings.set_value("multiplayer", "relay_url", "ws://%s:%d" % [LOCALHOST, _free_port()])
+	var client := _branch("Lone", CLIENT_OFFSET)
+	await _frames(3)
+	var cs: Session = client["session"]
+	cs.join_room(RoomCode.generate())
+	var failed := await _until(func(): return cs.state == Session.State.FAILED, 6000)
+	_check("a ws:// relay that is not running: the join fails with \"couldn't reach the room service\", no tunnel left open, nothing else to show for it", failed and cs.error == Session.ROOM_UNREACHABLE and not cs.rendezvous_in_use().link_open() and cs.rendezvous_in_use().tunnel_sockets().is_empty(), "%s %s" % [cs.state_word(), cs.error])
+	settings.set_value("multiplayer", "relay_url", "")
+	_drop(client)
+	await _frames(2)
+
+
 # --- A match through the WebSocket relay. ---
 
 func _match_checks() -> void:
@@ -301,8 +318,14 @@ func _match_checks() -> void:
 	cs.join_room(code)
 	var rejoined := await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2, 8000)
 	_check("the typed code brings the joiner back into the same room over a new link", rejoined and cs.address_text == "room " + code, "%s %s" % [cs.state_word(), cs.error])
-	cs.leave()
+	# The host leaves first: its goodbye reaches the joiner through the relay before the relay
+	# closes the joiner's link, so the joiner hears "host left" at once, not at its timeout.
+	var t_host := Time.get_ticks_msec()
 	hs.leave()
+	var told := await _until(func(): return cs.state == Session.State.FAILED and cs.error == Session.HOST_LEFT, 4000)
+	var told_ms := Time.get_ticks_msec() - t_host
+	_check("the host leaving is heard at once: the joiner shows \"host left\" in %d ms (its peer timeout is 4 s), the host's goodbye reaching it before the relay closes its link" % told_ms, told and told_ms < 1500, "%s %s" % [cs.state_word(), cs.error])
+	cs.leave()
 	await _until_real(func(): return false, 600)
 	var raw := RawWs.new(port)
 	var opened := await _open(raw)
@@ -346,6 +369,7 @@ func _limit_checks() -> void:
 	# One host link per room: a link that registers again keeps its room under the new code.
 	var host_a := raw
 	var a := await _ask(host_a, RelayWire.Op.REGISTER, code_a)
+	var a_at := Time.get_ticks_msec()
 	var host_b := RawWs.new(port)
 	await _open(host_b)
 	var b := await _ask(host_b, RelayWire.Op.REGISTER, code_b)
@@ -394,6 +418,14 @@ func _limit_checks() -> void:
 	var leaked := await _message(host_a, 500)
 	var leaked_back := await _message(joiner, 200)
 	_check("a second joiner in a full room (2 players), a link in no room, a probe of the wrong kind and a datagram for a slot with no joiner are each dropped", leaked.is_empty() and leaked_back.is_empty())
+	# The code's life: 2 s after it was registered it answers expired, its host link kept
+	# alive meanwhile by its probes (so it is the code's own life that ends it).
+	var late := RawWs.new(port)
+	await _open(late)
+	await _keep_alive(host_a, a.get("token", PackedByteArray()), a_at + 2300)
+	var gone := await _ask(late, RelayWire.Op.RESOLVE, code_a)
+	resolves += 1
+	_check("acceptance (idle expiry): the code's life trips: 2 s after it was registered it answers expired, though its host is still there", gone.get("status", -1) == RelayWire.Status.EXPIRED and host_a.ws.get_ready_state() == WebSocketPeer.STATE_OPEN, str(gone.get("status")))
 	# Idle expiry: a link silent for more than the idle time (1 s) is closed by the relay.
 	var quiet := RawWs.new(port)
 	var quiet_open := await _open(quiet)
@@ -401,18 +433,12 @@ func _limit_checks() -> void:
 		quiet.ws.poll()
 		return quiet.ws.get_ready_state() == WebSocketPeer.STATE_CLOSED, 3000)
 	_check("acceptance (idle expiry): a link that says nothing for the idle time (1 s) is closed by the relay", quiet_open and closed)
-	var expired := await _until_real(func(): return false, 2300)
-	var late := RawWs.new(port)
-	await _open(late)
-	var gone := await _ask(late, RelayWire.Op.RESOLVE, code_a)
-	resolves += 1
-	_check("acceptance (idle expiry): the code's life trips too: after its 2 s it answers expired", not expired and gone.get("status", -1) == RelayWire.Status.EXPIRED, str(gone.get("status")))
 	# The idle hosts' links have been closed by now: their rooms are gone, so a third fits.
 	var host_d := RawWs.new(port)
 	await _open(host_d)
 	var later := await _ask(host_d, RelayWire.Op.REGISTER, code_c)
 	_check("and the rooms of host links closed for idling are gone: the third room now fits", later.get("status", -1) == RelayWire.Status.OK, str(later.get("status")))
-	await _until_real(func(): return false, 2200)
+	await _until_real(func(): return Time.get_ticks_msec() >= a_at + 5400, 8000)
 	var keep := RawWs.new(port)
 	await _open(keep)
 	var forgotten := await _ask(keep, RelayWire.Op.RESOLVE, code_a)
@@ -473,6 +499,19 @@ func _bad_config_checks() -> void:
 
 
 # --- Helpers. ---
+
+## Waits until the real clock reads `until_ms`, a host probe on `link` every 400 ms keeping it
+## from going idle.
+func _keep_alive(link: RawWs, token: PackedByteArray, until_ms: int) -> void:
+	var next := 0
+	while Time.get_ticks_msec() < until_ms:
+		if Time.get_ticks_msec() >= next:
+			link.ws.put_packet(RelayWire.probe_bytes(RelayWire.Probe.HOST, token))
+			next = Time.get_ticks_msec() + 400
+		link.ws.poll()
+		OS.delay_msec(5)
+		await process_frame
+
 
 ## Polls a raw link until it is open (true) or 3 s pass.
 func _open(raw: RawWs) -> bool:
