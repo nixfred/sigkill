@@ -563,6 +563,9 @@ func attach(arena: Node, player: Node) -> void:
 	for id in _chains.keys():
 		if not is_instance_valid(_chains[id]["chain"]):
 			_chains.erase(id)  # chains of the arena that went away with it
+	var vision = player.get("vision")
+	if vision != null:
+		vision.session = self  # code-rain vision reads which bodies are enemies; it sends nothing (C21)
 	var stop = player.get("sigstop")
 	if stop != null and stop.has_signal("intent"):
 		stop.session = self

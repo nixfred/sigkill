@@ -39,6 +39,11 @@ extends CharacterBody3D
 ## this player is the ":(){ :|:& };:" callout (fork_bomb_burst). A new round gives the bombs
 ## back, as a new life does.
 ##
+## Code-rain vision (C21): hold V, its own meter, kept by the node
+## scripts/abilities/code_rain_vision.gd makes under the player beside SIGSTOP. Enemy bodies
+## in range show as glyph silhouettes through walls, on this screen only; a death or a
+## respawn turns it off and leaves its meter as it was. Shots are untouched.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -57,6 +62,7 @@ const Inventory = preload("res://scripts/weapons/inventory.gd")
 const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Sigstop = preload("res://scripts/abilities/sigstop.gd")
+const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
@@ -104,6 +110,9 @@ signal fork_bomb_burst
 @export var arsenal: Resource
 ## SIGSTOP's numbers, a SigstopTuning (C18). Leave empty to use resources/sigstop.tres.
 @export var sigstop_tuning: Resource
+## Code-rain vision's numbers, a CodeRainVisionTuning (C21). Leave empty to use
+## resources/code_rain_vision.tres.
+@export var code_rain_vision_tuning: Resource
 
 ## Shots and hits since the arena loaded, for the guide's ask stats. Each round counts its
 ## own from shot_fired, jumped and slid (scripts/round/round_stats.gd).
@@ -126,6 +135,8 @@ var inventory: Inventory
 var match_meter := false
 ## SIGSTOP bullet time (C18): the node under this player that runs it.
 var sigstop: Sigstop
+## Code-rain vision (C21): the node under this player that runs it.
+var vision: CodeRainVision
 
 var _t: Tuning
 var _w: WeaponDefScript  # the drawn weapon
@@ -238,6 +249,10 @@ func _ready() -> void:
 	sigstop.name = "Sigstop"
 	sigstop.tuning = sigstop_tuning
 	add_child(sigstop)
+	vision = CodeRainVision.new()
+	vision.name = "CodeRainVision"
+	vision.tuning = code_rain_vision_tuning
+	add_child(vision)
 
 
 func _notification(what: int) -> void:
@@ -248,6 +263,8 @@ func _notification(what: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if input_blocked:
 		return
+	if event.is_action_released("code_rain_vision") and vision != null:
+		vision.hold(false)  # let go wherever the mouse is: vision never sticks on
 	if event.is_action_pressed("release_mouse"):
 		_release_mouse()
 		get_viewport().set_input_as_handled()
@@ -277,6 +294,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_weapon(-1)
 	elif event.is_action_pressed("sigstop"):
 		sigstop.press()
+	elif event.is_action_pressed("code_rain_vision"):
+		vision.hold(true)
 	elif event.is_action_pressed("throw_bomb"):
 		_throw_queued = true
 	else:
@@ -553,6 +572,8 @@ func _respawn() -> void:
 
 ## Put down at `pos` with everything at rest; the view keeps its direction.
 func respawn_at(pos: Vector3) -> void:
+	if vision != null and vision.meter != null:
+		vision.end_now()  # a respawn turns code-rain vision off, its meter as it was (C21)
 	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
@@ -575,6 +596,8 @@ func set_alive(on: bool) -> void:
 		_end_charge()
 	if not on and sigstop != null and sigstop.meter != null:
 		sigstop.on_death()  # and the SIGSTOP meter, ending it at once (C18)
+	if not on and vision != null and vision.meter != null:
+		vision.on_death()  # code-rain vision off, its meter as it was (C21)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -602,6 +625,8 @@ func eye_height() -> float:
 
 
 func _release_mouse() -> void:
+	if vision != null:
+		vision.hold(false)  # a key held into another window never comes back released
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 

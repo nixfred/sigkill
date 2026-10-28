@@ -20,6 +20,12 @@ extends Control
 ##
 ## The fork bomb (C19): its slot shows its bombs left even when another weapon is drawn
 ## ("4(2)"), since G throws one from there, and drawn its ammo line reads "fork bomb  2 left".
+##
+## Code-rain vision (C21): a fifth line, right under SIGSTOP's, is vision's own meter in the
+## code rain's green with the key that works it: "V vision [##########]", dimmed while below
+## the start's share, "V VISION [####......]" in the rain's bright head colour while it is on.
+## A line under SIGSTOP's, not beside it: beside it the strip would grow wider than the room
+## the round summary leaves it at 960x540, and the line still clears the kill feed above.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -46,6 +52,8 @@ const ULT_FILLING := "%s  meter %d%%"
 const ULT_READY := "%s  ready"
 const STOP_LINE := "%s SIGSTOP [%s%s]"
 const STOP_ON_LINE := "%s SIGCONT [%s%s]"
+const VISION_LINE := "%s vision [%s%s]"
+const VISION_ON_LINE := "%s VISION [%s%s]"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
@@ -65,6 +73,7 @@ var _meter_text := ""
 var _meter_ready := false
 var _state: Label
 var _stop: Label
+var _vision: Label
 
 
 func _ready() -> void:
@@ -87,6 +96,7 @@ func _ready() -> void:
 	_ammo = _label(FONT, Palette.MINT)
 	_state = _label(SMALL_FONT, Palette.TEAL)
 	_stop = _label(SMALL_FONT, Palette.TEAL)
+	_vision = _label(SMALL_FONT, Palette.MATRIX_GREEN)
 	_refresh()
 
 
@@ -124,6 +134,16 @@ func stop_text() -> String:
 ## True while SIGSTOP's line is dimmed: its meter below the start's share.
 func stop_dimmed() -> bool:
 	return _stop.modulate.a < 1.0
+
+
+## Code-rain vision's meter ("V vision [##########]"), or "" when the player has none.
+func vision_text() -> String:
+	return _vision.text if _vision.visible else ""
+
+
+## True while vision's meter is dimmed: below the start's share.
+func vision_dimmed() -> bool:
+	return _vision.modulate.a < 1.0
 
 
 func state_text() -> String:
@@ -193,6 +213,7 @@ func _refresh() -> void:
 	_ammo.add_theme_color_override("font_color", color)
 	_state.add_theme_color_override("font_color", state_color)
 	_refresh_stop()
+	_refresh_vision()
 
 
 func _refresh_stop() -> void:
@@ -206,6 +227,19 @@ func _refresh_stop() -> void:
 	_stop.text = (STOP_ON_LINE if on else STOP_LINE) % [key, BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
 	_stop.add_theme_color_override("font_color", Palette.MINT if on else Palette.TEAL)
 	_stop.modulate = Color(1, 1, 1, 1.0 if on or stop.can_start() else DIM)
+
+
+func _refresh_vision() -> void:
+	var vision = player.get("vision")
+	_vision.visible = vision != null and is_instance_valid(vision) and vision.meter != null
+	if not _vision.visible:
+		return
+	var cells := roundi(vision.meter.share() * BAR_CELLS)
+	var key := Controls.bind_label(GameSettings.current().bind("code_rain_vision"))
+	var on: bool = vision.is_on()
+	_vision.text = (VISION_ON_LINE if on else VISION_LINE) % [key, BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
+	_vision.add_theme_color_override("font_color", Palette.MATRIX_HEAD if on else Palette.MATRIX_GREEN)
+	_vision.modulate = Color(1, 1, 1, 1.0 if on or vision.can_start() else DIM)
 
 
 func _slot_label() -> Label:

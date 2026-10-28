@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CodeRainVisionTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/abilities/code_rain_vision_tuning.gd" id="1_vision"]
+
+[resource]
+script = ExtResource("1_vision")
+meter_s = 3.0
+refill_s = 12.0
+rest_s = 1.0
+start_share = 0.25
+range_m = 40.0
+tint = Color(0.45, 0.8, 0.5, 1)
+strength = 1.0
+calm_strength = 0.5
+fade_s = 0.2
+marker_radius_m = 0.6
+marker_height_m = 1.9
+marker_energy = 3.0
