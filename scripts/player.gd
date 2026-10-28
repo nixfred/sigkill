@@ -73,6 +73,7 @@ const Sigstop = preload("res://scripts/abilities/sigstop.gd")
 const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
 const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -107,6 +108,8 @@ signal rail_kill(headshot: bool)
 signal throw_intent(origin: Vector3, direction: Vector3, weapon: String)
 ## The first blast of a throw of this player's: the round HUD's ":(){ :|:& };:".
 signal fork_bomb_burst
+## A shot of this player's fork() forked for the first time (C24): the round HUD's callout.
+signal fork_split
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -899,6 +902,9 @@ func _fire() -> void:
 	if _w.is_thrown():
 		_throw_from(inventory.current)
 		return
+	if _w.is_fork():
+		_fire_fork()
+		return
 	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
@@ -979,6 +985,67 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 		CannonFx.spawn_impact(fx_root, point, normal, true, _w)
 	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
 	return landed_any
+
+
+## A shot of fork() (C24): the muzzle flash, the kick and the sound here at once; the pellets
+## fly as a volley (scripts/weapons/fork_volley.gd) from the eyes along the aim. Alone the
+## volley runs here, its seed this player's own, and judges this arena's dummies (fork_hit);
+## in a match only the intent goes, and the host runs the shot: every screen, this one too,
+## draws its pellets from the host's seed. Root (C22) forks them once more.
+func _fire_fork() -> void:
+	shots_fired += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	if _shake_on:
+		_shake = maxf(_shake, _w.shake_m)
+	_fire_sfx.play()
+	fire_intent.emit(origin, forward, _w.id)
+	if match_meter:
+		return
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	var volley := ForkVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), _w.forks_for(root), true, _w.hit_mask, _not_me, fork_hit.bind(_w))
+	take_volley(volley)
+
+
+## A volley of this player's own fork() shot, alone or drawn from the host's word in a match:
+## its first fork is the "fork()" callout, and when it is done the shot counts as fired, and
+## as a hit when a pellet of it landed here.
+func take_volley(volley: Node) -> void:
+	volley.forked.connect(_on_volley_forked)
+	volley.finished.connect(_on_volley_finished)
+
+
+func _on_volley_forked(gen: int) -> void:
+	if gen == 1:
+		fork_split.emit()
+
+
+func _on_volley_finished(landed: int) -> void:
+	if landed > 0:
+		hits_landed += 1
+	shot_fired.emit(landed > 0)
+
+
+## A fork() pellet of generation `gen` met `collider` at `at` (C24): on a daemon of this arena
+## it lands with the weapon's damage for its generation (root's harder hit alone, C22), and
+## fills the ult meter as the other weapons do. True when it landed. Never a player: in a match
+## the host judges those.
+func fork_hit(collider: Object, gen: int, at: Vector3, dir: Vector3, def: WeaponDefScript) -> bool:
+	if not is_instance_valid(collider) or not collider.has_method("hit"):
+		return false
+	var before: float = collider.call("health") if collider.has_method("health") else 0.0
+	var base: float = def.fork_damage(gen)
+	var landed: bool = collider.call("hit", base * _damage_scale(), at, dir) == true
+	if landed:
+		_meter_from(collider, before, base)
+	return landed
+
+
+## What this player's own pellets pass through: its own body.
+func _not_me() -> Array[RID]:
+	return [get_rid()]
 
 
 ## Solo, a hit on a dummy with a weapon other than the ult fills the meter: the share of the

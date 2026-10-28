@@ -25,16 +25,28 @@ extends "res://scripts/weapon_tuning.gd"
 ## life and a new round give them back), and every number of its chain is the
 ## ForkBombTuning it names in projectile (resources/fork_bomb.tres). damage is unused for a
 ## thrown weapon: the blasts' damage is the tuning's.
+##
+## fork() pellets (C24, resources/fork_shotgun.tres): fire_mode FORK_PELLETS fires a flat fan
+## of pellets that fly as fast, short-lived projectiles (pellet_speed), not rays. Each one
+## flies fork_distance_m and is replaced by two children angled fork_angle_degrees apart in the
+## plane of the fan, at the same speed; a child forks again after another fork_distance_m while
+## generations are left (fork_generations, root_fork_generations while C22's root is on). A
+## pellet's damage is damage times child_damage_share for each fork behind it; it stops at the
+## first wall or body it meets (a parent that hits before its fork never forks) and vanishes at
+## fire_range. The fan and the forks come from the aim and a seed alone (fork_spread(),
+## fork_pair()), so every screen draws the same pellets. The fork group is empty (0) for every
+## other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
-## The fire modes built so far: projectile since C19 (the fork bomb). Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE]
+## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
+## (fork()). Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -56,6 +68,17 @@ const METER_LAST := 20.0
 const HEAD_ZONE_M := 0.35
 ## The most targets one piercing shot passes through.
 const PIERCE_LAST := 16
+## fork() pellets (C24): the bounds of their numbers. A shot never makes more than
+## FORK_PELLETS_LAST pellets, whatever the generations.
+const PELLET_SPEED_FIRST := 10.0
+const PELLET_SPEED_LAST := 400.0
+const FORK_ANGLE_LAST := 60.0
+const FORK_GENERATIONS_LAST := 3
+const FORK_PELLETS_LAST := 64
+const PELLET_RADIUS_LAST_M := 0.2
+const PELLET_TRAIL_LAST_M := 3.0
+const FORK_FLASH_RADIUS_LAST_M := 0.5
+const FORK_FLASH_LAST_S := 0.5
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -131,6 +154,24 @@ const PIERCE_LAST := 16
 ## Empty for every other weapon.
 @export var projectile: Resource = null
 
+@export_group("Fork")
+## fork() pellets (C24): metres a second every pellet flies, parents and children alike.
+@export var pellet_speed: float = 0.0
+## Metres a pellet flies before it forks into two.
+@export var fork_distance_m: float = 0.0
+## Degrees between a fork's two children, in the plane of the fan.
+@export var fork_angle_degrees: float = 0.0
+## Each child's damage as a share of its parent's.
+@export_range(0.0, 1.0) var child_damage_share: float = 1.0
+## Forks each pellet line makes: as user, and while C22's root (sudo overcharge) is on.
+@export var fork_generations: int = 0
+@export var root_fork_generations: int = 0
+## The look: a pellet's glowing head and thin trail, and the small flash of a fork.
+@export var pellet_radius_m: float = 0.0
+@export var pellet_trail_m: float = 0.0
+@export var fork_flash_radius_m: float = 0.0
+@export var fork_flash_s: float = 0.0
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -156,6 +197,8 @@ func problems() -> PackedStringArray:
 			out.append("a thrown weapon's projectile tuning is refused: %s" % projectile.problems()[0])
 		if pellet_count != 1 or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
 			out.append("a thrown weapon throws one at a time from a magazine: 1 pellet, a magazine, no pierce, charge or ult")
+	elif fire_mode == FireMode.FORK_PELLETS:
+		out.append_array(_fork_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -164,8 +207,10 @@ func problems() -> PackedStringArray:
 		out.append("pellets must number 2 to %d" % PELLETS_LAST)
 	if not is_finite(spread_degrees) or spread_degrees < 0.0 or spread_degrees > SPREAD_LAST:
 		out.append("spread_degrees must be between 0 and %s" % SPREAD_LAST)
-	elif fire_mode == FireMode.HITSCAN_PELLETS and spread_degrees <= 0.0:
+	elif (fire_mode == FireMode.HITSCAN_PELLETS or fire_mode == FireMode.FORK_PELLETS) and spread_degrees <= 0.0:
 		out.append("pellets need a spread above 0")
+	if fire_mode != FireMode.FORK_PELLETS and (pellet_speed != 0.0 or fork_distance_m != 0.0 or fork_generations != 0 or root_fork_generations != 0):
+		out.append("only fork() pellets (fire_mode fork pellets) fill the fork group")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -222,6 +267,86 @@ func is_ult() -> bool:
 ## True for a thrown weapon (C19): the fork bomb.
 func is_thrown() -> bool:
 	return fire_mode == FireMode.PROJECTILE
+
+
+## True for fork() pellets (C24): projectiles that fork mid-flight.
+func is_fork() -> bool:
+	return fire_mode == FireMode.FORK_PELLETS
+
+
+## Forks each pellet line makes: as user, or with `root` (C22's overcharge) one generation more
+## as the tuning says.
+func forks_for(root: bool) -> int:
+	return root_fork_generations if root else fork_generations
+
+
+## Damage of one fork() pellet of generation `gen` (0 the parent): each fork behind it takes
+## child_damage_share of the damage before it.
+func fork_damage(gen: int) -> float:
+	return damage * pow(child_damage_share, gen)
+
+
+## Pellets alive after `forks` forks of a whole shot: pellet_count, doubled for each.
+func pellets_after(forks: int) -> int:
+	return pellet_count * (1 << forks)
+
+
+## The fan of a fork() shot along `aim_in`, drawn from `shot_seed` alone: pellet_count
+## directions in the plane of the aim and its level right-hand side, one in each equal slice of
+## the spread (spread_degrees each side), at a place in its slice the seed picks.
+func fork_spread(aim_in: Vector3, shot_seed: int) -> PackedVector3Array:
+	var aim := aim_in.normalized()
+	var axis := fork_axis(aim)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = shot_seed
+	var out := PackedVector3Array()
+	var width := deg_to_rad(spread_degrees) * 2.0
+	var slice := width / maxi(pellet_count, 1)
+	for i in pellet_count:
+		out.append(aim.rotated(axis, -width * 0.5 + slice * (i + rng.randf())).normalized())
+	return out
+
+
+## The two children of a fork() pellet flying along `dir` in a shot along `aim`: turned
+## fork_angle_degrees apart about the fan's axis, so both stay in the plane of the fan.
+func fork_pair(dir: Vector3, aim: Vector3) -> PackedVector3Array:
+	var axis := fork_axis(aim.normalized())
+	var half := deg_to_rad(fork_angle_degrees) * 0.5
+	return PackedVector3Array([dir.rotated(axis, -half).normalized(), dir.rotated(axis, half).normalized()])
+
+
+## The axis a fork() fan turns about: square to the aim and to its level right-hand side.
+static func fork_axis(aim: Vector3) -> Vector3:
+	var up := Vector3.UP if absf(aim.dot(Vector3.UP)) < NEAR_PARALLEL else Vector3.RIGHT
+	var right := aim.cross(up).normalized()
+	return right.cross(aim).normalized()
+
+
+func _fork_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count < 2 or pellet_count > PELLETS_LAST:
+		out.append("pellets must number 2 to %d" % PELLETS_LAST)
+	if projectile != null or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("fork() pellets fire from a magazine: no projectile tuning, pierce, charge or ult")
+	if not is_finite(falloff_floor) or falloff_floor != 1.0:
+		out.append("fork() pellets' falloff is their forks: falloff_floor stays 1")
+	if not is_finite(pellet_speed) or pellet_speed < PELLET_SPEED_FIRST or pellet_speed > PELLET_SPEED_LAST:
+		out.append("pellet_speed must be between %s and %s" % [PELLET_SPEED_FIRST, PELLET_SPEED_LAST])
+	if not is_finite(fork_angle_degrees) or fork_angle_degrees <= 0.0 or fork_angle_degrees > FORK_ANGLE_LAST:
+		out.append("fork_angle_degrees must be above 0 and at most %s" % FORK_ANGLE_LAST)
+	if not is_finite(child_damage_share) or child_damage_share <= 0.0 or child_damage_share > 1.0:
+		out.append("child_damage_share must be above 0 and at most 1")
+	if fork_generations < 1 or root_fork_generations < fork_generations or root_fork_generations > FORK_GENERATIONS_LAST:
+		out.append("fork_generations must be at least 1 and root_fork_generations between it and %d" % FORK_GENERATIONS_LAST)
+	elif pellet_count >= 2 and pellets_after(root_fork_generations) > FORK_PELLETS_LAST:
+		out.append("a shot makes at most %d pellets: pellet_count doubled root_fork_generations times" % FORK_PELLETS_LAST)
+	if not is_finite(fork_distance_m) or fork_distance_m <= 0.0 or not is_finite(fire_range) or fork_distance_m * maxi(root_fork_generations, 1) >= fire_range:
+		out.append("fork_distance_m must be above 0, every fork within fire_range")
+	for pair in [["pellet_radius_m", pellet_radius_m, PELLET_RADIUS_LAST_M], ["pellet_trail_m", pellet_trail_m, PELLET_TRAIL_LAST_M], ["fork_flash_radius_m", fork_flash_radius_m, FORK_FLASH_RADIUS_LAST_M], ["fork_flash_s", fork_flash_s, FORK_FLASH_LAST_S]]:
+		var v: float = pair[1]
+		if not is_finite(v) or v <= 0.0 or v > pair[2]:
+			out.append("%s must be above 0 and at most %s" % [pair[0], pair[2]])
+	return out
 
 
 ## The meter this ult gains from a hit with another weapon that took `share` of a target's

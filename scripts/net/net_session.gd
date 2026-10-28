@@ -132,11 +132,22 @@ extends Node
 ## host's own record (scripts/net/combat.gd). A joiner shows them as sent, and shows "-" for
 ## any it has not been sent yet; it never makes one up. Protocol 8.
 ##
+## fork() (C24): a fork() shot is an ordinary intent (_fire). The host believes it by the same
+## checks as any shot, draws its seed with its own generator (a joiner never picks where
+## pellets go) and runs the shot as a volley of fast pellets in its own world
+## (scripts/weapons/fork_volley.gd), judging each pellet that meets a player (_judge_pellet:
+## the pellet's damage for its generation, root's harder hits, told as a shot of fork() to
+## one player, and each kill as a death by it). Every joiner gets the seed in the same message
+## as a fork bomb's throw, _bomb (shot id, shooter, weapon, seed, origin, aim), and draws the
+## same pellets from it, forking once more while the host's word says the shooter is root
+## (that word always reaches a joiner before any shot judged after it); a joiner's volley never
+## judges a player. No new message: protocol 8 still.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
-## player's sudo charges and root time, and the top table's numbers (game PIDs, kills,
+## player's sudo charges and root time, a fork() shot's seed, and the top table's numbers (game PIDs, kills,
 ## deaths, damage dealt, time alive, the match's uptime and load). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
@@ -161,6 +172,7 @@ const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -364,6 +376,9 @@ var _pellets_rng := RandomNumberGenerator.new()
 var _seeds := RandomNumberGenerator.new()
 var _throws := 0
 var _chains := {}
+## The fork() volleys this arena runs or draws (C24), shot id -> volley; their ids share the
+## throws' count.
+var _volleys := {}
 ## During a match: the weapons and ammo of the player whose arena went away (an R reload),
 ## handed to the next player that attaches.
 var _kept_inventory: RefCounted = null
@@ -1245,6 +1260,7 @@ func _clear_players() -> void:
 	_ammo_pending = {}
 	_stop_word = []
 	_chains = {}
+	_volleys = {}
 	_throws = 0
 	_trails_rule = false
 	LightTrails.drop(_arena)  # the match is over: every wall goes with it
@@ -1730,6 +1746,15 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		combat.drop_after(Combat.DROP_ORIGIN)
 		return
 	combat.accept(shooter, seq, weapon, _clock)
+	if def.is_fork():
+		# fork() (C24): the pellets fly as a volley the host runs and judges; every joiner
+		# draws the same one from its seed.
+		_throws += 1
+		var shot_seed := _seeds.randi()
+		_spawn_volley(_throws, shooter, weapon, shot_seed, origin, dir, true)
+		_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)
+		_flush_sudo()
+		return
 	# Every pellet's damage after its falloff, added up per player it struck; the rail's one
 	# line through every player on it.
 	var ends := PackedVector3Array()
@@ -1821,20 +1846,30 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 	_throws += 1
 	var seed := _seeds.randi()
 	_spawn_chain(_throws, id, weapon, seed, origin, dir, true)
+	_tell_seed(_throws, id, weapon, seed, origin, dir)
+
+
+## A seeded spawn the host believed, to every joiner: a fork bomb's throw, or a fork() shot
+## (C24).
+func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3) -> void:
 	var connected := multiplayer.get_peers()
 	for peer in players:
 		if peer != 1 and connected.has(peer):
-			_bomb.rpc_id(peer, _throws, id, weapon, seed, origin, dir)
+			_bomb.rpc_id(peer, throw_id, thrower, weapon, seed, origin, dir)
 
 
-## A throw the host believed, to every joiner: its seed, so its screen draws the same chain.
+## A throw or a fork() shot the host believed, to every joiner: its seed, so its screen
+## draws the same chain, or the same pellets (C24).
 @rpc("authority", "call_remote", "reliable")
 func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3) -> void:
-	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not _weapons[weapon].is_thrown():
+	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_fork()):
 		return
-	if throw_id < 1 or _chains.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
+	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
-	_spawn_chain(throw_id, thrower, weapon, seed, origin, dir, false)
+	if _weapons[weapon].is_fork():
+		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)
+	else:
+		_spawn_chain(throw_id, thrower, weapon, seed, origin, dir, false)
 
 
 ## A blast of a throw, from the host: where, which generation and which bomblet of it.
@@ -1929,6 +1964,81 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 		_broadcast_death(victim, thrower, Vector3.UP, weapon)
 	_mirror_from_combat()
 	_flush_sudo()
+
+
+## A fork() shot's volley in this arena (C24), from `origin` along `dir` (arena space) with
+## `shot_seed`. It forks once more while `shooter` is root: on the host by its own count, on a
+## joiner by the host's last word, which always arrives before any shot judged after it.
+## `deciding` (the host's): judges every pellet that meets a player. This player's own shot is
+## handed to it (its callout, its shot count, its own dummies).
+func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
+	var def: WeaponDefScript = _weapons[weapon]
+	var root: bool = combat.root(shooter) if deciding and combat != null else root_left.get(shooter, 0.0) > 0.0
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var mine: bool = shooter == my_id and _player_ready()
+	var judge := Callable()
+	if deciding:
+		judge = _judge_pellet.bind(shooter, weapon, origin)
+	elif mine:
+		judge = _player.fork_hit.bind(def)  # this machine's own dummies, never a player
+	var volley := ForkVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, def.forks_for(root), deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
+	_volleys[shot_id] = volley
+	volley.finished.connect(_on_volley_finished.bind(shot_id))
+	if mine:
+		_player.take_volley(volley)
+
+
+func _on_volley_finished(_landed: int, shot_id: int) -> void:
+	_volleys.erase(shot_id)
+
+
+## What fork() pellets pass through, asked every physics frame (C24): the shooter's own body
+## and every corpse; hosting, by the host's own count (as its shot rays), otherwise by what
+## this side was told.
+func _pellets_past(shooter: int) -> Array[RID]:
+	if state == State.HOSTING and combat != null and _player != null and is_instance_valid(_player):
+		return _not_in_the_way(shooter)
+	var out: Array[RID] = []
+	if (shooter == my_id or dead.get(my_id, false)) and _player != null and is_instance_valid(_player):
+		out.append(_player.get_rid())
+	for id in avatars:
+		var avatar = avatars[id]
+		if avatar != null and is_instance_valid(avatar) and (id == shooter or dead.get(id, false)):
+			out.append(avatar.hit_rid())
+	return out
+
+
+## The host's judgement of one fork() pellet of `shooter`'s (C24) of generation `gen` that met
+## `collider` at `at` (world space) flying along `dir`: a living player other than the
+## shooter takes the pellet's damage for its generation (root's harder hit, C22), told to
+## everyone as a shot of fork() and, for a kill, a death by it; a dummy of this arena stops it,
+## and only the host's own pellets hurt the host's dummies. True when it dealt damage.
+func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shooter: int, weapon: String, origin: Vector3) -> bool:
+	if state != State.HOSTING or combat == null or not is_instance_valid(collider) or _arena == null or not is_instance_valid(_arena):
+		return false
+	var victim := 0
+	if collider == _player and shooter != 1 and combat.has_player(1):
+		victim = 1
+	elif collider.has_meta(PLAYER_ID_META):
+		var id: int = collider.get_meta(PLAYER_ID_META, 0)
+		if id != shooter and combat.has_player(id):
+			victim = id
+	var def: WeaponDefScript = _weapons[weapon]
+	if victim == 0:
+		return shooter == my_id and _player_ready() and _player.fork_hit(collider, gen, at, dir, def)
+	var base := def.fork_damage(gen)
+	var before := combat.health_of(victim)
+	var outcome := combat.damage_player(victim, shooter, base * combat.damage_scale(shooter))
+	if outcome.is_empty():
+		return false  # dead or protected: the pellet landed on nothing that counts
+	combat.add_meter(shooter, minf(base, before) / _ct.max_health, outcome["killed"])
+	var local: Vector3 = _arena.to_local(at)
+	_broadcast_shot(shooter, weapon, origin, PackedVector3Array([local]), PackedInt32Array([victim]), PackedFloat32Array([outcome["health"]]))
+	if outcome["killed"]:
+		_broadcast_death(victim, shooter, (_arena.global_transform.basis.inverse() * dir).normalized(), weapon)
+	_mirror_from_combat()
+	_flush_sudo()
+	return true
 
 
 ## The live-cap key of a thrower's bomblets in this arena.
@@ -2161,7 +2271,7 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 		if mine and hits[i] != my_id:
 			# Root's harder hit fills it no faster (C22): the share at user's strength, as the host's.
 			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health / _root_scale(shooter), false))
-	if shooter != my_id and _arena != null and is_instance_valid(_arena):
+	if shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_fork():
 		for end in ends:
 			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
 	if hits.is_empty():

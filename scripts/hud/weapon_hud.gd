@@ -1,6 +1,6 @@
 extends Control
 ## The weapon strip (C16), bottom right, above the hint line and below the kill feed: every
-## slot's key, the drawn one in brackets with its name ("1  [2 SIGTERM]  3"); the drawn
+## slot's key, the drawn one in brackets with its name ("1 [2 SIGTERM] 3"); the drawn
 ## weapon's ammo, magazine and reserve ("inf" when there is no limit); and a third line that
 ## is the reload bar while it reloads, the weapon's fiction line for a moment after it is
 ## drawn, "empty" or "out of ammo" when it is, and otherwise the ult meter (or the swap keys
@@ -26,12 +26,18 @@ extends Control
 ## the start's share, "V VISION [####......]" in the rain's bright head colour while it is on.
 ## A line under SIGSTOP's, not beside it: beside it the strip would grow wider than the room
 ## the round summary leaves it at 960x540, and the line still clears the kill feed above.
+##
+## fork() (C24) is slot 5: one space between slots, not two ("[1 cannon] 2 3 4(2) 5"), so
+## five slots take no more room than four did and the strip stays clear of the panels centred
+## at 960x540.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const Controls = preload("res://scripts/controls.gd")
 
 const SLOT := "%d"
+## Between one slot and the next on the slot line.
+const SLOT_GAP := " "
 const SLOT_DRAWN := "[%d %s]"
 const SLOT_THROWN := "%d(%d)"
 const THROWN_LINE := "%s  %d left"
@@ -108,7 +114,7 @@ func slots_text() -> String:
 	var parts := PackedStringArray()
 	for label in _slot_labels:
 		parts.append(label.text.strip_edges())
-	return "  ".join(parts)
+	return SLOT_GAP.join(parts)
 
 
 ## The ult meter as the strip words it ("kill -9 [###.......]", ready or charging), or ""
@@ -163,7 +169,7 @@ func _refresh() -> void:
 		if not label.visible:
 			continue
 		var plain: String = (SLOT_THROWN % [i + 1, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % (i + 1)
-		label.text = ("  " if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else plain)
+		label.text = (SLOT_GAP if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else plain)
 		var ult: bool = inv.defs[i].is_ult()
 		label.add_theme_color_override("font_color", inv.defs[i].skin_beam() if ult and inv.meter_ready() else Palette.MINT)
 		label.modulate = Color(1, 1, 1, DIM if ult and not inv.meter_ready() else 1.0)

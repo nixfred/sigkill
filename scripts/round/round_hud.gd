@@ -35,6 +35,9 @@ extends Control
 ## The fork bomb (C19): the first blast of each of this player's throws is called out
 ## ":(){ :|:& };:", game logic, over the pace; a new round gives the bombs back.
 ##
+## fork() (C24): the first fork of a shot of this player's is called out "fork()", at the
+## usual pace (a shotgun fires too often to call every shot).
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -59,6 +62,7 @@ const KILL9_LINE := "kill -9"
 const SIGSTOP_LINE := "SIGSTOP"
 const SIGCONT_LINE := "SIGCONT"
 const FORK_BOMB_LINE := ":(){ :|:& };:"
+const FORK_LINE := "fork()"
 
 enum Phase { ROUND, BREAK }
 
@@ -139,7 +143,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	var stop = player.get("sigstop")
@@ -313,6 +317,10 @@ func _on_fork_bomb() -> void:
 	_callout("fork_bomb", true)
 
 
+func _on_fork_split() -> void:
+	_callout("fork")
+
+
 ## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
 ## whatever the pace, as "kill -9" is).
 func _callout(word: String, now: bool = false) -> void:
@@ -338,6 +346,8 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = SIGCONT_LINE
 		"fork_bomb":
 			last_callout = FORK_BOMB_LINE
+		"fork":
+			last_callout = FORK_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()
