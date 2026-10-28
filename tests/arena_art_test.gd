@@ -179,7 +179,7 @@ func _source_checks() -> void:
 		if held.contains(word):
 			rebuilt.append(word)
 	var per_frame := art.contains("func _process(") or art.contains("func _physics_process(") or skyline.contains("func _physics_process(")
-	_check("acceptance: nothing is rebuilt while the arena is drawn: the dressing has no per-frame code at all, and the skyline's only turns its ring and its drift by their transforms", not per_frame and rebuilt.is_empty() and held.contains("rotate"), ", ".join(rebuilt))
+	_check("acceptance: nothing is rebuilt while the arena is drawn: the dressing has no per-frame code at all, and the skyline's only turns its ring and its drift by their transforms", not per_frame and rebuilt.is_empty() and held.contains("_ring.basis =") and held.contains("_drift.basis ="), ", ".join(rebuilt))
 	var sky_code := _shader_code("res://shaders/arena_sky.gdshader")
 	_check("the sky never runs on the clock (no TIME), so its light is worked out once, not every frame", sky_code.contains("shader_type sky") and not sky_code.contains("TIME"))
 

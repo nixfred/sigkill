@@ -480,7 +480,8 @@ func _props(mounts: Dictionary) -> void:
 		var m := _mount(mounts, spec[0], spec[1])
 		if not m.is_empty():
 			_tray(m)
-			for coord in [-11.0, 6.0]:
+			# Clear of every rack, screen and sign on all four walls (self-review pass 1).
+			for coord in [-11.0, 10.5]:
 				_drop(m, _along(m, coord))
 	# Cables slung between the pillars' tops, and from the lair's walls to the outer walls: all higher
 	# than a player's head at the top of a jump.

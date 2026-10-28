@@ -43,12 +43,14 @@ const LIGHTS := {TEAL: "teal", MINT: "mint", FLOW: "flow", BEACON: "beacon"}
 static var _kept: Dictionary = {}
 
 var _rng := RandomNumberGenerator.new()
-var _kits: Dictionary = {}
-var _static: MeshInstance3D
 var _ring: Node3D
 var _drift: Node3D
 var _drift_b: Node3D
 var _fresh := false
+## How far round the ring and the two drifting groups have turned, in radians, kept under a turn.
+var _ring_angle := 0.0
+var _drift_angle := 0.0
+var _drift_b_angle := 0.0
 
 
 func _ready() -> void:
@@ -58,7 +60,7 @@ func _ready() -> void:
 	if _fresh:
 		built = _build()
 		_kept[key] = built
-	_static = _show("Towers", built["towers"], self)
+	_show("Towers", built["towers"], self)
 	_ring = Node3D.new()
 	_ring.name = "Ring"
 	_ring.position = Vector3.UP * RING_HEIGHT_M
@@ -75,10 +77,16 @@ func _ready() -> void:
 	_show("Mesh", built["drift_b"], _drift_b)
 
 
+## Turns the ring about its own upright and the drifting groups about the arena's, each set from its
+## angle rather than turned by a step, so no error builds up in their bases however long it runs
+## (self-review pass 1).
 func _process(delta: float) -> void:
-	_ring.rotate_object_local(Vector3.UP, deg_to_rad(RING_TURN) * delta)
-	_drift.rotate_y(deg_to_rad(DRIFT_TURN) * delta)
-	_drift_b.rotate_y(deg_to_rad(DRIFT_B_TURN) * delta)
+	_ring_angle = fposmod(_ring_angle + deg_to_rad(RING_TURN) * delta, TAU)
+	_drift_angle = fposmod(_drift_angle + deg_to_rad(DRIFT_TURN) * delta, TAU)
+	_drift_b_angle = fposmod(_drift_b_angle + deg_to_rad(DRIFT_B_TURN) * delta, TAU)
+	_ring.basis = ShapeKit.basis(RING_TILT) * Basis(Vector3.UP, _ring_angle)
+	_drift.basis = Basis(Vector3.UP, _drift_angle)
+	_drift_b.basis = Basis(Vector3.UP, _drift_b_angle)
 
 
 ## Every mesh node of the skyline, for the checks.

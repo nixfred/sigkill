@@ -43,9 +43,13 @@ void vertex() {
 	world_normal = mat3(MODEL_MATRIX) * NORMAL;
 }
 
-// This point on its face, in metres: x across it (left to right seen from the front), y up it.
+// This point on its face, in metres: x across it (left to right seen from the front), y up it. A
+// face lying flat reads along world X and Z instead (self-review pass 1: no cross product of nothing).
 vec2 face_uv() {
 	vec3 n = normalize(world_normal);
+	if (abs(n.y) > 0.9) {
+		return world_pos.xz;
+	}
 	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), n));
 	return vec2(dot(world_pos, right), world_pos.y);
 }
