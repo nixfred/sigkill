@@ -16,7 +16,8 @@ extends Control
 ## asks the same question by name, Y or N, and the menu steps aside for it), roast is B's,
 ## and real-machine data is the privacy answer guide_settings.gd keeps, which counts from
 ## the next launch (off means demo data, as --demo does). The display name is a label only:
-## in a match everyone is Daemon-<slot> (C14).
+## in a match everyone is Daemon-<slot> (C14). Light trails (C20) is the match rule a host
+## plays by, at once when changed mid-match; a joiner plays by its host's.
 
 signal closed
 
@@ -37,6 +38,7 @@ const REAL_DATA_LATER := "from the next launch"
 const REAL_DATA_DEMO := "this run: demo data"
 const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
 const RELAY_NOTE := "empty: no online rooms, no network call"
+const TRAILS_NOTE := "your match when you host; joiners get the host's"
 const RELAY_HINT := "udp://host:9010"
 const QUALITY_LINE := "bloom %s   shadows %s   code rain %s"
 const FONT := 13
@@ -597,6 +599,8 @@ func _build_multiplayer(col: VBoxContainer) -> void:
 	relay_row.add_child(_relay)
 	_label(col, RELAY_NOTE, FONT - 2, Palette.TEAL)
 	_check(col, "net stats", "multiplayer", "net_stats")
+	_check(col, "light trails", "multiplayer", "light_trails")
+	_label(col, TRAILS_NOTE, FONT - 2, Palette.TEAL)
 
 
 ## The relay URL as typed, trimmed; refused (and said why) unless empty or a relay URL:

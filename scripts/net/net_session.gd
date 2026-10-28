@@ -97,11 +97,26 @@ extends Node
 ## blast as it happens, _blast (throw id, generation, index, where): a joiner's chain goes off
 ## only on that word and never judges anything. Protocol 5.
 ##
+## Light-trail mode (C20): a match rule, off unless the host turns it on (the settings'
+## multiplayer light_trails, or --light-trails on its command line); a joiner takes the
+## host's word, _rules (on or off), sent with every roster and whenever it changes. Solo play
+## has no trails. The host owns every wall (scripts/modes/light_trails.gd): from each living
+## player's place as it knows it (its own body; a joiner's newest position), with a ray down
+## to the level for whether they are on the ground, it lays their segments and sends each to
+## every joiner, _trail (owner, life, from, to), whose screen draws it and ages it on its own
+## clock; and every physics step it judges every living, unprotected player's body against
+## every wall. A touch is a kill credited to the wall's owner (killing yourself on your own
+## older wall counts no kill): the usual death message, with the cause "light trail" in
+## place of a weapon, so the feed reads "light trail sent by ...". A death or a respawn
+## clears that player's walls on every screen; leaving the match takes them all away.
+## Protocol 6.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
-## (on or off, the seconds left). Nothing about the AI guide, the settings, paths, processes
-## or the machine. Nothing real is signalled, killed or run.
+## (on or off, the seconds left), the light-trail rule and walls. Nothing about the AI
+## guide, the settings, paths, processes or the machine. Nothing real is signalled, killed
+## or run.
 
 const Tuning = preload("res://scripts/net/net_tuning.gd")
 const RemotePlayer = preload("res://scripts/net/remote_player.gd")
@@ -122,6 +137,17 @@ const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+const LightTrails = preload("res://scripts/modes/light_trails.gd")
+const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
+const Palette = preload("res://scripts/palette.gd")
+const TRAIL_TUNING_PATH := "res://resources/light_trail.tres"
+## The cause a light-trail death carries where a shot's weapon id goes, and the feed's word.
+const LIGHT_TRAIL := "light_trail"
+const LIGHT_TRAIL_WORD := "light trail"
+## The command-line flag that turns light-trail mode on for this run's hosting.
+const LIGHT_TRAILS_FLAG := "--light-trails"
+## What counts as ground under a player for laying a wall: the level.
+const GROUND_MASK := 1
 ## What a fork bomb's blast does not see through: the level.
 const BLAST_SIGHT_MASK := 1
 const CannonFx = preload("res://scripts/cannon_fx.gd")
@@ -138,7 +164,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 5
+const PROTOCOL := 6
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -327,6 +353,14 @@ var _clock := 0.0
 ## The host's last word on this player's SIGSTOP, [on, seconds left], for an arena that
 ## comes back after an R reload.
 var _stop_word: Array = []
+## LightTrailTuning; null for resources/light_trail.tres. Set before the node enters the tree.
+var light_trail_tuning: Resource = null
+## --light-trails on this run's command line: hosting turns the mode on (C20).
+var light_trails_flag := false
+## Light-trail mode in this match: the host's own rule as it last told everyone, or, joined,
+## the host's word.
+var _trails_rule := false
+var _lt: LightTrailTuning
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
 var _refusal := ""
 
@@ -362,6 +396,7 @@ static func usable_tuning(candidate: Resource) -> Tuning:
 func _ready() -> void:
 	tuning_in_use()
 	combat_tuning_in_use()
+	trail_tuning_in_use()
 	room_tuning_in_use()
 	rendezvous_in_use()
 	if not _launch_pending.is_empty():
@@ -403,6 +438,12 @@ func tuning_in_use() -> Tuning:
 	if _t == null:
 		_t = usable_tuning(tuning)
 	return _t
+
+
+func trail_tuning_in_use() -> LightTrailTuning:
+	if _lt == null:
+		_lt = usable_trail_tuning(light_trail_tuning)
+	return _lt
 
 
 func combat_tuning_in_use() -> CombatTuningScript:
@@ -469,6 +510,19 @@ static func usable_room_tuning(candidate: Resource) -> RoomTuningScript:
 	if shipped is RoomTuningScript and shipped.problems().is_empty():
 		return shipped
 	return RoomTuningScript.new()
+
+
+static func usable_trail_tuning(candidate: Resource) -> LightTrailTuning:
+	if candidate is LightTrailTuning:
+		var issues: PackedStringArray = candidate.problems()
+		if issues.is_empty():
+			return candidate
+		for issue in issues:
+			push_warning("light trail tuning: " + issue + "; using the shipped tuning instead")
+	var shipped = load(TRAIL_TUNING_PATH)
+	if shipped is LightTrailTuning and shipped.problems().is_empty():
+		return shipped
+	return LightTrailTuning.new()
 
 
 static func usable_combat_tuning(candidate: Resource) -> CombatTuningScript:
@@ -635,6 +689,13 @@ func take_launch_join(args: PackedStringArray) -> bool:
 	return true
 
 
+## The game's own command-line flags that set match rules (C20): --light-trails turns
+## light-trail mode on for this run's hosting. Never saved.
+func take_launch_flags(args: PackedStringArray) -> void:
+	if args.has(LIGHT_TRAILS_FLAG):
+		light_trails_flag = true
+
+
 func _apply_launch(parsed: Dictionary) -> void:
 	if parsed.has("error"):
 		_fail(parsed["error"])
@@ -788,6 +849,7 @@ func _physics_process(delta: float) -> void:
 			_tick_relay_host(delta)
 			_tick_refused(delta)
 			_tick_send(delta)
+			_tick_trails(delta)
 			for id in combat.tick_sigstop(delta):
 				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
 			for id in combat.tick(delta):
@@ -801,6 +863,7 @@ func _physics_process(delta: float) -> void:
 			_tick_protection(delta)
 		State.JOINED:
 			_tick_send(delta)
+			_tick_trails(delta)
 			_tick_protection(delta)
 
 
@@ -1108,6 +1171,8 @@ func _clear_players() -> void:
 	_stop_word = []
 	_chains = {}
 	_throws = 0
+	_trails_rule = false
+	LightTrails.drop(_arena)  # the match is over: every wall goes with it
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -1269,6 +1334,7 @@ func _send_roster() -> void:
 	for id in players:
 		if id != 1 and connected.has(id):
 			_roster.rpc_id(id, ids, slots, names, healths, deads, protects, life_numbers)
+	_send_rules()  # a new joiner learns the match's rules with its first roster
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -2016,6 +2082,130 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 	combat_changed.emit()
 
 
+# --- Light-trail mode (C20). ---
+
+## Whether light-trail mode is on in this match: hosting, the host's settings or its
+## --light-trails; joined, the host's word; solo, never.
+func light_trails_on() -> bool:
+	if state == State.HOSTING:
+		return light_trails_flag or GameSettings.current().value("multiplayer", "light_trails") == true
+	if state == State.JOINED:
+		return _trails_rule
+	return false
+
+
+## This arena's walls while the mode is on, or null.
+func trails_in_arena() -> Node3D:
+	if not _trails_rule or _arena == null or not is_instance_valid(_arena):
+		return null
+	return LightTrails.of(_arena, trail_tuning_in_use())
+
+
+## Every physics step online: the host's rule told when it changes, every wall aged; hosting,
+## each living player's walls laid from where they are and every living, unprotected body
+## judged against every wall.
+func _tick_trails(delta: float) -> void:
+	if state == State.HOSTING and light_trails_on() != _trails_rule:
+		_trails_rule = not _trails_rule
+		_send_rules()
+		if not _trails_rule:
+			LightTrails.drop(_arena)  # turned off: every wall goes at once
+	var trails := trails_in_arena()
+	if trails == null:
+		return
+	trails.keep_only(players.keys())  # the walls of players who left go with them
+	trails.tick(delta)
+	if state != State.HOSTING or combat == null:
+		return
+	var connected := multiplayer.get_peers()
+	for id in players:
+		var at := _body_of(id)
+		if not combat.alive(id) or not at.is_finite():
+			continue
+		trails.paint(id, Palette.trail_color(players[id]["slot"]))
+		var ground := _ground_under(at)
+		var laid: Array = trails.advance(id, ground, ground.is_finite())
+		if laid.is_empty():
+			continue
+		for peer in players:
+			if peer != 1 and connected.has(peer):
+				_trail.rpc_id(peer, id, lives.get(id, 0), laid[0], laid[1])
+	for id in players:
+		var at := _body_of(id)
+		if not combat.alive(id) or combat.protected(id) or not at.is_finite():
+			continue
+		var wall_owner: int = trails.touching(at, id)
+		if wall_owner < 0 or not players.has(wall_owner):
+			continue
+		var push: Vector3 = trails.push_of(at, wall_owner)
+		if combat.damage_player(id, wall_owner, _ct.max_health).get("killed", false):
+			_mirror_from_combat()
+			_broadcast_death(id, wall_owner, push, LIGHT_TRAIL)
+
+
+## Where player `id`'s body's middle is, in arena space, as the host knows it: its own body,
+## or a joiner's newest position. INF when unknown.
+func _body_of(id: int) -> Vector3:
+	if _arena == null or not is_instance_valid(_arena):
+		return Vector3.INF
+	if id == my_id:
+		if _player == null or not is_instance_valid(_player):
+			return Vector3.INF
+		return _arena.to_local(_player.global_position)
+	var avatar = avatars.get(id)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.visible:
+		return Vector3.INF
+	return avatar.latest_position()
+
+
+## The level under a body whose middle is at `at` (arena space), when it is within
+## ground_slack_m of that body's feet; INF when the body is in the air.
+func _ground_under(at: Vector3) -> Vector3:
+	var arena := _arena as Node3D
+	var from := arena.to_global(at)
+	var to := arena.to_global(at + Vector3.DOWN * (RemotePlayer.FEET + _lt.ground_slack_m))
+	var query := PhysicsRayQueryParameters3D.create(from, to, GROUND_MASK)
+	var hit := arena.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return Vector3.INF
+	return arena.to_local(hit["position"])
+
+
+func _send_rules() -> void:
+	var connected := multiplayer.get_peers()
+	for id in players:
+		if id != 1 and connected.has(id):
+			_rules.rpc_id(id, _trails_rule)
+
+
+## The match's rules, from the host: light-trail mode on or off (C20).
+@rpc("authority", "call_remote", "reliable")
+func _rules(light_trails: bool) -> void:
+	if state != State.JOINED or light_trails == _trails_rule:
+		return
+	_trails_rule = light_trails
+	if not light_trails:
+		LightTrails.drop(_arena)
+	changed.emit()
+
+
+## A wall segment the host laid for player `id` in its life `life`, from `a` to `b` in arena
+## space.
+@rpc("authority", "call_remote", "reliable")
+func _trail(id: int, life: int, a: Vector3, b: Vector3) -> void:
+	if state != State.JOINED or not players.has(id) or life != lives.get(id, -1) or dead.get(id, false):
+		return
+	if not a.is_finite() or not b.is_finite() or a.length() > WORLD_LAST or b.length() > WORLD_LAST:
+		return
+	if Vector2(b.x - a.x, b.z - a.z).length() > trail_tuning_in_use().segment_last_m + 0.01:
+		return
+	var trails := trails_in_arena()
+	if trails == null:
+		return
+	trails.paint(id, Palette.trail_color(players[id]["slot"]))
+	trails.add(id, a, b)
+
+
 func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
 	_apply_death(victim, killer, dir, weapon)
 	var connected := multiplayer.get_peers()
@@ -2027,7 +2217,7 @@ func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) ->
 ## A player went down, from the host, and to which weapon.
 @rpc("authority", "call_remote", "reliable")
 func _death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
-	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not _weapons.has(weapon):
+	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not (_weapons.has(weapon) or weapon == LIGHT_TRAIL):
 		return
 	_apply_death(victim, killer, dir, weapon)
 
@@ -2044,6 +2234,9 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 		else:
 			_player.add_meter(_player.meter_gain(0.0, true))  # the kill bonus
 	respawn_left[victim] = _ct.respawn_delay_s
+	var trails := LightTrails.find(_arena)
+	if trails != null:
+		trails.clear(victim)  # a death takes that player's walls away
 	if victim == my_id:
 		if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 			_player.set_alive(false)
@@ -2058,6 +2251,8 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 ## The kill feed's word for `victim` killed by `weapon`: its kill word, and for the rail the
 ## victim's fake process id after it ("SIGKILL 4107").
 func _feed_word(victim: int, weapon: String) -> String:
+	if weapon == LIGHT_TRAIL:
+		return LIGHT_TRAIL_WORD
 	if not _weapons.has(weapon):
 		return ""
 	var def: WeaponDefScript = _weapons[weapon]
@@ -2137,6 +2332,9 @@ func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_heal
 	protect_left[id] = protect_s
 	lives[id] = life
 	respawn_left.erase(id)
+	var trails := LightTrails.find(_arena)
+	if trails != null:
+		trails.clear(id)  # a new life starts its walls afresh where it stands
 	if id == my_id:
 		if _player != null and is_instance_valid(_player) and _arena != null and is_instance_valid(_arena):
 			if _player.has_method("respawn_at"):

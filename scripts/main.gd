@@ -52,6 +52,7 @@ func _ready() -> void:
 		# to show what came of it.
 		if session.take_launch_join(launch_args):
 			_hud.net_hud().open()
+		session.take_launch_flags(launch_args)  # --light-trails: this run's hosting plays by it (C20)
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player

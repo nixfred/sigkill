@@ -35,6 +35,9 @@ const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff
 const CROSSHAIR_CYAN := Color(0.301960784, 0.882352941, 1.0)  # #4de1ff
 const CROSSHAIR := {"mint": MINT, "white": FLASH, "yellow": CROSSHAIR_YELLOW, "magenta": CROSSHAIR_MAGENTA, "cyan": CROSSHAIR_CYAN}
+## Light-trail mode (C20): each player's wall colour by match slot, slot 1 first, from the
+## neons above; slots past the list go round it again.
+const TRAILS := [TEAL, HOSTILE_AMBER, FORK, ICE, VIOLET, MATRIX_GREEN, CROSSHAIR_YELLOW, HOSTILE_RED]
 
 # Look tunables. Lengths are in metres, energies multiply the emission colour.
 const EDGE_WIDTH := 0.04
@@ -128,6 +131,24 @@ static func unlit_alpha(color: Color) -> StandardMaterial3D:
 ## sparks. energy scales the colour above 1 so the glow pass picks it up.
 static func unlit_glow(color: Color, energy: float) -> StandardMaterial3D:
 	return unlit_alpha(Color(color.r * energy, color.g * energy, color.b * energy, color.a))
+
+
+## The light-trail wall colour of match slot `slot` (1 and up; anything else gets slot 1's).
+static func trail_color(slot: int) -> Color:
+	return TRAILS[(maxi(slot, 1) - 1) % TRAILS.size()]
+
+
+## Unlit, see-through from both sides, and coloured per instance: light-trail walls (C20),
+## whose MultiMesh gives each segment its player's colour pushed past full brightness for
+## bloom, and its fade in the alpha.
+static func trail_material() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = FLASH
+	return mat
 
 
 ## Opacity ramp for particles: fully visible at birth, gone by the end of their life.

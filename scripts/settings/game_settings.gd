@@ -11,7 +11,8 @@ extends RefCounted
 ## default is the game as it shipped before C16b, so nothing changes until the player
 ## changes it: fov 0 and port 0 mean the tuning's own (80 degrees, 9009), an empty display
 ## name the tuning's own ("player"), sensitivity multipliers of 1, and no relay URL: no
-## online rooms and no network call (C16c). Key binds live in their
+## online rooms and no network call (C16c). Light-trail mode (C20) is off: it is the host's
+## match rule, and a joiner's own setting never counts. Key binds live in their
 ## own section, one per action the player changed (scripts/controls.gd says which actions
 ## and what a bind may be); an action left out has its default.
 ##
@@ -69,6 +70,7 @@ const SCHEMA := {
 		"relay_url": [TYPE_STRING, "", []],
 		"port": [TYPE_INT, 0, [0, PORT_LAST]],
 		"net_stats": [TYPE_BOOL, false],
+		"light_trails": [TYPE_BOOL, false],
 	},
 }
 ## What a quality preset turns on.

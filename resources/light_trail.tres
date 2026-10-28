@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="LightTrailTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/modes/light_trail_tuning.gd" id="1_trail"]
+
+[resource]
+script = ExtResource("1_trail")
+spacing_m = 0.5
+segment_last_m = 2.5
+ground_slack_m = 0.15
+height_m = 1.2
+thickness_m = 0.08
+lifetime_s = 6.0
+fade_s = 0.75
+cap = 64
+grace_s = 0.4
+energy = 2.4
