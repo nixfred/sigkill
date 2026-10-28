@@ -141,7 +141,7 @@ func _source_checks() -> void:
 		game += _tree_text(dir)
 	_check("the game never runs the capture tool: nothing under scripts/ or scenes/ names it", not game.contains("capture_shots") and game.length() > 100000)
 	var fire := _body(player, "_fire")
-	_check("acceptance: the shot still leaves from the eyes (the muzzle is where its beam and flash start, nothing else): the fire intent's origin is the camera's", fire.contains("var origin := _camera.global_position") and fire.contains("fire_intent.emit(origin, forward, _w.id)") and fire.contains("CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)"))
+	_check("acceptance: the shot still leaves from the eyes (the muzzle is where its beam and flash start, nothing else): the fire intent's origin is the camera's", fire.contains("var origin := _camera.global_position") and fire.contains("fire_intent.emit(origin, forward, _w.id)") and fire.contains("CannonFx.spawn_beam(fx_root, muzzle_point(), end_point, _w)") and _body(player, "muzzle_point").contains("_muzzle.global_position"))
 
 
 # --- Each model built alone. ---
@@ -296,7 +296,8 @@ func _arena_checks() -> void:
 		var visible := 0
 		for model in models:
 			visible += 1 if model.visible else 0
-		var tip: Vector3 = cam.to_local(models[slot].muzzle.global_position)
+		# Where the eye sees the tip (A4: the models are drawn shrunk toward the eye).
+		var tip: Vector3 = cam.to_local(p.muzzle_point())
 		var resting: bool = models[slot].position.distance_to(_defs[slot].viewmodel_offset) < NEAR_M
 		if visible != 1 or not models[slot].visible or p.get("_muzzle") != models[slot].muzzle or tip.z > -MUZZLE_NEAREST_M or not resting:
 			shown.append(_defs[slot].id)
@@ -322,7 +323,9 @@ func _shot_checks(main: Node, p: Node, cam: Camera3D, models: Array) -> void:
 	var heard := func(origin: Vector3, _dir: Vector3, _id: String): origins.append(origin)
 	p.fire_intent.connect(heard)
 	var muzzle: Marker3D = models[0].muzzle
-	var tip := muzzle.global_position
+	# Where the eye sees the barrel's tip (A4): the marker grown back out to the model's full size.
+	var tip: Vector3 = p.muzzle_point()
+	var on_screen := cam.unproject_position(tip).distance_to(cam.unproject_position(muzzle.global_position))
 	var eye := cam.global_position
 	var shots: int = p.shots_fired
 	p.drive_input(Vector2.ZERO, false, false, true)
@@ -336,7 +339,7 @@ func _shot_checks(main: Node, p: Node, cam: Camera3D, models: Array) -> void:
 	var model: Viewmodel = models[0]
 	var offset: Vector3 = _defs[0].viewmodel_offset
 	var kicked: bool = model.position.z - offset.z > _defs[0].viewmodel_kick_back * 0.9 and model.position.y > offset.y and model.rotation.x > 0.0
-	_check("acceptance: a cannon shot's flash is on the drawn model's Muzzle and its beam starts at it, at the barrel's tip, while the shot itself leaves from the eyes, as before", p.shots_fired == shots + 1 and flash != null and flash.get_parent() == muzzle and start.distance_to(tip) < 0.01 and origins.size() == 1 and origins[0].distance_to(eye) < EPS and tip.distance_to(eye) > MUZZLE_NEAREST_M, "beam from %.3f m off the muzzle" % start.distance_to(tip))
+	_check("acceptance: a cannon shot's flash is on the drawn model's Muzzle and its beam starts at it, at the barrel's tip, while the shot itself leaves from the eyes, as before", p.shots_fired == shots + 1 and flash != null and flash.get_parent() == muzzle and start.distance_to(tip) < 0.01 and on_screen < 0.5 and origins.size() == 1 and origins[0].distance_to(eye) < EPS and tip.distance_to(eye) > MUZZLE_NEAREST_M, "beam from %.3f m off the muzzle, %.2f px off its marker on screen" % [start.distance_to(tip), on_screen])
 	p.fire_intent.disconnect(heard)
 	await _settle(p, 1.0)
 	_check("acceptance: the shot kicks the model back and up, the barrel tipped up, and it settles back to rest", kicked and model.position.distance_to(offset) < NEAR_M and absf(model.rotation.x) < deg_to_rad(0.1))

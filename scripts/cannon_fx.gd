@@ -3,7 +3,9 @@ extends RefCounted
 ## SIGTERM's pellets): beam, muzzle flash and its light, impact flash and sparks. Every
 ## tunable comes from the weapon's resource and every colour from palette.gd, through the
 ## weapon's light skin (C16); plain WeaponTuning gets the cannon's teal and mint. Each
-## effect frees itself when its lifetime ends.
+## effect frees itself when its lifetime ends. Over them, A4's GPU particles: the muzzle
+## burst of the weapon's family and the sparks and derezz bits of an impact, from the
+## arena's pools (scripts/fx/particle_fx.gd), which make nothing per shot.
 ## Effects are cosmetic only and never touch anything outside the game.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -59,11 +61,17 @@ static func spawn_muzzle_flash(muzzle: Node3D, w: Weapon, tint: Color = Color.TR
 	light.omni_range = w.muzzle_light_range
 	light.shadow_enabled = false
 	flash.add_child(light)
+	# Placed in the world, not scaled with a viewmodel's fixed projection (A4), so it reaches as
+	# far as its range says: a scaled light's reach is scaled with it.
+	light.top_level = true
+	light.global_position = muzzle.global_position
 	var tween := flash.create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(mat, "albedo_color:a", 0.0, w.muzzle_flash_lifetime)
 	tween.tween_property(light, "light_energy", 0.0, w.muzzle_flash_lifetime)
 	tween.chain().tween_callback(flash.queue_free)
+	# The family's GPU burst (A4), when the muzzle is a model's.
+	ParticleFx.fire_muzzle(muzzle, tint)
 
 
 ## Flash and spark burst where the shot landed. The node's +Y points along the surface
@@ -102,6 +110,11 @@ static func spawn_impact(root: Node, point: Vector3, normal: Vector3, hostile: b
 	sparks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	impact.add_child(sparks)
 	sparks.emitting = true
+
+	# The GPU sparks and, off a daemon, its derezz bits (A4), when the arena has its particle pool.
+	var fx := ParticleFx.of(root)
+	if fx != null:
+		fx.impact(point, normal, hostile, _beam_color(w))
 
 	var tween := impact.create_tween()
 	tween.set_parallel(true)

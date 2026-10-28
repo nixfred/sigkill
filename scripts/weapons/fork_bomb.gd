@@ -157,6 +157,10 @@ func add_bomb(gen: int, index: int, pos: Vector3, vel: Vector3) -> void:
 	add_child(mesh)
 	mesh.global_position = pos
 	_bombs.append({"gen": gen, "index": index, "pos": pos, "vel": vel, "fuse": tuning.fuse_s if gen == 0 else tuning.child_fuse_s, "mesh": mesh})
+	# Sparks shed behind it in flight (A4), from the arena's particle pool when it has one free.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.follow(mesh, ring_color)
 
 
 func _physics_process(delta: float) -> void:
@@ -253,8 +257,12 @@ func _is_world(collider: Object) -> bool:
 ## A short neon ring at `at`, laid flat, growing out and fading; smaller and brighter for
 ## each later generation. Not a child of the chain, so it outlives it by ring_s at most.
 func _ring(at: Vector3, gen: int) -> void:
-	var torus := TorusMesh.new()
 	var size := tuning.ring_radius_m * pow(tuning.ring_shrink, gen)
+	# Debris thrown out of the blast (A4), from the arena's particle pool.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.blast(at, ring_color, size)
+	var torus := TorusMesh.new()
 	torus.inner_radius = size * 0.82
 	torus.outer_radius = size
 	torus.rings = 24

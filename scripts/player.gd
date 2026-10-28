@@ -98,6 +98,13 @@ const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Sigstop = preload("res://scripts/abilities/sigstop.gd")
 const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
+## The viewmodels' fixed projection (A4): they are drawn as at this field of view whatever the
+## camera's (the setting, the speed kick, aiming), and shrunk toward the eye by VIEWMODEL_SHRINK,
+## which looks the same from the eye but keeps every model inside the player's own radius, so a
+## barrel never pokes into a wall. The camera's near plane comes in to keep them in view.
+const VIEWMODEL_FOV_DEGREES := 80.0
+const VIEWMODEL_SHRINK := 0.25
+const VIEWMODEL_NEAR_M := 0.01
 const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
@@ -211,8 +218,11 @@ var _throw_pressed := false
 var _bomb_rng := RandomNumberGenerator.new()
 var _viewmodel: Viewmodel  # the drawn weapon's model (A1)
 var _viewmodels: Array[Viewmodel] = []
-## The drawn weapon's barrel tip, its model's Muzzle marker: beams and the muzzle flash start here.
+## The drawn weapon's barrel tip, its model's Muzzle marker: the muzzle flash starts here, and beams
+## and projectiles from where the eye sees it (muzzle_point()).
 var _muzzle: Marker3D
+## Holds every viewmodel under the camera, scaled to give them their fixed projection (A4).
+var _viewmodel_rig: Node3D
 var _rng := RandomNumberGenerator.new()
 ## Draws this player's own pellets: cosmetic tracers and its own dummies. In a match the
 ## host draws the pellets that count with its own generator.
@@ -323,6 +333,11 @@ func _ready() -> void:
 	_shake_rng.randomize()
 	_bomb_rng.randomize()
 	SettingsApply.ensure_buses()
+	_viewmodel_rig = Node3D.new()
+	_viewmodel_rig.name = "ViewmodelRig"
+	_camera.add_child(_viewmodel_rig)
+	_camera.near = VIEWMODEL_NEAR_M
+	_fit_viewmodels()
 	for def in inventory.defs:
 		_viewmodels.append(_build_viewmodel(def))
 		_sfx.append([_make_sfx_player(Sfx.fire_zap(def), def), _make_sfx_player(Sfx.hit_blip(def), def), _make_sfx_player(Sfx.reload_clack(def), def)])
@@ -665,7 +680,26 @@ func _step_camera(delta: float) -> void:
 	# Aiming down the sights narrows the view to ads_fov_scale of it, eased the same way.
 	_ads_blend = lerpf(_ads_blend, 1.0 if _aiming else 0.0, _smoothing(_t.fov_smoothing, delta))
 	_camera.fov = standard_fov() * lerpf(1.0, _t.ads_fov_scale, _ads_blend) + _fov_kick
+	_fit_viewmodels()
 
+
+## The viewmodels' fixed projection (A4): across the view they are stretched by how much wider the
+## camera sees than VIEWMODEL_FOV_DEGREES, so they fill the same share of the screen at any field of
+## view, and the whole rig is shrunk toward the eye. Sets one transform; makes nothing.
+func _fit_viewmodels() -> void:
+	if _viewmodel_rig == null:
+		return
+	var wide := tan(deg_to_rad(_camera.fov) * 0.5) / tan(deg_to_rad(VIEWMODEL_FOV_DEGREES) * 0.5)
+	_viewmodel_rig.basis = Basis.from_scale(Vector3(wide, wide, 1.0) * VIEWMODEL_SHRINK)
+
+
+## Where the eye sees the drawn weapon's barrel tip, in the world (A4): the Muzzle marker grown back
+## out from the eye to the model's full size, so on screen it is exactly the marker, at the distance
+## the model's offsets mean. Beams start here, and projectiles are drawn coming out of it.
+func muzzle_point() -> Vector3:
+	if _muzzle == null:
+		return _camera.global_position
+	return _camera.to_global(_camera.to_local(_muzzle.global_position) / VIEWMODEL_SHRINK)
 
 ## Share of the way to move toward a target this frame, for exponential easing at `rate`
 ## per second. The same total easing happens per second at any frame rate.
@@ -1064,7 +1098,7 @@ func _fire() -> void:
 					_meter_from(collider, before, base)
 			hit_target = hit_target or landed
 			CannonFx.spawn_impact(fx_root, end_point, normal, landed, _w)
-		CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
+		CannonFx.spawn_beam(fx_root, muzzle_point(), end_point, _w)
 	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
 	_kick()
 	if _shake_on:
@@ -1115,7 +1149,7 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 		else:
 			_rail_heads[int(collider.get_meta("player_id", 0))] = head
 		CannonFx.spawn_impact(fx_root, point, normal, true, _w)
-	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
+	CannonFx.spawn_beam(fx_root, muzzle_point(), end_point, _w)
 	return landed_any
 
 
@@ -1138,6 +1172,7 @@ func _fire_fork() -> void:
 		return
 	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 	var volley := ForkVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), _w.forks_for(root), true, _w.hit_mask, _not_me, fork_hit.bind(_w))
+	volley.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(volley)
 
 
@@ -1211,6 +1246,7 @@ func _fire_grep() -> void:
 	for m in held:
 		points.append(GrepLock.mark_point.bind(m["target"]))
 	var volley := SeekerVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), points, true, _w.hit_mask, _not_me, fork_hit.bind(_w))
+	volley.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(volley)
 
 
@@ -1234,6 +1270,7 @@ func _fire_slug() -> void:
 		return
 	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 	var slug := RmSlug.spawn(_fx_root(), _w, origin, forward, root, true, _w.hit_mask, _not_me, _judge_slug.bind(_w, root))
+	slug.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(slug)
 
 
@@ -1544,7 +1581,7 @@ func _fx_root() -> Node:
 ## out of view until drawn.
 func _build_viewmodel(def: WeaponDefScript) -> Viewmodel:
 	var model := Viewmodel.make(def)
-	_camera.add_child(model)
+	_viewmodel_rig.add_child(model)
 	return model
 
 

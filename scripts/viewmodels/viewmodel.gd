@@ -19,7 +19,8 @@ extends MeshInstance3D
 ## Each weapon's model is a script extending this one that builds itself in _build(), named by its
 ## WeaponDef's viewmodel_model (scripts/viewmodels/<weapon>.gd), so a new weapon slots in the same
 ## way. A weapon with none gets the placeholder: a glowing box of viewmodel_size. Every model has a
-## Muzzle marker at its barrel's tip, where the player starts its beams and muzzle flash. The shot
+## Muzzle marker at its barrel's tip, where the player starts its beams and muzzle flash, and under it
+## its family's GPU muzzle burst (A4, scripts/fx/particle_fx.gd). The shot
 ## itself still leaves from the eyes: a model is cosmetic, and nothing in it touches anything
 ## outside the game.
 ##
@@ -118,6 +119,8 @@ func setup(weapon: Resource) -> void:
 	add_child(muzzle)
 	_build()
 	muzzle.position = pose * muzzle.position
+	# Its family's muzzle burst (A4), in the beam colour, fired with each shot's flash.
+	muzzle.add_child(ParticleFx.make_muzzle_burst(weapon, _beam))
 	material_override = Palette.glow(body_color, _energy)
 	_metal = Palette.viewmodel_metal(Palette.GUNMETAL, body_color, body_hex)
 	_plate = Palette.viewmodel_metal(Palette.GUNMETAL_LIGHT, body_color, plate_hex, true)

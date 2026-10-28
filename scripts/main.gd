@@ -31,6 +31,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_apply_palette_to_environment()
+	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
@@ -90,6 +91,7 @@ func apply_quality() -> void:
 	var skyline := get_node_or_null("Arena/Skyline")
 	if skyline != null and skyline.has_method("set_full"):
 		skyline.set_full(g["skyline"])
+	ParticleFx.level = g["particles"]
 	var post := get_node_or_null("ScreenPost") as ScreenPost
 	if post != null:
 		post.set_effects(g["chromatic_aberration"], g["crt"])

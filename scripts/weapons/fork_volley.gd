@@ -41,6 +41,8 @@ const WORLD_LAYER := 1
 const REACH_EPS := 0.0001
 ## A trail's direction this close to straight up or down is turned about another axis.
 const NEAR_PARALLEL := 0.98
+## Drawn from the shooter's muzzle (A4): the pellets close on their true paths over this many metres.
+const CONVERGE_M := 6.0
 ## How bright a pellet's head and trail glow, and its fork flash at its peak.
 const HEAD_ENERGY := 4.0
 const TRAIL_ENERGY := 2.5
@@ -90,6 +92,8 @@ var directions := {}
 var _pellets: Array = []  # {gen, index, pos, dir, flown, from, live, head, trail}
 var _flashes: Array = []  # {node, left}
 var _forked_gens := {}
+var _origin := Vector3.ZERO
+var _drawn := Vector3.ZERO
 var _head_mesh: SphereMesh
 var _trail_mesh: BoxMesh
 var _flash_mesh: SphereMesh
@@ -132,6 +136,7 @@ func _ready() -> void:
 
 ## The fan leaves `origin` (world space): pellet_count pellets of generation 0.
 func fire(origin: Vector3) -> void:
+	_origin = origin
 	spawned.resize(forks + 1)
 	spawned.fill(0)
 	landed_by_gen.resize(forks + 1)
@@ -299,13 +304,23 @@ func _place(p: Dictionary) -> void:
 	var head: MeshInstance3D = p["head"]
 	var trail: MeshInstance3D = p["trail"]
 	var dir: Vector3 = p["dir"]
-	head.global_position = p["pos"]
+	var shown: Vector3 = p["pos"] + _drawn * maxf(0.0, 1.0 - p["flown"] / CONVERGE_M)
+	head.global_position = shown
 	var length := minf(def.pellet_trail_m, p["flown"] - p["from"])
 	trail.visible = length > REACH_EPS
 	if not trail.visible:
 		return
 	var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < NEAR_PARALLEL else Vector3.RIGHT
-	trail.global_transform = Transform3D(Basis.looking_at(dir, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), p["pos"] - dir * length * 0.5)
+	trail.global_transform = Transform3D(Basis.looking_at(dir, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), shown - dir * length * 0.5)
+
+
+## Draws the pellets coming out of the shooter's barrel at `point` (A4): off their true paths by the
+## barrel's offset at first, closing on them over CONVERGE_M. Each pellet still flies from the eyes;
+## this moves only what is drawn.
+func draw_from(point: Vector3) -> void:
+	_drawn = point - _origin
+	for p in _pellets:
+		_place(p)
 
 
 func _flash(at: Vector3) -> void:

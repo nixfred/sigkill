@@ -39,6 +39,8 @@ const WORLD_LAYER := 1
 const REACH_EPS := 0.0001
 ## A mark this close is where the dart is: no turn to make.
 const CLOSE_EPS := 0.0001
+## Drawn from the shooter's muzzle (A4): the darts close on their true paths over this many metres.
+const CONVERGE_M := 6.0
 ## A trail's direction this close to straight up or down is turned about another axis.
 const NEAR_PARALLEL := 0.98
 ## How bright a dart's head and trail glow.
@@ -89,6 +91,8 @@ var nearest: Array[float] = []
 var _darts: Array = []  # {index, pos, dir, flown, mark, live, head, trail}
 var _head_mesh: SphereMesh
 var _trail_mesh: BoxMesh
+var _origin := Vector3.ZERO
+var _drawn := Vector3.ZERO
 var _head_glow: StandardMaterial3D
 var _trail_glow: StandardMaterial3D
 var _done := false
@@ -129,6 +133,7 @@ func _ready() -> void:
 
 ## The darts leave `origin` (world space): one per mark, or one with none.
 func fire(origin: Vector3) -> void:
+	_origin = origin
 	_head_mesh = SphereMesh.new()
 	_head_mesh.radius = def.dart_radius_m
 	_head_mesh.height = def.dart_radius_m * 2.0
@@ -274,7 +279,19 @@ func _add(index: int, pos: Vector3, dir: Vector3, mark: Callable) -> void:
 	nearest.append(INF)
 	directions[index] = dir
 	_place(d)
+	# Sparks shed behind it in flight (A4), from the arena's particle pool when it has one free.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.follow(head, def.skin_beam())
 
+
+## Draws the darts coming out of the shooter's barrel at `point` (A4): off their true paths by the
+## barrel's offset at first, closing on them over CONVERGE_M. Each dart still flies from the eyes;
+## this moves only what is drawn.
+func draw_from(point: Vector3) -> void:
+	_drawn = point - _origin
+	for d in _darts:
+		_place(d)
 
 ## The head at the dart, its trail behind it: as long as the weapon's trail, never longer than
 ## this dart has flown.
@@ -282,13 +299,14 @@ func _place(d: Dictionary) -> void:
 	var head: MeshInstance3D = d["head"]
 	var trail: MeshInstance3D = d["trail"]
 	var dir: Vector3 = d["dir"]
-	head.global_position = d["pos"]
+	var shown: Vector3 = d["pos"] + _drawn * maxf(0.0, 1.0 - d["flown"] / CONVERGE_M)
+	head.global_position = shown
 	var length := minf(def.dart_trail_m, d["flown"])
 	trail.visible = length > REACH_EPS
 	if not trail.visible:
 		return
 	var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < NEAR_PARALLEL else Vector3.RIGHT
-	trail.global_transform = Transform3D(Basis.looking_at(dir, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), d["pos"] - dir * length * 0.5)
+	trail.global_transform = Transform3D(Basis.looking_at(dir, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), shown - dir * length * 0.5)
 
 
 func _drop(d: Dictionary, why: String) -> void:

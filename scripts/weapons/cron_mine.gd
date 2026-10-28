@@ -310,6 +310,10 @@ func _show() -> void:
 ## The run's blast ring at `at`, growing out to the blast's radius and fading over blast_ring_s.
 ## Not a child of the mine, so it outlives it by blast_ring_s at most.
 func _ring(at: Vector3) -> void:
+	# Debris thrown out of the run's blast (A4), from the arena's particle pool.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.blast(at, def.skin_beam(), def.blast_radius_m)
 	var torus := TorusMesh.new()
 	torus.inner_radius = def.blast_radius_m * (1.0 - RING_BAND)
 	torus.outer_radius = def.blast_radius_m

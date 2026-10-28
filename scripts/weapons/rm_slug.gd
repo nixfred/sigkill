@@ -45,6 +45,9 @@ const NEAR_PARALLEL := 0.98
 ## The slug is not drawn for its first metres from the eyes it leaves (A1): that close it would fill
 ## its shooter's view, and the muzzle flash at the barrel covers the moment. Drawing only.
 const EYE_CLEAR_M := 0.75
+## Drawn from the shooter's muzzle (A4, draw_from()): the slug is drawn this far off its true path
+## at first, from the barrel's tip, closing on it over this many metres. Drawing only.
+const CONVERGE_M := 6.0
 ## How bright the slug, its trail and the ring glow.
 const HEAD_ENERGY := 5.0
 const TRAIL_ENERGY := 3.0
@@ -89,6 +92,9 @@ var steps: Array[float] = []
 var _pos := Vector3.ZERO
 var _head: MeshInstance3D
 var _trail: MeshInstance3D
+var _origin := Vector3.ZERO
+var _drawn := Vector3.ZERO
+var _drawn_on := false
 var _holding := false
 var _wait_left := 0.0
 var _done := false
@@ -128,6 +134,7 @@ func _ready() -> void:
 ## The slug leaves `origin` (world space).
 func fire(origin: Vector3) -> void:
 	_pos = origin
+	_origin = origin
 	radius = def.blast_radius_for(root)
 	var head_mesh := SphereMesh.new()
 	head_mesh.radius = def.slug_radius_m
@@ -143,7 +150,19 @@ func fire(origin: Vector3) -> void:
 	_trail.material_override = Palette.glow(def.skin_beam(), TRAIL_ENERGY)
 	add_child(_trail)
 	_place()
+	# Embers shed behind it in flight (A4), from the arena's particle pool when it has one free.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.follow(_head, def.skin_beam(), true)
 
+
+## Draws the slug coming out of the shooter's barrel at `point` (A4): seen from the start, off its
+## true path by the barrel's offset at first, closing on it over CONVERGE_M. The slug itself still
+## flies from the eyes; this moves only what is drawn.
+func draw_from(point: Vector3) -> void:
+	_drawn = point - _origin
+	_drawn_on = true
+	_place()
 
 ## True while the slug is still in the air (or, on a joiner's screen, holding for the word).
 func flying() -> bool:
@@ -245,20 +264,25 @@ func _ray(from: Vector3, to: Vector3) -> Dictionary:
 ## The slug at its place, its trail behind it: as long as the weapon's trail, never longer than
 ## it has flown past the eyes' clearance.
 func _place() -> void:
-	_head.global_position = _pos
-	_head.visible = flown >= EYE_CLEAR_M
-	var length := minf(def.slug_trail_m, flown - EYE_CLEAR_M)
+	var shown := _pos + _drawn * maxf(0.0, 1.0 - flown / CONVERGE_M)
+	_head.global_position = shown
+	_head.visible = flown >= EYE_CLEAR_M or _drawn_on
+	var length := minf(def.slug_trail_m, flown - (0.0 if _drawn_on else EYE_CLEAR_M))
 	_trail.visible = length > REACH_EPS
 	if not _trail.visible:
 		return
 	var up := Vector3.UP if absf(aim.dot(Vector3.UP)) < NEAR_PARALLEL else Vector3.RIGHT
-	_trail.global_transform = Transform3D(Basis.looking_at(aim, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), _pos - aim * length * 0.5)
+	_trail.global_transform = Transform3D(Basis.looking_at(aim, up) * Basis.from_scale(Vector3(1.0, 1.0, length)), shown - aim * length * 0.5)
 
 
 ## The blast's ring at `place`, laid flat, growing from a small share of the blast's radius out to
 ## all of it and fading over blast_ring_s: where the blast reached, at a glance. Not a child of
 ## the slug, so it outlives it by blast_ring_s at most.
 func _ring(place: Vector3) -> void:
+	# Debris thrown out of the blast (A4), from the arena's particle pool.
+	var fx := ParticleFx.of(self)
+	if fx != null:
+		fx.blast(place, def.skin_body(), radius)
 	var torus := TorusMesh.new()
 	torus.inner_radius = radius * (1.0 - RING_BAND)
 	torus.outer_radius = radius
