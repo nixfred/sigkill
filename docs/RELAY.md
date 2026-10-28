@@ -24,6 +24,15 @@ rendezvous and the relay, and sends every room-code match through the relay:
 
 LAN and tailnet join by address are unchanged and never touch the relay.
 
+**WebSocket mode: built and tested on 127.0.0.1 only (C16d). Nothing is deployed.** For a
+machine with no public address and no inbound UDP, reached only through an HTTPS proxy on one
+port (Fred's pick is an exe.dev VM), the same relay also runs on one TCP port as a WebSocket
+service (`relay/relay_ws.gd`, `--ws-port`). The game picks the transport from the relay URL's
+scheme: `udp://` the UDP relay above, `ws://` and `wss://` the WebSocket one, anything else no
+relay at all. See [WebSocket mode](#websocket-mode-built-c16d) and
+[On exe.dev](#on-exedev-websocket-mode). The UDP relay stays the alternative for a plain
+server with a public address.
+
 ## The three parts
 
 | Part | Job | Traffic |
@@ -80,6 +89,12 @@ count, u16 each, up to 15).
 
 Probe, 12 bytes, to a room's relay port from the game's ENet socket: `"SP"`, `2`, kind (`1`
 host, `2` join), the token for that side.
+
+Over WebSocket (C16d) the requests, replies and probes are the same bytes, one WebSocket
+message each, and a register reply's host-facing list names the room's joiner slots (1 to
+N-1) where the UDP relay names ports; its join port is 0. A datagram is a data message:
+`"SD"`, `2`, a slot (from the host: the joiner it is for; to the host: the joiner it came from;
+`0` between the relay and a joiner), then the game's ENet datagram, untouched.
 
 The two changes C15 required before a real service are in: a request (64 bytes) is never
 shorter than the longest reply (57), so the relay never sends more bytes than it received;
@@ -142,6 +157,67 @@ decodes them. ENet's packets stay end to end; DTLS (`dtls_server_setup` and
 `dtls_client_setup` are in Godot 4.7's `ENetConnection`) can encrypt them past the relay
 later.
 
+## WebSocket mode (built, C16d)
+
+**Why.** An exe.dev VM has no public IP and no raw inbound TCP or UDP: the only way in is
+exe.dev's HTTPS proxy, to one port of the VM. The UDP relay cannot live there. The WebSocket
+relay can: one TCP port, plain `ws://` on the VM, `wss://` from the players to the proxy.
+
+**The scheme picks the transport.** `scripts/net/relay_wire.gd`'s `transport_of()`: `udp://`
+takes the C16c path (`UdpRendezvous`), `ws://` and `wss://` the WebSocket one (`WsRendezvous`,
+`scripts/net/ws_rendezvous.gd`). Any other scheme (`http://`, `https://`, `tcp://`, a capital
+`WS://`) is not a relay URL: the settings refuse it and say which three work, the room tuning
+refuses it, and the game makes no connection of any kind for it. `ws://` means port 80 and
+`wss://` 443 when no port is named; no path.
+
+**One port, rooms by token.** The relay listens on one TCP port (`--ws-port`). Every room
+shares it, with no data ports: a connection that registers a code is that room's host link; a
+connection that probes with a room's join token takes one of its joiner slots; rooms are told
+apart by their tokens. The relay forwards a joiner's datagrams to its host tagged with the
+joiner's slot, and the host's to the slot each names. A host link that registers again (the
+game draws a fresh code when its code runs out) keeps its room and joiners under the new code
+and fresh tokens, and the old code answers `expired`.
+
+**The game's side: a tunnel, the match unchanged.** The match still runs on the game's own
+ENet, with the C13 handshake and the C14 combat. `WsRendezvous` answers the session with
+loopback sockets of its own on 127.0.0.1: a joiner's "mouth", which its ENet connects to, and
+one socket per joiner slot for a host, which its ENet probes, exactly as it would the UDP
+relay's ports. Every datagram arriving there goes to the relay as a data message, the
+session's probes as the relay's probes, and every data message from the relay comes out of
+the matching loopback socket to ENet. A loopback socket takes datagrams from 127.0.0.1 only,
+and only from the first source it sees, the game's own ENet socket. Neither player ever sees
+the other's address, or the relay's: each ENet sees only 127.0.0.1.
+
+**Closing.** Godot's WebSocket sends a close ahead of queued messages and gives up whatever
+arrives with one. So both sides close a link only once what it holds is sent and 300 ms have
+passed, and the game puts ENet's goodbye through the tunnel before it closes it: a joiner who
+leaves is let go by the host in milliseconds (6 ms in the test), and a host who leaves is
+heard as "host left" at once (7 ms), not at ENet's timeout.
+
+**Limits.** The UDP relay's own (the WebSocket relay extends it and keeps its control path
+whole): the cookie round trip (on the connection's address and port), registrations and
+resolutions a minute and live rooms per address, rooms in all, players per room, a code's
+life and its time as `expired`, the payload cap and packets a second per room. On top:
+connections at once (`--sources`), the WebSocket handshake done within 5 s, a connection silent
+for the idle time closed, a room ending when its host link closes (its joiners' links closed
+with it), a slot freed when its joiner's link closes, one room per joiner link, and a message
+a link's outbound buffer cannot take dropped and counted, never queued without end.
+
+**Behind a proxy.** Every connection reaches the relay from the proxy's own address. The
+relay never learns a player's address at all, and the per-address limits count every player
+together: set them for the whole relay (`relay/sigkill-relay-ws.service` does).
+
+**TLS.** `wss://` is TLS between the player and the proxy, and the proxy terminates it; the
+relay itself speaks plain `ws://` on the VM. The game checks the proxy's certificate with the
+engine's built-in certificate list. The tests cannot stand in for that proxy: they prove that
+a `wss://` URL takes the WebSocket path with TLS and reaches its host and port over TCP, and
+nothing past that. `wss://` end to end is untested.
+
+**TCP, not UDP.** Over WebSocket every datagram rides one TCP stream, so a lost segment holds
+up everything behind it until it is resent: on a lossy network the match hitches where the
+UDP relay would only lose a packet (ENet already resends what matters on its own). The UDP
+relay stays the better transport wherever a public address and inbound UDP exist.
+
 ## Code lifecycle and expiry
 
 - **Drawn by the host,** from the engine's cryptographic random bytes, never from a name, an
@@ -198,7 +274,8 @@ joiner's while its path carries traffic (60 s idle), a host's while its room hol
 a registering host's while its code lives (the per-address room cap), a source's for its
 one-minute rate window. Nothing is written to disk: Godot's own log file holds only that same
 output, and the systemd example keeps it in a tmpfs wiped at stop. No user or host names exist
-anywhere in the service, because the game never sends any.
+anywhere in the service, because the game never sends any. The WebSocket relay (C16d) prints the same lines and keeps a
+connection's address only while it is open; behind a proxy it only ever sees the proxy's.
 
 ## Privacy
 
@@ -226,6 +303,9 @@ anywhere in the service, because the game never sends any.
 | Relay full (rooms or ports) | "the room service is busy: try again in a moment" | LAN join |
 | A room's slots all taken | The extra joiner's connect times out: "couldn't reach host" | The host's next code |
 | Relay down mid-match | ENet's peer timeout: "host left" (C13) | LAN join |
+| A relay URL with another scheme (`http://`, `tcp://`) | Settings: "A relay is udp://host, ws://host or wss://host (each with an optional :port), or empty for none."; nothing connects | Any of the three |
+| WebSocket relay or its proxy down | "couldn't reach the room service" | LAN join, a `udp://` relay |
+| A host's link to a WebSocket relay drops | Its room ends; joiners see "host left"; the host's next code makes a new room | Hosting again |
 | Reply lost (UDP) | The request timeout; nothing is left in flight | Trying again |
 
 ## Running it
@@ -245,6 +325,14 @@ Then in the game: Esc, Settings, Multiplayer, relay `udp://127.0.0.1:9010`. Host
 H: the panel shows the room code and the `sigkill://join/` link; a second copy of the game
 with the same relay set joins with M then K. `tests/relay_test.gd` does exactly this headless.
 
+WebSocket mode, the same way, on one TCP port:
+
+```bash
+relay/run_relay.sh --ws-port 8000        # ws://127.0.0.1:8000 only, until stopped
+```
+
+and the relay `ws://127.0.0.1:8000` in the game. `tests/relay_ws_test.gd` does this headless.
+
 ### On a plain Linux server
 
 1. Copy the SIGKILL project to the server (the relay loads only `relay/` and
@@ -258,6 +346,28 @@ with the same relay set joins with M then K. `tests/relay_test.gd` does exactly 
 
 The unit and the script are examples: neither has been run on a real server, and nothing in
 the project installs or enables them.
+
+### On exe.dev (WebSocket mode)
+
+Not done, not tried: nothing here has been run on exe.dev, no VM has been made and no account
+used. What it would take, from what C16d built:
+
+1. On the VM, a copy of the SIGKILL project and a Godot 4.7 Linux binary, as for a plain
+   server. The relay needs no package and no disk.
+2. One HTTP port, such as `8000`, shared through exe.dev's HTTPS proxy: the proxy takes
+   `https://<vm-name>.exe.xyz` (and so `wss://`) and forwards to that port on the VM. How to
+   share a port is in exe.dev's own documentation, not repeated here. The proxy has to pass
+   WebSocket upgrades through, and how long it lets a quiet connection live is its own; both
+   are unchecked here. The game's links are never quiet for long: a host's probes go every 5 s,
+   and a match sends many times a second.
+3. Copy `relay/sigkill-relay-ws.service` to `/etc/systemd/system/`, change its two placeholder
+   paths, then `systemctl enable --now sigkill-relay-ws`. It binds `0.0.0.0` (every interface
+   of the VM) on port `8000`, and sets the per-address limits for the whole relay, since every
+   connection comes from the proxy.
+4. Players set the relay in Settings, Multiplayer: `wss://<vm-name>.exe.xyz` (a placeholder:
+   the VM's real name goes there).
+
+TLS is the proxy's: the relay on the VM speaks plain `ws://` and holds no certificate.
 
 ### Settings
 
@@ -283,6 +393,7 @@ with exit 2 and the reason.
 | `SIGKILL_RELAY_ROOM_PPS` | `--room-pps` | 400 | Datagrams a second one room may relay |
 | `SIGKILL_RELAY_TICK_HZ` | `--tick-hz` | 500 | Polls a second (2 ms of added latency at most) |
 | `SIGKILL_RELAY_STATS_S` | `--stats-s` | 300 | Seconds between counter lines; 0 for none |
+| `SIGKILL_RELAY_WS_PORT` | `--ws-port` | 0 (the UDP relay) | WebSocket mode on this one TCP port (C16d); `--sources` is then the connections at once |
 | | `--stop-file` | none | Stop cleanly (exit 0) once this file exists: for tests |
 
 `SIGKILL_GODOT` names the Godot binary for `relay/run_relay.sh` and `SIGKILL_RELAY_LOG` where
@@ -293,7 +404,17 @@ every bit of state is in memory by design.
 
 ## Hosting cost
 
-Three options. Every price below is quoted from the provider's public pricing page, read on
+### Fred's pick: exe.dev, WebSocket mode (C16d)
+
+The relay would run inside Fred's existing flat exe.dev plan, so no new machine is paid for.
+Egress (the relay's outbound traffic, which is the whole of every room-code match) comes out of
+the plan's included monthly allowance and is then billed per GiB, at the rates on
+https://exe.dev/pricing (linked only: no figure is quoted here, and the page was not read for
+this chunk). Per-match traffic is still unmeasured, so no monthly figure is given: unpriced,
+Fred decides. Over WebSocket a match is TCP, which hitches on packet loss where UDP would not
+(see [WebSocket mode](#websocket-mode-built-c16d)).
+
+**The UDP relay, on a plain server with a public address: three options.** Every price below is quoted from the provider's public pricing page, read on
 2026-10-26, as written there, and not re-read since. Relay traffic per match has still not
 been measured on a real network: the relay test's short match on 127.0.0.1 relayed a few
 dozen datagrams, which says nothing about a real one, so no monthly figure is given. With
@@ -354,4 +475,5 @@ The relay's monthly traffic, and so its cost on any option: unpriced, Fred decid
 measured match). Taxes: the Hetzner prices exclude VAT; the Fly.io and Cloudflare pages read
 did not state tax terms. Anything else: unpriced, Fred decides.
 
-Nothing is deployed. Hosting waits for Fred's decision.
+Nothing is deployed. Hosting waits for Fred's decision (WebSocket mode on exe.dev is his pick;
+nothing has been set up there).

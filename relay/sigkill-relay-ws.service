@@ -1,0 +1,57 @@
+# Example systemd unit for the SIGKILL relay in WebSocket mode (C16d, docs/RELAY.md), for a
+# machine reached only through an HTTPS proxy on one port, such as an exe.dev VM: the relay
+# listens on plain ws:// on that one TCP port, and the proxy in front of it terminates TLS
+# (players set wss://<vm-name>.exe.xyz). NOT installed or enabled anywhere by the project, and
+# never run on a real VM. To use it on a machine of your own: copy the SIGKILL project to
+# /opt/sigkill and a Godot 4.7 binary to /usr/local/bin/godot (both placeholders: change them
+# to suit), share the port below through the proxy, copy this file to /etc/systemd/system/,
+# then systemctl enable --now it.
+
+[Unit]
+Description=SIGKILL relay, WebSocket mode: room codes and game relay on one TCP port
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/sigkill/relay/run_relay.sh
+Environment=SIGKILL_GODOT=/usr/local/bin/godot
+# Every interface of the VM, on the one port its HTTPS proxy forwards to.
+Environment=SIGKILL_RELAY_BIND=0.0.0.0
+Environment=SIGKILL_RELAY_WS_PORT=8000
+Environment=SIGKILL_RELAY_ROOMS=64
+Environment=SIGKILL_RELAY_ROOM_PLAYERS=4
+Environment=SIGKILL_RELAY_ROOM_TTL_S=600
+Environment=SIGKILL_RELAY_IDLE_S=60
+# Behind the proxy every connection comes from the proxy's own address, so the per-address
+# limits count every player together: set them for the whole relay, not for one player.
+Environment=SIGKILL_RELAY_ROOMS_PER_IP=64
+Environment=SIGKILL_RELAY_REGISTER_PER_MIN=120
+Environment=SIGKILL_RELAY_RESOLVE_PER_MIN=600
+# Connections at once: each holds up to 128 KiB of buffers, so this fits in MemoryMax below.
+Environment=SIGKILL_RELAY_SOURCES=512
+Environment=SIGKILL_RELAY_STATS_S=300
+# Godot's data and cache folders in a tmpfs that is wiped when the service stops: nothing is
+# ever written to disk.
+RuntimeDirectory=sigkill-relay
+Environment=XDG_DATA_HOME=%t/sigkill-relay
+Environment=XDG_CACHE_HOME=%t/sigkill-relay
+Environment=XDG_CONFIG_HOME=%t/sigkill-relay
+Environment=HOME=%t/sigkill-relay
+# No user of its own needed, and as little of the system as it can run with.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
