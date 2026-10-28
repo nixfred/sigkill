@@ -18,6 +18,7 @@ const Palette = preload("res://scripts/palette.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const DerezzTuning = preload("res://scripts/derezz_tuning.gd")
 const DEREZZ_PATH := "res://resources/derezz.tres"
+const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 ## The targets physics layer (3), the dummies' layer: hit by the cannon, walked through.
 const HIT_LAYER := 4
 const HIT_RADIUS := 0.4
@@ -189,6 +190,12 @@ func view_pitch() -> float:
 
 
 ## The newest received position, or where the avatar stands.
+## True when `point` is in this avatar's head zone (C17): the top of its hit capsule,
+## WeaponDef's HEAD_ZONE_M deep.
+func is_head_hit(point: Vector3) -> bool:
+	return point.y >= _hit.global_position.y + HIT_HEIGHT * 0.5 - WeaponDefScript.HEAD_ZONE_M
+
+
 func latest_position() -> Vector3:
 	return samples[-1]["pos"] if not samples.is_empty() else position
 

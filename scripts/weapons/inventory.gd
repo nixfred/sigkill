@@ -9,6 +9,11 @@ extends RefCounted
 ## reload (its rounds are not moved). Pressing fire with an empty magazine starts a reload
 ## when there are rounds in reserve. A reload moves the rounds when it finishes. Each
 ## weapon's interval runs on while another is drawn.
+##
+## The ult meter (C17): one meter for the loadout's ult weapon (the SIGKILL rail), filled by
+## what the player's other weapons do (scripts/player.gd solo, the host's results in a
+## match), kept across swaps, emptied by the ult's one shot, and reset by a new life, a death
+## and a new round. The ult fires only with the meter full.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
@@ -18,6 +23,7 @@ const BLOCK_RELOAD := "reload"
 const BLOCK_COOLDOWN := "cooldown"
 const BLOCK_EMPTY := "empty"
 const BLOCK_DRY := "dry"
+const BLOCK_METER := "meter"
 
 ## The weapons, slot 1 first. Every one is a usable WeaponDef.
 var defs: Array = []
@@ -38,6 +44,8 @@ var block_left := 0.0
 ## Seconds the HUD keeps showing the drawn weapon's fiction line.
 var fiction_left := 0.0
 var fiction_s := 1.6
+## The ult meter, from 0 to the ult's ult_meter.
+var meter := 0.0
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -52,6 +60,41 @@ func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float
 
 func slot_count() -> int:
 	return defs.size()
+
+
+## The slot of the loadout's ult weapon, or -1 when it has none.
+func ult_slot() -> int:
+	for i in defs.size():
+		if defs[i].is_ult():
+			return i
+	return -1
+
+
+## Points the meter needs; 0 when the loadout has no ult.
+func meter_full() -> float:
+	var slot := ult_slot()
+	return defs[slot].ult_meter if slot >= 0 else 0.0
+
+
+## True when the ult can take its one shot.
+func meter_ready() -> bool:
+	return meter_full() > 0.0 and meter >= meter_full()
+
+
+## How full the meter is, from 0 to 1.
+func meter_share() -> float:
+	var full := meter_full()
+	return clampf(meter / full, 0.0, 1.0) if full > 0.0 else 0.0
+
+
+## Adds what another weapon's hit earned (see WeaponDef.meter_gain), capped at full.
+func add_meter(amount: float) -> void:
+	if is_finite(amount) and amount > 0.0:
+		meter = minf(meter + amount, meter_full())
+
+
+func reset_meter() -> void:
+	meter = 0.0
 
 
 ## The drawn weapon.
@@ -141,9 +184,27 @@ func swap_progress() -> float:
 	return clampf(1.0 - swap_left / maxf(swap_s, 0.001), 0.0, 1.0)
 
 
-## Fires the drawn weapon if it may: "" when it fired (a round spent, its interval set),
-## otherwise why not. An empty magazine with rounds in reserve starts a reload.
+## Fires the drawn weapon if it may: "" when it fired (a round spent, its interval set, the
+## ult's meter emptied), otherwise why not. An empty magazine with rounds in reserve starts
+## a reload.
 func try_fire() -> String:
+	var why := fire_block()
+	if why == BLOCK_EMPTY:
+		return BLOCK_EMPTY if reload() else BLOCK_DRY
+	if why != "":
+		return why
+	var d := def()
+	if d.has_magazine():
+		mags[current] -= 1
+	if d.is_ult():
+		meter = 0.0
+	cooldowns[current] = d.fire_cooldown
+	return ""
+
+
+## Why the drawn weapon could not fire right now, or "": the same rules as try_fire(),
+## changing nothing (a charging shot asks before it starts).
+func fire_block() -> String:
 	if swap_left > 0.0:
 		return BLOCK_SWAP
 	if reload_left > 0.0 or block_left > 0.0:
@@ -152,10 +213,9 @@ func try_fire() -> String:
 		return BLOCK_COOLDOWN
 	var d := def()
 	if d.has_magazine() and mags[current] <= 0:
-		return BLOCK_EMPTY if reload() else BLOCK_DRY
-	if d.has_magazine():
-		mags[current] -= 1
-	cooldowns[current] = d.fire_cooldown
+		return BLOCK_EMPTY
+	if d.is_ult() and not meter_ready():
+		return BLOCK_METER
 	return ""
 
 
@@ -177,8 +237,10 @@ func tick(delta: float) -> void:
 				reserves[current] -= take
 
 
-## Every magazine and reserve full again, nothing in progress: a fresh life.
+## Every magazine and reserve full again, nothing in progress, the ult meter empty: a fresh
+## life.
 func refill() -> void:
+	meter = 0.0
 	for i in defs.size():
 		mags[i] = defs[i].magazine_size
 		reserves[i] = defs[i].reserve_ammo

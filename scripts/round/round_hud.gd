@@ -24,6 +24,10 @@ extends Control
 ## user://settings.cfg (demo data keeps it in memory). Plain key only; ignored while the
 ## ask box or the AI question is open. Esc and every other key work as before.
 ##
+## The SIGKILL rail (C17): a rail kill with the hit in the target's head zone is called
+## out as "kill -9", game logic like every in-round callout, and it is never held back by the
+## callout pace: it shows over whatever was up. A new round empties the player's ult meter.
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -44,6 +48,7 @@ const NOTE_S := 3.0
 const FIRST_DOWN_LINE := "First process down."
 const STREAK_LINE := "%d in a row."
 const MISSES_LINE := "%d misses in a row. Let the crosshair settle."
+const KILL9_LINE := "kill -9"
 
 enum Phase { ROUND, BREAK }
 
@@ -124,7 +129,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	_last_pos = Vector3.INF
@@ -208,6 +213,8 @@ func toggle_roast() -> void:
 
 func _start_round(number: int) -> void:
 	stats.reset(number)
+	if _player != null and is_instance_valid(_player) and _player.has_method("reset_meter"):
+		_player.reset_meter()
 	phase = Phase.ROUND
 	_left_s = _t.round_seconds
 	_since_callout_s = INF
@@ -265,11 +272,18 @@ func _on_slid() -> void:
 		stats.on_slide()
 
 
-## Shows a callout unless one was shown less than callout_min_interval_s ago.
-func _callout(word: String) -> void:
+## A rail kill: a headshot is called out as "kill -9" over anything that was up.
+func _on_rail_kill(headshot: bool) -> void:
+	if headshot and phase == Phase.ROUND:
+		_callout("kill_9", true)
+
+
+## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
+## whatever the pace, as "kill -9" is).
+func _callout(word: String, now: bool = false) -> void:
 	if word == "":
 		return
-	if _since_callout_s < _t.callout_min_interval_s:
+	if _since_callout_s < _t.callout_min_interval_s and not now:
 		callouts_dropped += 1
 		return
 	_since_callout_s = 0.0
@@ -281,6 +295,8 @@ func _callout(word: String) -> void:
 			last_callout = STREAK_LINE % stats.streak
 		"misses":
 			last_callout = MISSES_LINE % stats.misses_in_a_row
+		"kill_9":
+			last_callout = KILL9_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

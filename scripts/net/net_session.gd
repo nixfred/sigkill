@@ -58,6 +58,16 @@ extends Node
 ## connects. Every packet of the match then goes through the relay, and a room code only
 ## ever leads to the relay the player set, never to an address the relay names.
 ##
+## The SIGKILL rail (C17): a rail shot is an ordinary intent naming the rail; the host
+## believes it only with the shooter's ult meter full (scripts/net/combat.gd owns every
+## meter), traces the line itself through every player on it to the first wall, and applies
+## the rail's damage to each, so spawn protection still holds. What the other weapons do to
+## players here fills the meters by the ult's numbers: the host's for every player, and this
+## player's own copy from the same confirmed results (the shot and death messages it already
+## gets), so nothing new crosses the wire. A rail kill is named in the feed with the victim's
+## fake process id, fake_pid(): never a real one. Its "kill -9" callout comes from this
+## player's own trace of where its rail struck, once the host's word of the kill arrives.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id. Nothing about the AI guide, the
@@ -694,6 +704,8 @@ func state_word() -> String:
 
 
 func _physics_process(delta: float) -> void:
+	if _player_ready():
+		_player.match_meter = is_online()  # in a match the meter fills only from the host's word
 	match state:
 		State.RESOLVING:
 			_tick_resolve(delta)
@@ -1494,18 +1506,26 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		combat.drop_after(Combat.DROP_ORIGIN)
 		return
 	combat.accept(shooter, seq, weapon, _clock)
-	# Every pellet's damage after its falloff, added up per player it struck.
+	# Every pellet's damage after its falloff, added up per player it struck; the rail's one
+	# line through every player on it.
 	var ends := PackedVector3Array()
 	var struck := {}
-	for pellet in def.pellet_directions(dir, _pellets_rng):
-		var ray := _raycast(shooter, origin, pellet, def)
-		ends.append(ray["end"])
-		if ray["hit"] != 0:
-			struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
+	if def.pierce:
+		var line := _rail_trace(shooter, origin, dir, def)
+		ends.append(line["end"])
+		for victim in line["hits"]:
+			struck[victim] = def.damage
+	else:
+		for pellet in def.pellet_directions(dir, _pellets_rng):
+			var ray := _raycast(shooter, origin, pellet, def)
+			ends.append(ray["end"])
+			if ray["hit"] != 0:
+				struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
 	var hits := PackedInt32Array()
 	var healths := PackedFloat32Array()
 	var killed := PackedInt32Array()
 	for victim in struck:
+		var before := combat.health_of(victim)
 		var outcome := combat.damage_player(victim, shooter, struck[victim])
 		if outcome.is_empty():
 			continue  # dead or protected: the pellets landed on nothing that counts
@@ -1513,6 +1533,8 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		healths.append(outcome["health"])
 		if outcome["killed"]:
 			killed.append(victim)
+		if not def.is_ult():
+			combat.add_meter(shooter, (before - outcome["health"]) / _ct.max_health, outcome["killed"])
 	# The death is told after the shot, so the mirror learns of it then: the avatar must
 	# play its derezz, not be hidden first by the health update.
 	_broadcast_shot(shooter, weapon, origin, ends, hits, healths)
@@ -1591,6 +1613,48 @@ func _raycast(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript)
 	return {"end": _arena.to_local(result["position"]), "hit": hit, "distance": flown}
 
 
+## The host's own trace of a rail shot (C17): one line from `origin` along `dir` up to the
+## rail's range that passes through every player on it (and every dummy) and stops at the
+## first piece of the level. {end, hits}: where it stopped, in arena space, and the players
+## it passed through, nearest first. The shooter's own body and every corpse are skipped.
+func _rail_trace(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> Dictionary:
+	var from: Vector3 = _arena.to_global(origin)
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var far := from + along * def.fire_range
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var exclude := _not_in_the_way(shooter)
+	var hits := PackedInt32Array()
+	var end := far
+	for i in WeaponDefScript.PIERCE_LAST + 1:
+		var query := PhysicsRayQueryParameters3D.create(from, far, def.hit_mask | PLAYER_LAYER_MASK)
+		query.hit_from_inside = true
+		query.exclude = exclude
+		var result: Dictionary = space.intersect_ray(query)
+		if result.is_empty():
+			break
+		var collider = result["collider"]
+		var id := 0
+		if collider == _player and shooter != 1 and combat.has_player(1):
+			id = 1
+		elif is_instance_valid(collider) and collider.has_meta(PLAYER_ID_META):
+			id = collider.get_meta(PLAYER_ID_META, 0)
+		var target: bool = id != 0 or (is_instance_valid(collider) and collider.has_method("hit"))
+		if not target:
+			end = result["position"]  # the level stops the rail
+			break
+		exclude.append(collider.get_rid())
+		if id != 0 and id != shooter and combat.has_player(id) and not hits.has(id):
+			hits.append(id)
+	return {"end": _arena.to_local(end), "hits": hits}
+
+
+## A player's fake in-game process id for its life `life` (C17, the kill feed's "SIGKILL
+## <pid> sent by <player>"): worked out from the slot and the life alone, the same on every
+## machine. Never read from the system, never a real process id.
+static func fake_pid(slot: int, life: int) -> int:
+	return 1000 + posmod(slot * 4099 + life * 977, 30000)
+
+
 func _broadcast_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
 	_apply_shot(shooter, weapon, origin, ends, hits, healths)
 	var connected := multiplayer.get_peers()
@@ -1617,9 +1681,14 @@ func _shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Arr
 
 
 func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
+	# This player's own ult meter, from the host's confirmed results of its other weapons.
+	var mine: bool = shooter == my_id and _weapons.has(weapon) and not _weapons[weapon].is_ult() and _player_ready()
 	for i in hits.size():
+		var before: float = health.get(hits[i], _ct.max_health)
 		health[hits[i]] = healths[i]
 		_show_avatar_state(hits[i])
+		if mine and hits[i] != my_id:
+			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health, false))
 	if shooter != my_id and _arena != null and is_instance_valid(_arena):
 		for end in ends:
 			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
@@ -1651,7 +1720,12 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 	health[victim] = 0.0
 	last_killer[victim] = killer
 	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
-	last_kill_word[victim] = _weapons[weapon].kill_word if _weapons.has(weapon) else ""
+	last_kill_word[victim] = _feed_word(victim, weapon)
+	if killer == my_id and killer != victim and _weapons.has(weapon) and _player_ready():
+		if _weapons[weapon].is_ult():
+			_player.rail_kill.emit(_player.took_head(victim))
+		else:
+			_player.add_meter(_player.meter_gain(0.0, true))  # the kill bonus
 	respawn_left[victim] = _ct.respawn_delay_s
 	if victim == my_id:
 		if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
@@ -1662,6 +1736,21 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 			avatar.die(dir)
 	player_died.emit(victim, killer)
 	combat_changed.emit()
+
+
+## The kill feed's word for `victim` killed by `weapon`: its kill word, and for the rail the
+## victim's fake process id after it ("SIGKILL 4107").
+func _feed_word(victim: int, weapon: String) -> String:
+	if not _weapons.has(weapon):
+		return ""
+	var def: WeaponDefScript = _weapons[weapon]
+	if not def.feed_pid:
+		return def.kill_word
+	return "%s %d" % [def.kill_word, fake_pid(players.get(victim, {}).get("slot", 0), lives.get(victim, 0))]
+
+
+func _player_ready() -> bool:
+	return _player != null and is_instance_valid(_player) and _player.has_method("add_meter")
 
 
 func _do_respawn(id: int) -> void:

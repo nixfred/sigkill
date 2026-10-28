@@ -16,6 +16,14 @@ extends CharacterBody3D
 ## Esc, or the window losing focus, releases it. The game never grabs the mouse on
 ## its own and never steals focus. Esc also asks the HUD for the menu (C16b).
 ##
+## The SIGKILL rail rifle (C17), slot 3: the ult. Its meter fills from what the other
+## weapons do (solo: damage and kills on this machine's dummies; in a match only the host's
+## confirmed results, which the session hands in), stays across swaps and empties when it
+## fires, and a death or a new round resets it. Fire with the meter full charges for the
+## rail's charge_s with a growing glow, then one ray pierces every target on the line up to
+## the first wall. A rail kill with the hit in the target's head zone emits rail_kill(true),
+## which the round HUD calls out as "kill -9".
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -53,6 +61,10 @@ signal jumped
 signal slid
 ## Emitted on Esc when nothing else took the key: the HUD opens the menu (C16b).
 signal menu_requested
+## Emitted for each target a rail shot of this player derezzes (C17): a dummy here at once,
+## another player once the host confirms the kill. `headshot` when the rail struck it in the
+## head zone.
+signal rail_kill(headshot: bool)
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -80,6 +92,9 @@ var assume_captured := false
 var alive := true
 ## The weapons held and their state (scripts/weapons/inventory.gd).
 var inventory: Inventory
+## Set by the session while a match is on (C17): the ult meter then fills only from the
+## host's confirmed results, never from this machine's own dummies.
+var match_meter := false
 
 var _t: Tuning
 var _w: WeaponDefScript  # the drawn weapon
@@ -113,6 +128,11 @@ var _bob_weight := 0.0
 var _fov_kick := 0.0
 var _crouching := false
 var _aiming := false
+# The rail's charge (C17): seconds left before it fires, the slot charging, and the players
+# its last shot struck in the head (id -> true), for the session's kill confirmations.
+var _charge_left := 0.0
+var _charge_slot := -1
+var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
 # What the settings say (C16b), read when they change.
@@ -497,6 +517,9 @@ func respawn_at(pos: Vector3) -> void:
 func set_alive(on: bool) -> void:
 	if on and not alive and inventory != null:
 		inventory.refill()
+	if not on and inventory != null:
+		inventory.reset_meter()  # a death empties the ult meter (C17)
+		_end_charge()
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -655,13 +678,20 @@ func _step_weapon(delta: float) -> void:
 	_camera.v_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
-	if _fire_pressed and alive:
-		var why := inventory.try_fire()
-		if why == "":
-			_fire()
-			_apply_recoil()
-		elif why == Inventory.BLOCK_EMPTY:
-			reload_started.emit(_w.id)  # fire on an empty magazine started a reload
+	if _charge_left > 0.0:
+		_step_charge(delta)
+	elif _fire_pressed and alive:
+		if _w.charge_s > 0.0:
+			if inventory.fire_block() == "":
+				_charge_left = _w.charge_s  # the shot goes off when the charge is done
+				_charge_slot = inventory.current
+		else:
+			var why := inventory.try_fire()
+			if why == "":
+				_fire()
+				_apply_recoil()
+			elif why == Inventory.BLOCK_EMPTY:
+				reload_started.emit(_w.id)  # fire on an empty magazine started a reload
 	# A weapon being drawn rises from below; one being reloaded tips over and back.
 	var drop := _a.swap_drop_m * (1.0 - inventory.swap_progress())
 	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, -drop, _w.viewmodel_kick_back * _viewmodel_kick)
@@ -669,16 +699,86 @@ func _step_weapon(delta: float) -> void:
 	_viewmodel.rotation.z = deg_to_rad(_a.reload_tilt_degrees) * sin(PI * inventory.reload_progress())
 
 
+## A charging rail: the glow grows, and when the charge is done the shot goes off along the
+## aim as it is then. Drawing another weapon, dying or the input being stopped (the menu)
+## lets the charge go with nothing spent.
+func _step_charge(delta: float) -> void:
+	if not alive or input_blocked or inventory.current != _charge_slot:
+		_end_charge()
+		return
+	_charge_left -= delta
+	_set_glow(1.0 + 3.0 * charge_progress())
+	if _charge_left > 0.0:
+		return
+	_end_charge()
+	if inventory.try_fire() == "":
+		_fire()
+		_apply_recoil()
+
+
+func _end_charge() -> void:
+	_charge_left = 0.0
+	_charge_slot = -1
+	_set_glow(1.0)
+
+
+func _set_glow(scale: float) -> void:
+	var glow := _viewmodel.material_override as StandardMaterial3D if _viewmodel != null else null
+	if glow != null:
+		glow.emission_energy_multiplier = _w.viewmodel_glow_energy * scale
+
+
+## How far the rail's charge has come, from 0 to 1; 0 when it is not charging.
+func charge_progress() -> float:
+	if _charge_left <= 0.0 or _w.charge_s <= 0.0:
+		return 0.0
+	return clampf(1.0 - _charge_left / _w.charge_s, 0.0, 1.0)
+
+
+func is_charging() -> bool:
+	return _charge_left > 0.0
+
+
+## The ult meter (C17): what a hit with another weapon earned, and back to empty.
+func add_meter(amount: float) -> void:
+	inventory.add_meter(amount)
+
+
+func reset_meter() -> void:
+	inventory.reset_meter()
+
+
+## What the loadout's ult gains for a hit taking `share` of a target's health; 0 with no ult.
+func meter_gain(share: float, killed: bool) -> float:
+	var slot := inventory.ult_slot()
+	return inventory.defs[slot].meter_gain(share, killed) if slot >= 0 else 0.0
+
+
+## True when the player's last rail shot struck player `id` in the head zone (C17).
+func took_head(id: int) -> bool:
+	return _rail_heads.get(id, false)
+
+
+## True when `point` is in this body's head zone: the top HEAD_ZONE_M of the capsule.
+func is_head_hit(point: Vector3) -> bool:
+	var shape := ($Shape as CollisionShape3D).shape as CapsuleShape3D
+	var top := global_position.y + (shape.height * 0.5 if shape != null else 0.9)
+	return point.y >= top - WeaponDefScript.HEAD_ZONE_M
+
+
 ## One shot of the drawn weapon: one ray for a single shot, one per pellet for SIGTERM, each
-## pellet's damage eased by its distance. Hits on this machine's own dummies land here; in
-## a match the host judges every shot at another player from the intent alone.
+## pellet's damage eased by its distance; the rail's one piercing ray. Hits on this
+## machine's own dummies land here (and, solo, fill the ult meter); in a match the host
+## judges every shot at another player from the intent alone.
 func _fire() -> void:
 	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
 	var hit_target := false
 	var fx_root := _fx_root()
-	for dir in _w.pellet_directions(forward, _pellet_rng):
+	if _w.pierce:
+		hit_target = _fire_rail(origin, forward, fx_root)
+	for dir in (PackedVector3Array() if _w.pierce else _w.pellet_directions(forward, _pellet_rng)):
 		var far_point := origin + dir * _w.fire_range
 		var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
 		var result := get_world_3d().direct_space_state.intersect_ray(query)
@@ -691,7 +791,10 @@ func _fire() -> void:
 			var landed := false
 			var collider = result["collider"]
 			if is_instance_valid(collider) and collider.has_method("hit"):
+				var before: float = collider.call("health") if collider.has_method("health") else 0.0
 				landed = collider.call("hit", _w.damage_at(origin.distance_to(end_point)), end_point, dir) == true
+				if landed:
+					_meter_from(collider, before)
 			hit_target = hit_target or landed
 			CannonFx.spawn_impact(fx_root, end_point, normal, landed, _w)
 		CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
@@ -705,6 +808,62 @@ func _fire() -> void:
 		_hit_sfx.play()
 	shot_fired.emit(hit_target)
 	fire_intent.emit(origin, forward, _w.id)
+
+
+## The rail's one ray, piercing: every target on the line up to fire_range takes the hit,
+## dummies and other players alike, and the first piece of the level stops it. Dummies it
+## derezzes count as rail kills here at once; for other players this machine only notes
+## which were struck in the head, for when the host's word of the kill arrives. True when a
+## dummy took a hit.
+func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
+	var space := get_world_3d().direct_space_state
+	var far_point := origin + dir * _w.fire_range
+	var end_point := far_point
+	var exclude: Array[RID] = [get_rid()]
+	var landed_any := false
+	_rail_heads = {}
+	for i in WeaponDefScript.PIERCE_LAST + 1:
+		var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
+		query.exclude = exclude
+		var result := space.intersect_ray(query)
+		if result.is_empty():
+			break
+		var collider = result["collider"]
+		var point: Vector3 = result["position"]
+		var normal: Vector3 = result["normal"] if not (result["normal"] as Vector3).is_zero_approx() else -dir
+		var dummy: bool = is_instance_valid(collider) and collider.has_method("hit")
+		var avatar: bool = is_instance_valid(collider) and collider.has_meta("player_id")
+		if not dummy and not avatar:
+			end_point = point  # the level: the rail stops here
+			CannonFx.spawn_impact(fx_root, point, normal, false, _w)
+			break
+		exclude.append(collider.get_rid())
+		var owner_node: Node = collider if dummy else collider.get_parent()
+		var head: bool = owner_node != null and owner_node.has_method("is_head_hit") and owner_node.call("is_head_hit", point)
+		if dummy:
+			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)), point, dir) == true
+			landed_any = landed_any or landed
+			if landed and collider.has_method("is_alive") and not collider.call("is_alive"):
+				rail_kill.emit(head)
+		else:
+			_rail_heads[int(collider.get_meta("player_id", 0))] = head
+		CannonFx.spawn_impact(fx_root, point, normal, true, _w)
+	CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
+	return landed_any
+
+
+## Solo, a hit on a dummy with a weapon other than the ult fills the meter: the share of the
+## dummy's health it took, and the kill bonus if it went down. In a match only the host's
+## results fill it.
+func _meter_from(dummy: Node, before: float) -> void:
+	if match_meter or _w.is_ult() or not dummy.has_method("health"):
+		return
+	var max_health = dummy.get("max_health")
+	if not (max_health is float) or max_health <= 0.0:
+		return
+	var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
+	var share: float = clampf(before - float(dummy.call("health")), 0.0, before) / float(max_health)
+	inventory.add_meter(meter_gain(share, killed))
 
 
 ## Puts the drawn weapon in view, with its muzzle and its sounds.

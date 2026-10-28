@@ -12,6 +12,13 @@ extends "res://scripts/weapon_tuning.gd"
 ## stands for, and nothing real is ever run, signalled or touched.
 ##
 ## The mod and skin slots are empty data for now: no unlocks, no progression (C33).
+##
+## The rail and the ult (C17, resources/sigkill_rail.tres): a weapon may charge before it
+## fires (charge_s), pierce every target on its line up to the level's geometry (pierce),
+## name its victim's fake in-game process id in the kill feed (feed_pid), and be an ult:
+## no magazine, no reserve, no reload, but a meter (ult_meter points) that damage and kills
+## with the other weapons fill, one full meter for one shot. Every default is off, so the
+## terminal cannon and SIGTERM are exactly as they were.
 
 const Palette = preload("res://scripts/palette.gd")
 
@@ -34,6 +41,14 @@ const RELOAD_FIRST_S := 0.1
 const RELOAD_LAST_S := 10.0
 const SLOT_ENTRY_LAST := 32
 const NEAR_PARALLEL := 0.98
+const CHARGE_LAST_S := 2.0
+const METER_FIRST := 0.5
+const METER_LAST := 20.0
+## A hit this close below a target's top counts as a headshot (C17), in metres: the top of
+## a dummy's prism or a player's capsule.
+const HEAD_ZONE_M := 0.35
+## The most targets one piercing shot passes through.
+const PIERCE_LAST := 16
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -83,6 +98,27 @@ const NEAR_PARALLEL := 0.98
 ## Loudness of the reload clack before the master volume, from 0 to 1.
 @export_range(0.0, 1.0) var reload_gain: float = 0.5
 
+@export_group("Rail")
+## Seconds the shot charges after fire is pressed, with a wind-up glow, before it goes off;
+## 0 fires at once.
+@export var charge_s: float = 0.0
+## True: the shot passes through every target on its line (dummies, players) and stops
+## only at the level's geometry, up to fire_range. Single shots only.
+@export var pierce: bool = false
+## True: the kill feed names the victim's fake in-game process id after the kill word,
+## "SIGKILL 4107 sent by Daemon-2" (PRD 5.3). Never a real process id.
+@export var feed_pid: bool = false
+
+@export_group("Ult")
+## Meter points one shot needs; 0 for an ordinary weapon. An ult has no magazine, reserve or
+## reload: one full meter is one shot, and the meter empties when it fires.
+@export var ult_meter: float = 0.0
+## Meter gained per target's worth of health dealt with the other weapons: a kill's damage
+## is 1.0, a quarter of a player's health 0.25.
+@export var ult_per_health: float = 0.0
+## Meter gained for each kill with the other weapons.
+@export var ult_per_kill: float = 0.0
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -131,6 +167,19 @@ func problems() -> PackedStringArray:
 		out.append("reload_click_hz must be above 0 Hz")
 	if not is_finite(reload_gain) or reload_gain < 0.0 or reload_gain > 1.0:
 		out.append("reload_gain must be between 0 and 1")
+	if not is_finite(charge_s) or charge_s < 0.0 or charge_s > CHARGE_LAST_S:
+		out.append("charge_s must be between 0 and %s" % CHARGE_LAST_S)
+	if pierce and fire_mode != FireMode.HITSCAN_SINGLE:
+		out.append("only a single shot pierces")
+	if not is_finite(ult_meter) or (ult_meter != 0.0 and (ult_meter < METER_FIRST or ult_meter > METER_LAST)):
+		out.append("ult_meter must be 0 or between %s and %s" % [METER_FIRST, METER_LAST])
+	if not is_finite(ult_per_health) or not is_finite(ult_per_kill) or ult_per_health < 0.0 or ult_per_kill < 0.0:
+		out.append("ult_per_health and ult_per_kill must be 0 or more")
+	if ult_meter > 0.0:
+		if has_magazine():
+			out.append("an ult has no magazine: magazine_size -1, reserve_ammo -1, reload_s 0")
+		if ult_per_health <= 0.0 and ult_per_kill <= 0.0:
+			out.append("an ult's meter must fill from something: ult_per_health or ult_per_kill above 0")
 	for pair in [["mod_slots", mod_slots], ["skin_slots", skin_slots]]:
 		for entry in pair[1]:
 			if not _is_line(entry, SLOT_ENTRY_LAST):
@@ -142,6 +191,19 @@ func problems() -> PackedStringArray:
 ## True when the weapon has a magazine to empty and reload.
 func has_magazine() -> bool:
 	return magazine_size != INFINITE
+
+
+## True for the ult: a meter instead of ammo.
+func is_ult() -> bool:
+	return ult_meter > 0.0
+
+
+## The meter this ult gains from a hit with another weapon that took `share` of a target's
+## health (1.0 for all of it), plus the kill bonus when it was a kill.
+func meter_gain(share: float, killed: bool) -> float:
+	if not is_ult() or not is_finite(share) or share < 0.0:
+		return 0.0
+	return ult_per_health * minf(share, 1.0) + (ult_per_kill if killed else 0.0)
 
 
 ## Rounds a reload moves from `reserve` into a magazine holding `mag`.

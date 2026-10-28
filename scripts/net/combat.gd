@@ -25,6 +25,13 @@ extends RefCounted
 ## counts back to the host's.
 ## A new life refills everything. Damage is worked out per pellet by the session from the
 ## weapon's falloff and applied here once per victim and shot.
+##
+## The ult (C17): the host owns every player's ult meter. What a player's other weapons do
+## to other players here fills it (add_meter, from the share of health taken and the kills,
+## by the ult's own numbers); a shot of the ult is believed only with the meter full and
+## empties it; a death and a new life empty it. A forged or early ult shot is dropped and
+## counted as "meter". Spawn protection stays full invulnerability: the rail, like every
+## other weapon, does nothing to a protected player.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -45,6 +52,9 @@ const DROP_WEAPON := "weapon"
 const DROP_SWAP := "swap"
 const DROP_RELOAD := "reload"
 const DROP_EMPTY := "empty"
+const DROP_METER := "meter"
+## Below a full meter by less than this still counts as full: float sums of shares.
+const METER_EPS := 0.0001
 
 var tuning: Tuning
 ## The weapons every player carries, id -> WeaponDef, the one each starts with (slot 1),
@@ -73,7 +83,29 @@ func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3)
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo()}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0}
+
+
+## The ult of the loadout (C17), or null when it has none.
+func ult_def() -> WeaponDefScript:
+	for id in weapons:
+		if weapons[id].is_ult():
+			return weapons[id]
+	return null
+
+
+## `id`'s ult meter as the host counts it.
+func meter_of(id: int) -> float:
+	return states[id]["meter"] if states.has(id) else 0.0
+
+
+## Adds to `id`'s ult meter what a hit with another weapon earned: `share` of a target's
+## health taken, a kill or not. Capped at full; nothing for a dead player or with no ult.
+func add_meter(id: int, share: float, killed: bool) -> void:
+	var ult := ult_def()
+	if ult == null or not states.has(id) or states[id]["dead"]:
+		return
+	states[id]["meter"] = minf(states[id]["meter"] + ult.meter_gain(share, killed), ult.ult_meter)
 
 
 ## The weapon `id` holds, as the host knows it.
@@ -195,6 +227,8 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_RATE)
 	if def.has_magazine() and a["mag"] + (def.reload_take(a["mag"], a["reserve"]) if s["reloading"] == weapon else 0) <= 0:
 		return _drop(DROP_EMPTY)
+	if def.is_ult() and s["meter"] < def.ult_meter - METER_EPS:
+		return _drop(DROP_METER)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
 	return ""
@@ -212,6 +246,8 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	var a: Dictionary = s["ammo"][weapon]
 	if weapons[weapon].has_magazine():
 		a["mag"] = maxi(a["mag"] - 1, 0)
+	if weapons[weapon].is_ult():
+		s["meter"] = 0.0  # one full meter, one shot
 	a["last_fire"] = now
 
 
@@ -285,6 +321,7 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 		s["dead"] = true
 		s["respawn_left"] = tuning.respawn_delay_s
 		s["deaths"] += 1
+		s["meter"] = 0.0  # a death empties the ult meter
 		if killer != victim:
 			states[killer]["kills"] += 1
 	return {"health": s["health"], "killed": killed}
@@ -309,6 +346,7 @@ func respawn(id: int) -> void:
 	s["ammo"] = _full_ammo()
 	s["reloading"] = ""
 	s["ready_at"] = -INF
+	s["meter"] = 0.0
 
 
 func _drop(reason: String) -> String:

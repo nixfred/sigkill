@@ -1,12 +1,13 @@
-[gd_resource type="Resource" script_class="ArsenalTuning" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="ArsenalTuning" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/arsenal_tuning.gd" id="1_arsenal"]
 [ext_resource type="Resource" path="res://resources/terminal_cannon.tres" id="2_cannon"]
 [ext_resource type="Resource" path="res://resources/sigterm.tres" id="3_sigterm"]
+[ext_resource type="Resource" path="res://resources/sigkill_rail.tres" id="4_rail"]
 
 [resource]
 script = ExtResource("1_arsenal")
-loadout = Array[Resource]([ExtResource("2_cannon"), ExtResource("3_sigterm")])
+loadout = Array[Resource]([ExtResource("2_cannon"), ExtResource("3_sigterm"), ExtResource("4_rail")])
 swap_s = 0.3
 swap_drop_m = 0.25
 reload_tilt_degrees = 25.0

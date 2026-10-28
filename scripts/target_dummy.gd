@@ -10,6 +10,7 @@ const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const DEFAULT_DEREZZ_PATH := "res://resources/derezz.tres"
+const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
 enum State { ALIVE, DEREZZING, RESPAWNING }
 
@@ -85,6 +86,12 @@ func threat_point() -> Vector3:
 
 func health() -> float:
 	return _health
+
+
+## True when `point` is in the dummy's head zone (C17): the top of its prism, WeaponDef's
+## HEAD_ZONE_M deep. A rail kill there is called out as "kill -9".
+func is_head_hit(point: Vector3) -> bool:
+	return point.y >= _body.global_position.y + _hex.height * 0.5 - WeaponDefScript.HEAD_ZONE_M
 
 
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,
