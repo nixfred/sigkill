@@ -1,7 +1,9 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README (A1): every weapon of the arsenal held in first
-## person, at rest and mid-shot (and mid-charge for one that charges), and one wider gameplay view:
-## the rail on a daemon. A tool, never part of the game.
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, or a2):
+## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
+## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
+## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
+## the pillars. A tool, never part of the game.
 ##
 ## It draws, so it never runs headless, and it never runs on a real desktop: run it from a clean
 ## copy on a private virtual display, sound off, with user data in a temporary folder, as
@@ -27,10 +29,23 @@ const MINE_PITCH := -24.0
 const WIDE_AT := Vector3(4.0, 0.95, 4.0)
 const WIDE_TARGET := "Arena/Targets/DummyC"
 const WIDE_FRAMES := 7
+## a2: where the player stands for each daemon's close view, and the daemon it looks at.
+const A2_CLOSE := [["rogue", Vector3(0.0, 0.95, -13.1), "DummyA"], ["zombie", Vector3(-17.5, 0.95, 6.9), "DummyB"], ["swarm", Vector3(-8.0, 0.95, 14.45), "DummyD"]]
+## a2: the view with several daemons in it (the swarm on its platform to the right, a zombie ahead):
+## where the player stands and the point it looks at.
+const A2_MIXED_AT := Vector3(-14.0, 0.95, 16.0)
+const A2_MIXED_LOOK := Vector3(-12.5, 1.2, 8.5)
+## a2: where the player stands for the lock on the zombie between the pillars.
+const A2_LOCK_AT := Vector3(8.0, 0.95, 4.2)
+## a2: frames after the killing shot for the mid-shatter still; frames of aiming for the lock.
+const A2_DEREZZ_FRAMES := 7
+const A2_LOCK_FRAMES := 75
+const DUMMY_MIDDLE := Vector3(0.0, 0.9, 0.0)
 
 var _main: Node
 var _player: Node
 var _shots := 0
+var _set := "a1"
 
 
 func _initialize() -> void:
@@ -42,6 +57,9 @@ func _run() -> void:
 		printerr("capture: headless draws nothing; run it on a private virtual display")
 		quit(2)
 		return
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--set="):
+			_set = arg.substr(6)
 	DirAccess.make_dir_recursive_absolute(OUT)
 	var link := Link.new()
 	link.settings_path = "user://capture-privacy.cfg"
@@ -54,6 +72,11 @@ func _run() -> void:
 	_player.assume_captured = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	await _frames(90)  # shaders compiled, the code rain running
+	if _set == "a2":
+		await _a2()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
 	var defs: Array = _player.inventory.defs
 	for slot in defs.size():
 		var def: Resource = defs[slot]
@@ -108,6 +131,43 @@ func _wide() -> void:
 	await physics_frame
 	await _frames(ceili(_player.inventory.defs[2].charge_s * 60.0) + WIDE_FRAMES)
 	await _save("a1-gameplay")
+
+
+## a2: each kind of daemon up close, several at once, a derezz mid-shatter, grep locked on one.
+func _a2() -> void:
+	for view in A2_CLOSE:
+		await _stand(view[1], _main.get_node("Arena/Targets/" + view[2]).global_position + DUMMY_MIDDLE)
+		await _save("a2-daemon-" + view[0])
+	await _stand(A2_MIXED_AT, _main.to_global(A2_MIXED_LOOK))
+	await _save("a2-mixed")
+	# The rogue daemon shot down from its close view, the shatter mid-flight.
+	var rogue: Node3D = _main.get_node("Arena/Targets/DummyA")
+	await _stand(A2_CLOSE[0][1], rogue.global_position + DUMMY_MIDDLE)
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
+	await _frames(A2_DEREZZ_FRAMES)
+	await _save("a2-derezz")
+	# grep aimed at the zombie between the pillars until it is marked.
+	var zombie: Node3D = _main.get_node("Arena/Targets/DummyC")
+	await _stand(A2_LOCK_AT, zombie.global_position + DUMMY_MIDDLE)
+	_player.select_slot(5)
+	await _frames(SETTLE_FRAMES)
+	for i in A2_LOCK_FRAMES:
+		_player.set("_aiming", true)
+		_player.drive_input(Vector2.ZERO)
+		await physics_frame
+	await _save("a2-gameplay")
+
+
+## Stands the player at `at` (arena space) looking at `target` (world space), settled.
+func _stand(at: Vector3, target: Vector3) -> void:
+	_player.respawn_at(_main.to_global(at))
+	await _frames(30)
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to := target - cam.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	await _frames(SETTLE_FRAMES)
 
 
 func _frames(n: int) -> void:

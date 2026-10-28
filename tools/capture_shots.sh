@@ -2,12 +2,13 @@
 # SIGKILL demo-data stills (A1): runs tools/capture_shots.gd on a private virtual display, never on
 # the desktop, and leaves the stills in <work-dir>/shots/.
 #
-#   tools/capture_shots.sh <project-copy> <work-dir>
+#   tools/capture_shots.sh <project-copy> <work-dir> [set]
 #
 # <project-copy> is a clean copy of the project (`git archive <commit>` into a fresh folder); a
 # copy with no import cache is imported headless first. <work-dir> must exist and be empty: the
 # display's socket, Godot's user data, settings and caches all live in it, so nothing of the
-# player's own is read or written. This script deletes nothing; remove <work-dir> yourself.
+# player's own is read or written. [set] picks the stills (tools/capture_shots.gd): a1, the default,
+# or a2. This script deletes nothing; remove <work-dir> yourself.
 #
 # Safety: Xvnc on display :97 (CAPTURE_DISPLAY to change it) with no TCP listener at all, its VNC
 # side on a unix socket only the owner can open, and a fresh random cookie in <work-dir> as its only
@@ -20,6 +21,8 @@ copy=$(cd "${1:-}" 2>/dev/null && pwd) || { echo "usage: $0 <project-copy> <work
 work=$(cd "${2:-}" 2>/dev/null && pwd) || { echo "usage: $0 <project-copy> <work-dir>" >&2; exit 2; }
 [ -f "$copy/project.godot" ] || { echo "no project.godot in $copy" >&2; exit 2; }
 [ -z "$(ls -A "$work")" ] || { echo "$work is not empty" >&2; exit 2; }
+shot_set="${3:-a1}"
+[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1 or a2" >&2; exit 2; }
 display="${CAPTURE_DISPLAY:-97}"
 # A lock file left by a crashed server names a PID that may be someone else's by now: refuse it.
 if [ -e "/tmp/.X11-unix/X$display" ] || [ -e "/tmp/.X$display-lock" ]; then
@@ -58,7 +61,7 @@ trap 'kill "$xvnc_pid" 2>/dev/null; for _ in $(seq 1 50); do kill -0 "$xvnc_pid"
 
 "${private[@]}" DISPLAY=":$display" nice -n 10 timeout 600 godot --display-driver x11 \
 	--rendering-driver vulkan --audio-driver Dummy --resolution 1920x1080 --position 0,0 \
-	--fixed-fps 60 --path "$copy" --script res://tools/capture_shots.gd -- --demo \
+	--fixed-fps 60 --path "$copy" --script res://tools/capture_shots.gd -- --demo "--set=$shot_set" \
 	> "$work/capture.log" 2>&1
 status=$?
 shots="$work/data/godot/app_userdata/SIGKILL/shots"
