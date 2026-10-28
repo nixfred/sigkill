@@ -519,16 +519,18 @@ func _match_checks() -> void:
 	_check("acceptance: a 127.0.0.1 match, a host and two joiners: the host runs a joiner's mine and judges its first run on everyone in reach: the host over it %.1f (one run survived), the other joiner %.1f, each its falloff; the owner, %.1f m off and inside the radius, takes nothing from its own mine" % [per[1], per[bid], at.distance_to(cmid)], joined and drawn and one_ok, "after one %s, per run %s" % [_rounded(after_one), _rounded(per)])
 	# The owner dies; its mine runs on, and the kill is still its own.
 	hs.combat.damage_player(cid, 1, 1000.0)
+	hs.combat.defer_respawn(cid, 8.0)  # held dead through every run still to come
 	hs.call("_broadcast_death", cid, 1, Vector3.UP, "terminal_cannon")
 	hs.call("_mirror_from_combat")
 	var host_dead := await _until(func(): return hs.dead.get(1, false) and cs.dead.get(1, false) and bs.dead.get(1, false), 8000)
-	var credited: bool = hs.combat.states[cid]["kills"] == kills + 1 and hs.combat.states[cid]["deaths"] == deaths + 1
+	var owner_still_dead: bool = not hs.combat.alive(cid)
+	var credited: bool = owner_still_dead and hs.combat.states[cid]["kills"] == kills + 1 and hs.combat.states[cid]["deaths"] == deaths + 1
 	var feed_ok := await _until(func(): return [host, client, other].all(func(side): return side["hud"].combat_hud().feed_text().has("cron sent by Daemon-2 to Daemon-1")), 4000)
-	_check("acceptance: mines keep running after the owner dies: the owner derezzed after the first run, the mine's later runs take the host from %.1f to its death, the kill credited to the owner, and every screen's feed reads \"cron sent by Daemon-2 to Daemon-1\"" % after_one[1], host_dead and credited and feed_ok, "kills %d -> %d" % [kills, hs.combat.states[cid]["kills"]])
+	_check("acceptance: mines keep running after the owner dies: the owner derezzed after the first run and held dead, the mine's later runs take the host from %.1f to its death while the owner is still down, the kill credited to the owner, and every screen's feed reads \"cron sent by Daemon-2 to Daemon-1\"" % after_one[1], host_dead and credited and feed_ok, "kills %d -> %d" % [kills, hs.combat.states[cid]["kills"]])
 	await _until(func(): return not hs.get("_mines").has(id1), 6000)
 	_check("acceptance: a joiner never schedules or damages: the owner's own copy of the mine only drew and judged nothing, running on the host's three words alone (runs left 2, 1, 0)", not c_decides and c_words == [2, 1, 0], str(c_words))
 	# Another player's shot removes a mine: the host judges it.
-	await _until(func(): return not hs.dead.get(1, false) and not hs.dead.get(cid, false), 10000)
+	await _until(func(): return not hs.dead.get(1, false) and not hs.dead.get(cid, false), 20000)
 	cp.select_slot(SLOT)
 	_put_player(client, Vector3(-6.0, STAND_Y, LINE_Z), Vector3(1.0, 0.0, 0.0))
 	_put_player(other, Vector3(-6.0, STAND_Y, LINE_Z + 6.0), Vector3(0.0, 0.0, -1.0))
@@ -559,9 +561,18 @@ func _match_checks() -> void:
 	cp.get("inventory").mags[SLOT] = 3
 	var id3 := await _host_place(hs, cp)
 	var seen_b := await _until(func(): return bs.get("_mines").has(id3), 4000)
+	var hmine3 = hs.get("_mines").get(id3)
+	var bmine3 = bs.get("_mines").get(id3)
 	cs.leave()
-	var left_gone := await _until(func(): return not hs.get("_mines").has(id3) and not bs.get("_mines").has(id3), 6000)
-	_check("acceptance: mines are removed when their owner leaves: the joiner's mine (seen by the other joiner) goes from the host's and the other joiner's screens", seen_b and left_gone)
+	await _until(func(): return not hs.players.has(cid), 4000)
+	await physics_frame
+	# Read at once, before its job could end on its own: the reason is the owner's leaving.
+	var host_why: String = hmine3.why if is_instance_valid(hmine3) else "freed"
+	var b_why := [""]
+	await _until(func():
+		b_why[0] = bmine3.why if is_instance_valid(bmine3) else "freed"
+		return b_why[0] != "", 4000)
+	_check("acceptance: mines are removed when their owner leaves: the joiner's mine (seen by the other joiner) ends on the host the moment it drops the player, and on the other joiner's screen on the host's word, \"gone\" its reason on both", seen_b and host_why == CronMine.GONE and b_why[0] == CronMine.GONE, "%s %s" % [host_why, b_why[0]])
 	_drop(host)
 	_drop(client)
 	_drop(other)
