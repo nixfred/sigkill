@@ -182,8 +182,8 @@ static func checked(section: String, key: String, v: Variant) -> Variant:
 		TYPE_FLOAT:
 			if not (v is float or v is int) or not is_finite(float(v)):
 				return null
-			var range: Array = spec[2]
-			return clampf(snappedf(float(v), STEP), range[0], range[1])
+			var bounds: Array = spec[2]
+			return clampf(snappedf(float(v), STEP), bounds[0], bounds[1])
 		TYPE_INT:
 			if not (v is int):
 				return null

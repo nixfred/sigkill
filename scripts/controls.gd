@@ -5,8 +5,8 @@ extends RefCounted
 ## Physical keycodes are used, so WASD stays put on any keyboard layout.
 ## Rules: no Ctrl/Alt/Super chords anywhere (those belong to the desktop and to
 ## Fred's dictation tool). Esc frees the mouse and opens the menu (C16b). C slides and X
-## crouches, so crouch-style keys never need a modifier. T opens the ask box to the player's AI and O turns the AI on
-## or off (C11 guide HUD). B turns the roast announcer on or off (C12 rounds). M opens
+## crouches, so crouch-style keys never need a modifier. T opens the ask box to the
+## player's AI and O turns the AI on or off (C11 guide HUD). B turns the roast announcer on or off (C12 rounds). M opens
 ## the multiplayer panel (C13), whose own keys count only while it is open. Weapons (C16):
 ## 1 to 9 pick a slot, the mouse wheel cycles, Q swaps back to the last weapon, and E
 ## reloads, because R already resets the arena. Settings (C16b): Esc opens the menu, X

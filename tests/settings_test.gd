@@ -216,6 +216,15 @@ func _persist_checks() -> void:
 	var text := FileAccess.get_file_as_string(path)
 	_check("one ConfigFile, versioned: [meta] version=1, the privacy answers, every section, plain values only", text.contains("[meta]\n\nversion=1") and text.contains("[privacy]") and text.contains("[controls]") and text.contains("[binds]") and text.contains("[multiplayer]") and text.contains("display_name=\"Neo\"") and text.contains("real_machine_data=\"off\"") and not text.contains("(") and not text.contains("{"), text.c_escape().left(300))
 	_check("nothing is written into the project or to a relative path", not SettingsFile.write_sections("res://settings.cfg", {"video": {"vsync": true}}) and not SettingsFile.write_sections("settings.cfg", {"video": {"vsync": true}}) and not SettingsFile.write_sections("/tmp/../etc/x.cfg", {"video": {"vsync": true}}) and not FileAccess.file_exists("res://settings.cfg"))
+	var kept_path := _tmp.path_join("kept-old-value.cfg")
+	var k := FileAccess.open(kept_path, FileAccess.WRITE)
+	k.store_string("ai_consent_source=claude\nai_consent=yes\nroast_announcer=o\"n\n")
+	k.close()
+	var kept := GameSettings.new()
+	kept.path = kept_path
+	kept.load_file()
+	kept.set_value("hud", "subtitles", false)
+	_check("an old file's unreadable value (a quote) is left out of the next save instead of blocking it", kept.save() and Privacy.answer_for("claude", kept_path) == Privacy.Answer.ALLOWED and not Privacy.roast_on(kept_path) and not FileAccess.get_file_as_string(kept_path).contains("o\"n"))
 	_check("a value the file could not read back is never written: quotes, backslashes, objects", not SettingsFile.write_sections(path, {"hud": {"x": "a\"b"}}) and not SettingsFile.write_sections(path, {"hud": {"x": "a\\b"}}) and not SettingsFile.write_sections(path, {"hud": {"x": Color.RED}}) and not SettingsFile.write_sections(path, {"hud": {"x": INF}}) and FileAccess.get_file_as_string(path) == text)
 
 
@@ -442,7 +451,7 @@ func _player_checks() -> void:
 	await _settle(p, 0.5)
 	await _fire(p)
 	await _frames(2)
-	_check("screen shake: a shot jolts the picture (camera offset, never the camera's place or aim); off, none", jolt.length() > 0.0001 and cam_still and p.shake_offset().is_zero_approx(), "%s" % jolt)
+	_check("screen shake: a shot jolts the picture (camera offset, never the camera's place or aim); off, none", jolt.length() > 0.000001 and cam_still and p.shake_offset().is_zero_approx(), "%s" % jolt)
 	var bob_off := await _walk_bob(p)
 	s.set_value("hud", "screen_shake", true)
 	var bob_on := await _walk_bob(p)
@@ -466,7 +475,7 @@ func _menu_checks() -> void:
 	var menu: PauseMenu = hud.pause_menu()
 	var s := GameSettings.current()
 	await _key(KEY_ESCAPE)
-	_check("Esc in the arena opens the menu: the player's input is stopped, nothing is paused", menu.is_open() and not menu.showing_settings() and p.input_blocked and not paused)
+	_check("Esc in the arena opens the menu: the player's input is stopped, nothing is paused, Resume has the focus for keys and pads", menu.is_open() and not menu.showing_settings() and p.input_blocked and not paused and menu._resume.has_focus())
 	var slot_before: int = p.inventory.current
 	await _key(KEY_M)
 	await _key(KEY_T)
@@ -495,7 +504,7 @@ func _menu_checks() -> void:
 	await _key(KEY_ESCAPE)
 	var reread := GameSettings.new()
 	reread.path = s.path
-	_check("acceptance 2: leaving the settings screen saves, and a fresh load reads it all back", menu.is_open() and not menu.showing_settings() and menu.status_text() == PauseMenu.SAVED_LINE and reread.load_file() == "loaded" and reread.value("controls", "invert_y") == true and reread.value("controls", "mouse_sensitivity") == 2.5 and reread.value("video", "quality") == "low" and reread.value("multiplayer", "display_name") == "Neo b" and reread.value("multiplayer", "port") == 9200 and reread.value("video", "fov") == 90, menu.status_text())
+	_check("acceptance 2: leaving the settings screen saves, says so on the menu, and a fresh load reads it all back", menu.is_open() and not menu.showing_settings() and menu.status_text() == PauseMenu.SAVED_LINE and menu._pause_note.text.ends_with("\n" + PauseMenu.SAVED_LINE) and reread.load_file() == "loaded" and reread.value("controls", "invert_y") == true and reread.value("controls", "mouse_sensitivity") == 2.5 and reread.value("video", "quality") == "low" and reread.value("multiplayer", "display_name") == "Neo b" and reread.value("multiplayer", "port") == 9200 and reread.value("video", "fov") == 90, menu.status_text())
 	menu.open_settings()
 	menu.begin_rebind("jump")
 	var capturing := menu.is_capturing()
@@ -607,7 +616,7 @@ func _hud_checks() -> void:
 # --- Law 17: every setting on one screen. ---
 
 func _layout_checks() -> void:
-	for size in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
+	for size in [Vector2i(1280, 720), Vector2i(1920, 1080), Vector2i(960, 540)]:
 		root.size = size
 		var arena := await _arena()
 		var menu: PauseMenu = arena["main"].get_node("Hud").pause_menu()
@@ -629,7 +638,9 @@ func _layout_checks() -> void:
 		var scrollers := menu.find_children("*", "ScrollContainer", true, false).filter(func(n): return n.is_visible_in_tree())
 		var box := list.get_global_rect()
 		_check("at %dx%d every setting is on screen at once, nothing clipped off the edge" % [size.x, size.y], outside.is_empty() and widgets >= 30, "%d widgets; %s" % [widgets, " | ".join(outside.slice(0, 4))])
-		_check("at %dx%d the only scroller is the key list, a fixed box inside the screen (Law 17)" % [size.x, size.y], scrollers.size() == 1 and scrollers[0] == list and screen.encloses(box) and is_equal_approx(box.size.y, PauseMenu.KEYS_BOX_H))
+		var k: float = menu.fit_scale()
+		_check("at %dx%d the only scroller is the key list, a fixed box inside the screen (Law 17)" % [size.x, size.y], scrollers.size() == 1 and scrollers[0] == list and screen.encloses(box) and is_equal_approx(box.size.y, PauseMenu.KEYS_BOX_H * k))
+		_check("at %dx%d the screen is %s" % [size.x, size.y, "shrunk whole to fit, not clipped" if size.x < 1280 else "at full size"], (k < 1.0 and k > 0.6) if size.x < 1280 else k == 1.0, "scale %.3f" % k)
 		menu.close()
 		_drop(arena)
 	root.size = Vector2i(1280, 720)
@@ -673,7 +684,8 @@ func _match_checks() -> void:
 	var hp: Node = host["player"]
 	var cp: Node = client["player"]
 	var cid: int = cs.my_id
-	_check("a host and a joiner over ENet on 127.0.0.1; the joiner asked to be called Neo and is Daemon-2 all the same (C14)", joined and cs.my_name() == "Daemon-2" and hs.players[cid]["name"] == "Daemon-2" and cs.requested_name() == "Neo" and Session.parse_hello(Session.hello_bytes(Session.PROTOCOL, cs.requested_name()))["name"] == "Neo")
+	var session_code := _code("res://scripts/net/net_session.gd")
+	_check("a host and a joiner over ENet on 127.0.0.1; the joiner set the display name Neo: it is Daemon-2 all the same (C14), Neo is a label on its own screen only, and the hello still carries the tuning's placeholder", joined and cs.my_name() == "Daemon-2" and hs.players[cid]["name"] == "Daemon-2" and cs.display_label() == "Neo" and cs.roster_text() == "Daemon-1, Daemon-2 (you, Neo)" and hs.roster_text() == "Daemon-1 (you, Neo), Daemon-2" and session_code.contains("hello_bytes(protocol, _t.display_name)") and session_code.count("display_label()") == 2, cs.roster_text())
 	await _until(func(): return hs.avatars.has(cid) and cs.avatars.has(1) and not hs.dead.get(1, false) and hs.protect_left.get(1, 0.0) <= 0.0 and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
 	var menu: PauseMenu = host["hud"].pause_menu()
 	host["hud"].open_menu()

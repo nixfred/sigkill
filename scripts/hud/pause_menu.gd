@@ -47,6 +47,8 @@ const KEYS_BOX_H := 236
 const COLUMN_W := LABEL_W + CONTROL_W + VALUE_W + 8
 const MARGIN := 14
 const GAP := 16
+## Space kept clear around a panel shrunk to fit a small window.
+const EDGE := 8.0
 
 ## The player whose input the menu stops, and whose camera numbers it shows.
 var player: Node = null
@@ -71,8 +73,10 @@ var _status_text := ""
 var _rows := {}
 var _keys := {}
 
+var _center: CenterContainer
 var _pause: PanelContainer
 var _sheet: PanelContainer
+var _resume: Button
 var _pause_note: Label
 var _sheet_note: Label
 var _status: Label
@@ -97,6 +101,7 @@ func _ready() -> void:
 	theme_here.default_font_size = FONT
 	theme = theme_here
 	_build()
+	get_viewport().size_changed.connect(_fit)
 	visible = false
 
 
@@ -122,6 +127,7 @@ func open() -> void:
 	if _open:
 		return
 	_open = true
+	_status_text = ""
 	_was_captured = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or (player != null and is_instance_valid(player) and player.get("assume_captured") == true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_block_player(true)
@@ -129,6 +135,7 @@ func open() -> void:
 		net_hud.close()
 	_show_pause()
 	visible = true
+	_fit()
 
 
 ## The menu down: settings saved if they changed, the player's input back, the mouse
@@ -154,6 +161,29 @@ func open_settings() -> void:
 	_sheet.visible = true
 	_status_text = ""
 	_refresh()
+	_fit()
+
+
+## A window smaller than the panel on show (960x540, say) shrinks it to fit, whole and
+## centred: never a page scroll, never a clipped row. The centring box is what scales (a
+## container resets its children's scale), sized so that, scaled, it covers the window.
+func _fit() -> void:
+	if _center == null:
+		return
+	var screen := get_viewport_rect().size
+	var panel: PanelContainer = _sheet if _sheet.visible else _pause
+	var need: Vector2 = panel.get_combined_minimum_size()
+	var k := 1.0
+	if need.x > 0.0 and need.y > 0.0:
+		k = clampf(minf((screen.x - 2.0 * EDGE) / need.x, (screen.y - 2.0 * EDGE) / need.y), 0.1, 1.0)
+	_center.scale = Vector2(k, k)
+	_center.position = Vector2.ZERO
+	_center.size = screen / k
+
+
+## How much the panel on show is shrunk to fit the window: 1 at 1280x720 and up.
+func fit_scale() -> float:
+	return _center.scale.x
 
 
 ## Starts listening for the next key or mouse button for `action`.
@@ -210,7 +240,11 @@ func _show_pause() -> void:
 	_save_if_changed()
 	_sheet.visible = false
 	_pause.visible = true
-	_pause_note.text = RUNNING_ONLINE if _online() else RUNNING_SOLO
+	# The save that leaving the settings just made, said where it can be seen.
+	var saved := _status_text == SAVED_LINE or _status_text == NOT_SAVED_LINE
+	_pause_note.text = (RUNNING_ONLINE if _online() else RUNNING_SOLO) + ("\n" + _status_text if saved else "")
+	_resume.grab_focus()
+	_fit()
 
 
 func _save_if_changed() -> void:
@@ -399,7 +433,7 @@ func _build() -> void:
 	var center := CenterContainer.new()
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_center = center
 	_pause = _panel(center)
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
@@ -407,6 +441,8 @@ func _build() -> void:
 	for pair in [["Resume", close], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
+		if _resume == null:
+			_resume = button
 	_sheet = _panel(center)
 	var sheet := _vbox(_sheet, 6)
 	var head := HBoxContainer.new()
@@ -464,7 +500,7 @@ func _build_controls(col: VBoxContainer) -> void:
 		clash.mouse_filter = Control.MOUSE_FILTER_PASS
 		clash.custom_minimum_size.x = COLUMN_W - KEY_NAME_W - KEY_BUTTON_W - 12
 		_keys[pair[0]] = {"button": button, "clash": clash}
-	_label(col, "Esc menu   1-9 weapons   wheel cycles   arrows move   right stick looks", FONT - 2, Palette.TEAL)
+	_label(col, "Esc menu   1-9 weapons   wheel cycles\narrows move   right stick looks", FONT - 2, Palette.TEAL)
 
 
 func _build_video(col: VBoxContainer) -> void:

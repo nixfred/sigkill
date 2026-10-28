@@ -196,8 +196,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if not _captured():
-		# Click to engage. That click is consumed so it never fires the cannon.
-		if event.is_action_pressed("fire"):
+		# Click to engage, or press fire wherever the settings put it (C16b). That press is
+		# consumed so it never fires the cannon.
+		var click := event is InputEventMouseButton and event.is_pressed() and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+		if click or event.is_action_pressed("fire"):
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()
 		return
@@ -257,7 +259,8 @@ func _look_scale() -> float:
 func _physics_process(delta: float) -> void:
 	if not _scripted_input:
 		_read_player_input()
-	if not input_blocked and alive:
+	# The right stick looks while the player is engaged, as the mouse does.
+	if not input_blocked and alive and _captured():
 		var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 		if not stick.is_zero_approx():
 			look_with_stick(stick, delta)

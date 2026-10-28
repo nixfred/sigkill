@@ -61,11 +61,19 @@ static func read(path: String = DEFAULT_PATH) -> Dictionary:
 
 
 ## Replaces the given sections (each {key: value}, values bool, int, float or a plain
-## string) and keeps every other section the file holds. False, and nothing written, for a
-## path the game does not keep settings in, a value it could not read back, or a failed write.
+## string) and keeps every other section the file holds; a kept value the file could not
+## read back (a hand-edited old file's) is left out rather than block the save. False, and
+## nothing written, for a path the game does not keep settings in, a new value it could not
+## read back, or a failed write.
 static func write_sections(path: String, sections: Dictionary) -> bool:
 	if not usable_path(path):
 		return false
+	for section in sections:
+		if not _name_ok(section) or not (sections[section] is Dictionary):
+			return false
+		for key in sections[section]:
+			if not _name_ok(key) or not value_ok(sections[section][key]):
+				return false
 	var doc := read(path)
 	doc.erase(META)
 	for section in sections:
@@ -74,12 +82,11 @@ static func write_sections(path: String, sections: Dictionary) -> bool:
 	config.set_value(META, "version", VERSION)
 	for section in doc:
 		if not _name_ok(section):
-			return false
+			continue
 		for key in doc[section]:
 			var value = doc[section][key]
-			if not _name_ok(key) or not value_ok(value):
-				return false
-			config.set_value(section, key, value)
+			if _name_ok(key) and value_ok(value):
+				config.set_value(section, key, value)
 	var dir := ProjectSettings.globalize_path(path.get_base_dir())
 	if not DirAccess.dir_exists_absolute(dir) and DirAccess.make_dir_recursive_absolute(dir) != OK:
 		return false

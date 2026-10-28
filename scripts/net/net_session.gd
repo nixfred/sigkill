@@ -444,7 +444,7 @@ func host(port: int = -1) -> bool:
 	_enet = enet
 	multiplayer.multiplayer_peer = _enet
 	my_id = 1
-	players = {1: {"slot": 1, "name": assigned_name(requested_name(), 1)}}
+	players = {1: {"slot": 1, "name": assigned_name(_t.display_name, 1)}}
 	_seq = 0
 	fire_seq = 0
 	_clock = 0.0
@@ -587,11 +587,12 @@ func default_port() -> int:
 	return chosen if chosen != 0 else tuning_in_use().port
 
 
-## The name this player asks for (C16b): the settings' display name, or the tuning's. Read
-## by the host and never used: every player is Daemon-<slot> there (assigned_name).
-func requested_name() -> String:
+## The display name from the settings (C16b), or "": a label on this player's own screen
+## only. It never goes over the wire (the hello still carries the tuning's placeholder),
+## and in a match every player is Daemon-<slot> (assigned_name, C14).
+func display_label() -> String:
 	var chosen: String = GameSettings.current().value("multiplayer", "display_name")
-	return chosen if Tuning.name_ok(chosen) else tuning_in_use().display_name
+	return chosen if Tuning.name_ok(chosen) else ""
 
 
 ## The net stats overlay's numbers (C16b): the worst round trip in milliseconds and packet
@@ -619,7 +620,8 @@ func my_name() -> String:
 	return players.get(my_id, {}).get("name", "")
 
 
-## The roster in slot order, "name" with "(you)" after this player's.
+## The roster in slot order, "name" with "(you)" after this player's, "(you, <display
+## name>)" once the player set one in the settings (C16b): a label on this screen only.
 func roster_text() -> String:
 	var slots := []
 	for id in players:
@@ -628,7 +630,8 @@ func roster_text() -> String:
 	var parts := PackedStringArray()
 	for pair in slots:
 		var id: int = pair[1]
-		parts.append(players[id]["name"] + (" (you)" if id == my_id else ""))
+		var label := display_label()
+		parts.append(players[id]["name"] + ((" (you, %s)" % label if label != "" else " (you)") if id == my_id else ""))
 	return ", ".join(parts)
 
 
@@ -909,7 +912,7 @@ func _clear_players() -> void:
 
 func _on_authenticating(id: int) -> void:
 	if state == State.CONNECTING and id == 1:
-		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, requested_name()))
+		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, _t.display_name))
 
 
 func _on_auth(id: int, data: PackedByteArray) -> void:
