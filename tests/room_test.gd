@@ -240,7 +240,8 @@ func _tuning_checks() -> void:
 	bad.register_attempts = 0
 	var issues: PackedStringArray = bad.problems()
 	_check("bad tuning is refused and the shipped one used: a plain-http URL, 5-second codes, 100 ms requests, no draws", issues.size() == 4 and Session.usable_room_tuning(bad) == shipped, ", ".join(issues))
-	_check("relay URLs: empty or https only, no spaces or control characters", RoomTuningScript.url_ok("") and RoomTuningScript.url_ok("https://relay.example/v1") and not RoomTuningScript.url_ok("https://") and not RoomTuningScript.url_ok("https://relay .example") and not RoomTuningScript.url_ok("ftp://relay.example") and not RoomTuningScript.url_ok("https://relay.example/" + char(0x07)))
+	# C16c: the relay is a UDP service, so its URL is udp://host[:port] (was https only in C15).
+	_check("relay URLs: empty or udp://host[:port] only, no path, spaces or control characters", RoomTuningScript.url_ok("") and RoomTuningScript.url_ok("udp://relay.example") and RoomTuningScript.url_ok("udp://relay.example:9010") and RoomTuningScript.url_ok("udp://127.0.0.1:9010") and not RoomTuningScript.url_ok("https://relay.example/v1") and not RoomTuningScript.url_ok("udp://") and not RoomTuningScript.url_ok("udp://relay .example") and not RoomTuningScript.url_ok("ftp://relay.example") and not RoomTuningScript.url_ok("udp://relay.example/v1") and not RoomTuningScript.url_ok("udp://relay.example:0") and not RoomTuningScript.url_ok("udp://relay.example:" + char(0x07)))
 
 
 func _source_checks() -> void:
@@ -257,12 +258,13 @@ func _source_checks() -> void:
 	_check("a code is drawn from the engine's cryptographic random bytes and nothing else", gen.contains("Crypto.new()") and gen.contains("generate_random_bytes(") and not gen.contains("name") and not gen.contains("address"))
 	var session := _code("res://scripts/net/net_session.gd")
 	var factory := _body(session, "rendezvous_for")
-	_check("the game's only rendezvous is NullRendezvous: rendezvous_for makes nothing else, whatever the tuning says", factory.contains("return NullRendezvous.new()") and factory.count("return") == 1 and not session.contains("Fake") and not session.contains("fake_rendezvous"))
+	# C16c: a relay URL the player sets now gets the real UDP client; empty stays NullRendezvous.
+	_check("rendezvous_for makes NullRendezvous with no relay URL and a UdpRendezvous only for one, nothing else", factory.contains("if url == \"\":\n\t\treturn NullRendezvous.new()") and factory.contains("return UdpRendezvous.new(url)") and factory.count("return") == 2 and not session.contains("Fake") and not session.contains("fake_rendezvous"))
 	_check("the session's sockets are still exactly C13's: two ENet peers and the two port probes", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 2 and session.count("create_client(") == 1 and session.count("create_server(") == 1)
 	var to_rv := PackedStringArray()
 	for call in ["_rv.register(", "_rv.resolve(", "_rv.close("]:
 		to_rv.append(str(session.count(call)))
-	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each; close(code, protocol, port) wherever a code is released: leaving, a fresh code, and an unanswered, timed-out, failed or zero-time registration", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and session.count("_rv.close(_room_wanted, protocol, _room_port)") == 4 and Array(to_rv) == ["1", "1", "6"], ", ".join(to_rv))
+	_check("what goes to a rendezvous: register(code, protocol, port) and resolve(code, protocol) in one place each; close(code, protocol, port) wherever a code is released: leaving, a fresh code, and an unanswered, timed-out, failed or zero-time registration, or a relay answer without its ports (C16c)", session.contains("_rv.register(code, protocol, _room_port)") and session.contains("_rv.resolve(code, protocol)") and session.count("_rv.close(room_code, protocol, _room_port)") == 2 and session.count("_rv.close(_room_wanted, protocol, _room_port)") == 5 and Array(to_rv) == ["1", "1", "7"], ", ".join(to_rv))
 	var keys := FileAccess.get_file_as_string("res://scripts/controls.gd")
 	var users := PackedStringArray()
 	for action in InputMap.get_actions():
@@ -380,7 +382,7 @@ func _null_checks() -> void:
 	var with_url := RoomTuningScript.new()
 	with_url.relay_url = "https://relay.example/v1"
 	var from_url = Session.rendezvous_for(with_url)
-	_check("a relay URL in the tuning still gives NullRendezvous: no network client is built yet", from_url.get_script() == NullRendezvous and not from_url.is_live())
+	_check("a URL that is not a relay URL (https) gives NullRendezvous: no network client", from_url.get_script() == NullRendezvous and not from_url.is_live())
 	s.join_room("ABC23Q")
 	var typo: String = s.error
 	s.join_room("ABC23P")

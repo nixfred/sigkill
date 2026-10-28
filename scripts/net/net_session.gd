@@ -45,8 +45,18 @@ extends Node
 ## a code from scripts/net/room_code.gd, registers it with its game port and shows it; a
 ## joiner who types a code or a sigkill://join/ link has it checked here first (a typo never
 ## reaches the network), then resolved to an address and port, then joined by the C13 path.
-## The game's only rendezvous today is NullRendezvous, never live: a code gets "Online rooms
-## aren't live yet. Use LAN join (address)." and nothing is sent anywhere.
+## With no relay set (the default) the rendezvous is NullRendezvous, never live: a code gets
+## "Online rooms aren't live yet. Use LAN join (address)." and nothing is sent anywhere.
+##
+## A relay (C16c, relay/relay_server.gd, docs/RELAY.md) is used only when the player sets
+## its URL in the settings (or the room tuning names one): then the rendezvous is a
+## UdpRendezvous to it. A host's registration gets the room's host token and one relay port
+## per joiner slot; the host sends each a small probe from its own ENet socket every few
+## seconds (socket_send, no other socket), so the relay knows where to forward and the NAT
+## lets it in. A joiner's resolution gets the room's join port on the relay and the join
+## token; it connects there with the C13 path and probes from its ENet socket while it
+## connects. Every packet of the match then goes through the relay, and a room code only
+## ever leads to the relay the player set, never to an address the relay names.
 ##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
@@ -58,6 +68,13 @@ const RemotePlayer = preload("res://scripts/net/remote_player.gd")
 const Combat = preload("res://scripts/net/combat.gd")
 const RoomCode = preload("res://scripts/net/room_code.gd")
 const NullRendezvous = preload("res://scripts/net/null_rendezvous.gd")
+const UdpRendezvous = preload("res://scripts/net/udp_rendezvous.gd")
+const RelayWire = preload("res://scripts/net/relay_wire.gd")
+## A host probes its relay slot ports this often, which keeps the relay's path and the NAT's
+## mapping open while it waits for players.
+const RELAY_PROBE_S := 5.0
+## A joiner probes the room's join port this often while it connects.
+const JOIN_PROBE_S := 0.25
 const RoomTuningScript = preload("res://scripts/net/room_tuning.gd")
 const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -227,6 +244,14 @@ var _room_wanted := ""
 var _room_attempts := 0
 var _room_port := 0
 var _room_left_ms := 0.0
+## The relay URL the rendezvous in use was made for.
+var _rv_url := ""
+## Host through a relay: {ip, ports, token} for the room's slot ports, and the next probe.
+var _relay_host := {}
+var _relay_probe_left := 0.0
+## Joiner through a relay: {ip, port, token} for the room's join port, and the next probe.
+var _relay_join := {}
+var _join_probe_left := 0.0
 var _launch_checked := false
 ## A --join taken before this node was ready (the arena makes the session a frame late):
 ## the parsed result, applied in _ready.
@@ -314,6 +339,8 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_shut_peer()
+	if _rv != null and _rv.has_method("shut"):
+		_rv.shut()
 
 
 ## The tunings and the rendezvous in use. Made on first use, so a screen that looks at a
@@ -338,15 +365,40 @@ func room_tuning_in_use() -> RoomTuningScript:
 
 func rendezvous_in_use() -> RefCounted:
 	if _rv == null:
+		_rv_url = relay_url_for(room_tuning_in_use())
 		_rv = rendezvous if rendezvous != null else rendezvous_for(room_tuning_in_use())
 	return _rv
 
 
-## The rendezvous a RoomTuning gives: NullRendezvous for an empty relay_url, and, because no
-## network rendezvous client is built yet (docs/RELAY.md: hosting waits on Fred), for any
-## other value too. Nothing here ever opens a connection.
-static func rendezvous_for(_tuning: Resource) -> RefCounted:
-	return NullRendezvous.new()
+## The rendezvous again when the relay URL changed since it was made, if nothing is in
+## flight: a relay set or cleared in the settings counts from the next host or join.
+func _refresh_rendezvous() -> void:
+	if rendezvous != null or _rv == null or _room_request != "" or relay_url_for(room_tuning_in_use()) == _rv_url:
+		return
+	if _rv.has_method("shut"):
+		_rv.shut()
+	_rv = null
+	rendezvous_in_use()
+
+
+## The rendezvous for the relay URL in use: NullRendezvous when there is none, the default,
+## which never opens a socket or sends anything; a UdpRendezvous to the relay the player set
+## (C16c). Making one sends nothing either: its socket opens on its first request.
+static func rendezvous_for(tuning: Resource) -> RefCounted:
+	var url := relay_url_for(tuning)
+	if url == "":
+		return NullRendezvous.new()
+	return UdpRendezvous.new(url)
+
+
+## The relay URL in use: the player's, from the settings' Multiplayer section, or the room
+## tuning's; "" (no relay, no network call) when neither names a valid one.
+static func relay_url_for(tuning: Resource) -> String:
+	var chosen: String = GameSettings.current().value("multiplayer", "relay_url")
+	if chosen != "" and RelayWire.url_ok(chosen):
+		return chosen
+	var shipped = tuning.get("relay_url") if tuning != null else ""
+	return shipped if shipped is String and shipped != "" and RelayWire.url_ok(shipped) else ""
 
 
 static func usable_room_tuning(candidate: Resource) -> RoomTuningScript:
@@ -431,6 +483,7 @@ func _on_arena_exit() -> void:
 func host(port: int = -1) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
+	_refresh_rendezvous()
 	var p := default_port() if port < 0 else port
 	if p != 0 and not _port_free(p):
 		_fail("port %d is in use" % p)
@@ -469,6 +522,7 @@ func host(port: int = -1) -> bool:
 func join_room(text: String) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
+	_refresh_rendezvous()
 	var parsed := RoomCode.parse_join(text)
 	if parsed.has("error"):
 		_fail(parsed["error"])
@@ -647,11 +701,14 @@ func _physics_process(delta: float) -> void:
 			_connect_left_ms -= delta * 1000.0
 			if _connect_left_ms <= 0.0:
 				_fail(CANT_REACH)
+			else:
+				_tick_join_probe(delta)
 		State.ROOM:
 			_tick_room_lookup(delta)
 		State.HOSTING:
 			_clock += delta
 			_tick_room_code(delta)
+			_tick_relay_host(delta)
 			_tick_refused(delta)
 			_tick_send(delta)
 			for id in combat.tick(delta):
@@ -751,6 +808,11 @@ func _tick_room_code(delta: float) -> void:
 				notice = ROOM_NO_CODE % ROOM_BAD_REPLY
 				changed.emit()
 				return
+			if done.get("relay", false) and not _take_relay_host(done):
+				_rv.close(_room_wanted, protocol, _room_port)  # a relay answer without its ports
+				notice = ROOM_NO_CODE % ROOM_BAD_REPLY
+				changed.emit()
+				return
 			room_code = _room_wanted
 			room_expires_s = float(mini(given, _rt.code_ttl_s))
 			notice = ""
@@ -765,8 +827,10 @@ func _tick_room_code(delta: float) -> void:
 	elif room_code != "":
 		room_expires_s -= delta
 		if room_expires_s <= 0.0:
-			# One live code per room: the old one is released, then a fresh one drawn.
+			# One live code per room: the old one is released, then a fresh one drawn. A match
+			# already running through the old relay room goes on there; only probes stop.
 			_rv.close(room_code, protocol, _room_port)
+			_relay_host = {}
 			room_code = ""
 			_room_attempts = 0
 			_register_room()
@@ -792,7 +856,14 @@ func _tick_room_lookup(delta: float) -> void:
 	if not (address is String) or not address.is_valid_ip_address() or not (port is int) or port < 1 or port > PORT_LAST:
 		_fail(ROOM_BAD_REPLY)
 		return
-	if not local_address(address):
+	if done.get("relay", false):
+		# Through the relay the player set: only ever to that relay's own address.
+		var token = done.get("token")
+		if not _rv.has_method("relay_ip") or address != _rv.relay_ip() or not (token is PackedByteArray) or token.size() != RelayWire.TOKEN_SIZE:
+			_fail(ROOM_BAD_REPLY)
+			return
+		_relay_join = {"ip": address, "port": port, "token": token}
+	elif not local_address(address):
 		_fail(ROOM_NOT_LOCAL)
 		return
 	state = State.OFF  # from here it is the C13 join, to the address the rendezvous gave
@@ -835,6 +906,49 @@ func _end_room() -> void:
 	room_code = ""
 	room_expires_s = 0.0
 	_room_attempts = 0
+	_relay_host = {}
+
+
+## Keeps a relay registration's slot ports and host token, checked. False for an answer
+## without them.
+func _take_relay_host(done: Dictionary) -> bool:
+	var ip = done.get("address", "")
+	var ports = done.get("host_ports")
+	var token = done.get("token")
+	if not (ip is String) or not ip.is_valid_ip_address() or not (ports is PackedInt32Array) or ports.is_empty() or not (token is PackedByteArray) or token.size() != RelayWire.TOKEN_SIZE:
+		return false
+	for port in ports:
+		if port < 1 or port > PORT_LAST:
+			return false
+	_relay_host = {"ip": ip, "ports": ports, "token": token}
+	_relay_probe_left = 0.0
+	return true
+
+
+## Host through a relay: a probe to each slot port from the game's own ENet socket, now and
+## every RELAY_PROBE_S, so the relay can forward each joiner's datagrams here.
+func _tick_relay_host(delta: float) -> void:
+	if _relay_host.is_empty() or _enet == null:
+		return
+	_relay_probe_left -= delta
+	if _relay_probe_left > 0.0:
+		return
+	_relay_probe_left = RELAY_PROBE_S
+	var probe := RelayWire.probe_bytes(RelayWire.Probe.HOST, _relay_host["token"])
+	for port in _relay_host["ports"]:
+		_enet.host.socket_send(_relay_host["ip"], port, probe)
+
+
+## Joiner through a relay: a probe to the room's join port from the game's own ENet socket
+## every JOIN_PROBE_S while it connects, so the relay lets its datagrams in.
+func _tick_join_probe(delta: float) -> void:
+	if _relay_join.is_empty() or _enet == null:
+		return
+	_join_probe_left -= delta
+	if _join_probe_left > 0.0:
+		return
+	_join_probe_left = JOIN_PROBE_S
+	_enet.host.socket_send(_relay_join["ip"], _relay_join["port"], RelayWire.probe_bytes(RelayWire.Probe.JOIN, _relay_join["token"]))
 
 
 func _connect(ip: String) -> void:
@@ -855,6 +969,9 @@ func _connect(ip: String) -> void:
 	multiplayer.multiplayer_peer = _enet
 	my_id = multiplayer.get_unique_id()
 	state = State.CONNECTING
+	# Through a relay: the first probe goes out before ENet's own connect does.
+	_join_probe_left = 0.0
+	_tick_join_probe(0.0)
 	changed.emit()
 
 
@@ -873,6 +990,7 @@ func _shut_peer() -> void:
 		_resolve_item = -1
 	_pending.clear()
 	_refused.clear()
+	_relay_join = {}
 	if _enet != null:
 		_enet.close()
 		_enet = null

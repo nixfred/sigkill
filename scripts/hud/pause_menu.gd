@@ -23,6 +23,7 @@ signal closed
 const Palette = preload("res://scripts/palette.gd")
 const Controls = preload("res://scripts/controls.gd")
 const Privacy = preload("res://scripts/boot/guide_settings.gd")
+const RelayWire = preload("res://scripts/net/relay_wire.gd")
 
 const TITLE := "SIGKILL // menu"
 const SETTINGS_TITLE := "SIGKILL // settings"
@@ -35,6 +36,8 @@ const ASKED_LINE := "Answer the question on screen: Y allows, N keeps the AI off
 const REAL_DATA_LATER := "from the next launch"
 const REAL_DATA_DEMO := "this run: demo data"
 const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
+const RELAY_NOTE := "empty: no online rooms, no network call"
+const RELAY_HINT := "udp://host:9010"
 const QUALITY_LINE := "bloom %s   shadows %s   code rain %s"
 const FONT := 13
 const HEAD_FONT := 15
@@ -87,6 +90,7 @@ var _real_data: CheckButton
 var _real_note: Label
 var _name: LineEdit
 var _port: SpinBox
+var _relay: LineEdit
 var _fov: HSlider
 var _fov_value: Label
 
@@ -248,6 +252,11 @@ func _show_pause() -> void:
 
 
 func _save_if_changed() -> void:
+	# A box still being typed in takes its text first (the relay box takes it on focus out),
+	# so leaving with the cursor in it never loses what was typed.
+	var focused := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
+	if focused != null and is_ancestor_of(focused):
+		focused.release_focus()
 	if not _dirty:
 		return
 	_dirty = false
@@ -321,6 +330,8 @@ func _refresh() -> void:
 	_port.set_value_no_signal(port if port != 0 else _tuning_port())
 	if not _name.has_focus():
 		_name.text = settings.value("multiplayer", "display_name")
+	if not _relay.has_focus():
+		_relay.text = settings.value("multiplayer", "relay_url")
 	var q := settings.quality()
 	_quality_line.text = QUALITY_LINE % [_word(q["bloom"]), _word(q["shadows"]), _word(q["code_rain"])]
 	var clashes := settings.conflicts()
@@ -575,7 +586,31 @@ func _build_multiplayer(col: VBoxContainer) -> void:
 	_port.custom_minimum_size.x = CONTROL_W
 	_port.value_changed.connect(func(v): _change("multiplayer", "port", int(v)))
 	port_row.add_child(_port)
+	var relay_row := _row(col, "relay")
+	_relay = LineEdit.new()
+	_relay.max_length = RelayWire.URL_LAST
+	_relay.placeholder_text = RELAY_HINT
+	_relay.custom_minimum_size.x = CONTROL_W
+	# Taken whole, when the box is left or Enter pressed: half a URL is never tried.
+	_relay.text_submitted.connect(func(text): _set_relay(text))
+	_relay.focus_exited.connect(func(): _set_relay(_relay.text))
+	relay_row.add_child(_relay)
+	_label(col, RELAY_NOTE, FONT - 2, Palette.TEAL)
 	_check(col, "net stats", "multiplayer", "net_stats")
+
+
+## The relay URL as typed, trimmed; refused (and said why) unless empty or udp://host[:port].
+func _set_relay(text: String) -> void:
+	var url := text.strip_edges()
+	if url == settings.value("multiplayer", "relay_url"):
+		_refresh()
+		return
+	if settings.set_value("multiplayer", "relay_url", url):
+		_dirty = true
+		_say("Relay %s: it counts from your next host or join." % ("cleared" if url == "" else "set"))
+	else:
+		_say("A relay is udp://host or udp://host:port, or empty for none.")
+	_refresh()
 
 
 func _row(col: VBoxContainer, text: String) -> HBoxContainer:

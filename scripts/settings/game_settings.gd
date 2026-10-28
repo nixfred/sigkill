@@ -10,7 +10,8 @@ extends RefCounted
 ## bounds is replaced by the default; a missing or damaged file gives every default. Every
 ## default is the game as it shipped before C16b, so nothing changes until the player
 ## changes it: fov 0 and port 0 mean the tuning's own (80 degrees, 9009), an empty display
-## name the tuning's own ("player"), sensitivity multipliers of 1. Key binds live in their
+## name the tuning's own ("player"), sensitivity multipliers of 1, and no relay URL: no
+## online rooms and no network call (C16c). Key binds live in their
 ## own section, one per action the player changed (scripts/controls.gd says which actions
 ## and what a bind may be); an action left out has its default.
 ##
@@ -22,6 +23,7 @@ signal changed(section: String, key: String)
 
 const SettingsFile = preload("res://scripts/settings/settings_file.gd")
 const Controls = preload("res://scripts/controls.gd")
+const RelayWire = preload("res://scripts/net/relay_wire.gd")
 
 const BINDS := "binds"
 const NAME_LAST := 24
@@ -64,6 +66,7 @@ const SCHEMA := {
 	},
 	"multiplayer": {
 		"display_name": [TYPE_STRING, "", []],
+		"relay_url": [TYPE_STRING, "", []],
 		"port": [TYPE_INT, 0, [0, PORT_LAST]],
 		"net_stats": [TYPE_BOOL, false],
 	},
@@ -197,6 +200,8 @@ static func checked(section: String, key: String, v: Variant) -> Variant:
 				return null
 			if key == "display_name":
 				return clean_name(v)
+			if key == "relay_url":
+				return v if RelayWire.url_ok(v) else null
 			return v if (spec[2] as Array).has(v) else null
 	return null
 
