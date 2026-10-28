@@ -62,7 +62,7 @@ const A3_VIEWS := [["corridor", Vector3(-17.5, 0.95, 18.0), Vector3(-17.5, 1.6, 
 ## a2b: each daemon's hero view: its name, its target, the free camera and the point it looks at
 ## (arena space); then its motion strip: the frames before each of its three stills, counted from
 ## the hero still (for the rogue daemon, from the start of its next rear).
-const A2B_HEROES := [["rogue", "DummyA", Vector3(2.9, 1.25, -11.2), Vector3(0.0, 1.0, -15.0), [10, 30, 30]], ["zombie", "DummyB", Vector3(-16.1, 1.45, 9.3), Vector3(-17.5, 1.05, 5.0), [12, 12, 12]], ["swarm", "DummyD", Vector3(-4.6, 2.5, 15.6), Vector3(-8.0, 1.9, 12.0), [8, 8, 8]]]
+const A2B_HEROES := [["rogue", "DummyA", Vector3(2.9, 1.25, -11.2), Vector3(0.0, 1.0, -15.0), [10, 30, 30]], ["zombie", "DummyB", Vector3(-16.1, 1.45, 9.3), Vector3(-17.5, 1.05, 5.0), [12, 12, 12]], ["swarm", "DummyD", Vector3(-5.3, 2.3, 14.7), Vector3(-8.0, 1.95, 12.0), [8, 8, 8]]]
 const A2B_FOV := 50.0
 ## a2b: the part of each still a strip keeps (the middle, where the daemon is), and the longest the
 ## rogue daemon is waited for to rear, in frames.
@@ -70,8 +70,8 @@ const A2B_CROP := Rect2i(400, 90, 1120, 900)
 const A2B_REAR_WAIT := 480
 ## a2b: the view in play (where the player stands and the point it looks at, arena space); the
 ## death's free camera and look, its target, and the frames after the killing shot for its still.
-const A2B_GAMEPLAY_AT := Vector3(-3.0, 0.95, 18.0)
-const A2B_GAMEPLAY_LOOK := Vector3(-0.5, 1.2, 0.0)
+const A2B_GAMEPLAY_AT := Vector3(-1.5, 0.95, 18.5)
+const A2B_GAMEPLAY_LOOK := Vector3(-1.0, 1.2, 0.0)
 const A2B_SHATTER_AT := Vector3(3.4, 1.5, -10.6)
 const A2B_SHATTER_LOOK := Vector3(0.0, 1.0, -15.0)
 const A2B_SHATTER_TARGET := "DummyA"
@@ -226,9 +226,10 @@ func _a2b() -> void:
 		await _frames(40)
 		await _save("a2b-" + hero[0])
 		if hero[0] == "rogue":
+			# Wait for its rear (an art that never rears, as A2's for the before stills, does not wait).
 			var art: Node = _main.get_node("Arena/Targets/" + hero[1]).art_node()
 			var waited := 0
-			while art.rear() < 0.02 and waited < A2B_REAR_WAIT:
+			while art.has_method("rear") and art.rear() < 0.02 and waited < A2B_REAR_WAIT:
 				await _frames(1)
 				waited += 1
 		var stills: Array[Image] = []

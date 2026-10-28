@@ -6,7 +6,7 @@ extends DaemonArt
 ##
 ## They flock as boids: each steers toward its neighbours' middle, matches their heading and keeps
 ## its distance from the nearest, while the nest pulls them back to a shell round it and spins them
-## round an axis that slowly precesses, so the swarm orbits; every so often one (sometimes three)
+## round an axis that slowly precesses, each on its own tilted orbit, so the swarm orbits as a cloud; every so often one (sometimes three)
 ## breaks off and dives at the ground round the nest, then climbs back into the orbit. Now and then
 ## an insect glitches a hand's width off its place for a frame. A hit scatters them away from the
 ## shot before they regroup. They step at the game's pace (SIGSTOP slows them), seeded per daemon.
@@ -25,6 +25,8 @@ const ALIGN := 0.7
 const SEPARATE := 4.0
 const HOME := 12.0
 const SPIN := 2.2
+## How far each insect's own orbit leans off the swarm's axis (1 is 45 degrees at most).
+const TILT := 1.3
 const FLOOR_PUSH := 6.0
 const SPEED_MIN := 1.0
 const SPEED_MAX := 2.2
@@ -38,7 +40,7 @@ const DIVE_FAR := 1.1
 const DIVE_PULL := 10.0
 ## A hit's scatter: the push, in m/s, its reach, in metres, and how long the swarm may fly faster
 ## than its top speed to get away, in seconds.
-const SCATTER := 4.5
+const SCATTER := 5.5
 const SCATTER_M := 1.6
 const SCATTER_S := 0.6
 ## Trails: how often each insect's trail takes a new point, in seconds; wing beats a second.
@@ -62,6 +64,7 @@ var _vel := PackedVector3Array()
 var _hist := PackedVector3Array()
 var _size := PackedFloat32Array()
 var _beat := PackedFloat32Array()
+var _tilt := PackedVector3Array()
 var _dive_to := PackedVector3Array()
 var _dive_at := PackedFloat32Array()
 var _coh := PackedVector3Array()
@@ -106,6 +109,9 @@ func _build() -> void:
 		_hist.append(Vector3.ZERO)
 		_size.append(0.8 + 0.45 * dice(i, 3))
 		_beat.append(TAU * dice(i, 4))
+		# Each insect's own orbit, tilted off the swarm's axis, so the swarm is a cloud, not a ring.
+		var lean := Vector3(dice(i, 8) - 0.5, 0.0, dice(i, 9) - 0.5)
+		_tilt.append(lean.normalized() * TILT * (0.4 + 0.6 * dice(i, 10)) if lean.length_squared() > 0.0001 else Vector3.ZERO)
 		_dive_to.append(Vector3.ZERO)
 		_dive_at.append(-1.0)
 		_coh.append(Vector3.ZERO)
@@ -208,7 +214,7 @@ func _fly(t: float, dt: float) -> void:
 			force -= radial * (dist - ORBIT_M) * HOME
 			if dist < HOLLOW_M:
 				force += radial * (HOLLOW_M - dist) * HOME * 2.0
-			force += axis.cross(radial) * SPIN
+			force += (axis + _tilt[i]).normalized().cross(radial) * SPIN
 		var above := p.y - (GROUND_Y + 0.12)
 		if above < 0.25:
 			force += Vector3.UP * FLOOR_PUSH * (0.25 - above) / 0.25
@@ -248,12 +254,13 @@ func _seed_flock() -> void:
 
 
 func _on_hit() -> void:
-	# The swarm scatters away from the shot, the nearest hardest.
+	# The swarm scatters away from the shot: full force within the first part of its reach, easing
+	# off to nothing at its edge.
 	for i in INSECTS:
 		var away := _pos[i] - _hit_point
 		var d := away.length()
 		if d < SCATTER_M:
-			_vel[i] += (away / d if d > 0.0001 else Vector3.UP) * SCATTER * (1.0 - d / SCATTER_M)
+			_vel[i] += (away / d if d > 0.0001 else Vector3.UP) * SCATTER * clampf(1.4 * (1.0 - d / SCATTER_M), 0.0, 1.0)
 
 
 func _on_return() -> void:
