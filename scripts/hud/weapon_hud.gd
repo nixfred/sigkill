@@ -12,9 +12,15 @@ extends Control
 ## and says so while the rail charges. Only the drawn slot shows its name (C16 showed every
 ## name; with three slots, and up to nine to come, they would not fit beside the panels at
 ## 960x540), and the strip keeps its three lines, so nothing above it moves.
+##
+## SIGSTOP (C18): a fourth line, right under the ult meter, is SIGSTOP's own small meter in the
+## theme's colours with the key that works it: "F SIGSTOP [####......]" in teal when a press
+## would start it, dimmed while the meter is below the start's share, "F SIGCONT [...]" in
+## mint while it runs.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const Controls = preload("res://scripts/controls.gd")
 
 const SLOT := "%d"
 const SLOT_DRAWN := "[%d %s]"
@@ -33,6 +39,8 @@ const METER_READY := "kill -9 ready: %d, fire"
 const METER_CHARGING := "charging [%s%s]"
 const ULT_FILLING := "%s  meter %d%%"
 const ULT_READY := "%s  ready"
+const STOP_LINE := "%s SIGSTOP [%s%s]"
+const STOP_ON_LINE := "%s SIGCONT [%s%s]"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
@@ -51,6 +59,7 @@ var _ammo: Label
 var _meter_text := ""
 var _meter_ready := false
 var _state: Label
+var _stop: Label
 
 
 func _ready() -> void:
@@ -72,6 +81,7 @@ func _ready() -> void:
 	_stack.add_child(_slot_row)
 	_ammo = _label(FONT, Palette.MINT)
 	_state = _label(SMALL_FONT, Palette.TEAL)
+	_stop = _label(SMALL_FONT, Palette.TEAL)
 	_refresh()
 
 
@@ -99,6 +109,16 @@ func slot_dimmed(slot: int) -> bool:
 
 func ammo_text() -> String:
 	return _ammo.text
+
+
+## SIGSTOP's line ("F SIGSTOP [####......]"), or "" when the player has none.
+func stop_text() -> String:
+	return _stop.text if _stop.visible else ""
+
+
+## True while SIGSTOP's line is dimmed: its meter below the start's share.
+func stop_dimmed() -> bool:
+	return _stop.modulate.a < 1.0
 
 
 func state_text() -> String:
@@ -164,6 +184,20 @@ func _refresh() -> void:
 		_state.text = KEYS_LINE
 	_ammo.add_theme_color_override("font_color", color)
 	_state.add_theme_color_override("font_color", state_color)
+	_refresh_stop()
+
+
+func _refresh_stop() -> void:
+	var stop = player.get("sigstop")
+	_stop.visible = stop != null and is_instance_valid(stop) and stop.meter != null
+	if not _stop.visible:
+		return
+	var cells := roundi(stop.meter.share() * BAR_CELLS)
+	var key := Controls.bind_label(GameSettings.current().bind("sigstop"))
+	var on: bool = stop.is_on()
+	_stop.text = (STOP_ON_LINE if on else STOP_LINE) % [key, BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
+	_stop.add_theme_color_override("font_color", Palette.MINT if on else Palette.TEAL)
+	_stop.modulate = Color(1, 1, 1, 1.0 if on or stop.can_start() else DIM)
 
 
 func _slot_label() -> Label:

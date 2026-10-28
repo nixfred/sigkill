@@ -32,9 +32,18 @@ extends RefCounted
 ## empties it; a death and a new life empty it. A forged or early ult shot is dropped and
 ## counted as "meter". Spawn protection stays full invulnerability: the rail, like every
 ## other weapon, does nothing to a protected player.
+##
+## SIGSTOP (C18): the host owns every player's SIGSTOP meter too, by the rules of
+## scripts/abilities/sigstop_meter.gd on the host's clock, which never slows. A start is
+## believed only with the meter at its start share; an empty-meter or otherwise forged start
+## is dropped and counted as "sigstop". While a player's SIGSTOP is on, its pellets fly
+## straight (the session asks sigstop_on()). A death empties the meter and ends SIGSTOP.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const SigstopMeter = preload("res://scripts/abilities/sigstop_meter.gd")
+const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
+const SIGSTOP_TUNING_PATH := "res://resources/sigstop.tres"
 
 const DIR_TOLERANCE := 0.01
 const SEQ_JUMP_LAST := 10000
@@ -53,6 +62,7 @@ const DROP_SWAP := "swap"
 const DROP_RELOAD := "reload"
 const DROP_EMPTY := "empty"
 const DROP_METER := "meter"
+const DROP_SIGSTOP := "sigstop"
 ## Below a full meter by less than this still counts as full: float sums of shares.
 const METER_EPS := 0.0001
 
@@ -62,6 +72,8 @@ var tuning: Tuning
 var weapons := {}
 var first_weapon := ""
 var swap_s := 0.3
+## SIGSTOP's numbers (C18): every player's meter keeps them.
+var sigstop_tuning: SigstopTuning
 ## Every player the host knows, id -> {health, dead, respawn_left, protect_left,
 ## last_fire, last_seq, kills, deaths, drawn, ready_at, reloading, reload_done_at, ammo};
 ## drawn is the weapon in hand, ready_at when its draw is done, reloading the weapon being
@@ -73,17 +85,19 @@ var dropped := 0
 var drops := {}
 
 
-## `weapon_defs`: the arsenal's usable WeaponDefs in slot order; `swap_seconds`: its swap time.
-func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3) -> void:
+## `weapon_defs`: the arsenal's usable WeaponDefs in slot order; `swap_seconds`: its swap time;
+## `stop_tuning`: SIGSTOP's numbers, null for resources/sigstop.tres.
+func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3, stop_tuning: Resource = null) -> void:
 	tuning = combat_tuning
 	swap_s = swap_seconds
+	sigstop_tuning = stop_tuning if stop_tuning is SigstopTuning and stop_tuning.problems().is_empty() else load(SIGSTOP_TUNING_PATH)
 	for def in weapon_defs:
 		weapons[def.id] = def
 	first_weapon = weapon_defs[0].id if not weapon_defs.is_empty() else ""
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning)}
 
 
 ## The ult of the loadout (C17), or null when it has none.
@@ -107,6 +121,43 @@ func add_meter(id: int, share: float, killed: bool) -> void:
 		return
 	var meter: float = minf(states[id]["meter"] + ult.meter_gain(share, killed), ult.ult_meter)
 	states[id]["meter"] = ult.ult_meter if meter >= ult.ult_meter - METER_EPS else meter  # as the player's own
+
+
+## `id` asks, in its life `life`, to start (`on`) or end its SIGSTOP: "" when the host
+## believes it, otherwise why not, counted. A start needs the meter at its start share
+## (DROP_SIGSTOP when it is not); an end is always believed; asking for what already is
+## changes nothing.
+func sigstop(id: int, life: int, on: bool, known_life: int) -> String:
+	var why := _alive_in(id, life, known_life)
+	if why != "":
+		return why
+	var stop: SigstopMeter = states[id]["stop"]
+	if not on:
+		stop.stop()
+		return ""
+	if stop.on or stop.start():
+		return ""
+	return _drop(DROP_SIGSTOP)
+
+
+## True while `id`'s SIGSTOP is on, as the host counts it: its pellets then fly straight.
+func sigstop_on(id: int) -> bool:
+	return states.has(id) and states[id]["stop"].on
+
+
+## Seconds of SIGSTOP left on `id`'s meter, as the host counts it.
+func sigstop_meter(id: int) -> float:
+	return states[id]["stop"].meter if states.has(id) else 0.0
+
+
+## Moves every SIGSTOP meter on by `delta` seconds of the host's clock: drained while on,
+## refilled while off (not while dead). Returns the ids whose SIGSTOP ran out just now.
+func tick_sigstop(delta: float) -> Array:
+	var out := []
+	for id in states:
+		if states[id]["stop"].tick(delta, not states[id]["dead"]):
+			out.append(id)
+	return out
 
 
 ## The weapon `id` holds, as the host knows it.
@@ -323,6 +374,7 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 		s["respawn_left"] = tuning.respawn_delay_s
 		s["deaths"] += 1
 		s["meter"] = 0.0  # a death empties the ult meter
+		s["stop"].empty()  # and the SIGSTOP meter, ending it (C18)
 		if killer != victim:
 			states[killer]["kills"] += 1
 	return {"health": s["health"], "killed": killed}

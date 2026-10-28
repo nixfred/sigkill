@@ -28,6 +28,10 @@ extends Control
 ## out as "kill -9", game logic like every in-round callout, and it is never held back by the
 ## callout pace: it shows over whatever was up. A new round empties the player's ult meter.
 ##
+## SIGSTOP bullet time (C18): its start is called out "SIGSTOP" and its end "SIGCONT", game
+## logic too and never held back by the pace. A round's end stops it at once (solo the world
+## is back to full speed for the break) and a new round fills its meter.
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -49,6 +53,8 @@ const FIRST_DOWN_LINE := "First process down."
 const STREAK_LINE := "%d in a row."
 const MISSES_LINE := "%d misses in a row. Let the crosshair settle."
 const KILL9_LINE := "kill -9"
+const SIGSTOP_LINE := "SIGSTOP"
+const SIGCONT_LINE := "SIGCONT"
 
 enum Phase { ROUND, BREAK }
 
@@ -132,6 +138,11 @@ func set_player(player: Node) -> void:
 	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
+	var stop = player.get("sigstop")
+	if stop != null:
+		for pair in [["started", _on_sigstop], ["continued", _on_sigcont]]:
+			if stop.has_signal(pair[0]) and not stop.is_connected(pair[0], pair[1]):
+				stop.connect(pair[0], pair[1])
 	_last_pos = Vector3.INF
 
 
@@ -215,6 +226,8 @@ func _start_round(number: int) -> void:
 	stats.reset(number)
 	if _player != null and is_instance_valid(_player) and _player.has_method("reset_meter"):
 		_player.reset_meter()
+	if _player != null and is_instance_valid(_player) and _player.has_method("refill_sigstop"):
+		_player.refill_sigstop()
 	phase = Phase.ROUND
 	_left_s = _t.round_seconds
 	_since_callout_s = INF
@@ -225,6 +238,8 @@ func _start_round(number: int) -> void:
 
 
 func _end_round() -> void:
+	if _player != null and is_instance_valid(_player) and _player.has_method("end_sigstop"):
+		_player.end_sigstop()
 	phase = Phase.BREAK
 	_left_s = _t.intermission_seconds
 	_callout_left_s = 0.0
@@ -278,6 +293,15 @@ func _on_rail_kill(headshot: bool) -> void:
 		_callout("kill_9", true)
 
 
+## SIGSTOP started and SIGCONT: called out at once, whatever the pace.
+func _on_sigstop() -> void:
+	_callout("sigstop", true)
+
+
+func _on_sigcont() -> void:
+	_callout("sigcont", true)
+
+
 ## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
 ## whatever the pace, as "kill -9" is).
 func _callout(word: String, now: bool = false) -> void:
@@ -297,6 +321,10 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = MISSES_LINE % stats.misses_in_a_row
 		"kill_9":
 			last_callout = KILL9_LINE
+		"sigstop":
+			last_callout = SIGSTOP_LINE
+		"sigcont":
+			last_callout = SIGCONT_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

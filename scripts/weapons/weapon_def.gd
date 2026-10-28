@@ -242,6 +242,15 @@ func pellet_directions(aim_in: Vector3, rng: RandomNumberGenerator) -> PackedVec
 	return out
 
 
+## Every pellet straight along `aim_in`: a shot with no spread at all, as SIGSTOP's steady
+## hands fire (C18). One direction per pellet, so a pellet weapon still hits as many times.
+func steady_directions(aim_in: Vector3) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in maxi(pellet_count, 1):
+		out.append(aim_in.normalized())
+	return out
+
+
 ## The body and beam colours of this weapon's light skin, from the palette.
 func skin_body() -> Color:
 	return Palette.skin_body(light_skin)

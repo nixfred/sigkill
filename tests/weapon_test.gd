@@ -1052,7 +1052,7 @@ func _layout_checks() -> void:
 			if not strip.is_ancestor_of(label) and label.get_parent() is Control and label.get_parent().name == "Root" and label.text.begins_with("WASD") and strip.get_global_rect().intersects(rect):
 				wrong.append("the hint under the strip")
 		var state: String = host["hud"].weapon_hud().state_text()
-		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything" % [size.x, size.y], strip_labels == 5 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
+		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything (the strip's fourth line SIGSTOP's, C18)" % [size.x, size.y], strip_labels == 6 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
 		await _drop(host)
 	root.size = before
 

@@ -68,6 +68,15 @@ extends Node
 ## fake process id, fake_pid(): never a real one. Its "kill -9" callout comes from this
 ## player's own trace of where its rail struck, once the host's word of the kill arrives.
 ##
+## SIGSTOP bullet time (C18): in a match it never slows the host's simulation, or anyone's.
+## A player's press (scripts/abilities/sigstop.gd) goes to the host as an ask to start or
+## end it, _sigstop (life and on or off, untyped and type-checked like every intent); the
+## host owns every player's SIGSTOP meter (scripts/net/combat.gd), drops and counts a start
+## the meter cannot pay for, and answers that player alone with its word, _sigstop_state
+## (life, on or off, the seconds left): after every ask, when the meter runs out and when the
+## player joins. Only while its word is "on" does the host draw that player's pellets
+## straight; the slow-mo look stays on that player's own screen. Protocol 4.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id. Nothing about the AI guide, the
@@ -89,6 +98,7 @@ const RoomTuningScript = preload("res://scripts/net/room_tuning.gd")
 const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
+const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/net.tres"
@@ -103,7 +113,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 3
+const PROTOCOL := 4
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -284,6 +294,9 @@ var _actions_from := {}
 var _ammo_pending := {}
 ## The host's clock for the fire rate, in seconds of game time.
 var _clock := 0.0
+## The host's last word on this player's SIGSTOP, [on, seconds left], for an arena that
+## comes back after an R reload.
+var _stop_word: Array = []
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
 var _refusal := ""
 
@@ -456,6 +469,13 @@ func attach(arena: Node, player: Node) -> void:
 		player.weapon_drawn.connect(_on_weapon_drawn)
 	if player.has_signal("reload_started") and not player.reload_started.is_connected(_on_reload_started):
 		player.reload_started.connect(_on_reload_started)
+	var stop = player.get("sigstop")
+	if stop != null and stop.has_signal("intent"):
+		stop.session = self
+		if not stop.intent.is_connected(_on_sigstop_intent):
+			stop.intent.connect(_on_sigstop_intent)
+		if is_online() and not _stop_word.is_empty():
+			stop.take_host(_stop_word[0], _stop_word[1])  # the host's word outlives an R reload
 	if is_online() and _kept_inventory != null and player.has_method("adopt_inventory"):
 		player.adopt_inventory(_kept_inventory)  # an R reload mid-match keeps the ammo
 	_kept_inventory = null
@@ -515,6 +535,7 @@ func host(port: int = -1) -> bool:
 	combat.add_player(1)
 	_reset_player_weapons()
 	_mirror_from_combat()
+	_send_sigstop(1)
 	error = ""
 	notice = ""
 	address_text = ""
@@ -723,6 +744,8 @@ func _physics_process(delta: float) -> void:
 			_tick_relay_host(delta)
 			_tick_refused(delta)
 			_tick_send(delta)
+			for id in combat.tick_sigstop(delta):
+				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
 			for id in combat.tick(delta):
 				if _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
 					combat.defer_respawn(id, RESPAWN_RETRY_S)  # no arena to choose a spawn in yet
@@ -1033,6 +1056,7 @@ func _clear_players() -> void:
 	_sent_actions = 0
 	_actions_from = {}
 	_ammo_pending = {}
+	_stop_word = []
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -1115,6 +1139,7 @@ func _on_peer_connected(id: int) -> void:
 	_mirror_from_combat()
 	_spawn_avatar(id)
 	_send_roster()
+	_send_sigstop(id)
 	changed.emit()
 
 
@@ -1516,7 +1541,9 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		for victim in line["hits"]:
 			struck[victim] = def.damage
 	else:
-		for pellet in def.pellet_directions(dir, _pellets_rng):
+		# While the host says the shooter's SIGSTOP is on, every pellet flies straight (C18).
+		var steady := combat.sigstop_on(shooter)
+		for pellet in (def.steady_directions(dir) if steady else def.pellet_directions(dir, _pellets_rng)):
 			var ray := _raycast(shooter, origin, pellet, def)
 			ends.append(ray["end"])
 			if ray["hit"] != 0:
@@ -1541,6 +1568,64 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	for victim in killed:
 		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
+
+
+## This player pressed SIGSTOP's key (C18): the ask goes to the host, which, when this is the
+## host, is the same check every other player's ask gets. Nothing slows here or there.
+func _on_sigstop_intent(on: bool) -> void:
+	if not is_online():
+		return
+	var life: int = lives.get(my_id, 0)
+	if state == State.HOSTING:
+		_handle_sigstop(1, life, on)
+	elif multiplayer.get_peers().has(1):
+		_sigstop.rpc_id(1, life, on)
+
+
+## A joiner's ask to start or end its SIGSTOP, to the host. Untyped like _fire: wrong types
+## are counted, never an engine error.
+@rpc("any_peer", "call_remote", "reliable")
+func _sigstop(life: Variant, on: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT or typeof(on) != TYPE_BOOL:
+		combat.sigstop(0, 0, true, 0)  # counted: no such ask
+		return
+	_handle_sigstop(multiplayer.get_remote_sender_id(), life, on)
+
+
+## The host's check of a SIGSTOP ask, and its word back either way: a refused start is
+## answered "off" with the meter the host counts.
+func _handle_sigstop(id: int, life: int, on: bool) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	combat.sigstop(id if players.has(id) else 0, life, on, lives.get(id, 0))
+	_send_sigstop(id)
+
+
+## The host's word on `id`'s SIGSTOP, to that player alone: on or off and the seconds left.
+func _send_sigstop(id: int) -> void:
+	if combat == null or not combat.has_player(id):
+		return
+	if id == my_id:
+		_take_sigstop(combat.sigstop_on(id), combat.sigstop_meter(id))
+	elif multiplayer.get_peers().has(id):
+		_sigstop_state.rpc_id(id, lives.get(id, 0), combat.sigstop_on(id), combat.sigstop_meter(id))
+
+
+## The host's word on this player's SIGSTOP, for its life `life`: a stale one is dropped.
+@rpc("authority", "call_remote", "reliable")
+func _sigstop_state(life: int, on: bool, left: float) -> void:
+	if state != State.JOINED or life != lives.get(my_id, 0) or not is_finite(left) or left < 0.0 or left > SigstopTuning.METER_LAST_S:
+		return
+	_take_sigstop(on, left)
+
+
+func _take_sigstop(on: bool, left: float) -> void:
+	_stop_word = [on, left]
+	var stop = _player.get("sigstop") if _player != null and is_instance_valid(_player) else null
+	if stop != null and stop.has_method("take_host"):
+		stop.take_host(on, left)
 
 
 ## Where the host believes `id`'s eye is, in arena space: its own camera for itself, the

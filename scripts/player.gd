@@ -24,6 +24,13 @@ extends CharacterBody3D
 ## the first wall. A rail kill with the hit in the target's head zone emits rail_kill(true),
 ## which the round HUD calls out as "kill -9".
 ##
+## SIGSTOP bullet time (C18): F, its own meter, kept by the node scripts/abilities/sigstop.gd
+## makes under the player. Solo it slows the world and hands the player its own time for
+## each frame (player_step()), so the player keeps close to full speed: every step here runs
+## on that time, and the body's velocity is scaled to it for the move. In a match nothing
+## global slows; while the host says SIGSTOP is on, shots go steady: zero spread, zero
+## recoil. A death empties its meter.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -41,6 +48,7 @@ const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
 const Inventory = preload("res://scripts/weapons/inventory.gd")
 const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
+const Sigstop = preload("res://scripts/abilities/sigstop.gd")
 ## Added to the host's remaining reload or draw time when this side's has to wait for it:
 ## three physics frames at 60 Hz.
 const TIMING_MARGIN_S := 0.05
@@ -75,6 +83,8 @@ signal rail_kill(headshot: bool)
 ## The loadout and swap timing, an ArsenalTuning. Leave empty to use resources/arsenal.tres.
 ## A weapon in it that fails its own checks is refused and left out.
 @export var arsenal: Resource
+## SIGSTOP's numbers, a SigstopTuning (C18). Leave empty to use resources/sigstop.tres.
+@export var sigstop_tuning: Resource
 
 ## Shots and hits since the arena loaded, for the guide's ask stats. Each round counts its
 ## own from shot_fired, jumped and slid (scripts/round/round_stats.gd).
@@ -95,6 +105,8 @@ var inventory: Inventory
 ## Set by the session while a match is on (C17): the ult meter then fills only from the
 ## host's confirmed results, never from this machine's own dummies.
 var match_meter := false
+## SIGSTOP bullet time (C18): the node under this player that runs it.
+var sigstop: Sigstop
 
 var _t: Tuning
 var _w: WeaponDefScript  # the drawn weapon
@@ -199,6 +211,10 @@ func _ready() -> void:
 		_viewmodels.append(_build_viewmodel(def))
 		_sfx.append([_make_sfx_player(Sfx.fire_zap(def), def), _make_sfx_player(Sfx.hit_blip(def), def), _make_sfx_player(Sfx.reload_clack(def), def)])
 	_show_weapon()
+	sigstop = Sigstop.new()
+	sigstop.name = "Sigstop"
+	sigstop.tuning = sigstop_tuning
+	add_child(sigstop)
 
 
 func _notification(what: int) -> void:
@@ -236,6 +252,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_weapon(1)
 	elif event.is_action_pressed("weapon_prev"):
 		cycle_weapon(-1)
+	elif event.is_action_pressed("sigstop"):
+		sigstop.press()
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):
@@ -276,7 +294,9 @@ func _look_scale() -> float:
 
 # --- Movement and camera. Every number below comes from the tuning resource. ---
 
-func _physics_process(delta: float) -> void:
+func _physics_process(frame_delta: float) -> void:
+	# The player's own time: the frame's own, or near full speed while SIGSTOP slows the world.
+	var delta: float = sigstop.player_step(frame_delta) if sigstop != null else frame_delta
 	if not _scripted_input:
 		_read_player_input()
 	# The right stick looks while the player is engaged, as the mouse does.
@@ -290,7 +310,7 @@ func _physics_process(delta: float) -> void:
 		_jump_pressed = false
 		_slide_pressed = false
 		_fire_pressed = false
-	_step_movement(delta)
+	_step_movement(delta, delta / frame_delta if frame_delta > 0.0 else 1.0)
 	_step_camera(delta)
 	_step_weapon(delta)
 	# Presses are one-shot. Scripted input lasts exactly one physics frame, then the
@@ -377,7 +397,9 @@ func _read_player_input() -> void:
 	_fire_queued = false
 
 
-func _step_movement(delta: float) -> void:
+## `delta` is the player's own time; `own_rate` how much faster than the world's it runs
+## this frame (1 but for SIGSTOP solo), so the move covers the player's own time too.
+func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 	var on_floor := is_on_floor()
 	_slide_cooldown_left = maxf(_slide_cooldown_left - delta, 0.0)
 	if not on_floor:
@@ -440,7 +462,9 @@ func _step_movement(delta: float) -> void:
 
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
+	velocity *= own_rate
 	move_and_slide()
+	velocity /= own_rate
 
 	var grounded := is_on_floor()
 	if _was_on_floor and not grounded:
@@ -520,6 +544,8 @@ func set_alive(on: bool) -> void:
 	if not on and inventory != null:
 		inventory.reset_meter()  # a death empties the ult meter (C17)
 		_end_charge()
+	if not on and sigstop != null and sigstop.meter != null:
+		sigstop.on_death()  # and the SIGSTOP meter, ending it at once (C18)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -743,6 +769,17 @@ func is_charging() -> bool:
 	return _charge_left > 0.0
 
 
+## SIGSTOP (C18): a round's end stops it at once; a new round fills its meter.
+func end_sigstop() -> void:
+	if sigstop != null and sigstop.meter != null:
+		sigstop.end_now()
+
+
+func refill_sigstop() -> void:
+	if sigstop != null and sigstop.meter != null:
+		sigstop.refill()
+
+
 ## The ult meter (C17): what a hit with another weapon earned, and back to empty.
 func add_meter(amount: float) -> void:
 	inventory.add_meter(amount)
@@ -782,7 +819,7 @@ func _fire() -> void:
 	var fx_root := _fx_root()
 	if _w.pierce:
 		hit_target = _fire_rail(origin, forward, fx_root)
-	for dir in (PackedVector3Array() if _w.pierce else _w.pellet_directions(forward, _pellet_rng)):
+	for dir in (PackedVector3Array() if _w.pierce else _pellets(forward)):
 		var far_point := origin + dir * _w.fire_range
 		var query := PhysicsRayQueryParameters3D.create(origin, far_point, _w.hit_mask)
 		var result := get_world_3d().direct_space_state.intersect_ray(query)
@@ -890,14 +927,25 @@ func _apply_recoil() -> void:
 	_camera.rotation = Vector3(_recoil.x, _recoil.y, 0.0)
 
 
-## Camera kick up plus a small random yaw, both capped, and a cannon jolt.
+## Every pellet's direction for a shot along `forward`: the weapon's spread, or all of them
+## straight along it while SIGSTOP holds this player's hands steady (C18).
+func _pellets(forward: Vector3) -> PackedVector3Array:
+	if sigstop != null and sigstop.steady():
+		return _w.steady_directions(forward)
+	return _w.pellet_directions(forward, _pellet_rng)
+
+
+## Camera kick up plus a small random yaw, both capped, and a cannon jolt. None while SIGSTOP
+## holds the hands steady (C18): the viewmodel still kicks.
 func _kick() -> void:
+	_viewmodel_kick = 1.0
+	if sigstop != null and sigstop.steady():
+		return
 	var max_pitch := deg_to_rad(_w.recoil_max_pitch_degrees)
 	var max_yaw := deg_to_rad(_w.recoil_max_yaw_degrees)
 	var yaw := deg_to_rad(_rng.randf_range(-_w.recoil_yaw_degrees, _w.recoil_yaw_degrees))
 	_recoil.x = minf(_recoil.x + deg_to_rad(_w.recoil_pitch_degrees), max_pitch)
 	_recoil.y = clampf(_recoil.y + yaw, -max_yaw, max_yaw)
-	_viewmodel_kick = 1.0
 
 
 ## Where world-space effects live: the running scene, or the player's parent in tests.

@@ -157,7 +157,7 @@ func _source_checks() -> void:
 	var combat := _code("res://scripts/net/combat.gd")
 	_check("the host owns every meter: a rail shot is believed only with the shooter's meter full, and spent when believed", _body(combat, "validate").contains("def.is_ult() and s[\"meter\"] < def.ult_meter - METER_EPS") and _body(combat, "accept").contains("s[\"meter\"] = 0.0"))
 	_check("the host traces the pierce itself and stops it at the level", _body(session, "_handle_fire").contains("_rail_trace(shooter, origin, dir, def)") and _body(session, "_rail_trace").contains("if not target:\n\t\t\tend = result[\"position\"]\n\t\t\tbreak"))
-	_check("the shot request is the C16 intent: no new RPC, the protocol unchanged", session.count("@rpc(") == 10 and Session.PROTOCOL == 3)
+	_check("the shot request is the C16 intent: the rail adds no RPC of its own (the twelve are C13 to C16's ten and C18's two for SIGSTOP, protocol 4)", session.count("@rpc(") == 12 and Session.PROTOCOL == 4 and not session.contains("func _rail(") and _body(session, "_fire").contains("_handle_fire("))
 	var round := _code("res://scripts/round/round_hud.gd")
 	_check("'kill -9' is a game-logic callout: the rail-kill path never touches the link or the announcer", _body(round, "_on_rail_kill").contains("_callout(\"kill_9\", true)") and not _body(round, "_on_rail_kill").contains("link") and not _body(round, "_on_rail_kill").contains("announcer"))
 

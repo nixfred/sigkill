@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SigstopTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/abilities/sigstop_tuning.gd" id="1_sigstop"]
+
+[resource]
+script = ExtResource("1_sigstop")
+meter_s = 4.0
+refill_s = 20.0
+start_share = 0.25
+world_scale = 0.3
+player_rate = 0.9
+ease_s = 0.25
+desaturate = 0.7
+tint = 0.3
+trail = 0.04
+audio_pitch = 0.7
