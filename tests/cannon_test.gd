@@ -148,7 +148,17 @@ func _hit_checks() -> void:
 	var targets_before := get_nodes_in_group("targets").size()
 	_check("camera starts with no recoil", cam.rotation.is_zero_approx())
 	_check("no hit marker before firing", _hud.hit_marker_alpha() == 0.0)
+	# Headless, the audio driver mixes in steps of about 93 ms (4096 frames), and the hit blip
+	# (90 ms) is used up whole in the first step after it starts: whether it still reads as
+	# playing a moment after the shot hangs on where that step falls, not on the shot. The
+	# mixer is held still from just before the shot frame until both are read, so the check
+	# sees the sounds the shot started. Nothing in between can fail before the unlock.
+	var fire_sfx: AudioStreamPlayer = _player.get("_fire_sfx")
+	var hit_sfx: AudioStreamPlayer = _player.get("_hit_sfx")
+	AudioServer.lock()
 	await _step(true)
+	var sounds_started: bool = fire_sfx.playing and hit_sfx.playing
+	AudioServer.unlock()
 	var pitch := cam.rotation.x
 	var yaw := cam.rotation.y
 	_check("the shot registered as a hit", _shots == [true] and _player.hits_landed == 1 and _player.shots_fired == 1, str(_shots))
@@ -166,9 +176,7 @@ func _hit_checks() -> void:
 	_check("sparks fly along the surface normal (the dummy's front faces +Z)", facing > 0.99, "dot %.4f" % facing)
 	if sparks != null:
 		_hit_spark_color = (sparks.material_override as StandardMaterial3D).albedo_color
-	var fire_sfx: AudioStreamPlayer = _player.get("_fire_sfx")
-	var hit_sfx: AudioStreamPlayer = _player.get("_hit_sfx")
-	_check("fire and hit sounds both started", fire_sfx.playing and hit_sfx.playing)
+	_check("fire and hit sounds both started", sounds_started)
 	_check("sound volume follows master_volume", is_equal_approx(fire_sfx.volume_db, Sfx.volume_db(_w.master_volume)), "%.2f dB" % fire_sfx.volume_db)
 
 	var recovered_at := -1
