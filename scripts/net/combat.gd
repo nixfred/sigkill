@@ -47,12 +47,25 @@ extends RefCounted
 ## chain itself. A forged or empty throw is dropped and counted as for a shot ("empty",
 ## "origin", "aim", "rate", "live_cap"). A fork bomb named in a shot intent is a "weapon"
 ## drop: it is thrown, never fired. A new life refills its bombs as every magazine.
+##
+## Root vs user and sudo overcharge (C22): the host owns every player's sudo state too, by
+## the rules of scripts/abilities/sudo_state.gd: every kill this host credits (a shot, a
+## blast, a light-trail wall) counts toward the killer's next charge; a death ends the
+## streak, drops any unused charge and ends root; a new life starts as user. A start of root
+## (sudo()) is believed only from a living player in its life holding a charge; a forged or
+## chargeless one is dropped and counted as "sudo". While a player is root its hits are
+## damage_scale() times harder where the session judges them, and its shots and throws spend
+## nothing: an empty magazine does not stop them. Every change of a player's sudo state is
+## noted (take_sudo_changed()) for the session to tell everyone.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const SigstopMeter = preload("res://scripts/abilities/sigstop_meter.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const SIGSTOP_TUNING_PATH := "res://resources/sigstop.tres"
+const SudoState = preload("res://scripts/abilities/sudo_state.gd")
+const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
+const SUDO_TUNING_PATH := "res://resources/sudo_overcharge.tres"
 
 const DIR_TOLERANCE := 0.01
 const SEQ_JUMP_LAST := 10000
@@ -74,6 +87,7 @@ const DROP_METER := "meter"
 const DROP_SIGSTOP := "sigstop"
 const DROP_AIM := "aim"
 const DROP_LIVE := "live_cap"
+const DROP_SUDO := "sudo"
 ## How far a throw's aim may stray from the view the host last had of the thrower, in degrees:
 ## the view lags by a send interval and the network's delay.
 const AIM_TOLERANCE_DEG := 45.0
@@ -88,6 +102,10 @@ var first_weapon := ""
 var swap_s := 0.3
 ## SIGSTOP's numbers (C18): every player's meter keeps them.
 var sigstop_tuning: SigstopTuning
+## Root vs user's numbers (C22).
+var sudo_tuning: SudoTuning
+## Players whose sudo state changed since the session last took them (C22).
+var _sudo_changed := {}
 ## Every player the host knows, id -> {health, dead, respawn_left, protect_left,
 ## last_fire, last_seq, kills, deaths, drawn, ready_at, reloading, reload_done_at, ammo};
 ## drawn is the weapon in hand, ready_at when its draw is done, reloading the weapon being
@@ -101,17 +119,18 @@ var drops := {}
 
 ## `weapon_defs`: the arsenal's usable WeaponDefs in slot order; `swap_seconds`: its swap time;
 ## `stop_tuning`: SIGSTOP's numbers, null for resources/sigstop.tres.
-func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3, stop_tuning: Resource = null) -> void:
+func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3, stop_tuning: Resource = null, root_tuning: Resource = null) -> void:
 	tuning = combat_tuning
 	swap_s = swap_seconds
 	sigstop_tuning = stop_tuning if stop_tuning is SigstopTuning and stop_tuning.problems().is_empty() else load(SIGSTOP_TUNING_PATH)
+	sudo_tuning = root_tuning if root_tuning is SudoTuning and root_tuning.problems().is_empty() else load(SUDO_TUNING_PATH)
 	for def in weapon_defs:
 		weapons[def.id] = def
 	first_weapon = weapon_defs[0].id if not weapon_defs.is_empty() else ""
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning)}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning)}
 
 
 ## The ult of the loadout (C17), or null when it has none.
@@ -171,6 +190,56 @@ func tick_sigstop(delta: float) -> Array:
 	for id in states:
 		if states[id]["stop"].tick(delta, not states[id]["dead"]):
 			out.append(id)
+	return out
+
+
+## `id` asks, in its life `life`, to spend a sudo charge on root (C22): "" when the host
+## believes it (root started), otherwise why not, counted: DROP_SUDO with no charge or
+## already root.
+func sudo(id: int, life: int, known_life: int) -> String:
+	var why := _alive_in(id, life, known_life)
+	if why != "":
+		return why
+	if not states[id]["sudo"].activate():
+		return _drop(DROP_SUDO)
+	_sudo_changed[id] = true
+	return ""
+
+
+## True while `id` is root, as the host counts it.
+func root(id: int) -> bool:
+	return states.has(id) and states[id]["sudo"].is_root()
+
+
+## How hard `id`'s hits land now: root's damage_scale, or 1.
+func damage_scale(id: int) -> float:
+	return states[id]["sudo"].damage_scale() if states.has(id) else 1.0
+
+
+## `id`'s sudo charges held, and its root seconds left, as the host counts them.
+func sudo_charges(id: int) -> int:
+	return states[id]["sudo"].charges if states.has(id) else 0
+
+
+func root_left(id: int) -> float:
+	return states[id]["sudo"].root_left if states.has(id) else 0.0
+
+
+## Moves every player's root on by `delta` seconds of the host's clock. Returns the ids whose
+## root ran out just now.
+func tick_sudo(delta: float) -> Array:
+	var out := []
+	for id in states:
+		if states[id]["sudo"].tick(delta):
+			out.append(id)
+			_sudo_changed[id] = true
+	return out
+
+
+## The players whose sudo state changed since the last call, each once.
+func take_sudo_changed() -> Array:
+	var out := _sudo_changed.keys()
+	_sudo_changed = {}
 	return out
 
 
@@ -291,8 +360,8 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 	var a: Dictionary = s["ammo"][weapon]
 	if not rate_ok(now, a["last_fire"], def.fire_cooldown, tuning.fire_rate_tolerance):
 		return _drop(DROP_RATE)
-	if def.has_magazine() and a["mag"] + (def.reload_take(a["mag"], a["reserve"]) if s["reloading"] == weapon else 0) <= 0:
-		return _drop(DROP_EMPTY)
+	if def.has_magazine() and not s["sudo"].is_root() and a["mag"] + (def.reload_take(a["mag"], a["reserve"]) if s["reloading"] == weapon else 0) <= 0:
+		return _drop(DROP_EMPTY)  # root fires from an empty magazine too (C22)
 	if def.is_ult() and s["meter"] < def.ult_meter - METER_EPS:
 		return _drop(DROP_METER)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
@@ -317,7 +386,8 @@ func throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3, ey
 	var a: Dictionary = states[id]["ammo"][weapon]
 	if not rate_ok(now, a["last_fire"], def.fire_cooldown, tuning.fire_rate_tolerance):
 		return _drop(DROP_RATE)
-	if a["mag"] <= 0:
+	var root_now: bool = states[id]["sudo"].is_root()
+	if a["mag"] <= 0 and not root_now:
 		return _drop(DROP_EMPTY)
 	if live >= def.projectile.live_cap:
 		return _drop(DROP_LIVE)
@@ -325,7 +395,8 @@ func throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3, ey
 		return _drop(DROP_ORIGIN)
 	if not view.is_zero_approx() and rad_to_deg(view.angle_to(dir)) > AIM_TOLERANCE_DEG:
 		return _drop(DROP_AIM)
-	a["mag"] -= 1
+	if not root_now:
+		a["mag"] -= 1  # root throws for free (C22)
 	a["last_fire"] = now
 	return ""
 
@@ -340,8 +411,8 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	s["last_fire"] = now
 	s["last_seq"] = seq
 	var a: Dictionary = s["ammo"][weapon]
-	if weapons[weapon].has_magazine():
-		a["mag"] = maxi(a["mag"] - 1, 0)
+	if weapons[weapon].has_magazine() and not s["sudo"].is_root():
+		a["mag"] = maxi(a["mag"] - 1, 0)  # root spends nothing (C22)
 	if weapons[weapon].is_ult():
 		s["meter"] = 0.0  # one full meter, one shot
 	a["last_fire"] = now
@@ -419,8 +490,12 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 		s["deaths"] += 1
 		s["meter"] = 0.0  # a death empties the ult meter
 		s["stop"].empty()  # and the SIGSTOP meter, ending it (C18)
+		s["sudo"].die()  # and root, the streak and any unused sudo charge (C22)
+		_sudo_changed[victim] = true
 		if killer != victim:
 			states[killer]["kills"] += 1
+			if states[killer]["sudo"].kill():
+				_sudo_changed[killer] = true  # a sudo charge earned
 	return {"health": s["health"], "killed": killed}
 
 
@@ -444,6 +519,8 @@ func respawn(id: int) -> void:
 	s["reloading"] = ""
 	s["ready_at"] = -INF
 	s["meter"] = 0.0
+	s["sudo"].die()  # every life starts as user (C22)
+	_sudo_changed[id] = true
 
 
 func _drop(reason: String) -> String:

@@ -13,6 +13,7 @@ const RoundHud = preload("res://scripts/round/round_hud.gd")
 const NetHud = preload("res://scripts/net/net_hud.gd")
 const CombatHud = preload("res://scripts/net/combat_hud.gd")
 const WeaponHud = preload("res://scripts/hud/weapon_hud.gd")
+const SudoBadge = preload("res://scripts/hud/sudo_badge.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
@@ -29,6 +30,7 @@ var _round: RoundHud
 var _net: NetHud
 var _combat: CombatHud
 var _weapons: WeaponHud
+var _sudo: SudoBadge
 var _menu: PauseMenu
 var _filter: CanvasLayer
 var _player: Node = null
@@ -91,6 +93,10 @@ func _ready() -> void:
 	_weapons.name = "WeaponHud"
 	root.add_child(_weapons)
 
+	_sudo = SudoBadge.new()
+	_sudo.name = "SudoBadge"
+	root.add_child(_sudo)
+
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
 	_menu.name = "PauseMenu"
@@ -135,6 +141,7 @@ func set_targets(remaining: int, total: int) -> void:
 func set_player(player: Node) -> void:
 	_player = player
 	_weapons.player = player
+	_sudo.player = player
 	_guide.player = player
 	_round.set_player(player)
 	_net.player = player
@@ -156,6 +163,11 @@ func combat_hud() -> CombatHud:
 
 func weapon_hud() -> WeaponHud:
 	return _weapons
+
+
+## Root vs user's prompt badge (C22).
+func sudo_badge() -> SudoBadge:
+	return _sudo
 
 
 ## The host confirmed a hit by this player: the C6 hit marker, nothing else.

@@ -44,6 +44,14 @@ extends CharacterBody3D
 ## in range show as glyph silhouettes through walls, on this screen only; a death or a
 ## respawn turns it off and leaves its meter as it was. Shots are untouched.
 ##
+## Root vs user and sudo overcharge (C22): Z, kept by the node scripts/abilities/sudo_overcharge.gd
+## makes under the player. Every life starts as user; kills in one life earn a sudo charge
+## (alone, this arena's daemons going down; in a match, the host's credit). While root the
+## weapon in hand, whichever it is, hits damage_scale times harder and spends nothing from its
+## magazine or bombs, and every viewmodel and the muzzle flash glow root's red. Its share of
+## the ult meter is what the hit would have been at user's strength: root fills it no faster.
+## In a match the host applies all of it to players; this side only shows it.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -63,6 +71,7 @@ const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Sigstop = preload("res://scripts/abilities/sigstop.gd")
 const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
+const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
@@ -113,6 +122,9 @@ signal fork_bomb_burst
 ## Code-rain vision's numbers, a CodeRainVisionTuning (C21). Leave empty to use
 ## resources/code_rain_vision.tres.
 @export var code_rain_vision_tuning: Resource
+## Root vs user and sudo overcharge's numbers, a SudoOverchargeTuning (C22). Leave empty to
+## use resources/sudo_overcharge.tres.
+@export var sudo_tuning: Resource
 
 ## Shots and hits since the arena loaded, for the guide's ask stats. Each round counts its
 ## own from shot_fired, jumped and slid (scripts/round/round_stats.gd).
@@ -137,6 +149,10 @@ var match_meter := false
 var sigstop: Sigstop
 ## Code-rain vision (C21): the node under this player that runs it.
 var vision: CodeRainVision
+## Root vs user and sudo overcharge (C22): the node under this player that runs it.
+var sudo: SudoOvercharge
+## Whether the viewmodels show root's red right now.
+var _root_look := false
 
 var _t: Tuning
 var _w: WeaponDefScript  # the drawn weapon
@@ -253,6 +269,10 @@ func _ready() -> void:
 	vision.name = "CodeRainVision"
 	vision.tuning = code_rain_vision_tuning
 	add_child(vision)
+	sudo = SudoOvercharge.new()
+	sudo.name = "SudoOvercharge"
+	sudo.tuning = sudo_tuning
+	add_child(sudo)
 
 
 func _notification(what: int) -> void:
@@ -296,6 +316,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		sigstop.press()
 	elif event.is_action_pressed("code_rain_vision"):
 		vision.hold(true)
+	elif event.is_action_pressed("sudo_overcharge"):
+		sudo.press()
 	elif event.is_action_pressed("throw_bomb"):
 		_throw_queued = true
 	else:
@@ -574,6 +596,8 @@ func _respawn() -> void:
 func respawn_at(pos: Vector3) -> void:
 	if vision != null and vision.meter != null:
 		vision.end_now()  # a respawn turns code-rain vision off, its meter as it was (C21)
+	if sudo != null and sudo.state != null:
+		sudo.end_root()  # and ends root (C22)
 	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
@@ -598,6 +622,8 @@ func set_alive(on: bool) -> void:
 		sigstop.on_death()  # and the SIGSTOP meter, ending it at once (C18)
 	if not on and vision != null and vision.meter != null:
 		vision.on_death()  # code-rain vision off, its meter as it was (C21)
+	if not on and sudo != null and sudo.state != null:
+		sudo.on_death()  # root over, the streak and any unused sudo charge gone (C22)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -758,6 +784,7 @@ func _step_weapon(delta: float) -> void:
 	_camera.v_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
+	_step_root()
 	if _charge_left > 0.0:
 		_step_charge(delta)
 	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
@@ -893,13 +920,14 @@ func _fire() -> void:
 			var collider = result["collider"]
 			if is_instance_valid(collider) and collider.has_method("hit"):
 				var before: float = collider.call("health") if collider.has_method("health") else 0.0
-				landed = collider.call("hit", _w.damage_at(origin.distance_to(end_point)), end_point, dir) == true
+				var base: float = _w.damage_at(origin.distance_to(end_point))
+				landed = collider.call("hit", base * _damage_scale(), end_point, dir) == true
 				if landed:
-					_meter_from(collider, before)
+					_meter_from(collider, before, base)
 			hit_target = hit_target or landed
 			CannonFx.spawn_impact(fx_root, end_point, normal, landed, _w)
 		CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
-	CannonFx.spawn_muzzle_flash(_muzzle, _w)
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
 	_kick()
 	if _shake_on:
 		_shake = maxf(_shake, _w.shake_m)
@@ -942,7 +970,7 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 		var owner_node: Node = collider if dummy else collider.get_parent()
 		var head: bool = owner_node != null and owner_node.has_method("is_head_hit") and owner_node.call("is_head_hit", point)
 		if dummy:
-			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)), point, dir) == true
+			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)) * _damage_scale(), point, dir) == true
 			landed_any = landed_any or landed
 			if landed and collider.has_method("is_alive") and not collider.call("is_alive"):
 				rail_kill.emit(head)
@@ -955,15 +983,16 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 
 ## Solo, a hit on a dummy with a weapon other than the ult fills the meter: the share of the
 ## dummy's health it took, and the kill bonus if it went down. In a match only the host's
-## results fill it.
-func _meter_from(dummy: Node, before: float) -> void:
+## results fill it. `base` is the hit at user's strength: root's harder hit counts as that,
+## so root fills the meter no faster (C22).
+func _meter_from(dummy: Node, before: float, base: float) -> void:
 	if match_meter or _w.is_ult() or not dummy.has_method("health"):
 		return
 	var max_health = dummy.get("max_health")
 	if not (max_health is float) or max_health <= 0.0:
 		return
 	var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
-	var share: float = clampf(before - float(dummy.call("health")), 0.0, before) / float(max_health)
+	var share: float = clampf(minf(base, before), 0.0, before) / float(max_health)
 	inventory.add_meter(meter_gain(share, killed))
 
 
@@ -1027,7 +1056,8 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 		if not root.is_ancestor_of(dummy) or not dummy.has_method("hit") or (dummy.has_method("is_alive") and not dummy.call("is_alive")):
 			continue
 		var middle: Vector3 = (dummy as Node3D).global_position + Vector3.UP * DUMMY_MIDDLE_M
-		var amount: float = tuning.damage_at(at.distance_to(middle))
+		var base: float = tuning.damage_at(at.distance_to(middle))
+		var amount: float = base * _damage_scale()
 		if amount <= 0.0:
 			continue
 		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, 1)
@@ -1038,7 +1068,41 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 			var max_health = dummy.get("max_health")
 			if max_health is float and max_health > 0.0:
 				var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
-				inventory.add_meter(meter_gain(clampf(before - float(dummy.call("health")), 0.0, before) / max_health, killed))
+				inventory.add_meter(meter_gain(clampf(minf(base, before), 0.0, before) / max_health, killed))  # at user's strength (C22)
+
+
+## How hard this player's weapons hit right now: root's damage_scale, or 1 as user (C22).
+func _damage_scale() -> float:
+	return sudo.damage_scale() if sudo != null and sudo.state != null else 1.0
+
+
+## A daemon of this arena went down: alone, a kill toward a sudo charge (C22).
+func on_dummy_downed() -> void:
+	if sudo != null and sudo.state != null:
+		sudo.local_kill()
+
+
+## Root's free ammo for this physics step, and its look on every viewmodel when it changes.
+func _step_root() -> void:
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	inventory.free_ammo = root
+	if root == _root_look:
+		return
+	_root_look = root
+	var scale: float = sudo.tuning_in_use().glow_scale if root else 1.0
+	for i in _viewmodels.size():
+		var glow := _viewmodels[i].material_override as StandardMaterial3D
+		if glow == null:
+			continue
+		var color: Color = Palette.HOSTILE_RED if root else inventory.defs[i].skin_body()
+		glow.emission = color
+		glow.albedo_color = color.darkened(0.65)
+		glow.emission_energy_multiplier = inventory.defs[i].viewmodel_glow_energy * scale
+
+
+## True while the weapons wear root's red (C22).
+func shows_root() -> bool:
+	return _root_look
 
 
 ## The bombs back to full: a new round (C19). In a match the host's count decides.

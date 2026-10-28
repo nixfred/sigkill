@@ -164,7 +164,7 @@ func _source_checks() -> void:
 			found.append(word)
 	_check("purely local: the vision code sends nothing, opens nothing, reads no file, runs nothing and slows no clock", found.is_empty(), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("acceptance: nothing goes over the wire for it: protocol 6, the session's 17 RPCs and 19 sends as C20 left them, and its one word about vision only hands the node the session", Session.PROTOCOL == 6 and session.count("@rpc(") == 17 and session.count(".rpc_id(") == 19 and session.count("vision") == _body(session, "attach").count("vision") and _body(session, "attach").contains("vision.session = self"))
+	_check("acceptance: nothing goes over the wire for it: protocol 6 as C20 left it (7 since C22's sudo, none of it vision's), the session's 17 RPCs and 19 sends then (19 and 22 since C22's two sudo messages), and its one word about vision only hands the node the session", Session.PROTOCOL == 7 and session.count("@rpc(") == 19 and session.count(".rpc_id(") == 22 and not _code("res://scripts/abilities/code_rain_vision.gd").contains("sudo") and session.count("vision") == _body(session, "attach").count("vision") and _body(session, "attach").contains("vision.session = self"))
 	var shader := FileAccess.get_file_as_string("res://shaders/vision_glyphs.gdshader")
 	_check("the silhouettes draw over everything, walls included: no depth test, additive, unshaded; the walls' own glyphs (the same integer hash and glyph grid as shaders/code_rain.gdshader)", shader.contains("depth_test_disabled") and shader.contains("blend_add") and shader.contains("unshaded") and FileAccess.get_file_as_string("res://shaders/code_rain.gdshader").contains(_body_of_shader(shader, "uint pcg(uint v)")))
 

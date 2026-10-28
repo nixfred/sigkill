@@ -31,6 +31,8 @@ const VISOR_HEIGHT := 0.55
 const VISOR_FORWARD := -0.28
 const TAG_HEIGHT := 1.25
 const FEET := 0.9
+## The tag's mark for a player who is root (C22).
+const ROOT_TAG := "  root#"
 ## Samples are kept back to the one just before the drawn moment, whatever the delay and
 ## the rate; this cap only bounds memory against a flood.
 const SAMPLES_LAST := 256
@@ -59,6 +61,8 @@ var health := 100.0:
 		health = value
 		_retag()
 var dead := false
+## Root (C22), from the host's word: the visor glows root's red and the tag says "root#".
+var root := false
 var protected := false:
 	set(value):
 		protected = value
@@ -258,7 +262,18 @@ func revive(pos: Vector3) -> void:
 
 func _retag() -> void:
 	if _tag != null:
-		_tag.text = "%s  %d" % [player_name, roundi(health)]
+		_tag.text = "%s  %d%s" % [player_name, roundi(health), ROOT_TAG if root else ""]
+
+
+## Root's look on this avatar (C22): a red visor and "root#" on its tag while on.
+func set_root(on: bool) -> void:
+	root = on
+	if _visor != null:
+		var glow := _visor.material_override as StandardMaterial3D
+		if glow != null:
+			glow.emission = Palette.HOSTILE_RED if on else Palette.MINT
+			glow.albedo_color = (Palette.HOSTILE_RED if on else Palette.MINT).darkened(0.65)
+	_retag()
 
 
 ## Drops samples older than the one just before the drawn moment, and bounds the buffer.

@@ -44,15 +44,17 @@ static func spawn_beam(root: Node, start: Vector3, finish: Vector3, w: Weapon) -
 
 
 ## Bright neon burst at the barrel plus a light, both gone in a blink.
-static func spawn_muzzle_flash(muzzle: Node3D, w: Weapon) -> void:
+static func spawn_muzzle_flash(muzzle: Node3D, w: Weapon, tint: Color = Color.TRANSPARENT) -> void:
 	var flash := _effect_root(muzzle, "MuzzleFlash")
 	var sphere := SphereMesh.new()
 	sphere.radius = w.muzzle_flash_radius
 	sphere.height = w.muzzle_flash_radius * SPHERE_HEIGHT_PER_RADIUS
-	var mat := Palette.unlit_glow(_beam_color(w), w.muzzle_flash_energy)
+	# `tint`, when given (root's red while overcharged, C22), colours the flash and its light.
+	var tinted := tint.a > 0.0
+	var mat := Palette.unlit_glow(tint if tinted else _beam_color(w), w.muzzle_flash_energy)
 	flash.add_child(_mesh(sphere, mat))
 	var light := OmniLight3D.new()
-	light.light_color = _body_color(w)
+	light.light_color = tint if tinted else _body_color(w)
 	light.light_energy = w.muzzle_light_energy
 	light.omni_range = w.muzzle_light_range
 	light.shadow_enabled = false

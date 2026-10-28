@@ -18,6 +18,9 @@ extends RefCounted
 ## Thrown weapons (C19, the fork bomb): their magazine is their bombs, with nothing in reserve.
 ## A quick throw (G) spends one from the thrown weapon's own slot without drawing it, by its
 ## own interval alone (try_throw()); a new life and a new round give the bombs back.
+##
+## Root's overcharge (C22): while free_ammo is set (the player sets it from its sudo state
+## every physics frame) nothing spends a round or a bomb, and an empty magazine still fires.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
@@ -54,6 +57,8 @@ var fiction_left := 0.0
 var fiction_s := 1.6
 ## The ult meter, from 0 to the ult's ult_meter.
 var meter := 0.0
+## Root (C22): shots and throws spend nothing and an empty magazine does not block them.
+var free_ammo := false
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -123,9 +128,10 @@ func try_throw(slot: int) -> String:
 		return BLOCK_EMPTY
 	if cooldowns[slot] > 0.0:
 		return BLOCK_COOLDOWN
-	if mags[slot] <= 0:
+	if mags[slot] <= 0 and not free_ammo:
 		return BLOCK_EMPTY
-	mags[slot] -= 1
+	if not free_ammo:
+		mags[slot] -= 1
 	cooldowns[slot] = defs[slot].fire_cooldown
 	return ""
 
@@ -234,7 +240,7 @@ func try_fire() -> String:
 	if why != "":
 		return why
 	var d := def()
-	if d.has_magazine():
+	if d.has_magazine() and not free_ammo:
 		mags[current] -= 1
 	if d.is_ult():
 		meter = 0.0
@@ -252,7 +258,7 @@ func fire_block() -> String:
 	if cooldowns[current] > 0.0:
 		return BLOCK_COOLDOWN
 	var d := def()
-	if d.has_magazine() and mags[current] <= 0:
+	if d.has_magazine() and mags[current] <= 0 and not free_ammo:
 		return BLOCK_EMPTY
 	if d.is_ult() and not meter_ready():
 		return BLOCK_METER

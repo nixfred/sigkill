@@ -33,7 +33,7 @@ const REBINDABLE := [
 	["fire", "fire"], ["aim", "aim"], ["reload", "reload"], ["weapon_last", "last weapon"],
 	["reset_arena", "respawn"], ["ask_ai", "ask your AI"], ["toggle_ai", "AI on/off"],
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
-	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"],
+	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -85,6 +85,7 @@ static func ensure() -> void:
 	_key("sigstop", [KEY_F])
 	_key("throw_bomb", [KEY_G])
 	_key("code_rain_vision", [KEY_V])
+	_key("sudo_overcharge", [KEY_Z])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

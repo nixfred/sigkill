@@ -112,10 +112,22 @@ extends Node
 ## clears that player's walls on every screen; leaving the match takes them all away.
 ## Protocol 6.
 ##
+## Root vs user and sudo overcharge (C22): the host owns it (scripts/net/combat.gd keeps
+## every player's sudo state). A kill the host credits, by any weapon or wall, counts toward
+## the killer's next sudo charge; a player's press of Z is only a request, _sudo (its life,
+## untyped and type-checked), which the host believes with a charge held and refuses and
+## counts otherwise. While a player is root the host's own judging makes its hits
+## damage_scale times harder (its ult meter filling no faster: the share is taken at user's
+## strength) and spends none of its ammo. Every change of a player's sudo state goes to every
+## joiner at once, _sudo_state (id, life, charges, root seconds left), sent before any shot
+## the host judges after it, so every screen shows who is root (the badge and the red glow)
+## and each player its own charge. A joiner never applies the harder hits itself. Protocol 7.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
-## (on or off, the seconds left), the light-trail rule and walls. Nothing about the AI
+## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
+## player's sudo charges and root time. Nothing about the AI
 ## guide, the settings, paths, processes or the machine. Nothing real is signalled, killed
 ## or run.
 
@@ -137,6 +149,7 @@ const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
+const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
@@ -165,7 +178,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 6
+const PROTOCOL := 7
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -362,6 +375,10 @@ var light_trails_flag := false
 ## the host's word.
 var _trails_rule := false
 var _lt: LightTrailTuning
+## Every player's root seconds left as the host last said, id -> seconds (0: user) (C22).
+var root_left := {}
+## This player's own sudo charges as the host last said, for an arena back from an R reload.
+var _my_charges := 0
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
 var _refusal := ""
 
@@ -566,6 +583,13 @@ func attach(arena: Node, player: Node) -> void:
 	var vision = player.get("vision")
 	if vision != null:
 		vision.session = self  # code-rain vision reads which bodies are enemies; it sends nothing (C21)
+	var sudo = player.get("sudo")
+	if sudo != null and sudo.has_signal("intent"):
+		sudo.session = self
+		if not sudo.intent.is_connected(_on_sudo_intent):
+			sudo.intent.connect(_on_sudo_intent)
+		if is_online():
+			sudo.take_host(_my_charges, root_left.get(my_id, 0.0))  # the host's word outlives an R reload
 	var stop = player.get("sigstop")
 	if stop != null and stop.has_signal("intent"):
 		stop.session = self
@@ -856,6 +880,7 @@ func _physics_process(delta: float) -> void:
 			_tick_trails(delta)
 			for id in combat.tick_sigstop(delta):
 				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
+			combat.tick_sudo(delta)  # root running out on the host's clock (C22)
 			for id in combat.tick(delta):
 				if _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
 					combat.defer_respawn(id, RESPAWN_RETRY_S)  # no arena to choose a spawn in yet
@@ -865,6 +890,7 @@ func _physics_process(delta: float) -> void:
 					_do_respawn(id)
 			_mirror_from_combat()
 			_tick_protection(delta)
+			_flush_sudo()  # kills, deaths, respawns and root's end this tick, told at once (C22)
 		State.JOINED:
 			_tick_send(delta)
 			_tick_trails(delta)
@@ -1177,6 +1203,8 @@ func _clear_players() -> void:
 	_throws = 0
 	_trails_rule = false
 	LightTrails.drop(_arena)  # the match is over: every wall goes with it
+	root_left = {}
+	_my_charges = 0
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -1261,6 +1289,7 @@ func _on_peer_connected(id: int) -> void:
 	_send_roster()
 	_send_sigstop(id)
 	_send_walls(id)
+	_send_sudo_all(id)
 	changed.emit()
 
 
@@ -1673,9 +1702,12 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	var hits := PackedInt32Array()
 	var healths := PackedFloat32Array()
 	var killed := PackedInt32Array()
+	# Root (C22): every hit damage_scale times harder; the meter's share is the hit at user's
+	# strength (the same as before C22 for a user), so root fills it no faster.
+	var scale := combat.damage_scale(shooter)
 	for victim in struck:
 		var before := combat.health_of(victim)
-		var outcome := combat.damage_player(victim, shooter, struck[victim])
+		var outcome := combat.damage_player(victim, shooter, struck[victim] * scale)
 		if outcome.is_empty():
 			continue  # dead or protected: the pellets landed on nothing that counts
 		hits.append(victim)
@@ -1683,13 +1715,14 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		if outcome["killed"]:
 			killed.append(victim)
 		if not def.is_ult():
-			combat.add_meter(shooter, (before - outcome["health"]) / _ct.max_health, outcome["killed"])
+			combat.add_meter(shooter, minf(struck[victim], before) / _ct.max_health, outcome["killed"])
 	# The death is told after the shot, so the mirror learns of it then: the avatar must
 	# play its derezz, not be hidden first by the health update.
 	_broadcast_shot(shooter, weapon, origin, ends, hits, healths)
 	for victim in killed:
 		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
+	_flush_sudo()
 
 
 ## This player threw a fork bomb (C19): the request goes to the host, which, when this is the
@@ -1824,7 +1857,8 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 				middle = _arena.to_global(avatar.latest_position())
 		if not middle.is_finite():
 			continue
-		var amount: float = tuning.damage_at(at.distance_to(middle))
+		var base: float = tuning.damage_at(at.distance_to(middle))
+		var amount: float = base * combat.damage_scale(thrower)  # root's harder blasts (C22)
 		if amount <= 0.0:
 			continue
 		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, BLAST_SIGHT_MASK)
@@ -1838,7 +1872,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 		healths.append(outcome["health"])
 		if outcome["killed"]:
 			killed.append(id)
-		combat.add_meter(thrower, (before - outcome["health"]) / _ct.max_health, outcome["killed"])
+		combat.add_meter(thrower, minf(base, before) / _ct.max_health, outcome["killed"])
 	if hits.is_empty():
 		return
 	var local: Vector3 = _arena.to_local(at)
@@ -1846,6 +1880,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 	for victim in killed:
 		_broadcast_death(victim, thrower, Vector3.UP, weapon)
 	_mirror_from_combat()
+	_flush_sudo()
 
 
 ## The live-cap key of a thrower's bomblets in this arena.
@@ -2076,7 +2111,8 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 		health[hits[i]] = healths[i]
 		_show_avatar_state(hits[i])
 		if mine and hits[i] != my_id:
-			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health, false))
+			# Root's harder hit fills it no faster (C22): the share at user's strength, as the host's.
+			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health / _root_scale(shooter), false))
 	if shooter != my_id and _arena != null and is_instance_valid(_arena):
 		for end in ends:
 			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
@@ -2085,6 +2121,109 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 	for hit in hits:
 		shot_confirmed.emit(shooter, hit, origin, ends[0])
 	combat_changed.emit()
+
+
+# --- Root vs user and sudo overcharge (C22). ---
+
+## This player pressed Z with a charge: a request the host decides, which, when this is the
+## host, is the same check every other player's gets.
+func _on_sudo_intent() -> void:
+	if not is_online():
+		return
+	var life: int = lives.get(my_id, 0)
+	if state == State.HOSTING:
+		_handle_sudo(1, life)
+	elif multiplayer.get_peers().has(1):
+		_sudo.rpc_id(1, life)
+
+
+## A joiner's ask to spend a sudo charge on root, to the host. Untyped like _fire: wrong
+## types are counted, never an engine error.
+@rpc("any_peer", "call_remote", "reliable")
+func _sudo(life: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT:
+		combat.sudo(0, 0, 0)  # counted: no such ask
+		return
+	_handle_sudo(multiplayer.get_remote_sender_id(), life)
+
+
+## The host's check of a sudo ask: believed with a charge held (root starts), refused and
+## counted otherwise; either way every player hears the outcome.
+func _handle_sudo(id: int, life: int) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	combat.sudo(id if players.has(id) else 0, life, lives.get(id, 0))
+	_flush_sudo()
+
+
+## Tells everyone, this side included, the sudo state of every player whose state changed.
+func _flush_sudo() -> void:
+	if combat == null:
+		return
+	var connected := multiplayer.get_peers()
+	for id in combat.take_sudo_changed():
+		if not players.has(id):
+			continue
+		var charges := combat.sudo_charges(id)
+		var left := combat.root_left(id)
+		_apply_sudo(id, charges, left)
+		for peer in players:
+			if peer != 1 and connected.has(peer):
+				_sudo_state.rpc_id(peer, id, lives.get(id, 0), charges, left)
+
+
+## Every player's sudo state to `peer`, a joiner just arrived.
+func _send_sudo_all(peer: int) -> void:
+	if combat == null or not multiplayer.get_peers().has(peer):
+		return
+	for id in players:
+		_sudo_state.rpc_id(peer, id, lives.get(id, 0), combat.sudo_charges(id), combat.root_left(id))
+
+
+## A player's sudo state from the host: its charges and root seconds left, in its life `life`.
+@rpc("authority", "call_remote", "reliable")
+func _sudo_state(id: int, life: int, charges: int, left: float) -> void:
+	if state != State.JOINED or not players.has(id) or life != lives.get(id, -1):
+		return
+	if charges < 0 or charges > SudoTuning.CHARGES_LAST or not is_finite(left) or left < 0.0 or left > SudoTuning.ROOT_LAST_S:
+		return
+	_apply_sudo(id, charges, left)
+
+
+## Shows a player's sudo state: this player's own on its HUD and weapons, anyone else's on
+## their avatar.
+func _apply_sudo(id: int, charges: int, left: float) -> void:
+	root_left[id] = left
+	if id == my_id:
+		_my_charges = charges
+		if _player != null and is_instance_valid(_player):
+			var sudo = _player.get("sudo")
+			if sudo != null and sudo.state != null:
+				sudo.take_host(charges, left)
+	else:
+		var avatar = avatars.get(id)
+		if avatar != null and is_instance_valid(avatar) and avatar.has_method("set_root"):
+			avatar.set_root(left > 0.0)
+	combat_changed.emit()
+
+
+## True when the host's last word had `id` root.
+func combat_known_root(id: int) -> bool:
+	return root_left.get(id, 0.0) > 0.0
+
+
+## How hard `id` hits as this side knows it: the host's own count while hosting, the host's
+## word otherwise. Used only to read the meter's share back at user's strength.
+func _root_scale(id: int) -> float:
+	if state == State.HOSTING and combat != null:
+		return combat.damage_scale(id)
+	if id == my_id and _player_ready():
+		var sudo = _player.get("sudo")
+		if sudo != null and sudo.state != null:
+			return sudo.damage_scale()
+	return 1.0
 
 
 # --- Light-trail mode (C20). ---
