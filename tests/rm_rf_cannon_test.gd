@@ -159,7 +159,7 @@ func _source_checks() -> void:
 	_check("acceptance: fiction only, the hard rule: the new weapon's code runs no rm, no OS call at all (no OS.execute, OS.create_process, OS.move_to_trash), no DirAccess.remove or any DirAccess or FileAccess, no /proc: \"rm -rf\" is only a name and HUD text; and the slug sends nothing itself", found.is_empty() and parts.length() > 4000, ", ".join(found))
 	var fire := _body(session, "_handle_fire")
 	_check("acceptance: the wire stays protocol 9: no new message and no changed one (20 RPCs, 23 sends: the blast word's one send now in _tell_blast, shared with the fork bomb); the shot is the usual intent, the slug told in the seed message and its blast in the fork bomb's blast word", Session.PROTOCOL == 9 and session.count("@rpc(") == 20 and session.count(".rpc_id(") == 23 and session.count("_blast.rpc_id(") == 1 and _body(session, "_tell_blast").contains("_blast.rpc_id(") and fire.find("combat.accept(") < fire.find("if def.is_slug():") and fire.contains("_spawn_volley(_throws, shooter, weapon, 0, origin, dir, true)") and fire.contains("_tell_seed(_throws, shooter, weapon, 0, origin, dir)") and _body(session, "_blast").contains("slug.apply_blast(_arena.to_global(at))"))
-	_check("a client never decides damage: only the host's slug has a judge (_judge_slug_blast, bound only when deciding, which returns at once unless hosting); a joiner's slug only draws and goes off on the host's word", _body(session, "_spawn_volley").contains("var blast := _judge_slug_blast.bind(shooter, weapon, root) if deciding else Callable()") and session.count("_judge_slug_blast.bind(") == 1 and _body(session, "_judge_slug_blast").contains("if state != State.HOSTING or combat == null") and slug.contains("slug.hit_mask = mask if deciding else WORLD_LAYER"))
+	_check("a client never decides damage: only the host's slug has a judge (_judge_slug_blast, bound only when deciding, as for cron's mines since C27, which returns at once unless hosting); a joiner's slug only draws and goes off on the host's word", _body(session, "_spawn_volley").contains("var blast := _judge_slug_blast.bind(shooter, weapon, root) if deciding else Callable()") and session.count("_judge_slug_blast.bind(") == 2 and _body(session, "_spawn_mine").contains("_judge_slug_blast.bind(owner, weapon, false) if deciding else Callable()") and _body(session, "_judge_slug_blast").contains("if state != State.HOSTING or combat == null") and slug.contains("slug.hit_mask = mask if deciding else WORLD_LAYER"))
 
 
 # --- The slug in an empty world. ---
@@ -245,7 +245,7 @@ func _arena_checks() -> void:
 	var inv = p.get("inventory")
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 7 (after the cannon, SIGTERM, the rail, the fork bomb, fork() and grep); the player holds seven", shipped.loadout.size() == 7 and shipped.loadout[SLOT] == _w and inv.slot_count() == 7 and inv.defs[SLOT].id == "rm_rf_cannon", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 7 (after the cannon, SIGTERM, the rail, the fork bomb, fork() and grep); the player holds seven (eight since C27's cron)", shipped.loadout.size() == 8 and shipped.loadout[SLOT] == _w and inv.slot_count() == 8 and inv.defs[SLOT].id == "rm_rf_cannon", str(inv.defs.map(func(d): return d.id)))
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_7
 	key.pressed = true
@@ -268,7 +268,7 @@ func _arena_checks() -> void:
 	p.swap_to_last()
 	var last: int = inv.current
 	await _settle(p, 0.5)
-	_check("acceptance: key 7 draws it; the weapon cycle reaches it after grep and wraps from it to the cannon and back; Q returns to it", by_key == SLOT and next == SLOT and wrapped == 0 and back == SLOT and last == SLOT, "%d %d %d %d %d" % [by_key, next, wrapped, back, last])
+	_check("acceptance: key 7 draws it; the weapon cycle reaches it after grep and goes on from it (to cron, slot 8 since C27) and back; Q returns to it", by_key == SLOT and next == SLOT and wrapped == 7 and back == SLOT and last == SLOT, "%d %d %d %d %d" % [by_key, next, wrapped, back, last])
 	var dummies := _line_up(main)
 	var calls := []
 	p.rm_blast.connect(func(): calls.append(hud.round_hud().get("last_callout")))
@@ -509,7 +509,7 @@ func _layout_checks() -> void:
 			var clear_px: float = strip.get_global_rect().position.x - guide.get_global_rect().end.x if guide.visible else INF
 			strips.append([host["hud"].weapon_hud().slots_text(), strip_labels, host["hud"].weapon_hud().state_text(), snappedf(clear_px, 0.1)])
 			await _settle(p, 1.2)
-		_check("acceptance: at %dx%d the strip fits seven slots clear of the guide panel: with SIGTERM drawn (\"%s\") and with the rm -rf cannon winding up (\"%s\", its prompt \"%s\" on the third line), four rm -rf kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7" and strips[1][0] == "1 2 3 4(2) 5 6 [7 rm -rf]" and strips[0][1] == 11 and strips[1][1] == 11 and PROMPT.begins_with(strips[1][2]) and strips[1][2].length() >= 7 and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "rm -rf sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
+		_check("acceptance: at %dx%d the strip fits seven slots (eight since C27) clear of the guide panel: with SIGTERM drawn (\"%s\") and with the rm -rf cannon winding up (\"%s\", its prompt \"%s\" on the third line), four rm -rf kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7 8" and strips[1][0] == "1 2 3 4(2) 5 6 [7 rm -rf] 8" and strips[0][1] == 12 and strips[1][1] == 12 and PROMPT.begins_with(strips[1][2]) and strips[1][2].length() >= 7 and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "rm -rf sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
 		_drop(host)
 		await _frames(2)
 	root.size = before

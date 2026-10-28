@@ -169,12 +169,28 @@ extends Node
 ## line, goes off only on that word, at the host's place, and never judges anything. No message
 ## changed: protocol 9 still.
 ##
+## cron mines (C27): a placement is the usual intent; the host sticks the mine where the shooter's
+## aim meets the level within the placement range (or at its feet, from the host's view of it),
+## and owns the job from then on (scripts/weapons/cron_mine.gd): the schedule, each run judged as
+## the rm -rf blast is (_judge_slug_blast; a mine's self-damage share is 0, so it never hurts its
+## owner), kills credited to the owner even dead or respawned. Each player holds the weapon's
+## crontab limit of jobs: a placement past it removes the oldest. Another player's shot removes a
+## mine: a hitscan ray passing within its hit volume (_shoot_mines), a pellet, dart or slug that
+## meets one (the host's volleys see the mines' layer), a blast that reaches one (_blast_mines),
+## the shooter's own never. A player leaving takes its jobs with it. Joiners hear of a placement
+## in the seed message, _bomb (its seed the runs left, negative for a mine already past its arm
+## delay, as one sent to a joiner arriving mid-job is), and of each run and each removal in the
+## blast word, _blast: a run's generation is the runs left after it, a removal's is negative
+## (MINE_CRONTAB, MINE_SHOT with the remover's id as the index, MINE_GONE). A joiner's mine only
+## draws and never judges or schedules. No message changed: protocol 9 still.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
 ## player's sudo charges and root time, a fork() shot's seed, a grep shot's seed and its claimed and
-## believed marks (player ids), an rm -rf shot and where its blast went off, and the top table's numbers (game PIDs, kills,
+## believed marks (player ids), an rm -rf shot and where its blast went off, a cron mine's place,
+## runs and removals, and the top table's numbers (game PIDs, kills,
 ## deaths, damage dealt, time alive, the match's uptime and load). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
@@ -202,6 +218,14 @@ const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
+const CronMine = preload("res://scripts/weapons/cron_mine.gd")
+## A cron mine's word in _blast (C27): a run's generation is the runs left after it (0 and up);
+## a removal's is one of these, the remover's player id the index for a shot.
+const MINE_CRONTAB := -1
+const MINE_SHOT := -2
+const MINE_GONE := -3
+## From a player's middle down to its feet: where a mine placed at the feet looks for the floor.
+const FEET_M := 0.9
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -286,6 +310,8 @@ signal combat_changed
 signal shot_confirmed(shooter: int, hit: int, origin: Vector3, end_point: Vector3)
 signal player_died(victim: int, killer: int)
 signal player_respawned(id: int)
+## A player's shot removed another player's cron mine (C27): the feed's "crontab -r" line.
+signal job_removed(remover: int, owner: int, word: String)
 
 # Set these before the node enters the tree.
 ## NetTuning; null for resources/net.tres.
@@ -414,6 +440,10 @@ var _chains := {}
 var _volleys := {}
 ## Host: grep claims it did not believe (C25).
 var marks_refused := 0
+## The cron mines this arena runs or draws (C27), id -> mine (their ids share the throws' count),
+## and, hosting, each owner's job ids, oldest first.
+var _mines := {}
+var _jobs := {}
 ## During a match: the weapons and ammo of the player whose arena went away (an R reload),
 ## handed to the next player that attaches.
 var _kept_inventory: RefCounted = null
@@ -1300,6 +1330,11 @@ func _clear_players() -> void:
 	_stop_word = []
 	_chains = {}
 	_volleys = {}
+	for mine in _mines.values():
+		if is_instance_valid(mine):
+			mine.queue_free()  # the match is over: every job with it
+	_mines = {}
+	_jobs = {}
 	_throws = 0
 	_trails_rule = false
 	LightTrails.drop(_arena)  # the match is over: every wall goes with it
@@ -1390,6 +1425,7 @@ func _on_peer_connected(id: int) -> void:
 	_send_roster()
 	_send_sigstop(id)
 	_send_walls(id)
+	_send_mines(id)
 	_send_sudo_all(id)
 	changed.emit()
 
@@ -1403,6 +1439,7 @@ func _on_peer_disconnected(id: int) -> void:
 	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
+	_drop_jobs(id)  # cron's jobs leave with their owner (C27)
 	_send_roster()
 	changed.emit()
 	combat_changed.emit()
@@ -1799,6 +1836,17 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)
 		_flush_sudo()
 		return
+	if def.is_mine():
+		# cron (C27): the host sticks the mine, owns its schedule and judges every run; every
+		# joiner draws it from the seed message and each run's word. The crontab keeps its limit.
+		var place := _mine_place(shooter, origin, dir, def)
+		_throws += 1
+		var left := def.runs_for(combat.root(shooter))
+		_spawn_mine(_throws, shooter, weapon, place["at"], place["normal"], left, true, false)
+		_tell_seed(_throws, shooter, weapon, left, place["at"], place["normal"])
+		_crontab_trim(shooter, def)
+		_flush_sudo()
+		return
 	if def.is_slug():
 		# The rm -rf cannon (C26): the slug flies in the host's world and its blast is judged
 		# here; every joiner draws it from the seed message and the blast word. No seed needed.
@@ -1824,6 +1872,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	if def.pierce:
 		var line := _rail_trace(shooter, origin, dir, def)
 		ends.append(line["end"])
+		_shoot_mines(shooter, origin, line["end"], true)  # every mine on the line (C27)
 		for victim in line["hits"]:
 			struck[victim] = def.damage
 	else:
@@ -1832,6 +1881,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		for pellet in (def.steady_directions(dir) if steady else def.pellet_directions(dir, _pellets_rng)):
 			var ray := _raycast(shooter, origin, pellet, def)
 			ends.append(ray["end"])
+			_shoot_mines(shooter, origin, ray["end"], false)  # the first mine on its way (C27)
 			if ray["hit"] != 0:
 				struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
 	var hits := PackedInt32Array()
@@ -1911,12 +1961,13 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 	_tell_seed(_throws, id, weapon, seed, origin, dir)
 
 
-## A seeded spawn the host believed, to every joiner: a fork bomb's throw, a fork() shot
-## (C24), or a grep shot with the marks it believed (C25).
-func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks := PackedInt32Array()) -> void:
+## A seeded spawn the host believed, to every joiner (or `only` that one): a fork bomb's throw, a
+## fork() shot (C24), a grep shot with the marks it believed (C25), an rm -rf shot (C26) or a cron
+## mine (C27: its seed the runs left, negative once past its arm delay).
+func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks := PackedInt32Array(), only := 0) -> void:
 	var connected := multiplayer.get_peers()
 	for peer in players:
-		if peer != 1 and connected.has(peer):
+		if peer != 1 and connected.has(peer) and (only == 0 or peer == only):
 			_bomb.rpc_id(peer, throw_id, thrower, weapon, seed, origin, dir, marks)
 
 
@@ -1927,13 +1978,18 @@ func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: 
 func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks: PackedInt32Array) -> void:
 	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley()):
 		return
-	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
+	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
 	# A believed mark of a player who has left since flies its dart straight (_mark_point), so
 	# the darts stay as many as the host's and fan the same.
 	if marks.size() > WeaponDefScript.MARKS_LAST or (not marks.is_empty() and not _weapons[weapon].is_seeker()):
 		return
-	if _weapons[weapon].is_fork() or _weapons[weapon].is_slug():
+	if _weapons[weapon].is_mine():
+		var left: int = absi(seed)
+		if left < 1 or left > WeaponDefScript.RUNS_LAST + WeaponDefScript.ROOT_EXTRA_RUNS_LAST or _mines.has(throw_id):
+			return
+		_spawn_mine(throw_id, thrower, weapon, origin, dir, left, false, seed < 0)
+	elif _weapons[weapon].is_fork() or _weapons[weapon].is_slug():
 		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)
 	elif _weapons[weapon].is_seeker():
 		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false, marks)
@@ -1945,6 +2001,9 @@ func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vecto
 @rpc("authority", "call_remote", "reliable")
 func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
 	if state != State.JOINED or not at.is_finite():
+		return
+	if _mines.has(throw_id):
+		_mine_word(throw_id, gen, index, at)  # a cron mine's run or removal (C27)
 		return
 	if _volleys.has(throw_id):
 		# The blast of an rm -rf slug (C26): its slug here goes off at the host's place.
@@ -2038,6 +2097,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 		if outcome["killed"]:
 			killed.append(id)
 		combat.add_meter(thrower, minf(base, before) / _ct.max_health, outcome["killed"])
+	_blast_mines(thrower, at, tuning.radius_m)  # a blast reaching another player's mine removes it (C27)
 	if hits.is_empty():
 		return
 	var local: Vector3 = _arena.to_local(at)
@@ -2065,20 +2125,23 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 	elif mine:
 		judge = _player.fork_hit.bind(def)  # this machine's own dummies, never a player
 	var volley: Node3D
+	# The host's volleys meet the mines' layer too: a pellet, dart or slug that meets another
+	# player's mine removes it (C27); a joiner's only draw and pass them.
+	var mask: int = def.hit_mask | PLAYER_LAYER_MASK | (CronMine.MINE_LAYER if deciding else 0)
 	if def.is_slug():
 		# The rm -rf cannon (C26): the host's slug judges its blast; a joiner's only draws it and
 		# goes off on the host's word (_blast).
 		var blast := _judge_slug_blast.bind(shooter, weapon, root) if deciding else Callable()
-		volley = RmSlug.spawn(_arena, def, _arena.to_global(origin), along, root, deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), blast)
+		volley = RmSlug.spawn(_arena, def, _arena.to_global(origin), along, root, deciding, mask, _pellets_past.bind(shooter), blast)
 		if deciding:
 			volley.blasted.connect(_on_slug_blasted.bind(shot_id))
 	elif def.is_seeker():
 		var points := []
 		for id in marks:
 			points.append(_mark_point.bind(id))
-		volley = SeekerVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, points, deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
+		volley = SeekerVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, points, deciding, mask, _pellets_past.bind(shooter), judge)
 	else:
-		volley = ForkVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, def.forks_for(root), deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
+		volley = ForkVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, def.forks_for(root), deciding, mask, _pellets_past.bind(shooter), judge)
 	_volleys[shot_id] = volley
 	volley.finished.connect(_on_volley_finished.bind(shot_id))
 	if mine:
@@ -2087,6 +2150,157 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 
 func _on_volley_finished(_landed: int, shot_id: int) -> void:
 	_volleys.erase(shot_id)
+
+
+## Where `shooter`'s mine sticks (C27): the host's view of its aim from `origin` along `dir` (arena
+## space) meeting the level within the placement range, else the floor under the host's view of
+## its body. {at, normal}, arena space.
+func _mine_place(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> Dictionary:
+	var basis: Basis = _arena.global_transform.basis
+	var body: Vector3 = _player.global_position if shooter == 1 else _arena.to_global(avatars[shooter].latest_position()) if avatars.has(shooter) and is_instance_valid(avatars[shooter]) else _arena.to_global(origin)
+	var place := CronMine.place(_player.get_world_3d().direct_space_state, _arena.to_global(origin), (basis * dir).normalized(), def.place_range_m, body, FEET_M)
+	return {"at": _arena.to_local(place["at"]), "normal": (basis.inverse() * (place["normal"] as Vector3)).normalized()}
+
+
+## A cron mine in this arena (C27), id `id` of `owner`, at `at` stuck with `normal` (arena space),
+## `left` runs to come: the host's, which keeps the schedule and judges each run, or a joiner's,
+## which draws and runs on the host's word (`armed`: already past its arm delay). This player's own
+## is handed to it, for the strip's count and the callout.
+func _spawn_mine(id: int, owner: int, weapon: String, at: Vector3, normal: Vector3, left: int, deciding: bool, armed: bool) -> void:
+	var def: WeaponDefScript = _weapons[weapon]
+	var judge := _judge_slug_blast.bind(owner, weapon, false) if deciding else Callable()
+	var mine := CronMine.spawn(_arena, def, _arena.to_global(at), (_arena.global_transform.basis * normal).normalized(), id, owner, left, deciding, armed, judge)
+	_mines[id] = mine
+	mine.finished.connect(_on_mine_finished.bind(id, owner))
+	if deciding:
+		mine.ran.connect(_on_mine_ran.bind(id))
+		var held: Array = _jobs.get(owner, [])
+		held.append(id)
+		_jobs[owner] = held
+	if owner == my_id and _player_ready() and _player.has_method("take_mine"):
+		_player.take_mine(mine)
+
+
+func _on_mine_ran(left: int, at: Vector3, id: int) -> void:
+	if _arena != null and is_instance_valid(_arena):
+		_tell_blast(id, left, 0, _arena.to_local(at))
+
+
+func _on_mine_finished(_why: String, id: int, owner: int) -> void:
+	_mines.erase(id)
+	if _jobs.has(owner):
+		_jobs[owner].erase(id)
+
+
+## The host's word of a cron mine (C27): a run (`gen` the runs left after it) or a removal.
+func _mine_word(id: int, gen: int, index: int, at: Vector3) -> void:
+	var mine = _mines[id]
+	if not is_instance_valid(mine):
+		return
+	if gen >= 0:
+		mine.apply_run(gen, _arena.to_global(at))
+		return
+	var why := CronMine.CRONTAB if gen == MINE_CRONTAB else CronMine.SHOT if gen == MINE_SHOT else CronMine.GONE
+	_mine_removed(mine, why, index if gen == MINE_SHOT else 0)
+
+
+## A mine of `owner`'s ends here before its job is done (`why`: crontab, shot or gone), on the host
+## and on every joiner alike: the strip's note for its owner when the crontab was full, the feed's
+## line when another player's shot removed it.
+func _mine_removed(mine: Node, why: String, remover: int) -> void:
+	mine.remove(why)
+	if why == CronMine.CRONTAB and mine.owner_id == my_id and _player_ready() and _player.has_method("note_crontab_full"):
+		_player.note_crontab_full(mine.def)
+	if why == CronMine.SHOT:
+		job_removed.emit(remover, mine.owner_id, mine.def.remove_word)
+
+
+## The host ends mine `id` (`why`) and tells every joiner, with `remover` the shooter for a shot.
+func _remove_mine(id: int, why: String, remover: int) -> void:
+	var mine = _mines.get(id)
+	if mine == null or not is_instance_valid(mine) or not mine.running():
+		return
+	var code := MINE_CRONTAB if why == CronMine.CRONTAB else MINE_SHOT if why == CronMine.SHOT else MINE_GONE
+	_tell_blast(id, code, remover if why == CronMine.SHOT else 0, _arena.to_local(mine.global_position))
+	_mine_removed(mine, why, remover)
+
+
+## `owner`'s crontab past the weapon's limit: its oldest jobs go (C27).
+func _crontab_trim(owner: int, def: WeaponDefScript) -> void:
+	var live: Array = _jobs.get(owner, []).filter(func(i): return _mines.has(i) and is_instance_valid(_mines[i]) and _mines[i].running())
+	while live.size() > def.crontab_limit:
+		_remove_mine(live.pop_front(), CronMine.CRONTAB, 0)
+
+
+## Every job of `owner`'s goes: it left the match.
+func _drop_jobs(owner: int) -> void:
+	for id in _jobs.get(owner, []).duplicate():
+		_remove_mine(id, CronMine.GONE, 0)
+	_jobs.erase(owner)
+
+
+## A joiner arriving mid-match is sent every mine running, already armed, with its runs left.
+func _send_mines(peer: int) -> void:
+	for id in _mines:
+		var mine = _mines[id]
+		if is_instance_valid(mine) and mine.running():
+			var normal: Vector3 = (_arena.global_transform.basis.inverse() * (mine.normal as Vector3)).normalized()
+			_tell_seed(id, mine.owner_id, mine.def.id, -mine.runs_left, _arena.to_local(mine.global_position), normal, PackedInt32Array(), peer)
+
+
+## The hit volumes of `shooter`'s own mines: its own shots pass them by.
+func _own_mines(shooter: int) -> Array[RID]:
+	var out: Array[RID] = []
+	for id in _jobs.get(shooter, []):
+		var mine = _mines.get(id)
+		if mine != null and is_instance_valid(mine) and mine.hit_rid().is_valid():
+			out.append(mine.hit_rid())
+	return out
+
+
+## A hitscan ray of `shooter`'s from `a` to `b` (arena space): the first mine of another player's
+## whose hit volume it passes removes it, or every one with `pierce` (the rail). Host only.
+func _shoot_mines(shooter: int, a: Vector3, b: Vector3, pierce: bool) -> void:
+	if _mines.is_empty() or _player == null or not is_instance_valid(_player):
+		return
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var skip := _own_mines(shooter)
+	for i in WeaponDefScript.PIERCE_LAST:
+		var query := PhysicsRayQueryParameters3D.create(_arena.to_global(a), _arena.to_global(b), CronMine.MINE_LAYER)
+		query.exclude = skip
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			return
+		skip.append((hit["collider"] as CollisionObject3D).get_rid())
+		_shot_mine(hit["collider"], shooter)
+		if not pierce:
+			return
+
+
+## A shot of `shooter`'s met mine `collider`: another player's mine is removed. True when it was.
+func _shot_mine(collider: Object, shooter: int) -> bool:
+	var id: int = collider.get_meta(CronMine.MINE_ID_META, 0)
+	if collider.get_meta(CronMine.MINE_OWNER_META, 0) == shooter or not _mines.has(id):
+		return false
+	_remove_mine(id, CronMine.SHOT, shooter)
+	return true
+
+
+## A blast of `shooter`'s at `at` (world space) reaching `radius`: every mine of another player's
+## within it, with nothing of the level between, is removed. Host only.
+func _blast_mines(shooter: int, at: Vector3, radius: float) -> void:
+	if _mines.is_empty() or _player == null or not is_instance_valid(_player):
+		return
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	for id in _mines.keys():
+		var mine = _mines[id]
+		if not is_instance_valid(mine) or not mine.running() or mine.owner_id == shooter or not mine.authoritative:
+			continue
+		var place: Vector3 = mine.global_position
+		if place.distance_to(at) > radius:
+			continue
+		if space.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, place, BLAST_SIGHT_MASK)).is_empty():
+			_remove_mine(id, CronMine.SHOT, shooter)
 
 
 ## The host's rm -rf slug went off at `at` (world space, C26): every joiner's slug goes off there.
@@ -2100,7 +2314,8 @@ func _on_slug_blasted(at: Vector3, shot_id: int) -> void:
 ## with nothing of the level between, takes the blast's damage for its distance at the shooter's
 ## strength (combat.damage_scale, C22); the shooter itself too, at the weapon's self_damage_share
 ## of it (a death it causes credits no kill). Told as a shot of the rm -rf cannon, each kill as a
-## death by it. How many players it hurt.
+## death by it. How many players it hurt. A cron mine's run (C27) is judged here too: its
+## self-damage share is 0, so it never hurts its owner, and its kills credit the owner even dead.
 func _judge_slug_blast(at: Vector3, shooter: int, weapon: String, root: bool) -> int:
 	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player) or _arena == null or not is_instance_valid(_arena):
 		return 0
@@ -2140,6 +2355,7 @@ func _judge_slug_blast(at: Vector3, shooter: int, weapon: String, root: bool) ->
 			killed.append(id)
 		if id != shooter:
 			combat.add_meter(shooter, minf(base, before) / _ct.max_health, outcome["killed"])
+	_blast_mines(shooter, at, def.blast_radius_for(root))  # and another player's mines in reach (C27)
 	if hits.is_empty():
 		return 0
 	var local: Vector3 = _arena.to_local(at)
@@ -2198,7 +2414,7 @@ func _mark_point(id: int) -> Vector3:
 ## this side was told.
 func _pellets_past(shooter: int) -> Array[RID]:
 	if state == State.HOSTING and combat != null and _player != null and is_instance_valid(_player):
-		return _not_in_the_way(shooter)
+		return _not_in_the_way(shooter) + _own_mines(shooter)
 	var out: Array[RID] = []
 	if (shooter == my_id or dead.get(my_id, false)) and _player != null and is_instance_valid(_player):
 		out.append(_player.get_rid())
@@ -2218,6 +2434,8 @@ func _pellets_past(shooter: int) -> Array[RID]:
 func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shooter: int, weapon: String, origin: Vector3) -> bool:
 	if state != State.HOSTING or combat == null or not is_instance_valid(collider) or _arena == null or not is_instance_valid(_arena):
 		return false
+	if collider.has_meta(CronMine.MINE_ID_META):
+		return _shot_mine(collider, shooter)  # another player's cron mine (C27)
 	var victim := 0
 	if collider == _player and shooter != 1 and combat.has_player(1):
 		victim = 1

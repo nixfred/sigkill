@@ -38,6 +38,11 @@ extends Control
 ## slots stay clear of the guide panel at 960x540. While it winds up, the third line types its
 ## charge prompt out as the wind-up fills ("rm: remove? [y]" whole when the shot goes); the rail's
 ## charging bar is the rail's alone.
+##
+## cron mines (C27) are slot 8; the slot line is a point smaller again (11), so eight slots stay
+## clear of the guide panel at 960x540 (a two-row strip waits for a ninth weapon). While cron is in
+## hand, the third line is the crontab: "crontab 2/3" (this player's jobs running and the limit),
+## or "crontab full: oldest out" for a moment after a placement removed the oldest.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -68,11 +73,14 @@ const STOP_LINE := "%s SIGSTOP [%s%s]"
 const STOP_ON_LINE := "%s SIGCONT [%s%s]"
 const VISION_LINE := "%s vision [%s%s]"
 const VISION_ON_LINE := "%s VISION [%s%s]"
+const CRONTAB_LINE := "crontab %d/%d"
+const CRONTAB_FULL := "crontab full: oldest out"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
-## The slot line's size: the small lines' (C26), so seven slots stay clear of the guide panel.
-const SLOT_FONT := 12
+## The slot line's size: a point under the small lines' (C27), so eight slots stay clear of the
+## guide panel.
+const SLOT_FONT := 11
 const SMALL_FONT := 12
 const MARGIN := 18
 ## Room kept below the strip for the hint line.
@@ -225,6 +233,10 @@ func _refresh() -> void:
 	elif def.has_magazine() and mag <= 0:
 		_state.text = DRY_LINE if reserve == 0 else EMPTY_LINE
 		color = Palette.HOSTILE_AMBER
+	elif def.is_mine() and player.has_method("crontab_count"):
+		# cron (C27): the crontab, or the note that its oldest job went.
+		_state.text = CRONTAB_FULL if player.crontab_noted() else CRONTAB_LINE % [player.crontab_count(), def.crontab_limit]
+		state_color = def.skin_body()
 	elif ult_slot >= 0:
 		_state.text = _meter_text
 		if _meter_ready:

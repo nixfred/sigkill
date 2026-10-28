@@ -71,6 +71,14 @@ extends CharacterBody3D
 ## the intent goes and the host judges everyone in the radius, the shooter too. Each blast of
 ## this player's is the round's "rm -rf" callout (rm_blast).
 ##
+## cron mines (C27), slot 8: fire places a mine (scripts/weapons/cron_mine.gd) on the surface
+## aimed at within the weapon's placement range, or at the feet. Alone the player runs it: its
+## runs hurt this arena's daemons in reach (never the player), and it keeps running whatever the
+## player does, until its job is done; a new round clears them. The crontab holds crontab_limit
+## jobs: one more removes the oldest, and the strip notes it. In a match only the intent goes; the
+## host places, schedules and judges every mine, and hands this player its own (take_mine) for the
+## strip's count. The first run of each of this player's mines is the round's "cron" callout.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -96,6 +104,7 @@ const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const GrepLock = preload("res://scripts/weapons/grep_lock.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
+const CronMine = preload("res://scripts/weapons/cron_mine.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -139,6 +148,8 @@ signal fork_split
 signal grep_marked
 ## A slug of this player's rm -rf went off (C26): the round HUD's "rm -rf" callout.
 signal rm_blast
+## A mine of this player's ran for the first time (C27): the round HUD's "cron" callout.
+signal cron_ran
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -236,6 +247,12 @@ var _charge_total := 0.0
 ## keeps meanwhile, taken at the shot (C26).
 var _slow_left := 0.0
 var _slow_scale := 1.0
+## This player's own cron mines (C27), oldest first: alone the ones it runs, in a match the ones the
+## host says are its; and seconds the strip still notes a full crontab.
+var _jobs: Array = []
+var _crontab_note_left := 0.0
+## Mines this player placed alone: each one's id.
+var _placed := 0
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
@@ -857,6 +874,7 @@ func _step_weapon(delta: float) -> void:
 	_apply_recoil()
 	_step_root()
 	_step_grep(delta)
+	_crontab_note_left = maxf(_crontab_note_left - delta, 0.0)
 	if _charge_left > 0.0:
 		_step_charge(delta)
 	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
@@ -984,6 +1002,9 @@ func _fire() -> void:
 		return
 	if _w.is_slug():
 		_fire_slug()
+		return
+	if _w.is_mine():
+		_fire_mine()
 		return
 	shots_fired += 1
 	var origin := _camera.global_position
@@ -1183,6 +1204,84 @@ func _fire_slug() -> void:
 	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 	var slug := RmSlug.spawn(_fx_root(), _w, origin, forward, root, true, _w.hit_mask, _not_me, _judge_slug.bind(_w, root))
 	take_volley(slug)
+
+
+## A placement of cron (C27): the small flash, kick and sound here at once. Alone the mine sticks
+## where the aim meets the level within the placement range (at the feet with none), runs from
+## here, judged by _judge_mine, and the crontab keeps its limit (the oldest removed, and noted);
+## in a match only the intent goes, and the host places it. Root's mine gets its extra run.
+func _fire_mine() -> void:
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	_fire_sfx.play()
+	fire_intent.emit(origin, forward, _w.id)
+	if match_meter:
+		return
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	var place := CronMine.place(get_world_3d().direct_space_state, origin, forward, _w.place_range_m, global_position, _half_height())
+	_placed += 1
+	var mine := CronMine.spawn(_fx_root(), _w, place["at"], place["normal"], _placed, 0, _w.runs_for(root), true, false, _judge_mine.bind(_w))
+	take_mine(mine)
+	var live := _live_jobs()
+	if live.size() > _w.crontab_limit:
+		live[0].remove(CronMine.CRONTAB)
+		note_crontab_full(_w)
+
+
+## A mine of this player's (C27): kept for the strip's count, its first run the callout.
+func take_mine(mine: Node) -> void:
+	_jobs = _live_jobs()
+	_jobs.append(mine)
+	mine.ran.connect(_on_mine_ran.bind(mine))
+
+
+func _on_mine_ran(left: int, _at: Vector3, mine: Node) -> void:
+	if is_instance_valid(mine) and left == mine.runs_total - 1:
+		cron_ran.emit()
+
+
+## This player's mines still running, oldest first.
+func _live_jobs() -> Array:
+	return _jobs.filter(func(m): return is_instance_valid(m) and m.running())
+
+
+## How many of this player's jobs run now (C27): the strip's "crontab N/limit".
+func crontab_count() -> int:
+	return _live_jobs().size()
+
+
+## The crontab was full and its oldest job went: the strip says so for crontab_note_s.
+func note_crontab_full(def: WeaponDefScript) -> void:
+	_crontab_note_left = def.crontab_note_s
+
+
+func crontab_noted() -> bool:
+	return _crontab_note_left > 0.0
+
+
+## A new round, alone: every job of this player's ends (C27). In a match the host owns them.
+func clear_jobs() -> void:
+	if match_meter:
+		return
+	for mine in _live_jobs():
+		mine.remove(CronMine.GONE)
+	_jobs = []
+
+
+## Half the body's height: from its middle down to its feet.
+func _half_height() -> float:
+	var shape := ($Shape as CollisionShape3D).shape as CapsuleShape3D
+	return shape.height * 0.5 if shape != null else DUMMY_MIDDLE_M
+
+
+## Alone, a run of this player's cron mine at `at` (C27): every daemon of this arena within the
+## blast's radius with nothing of the level between takes the blast's damage for its distance at
+## this player's strength (root's harder hit, C22). The player itself is never hurt by its own
+## mines (nor has health alone). How many it hurt.
+func _judge_mine(at: Vector3, def: WeaponDefScript) -> int:
+	return _judge_slug(at, def, false)
 
 
 ## Alone, the blast of this player's rm -rf slug at `at` (C26): every daemon of this arena whose

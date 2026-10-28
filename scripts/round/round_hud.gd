@@ -44,6 +44,9 @@ extends Control
 ## The rm -rf cannon (C26): each blast of this player's slug is called out "rm -rf" at once,
 ## whatever the pace: a slow weapon's one big moment, as the fork bomb's first blast is.
 ##
+## cron mines (C27): the first run of each of this player's mines is called out "cron", at the
+## usual pace; a new round ends every job of this player's (alone: in a match the host owns them).
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -71,6 +74,7 @@ const FORK_BOMB_LINE := ":(){ :|:& };:"
 const FORK_LINE := "fork()"
 const GREP_LINE := "grep"
 const RM_LINE := "rm -rf"
+const CRON_LINE := "cron"
 
 enum Phase { ROUND, BREAK }
 
@@ -151,7 +155,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked], ["rm_blast", _on_rm_blast]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked], ["rm_blast", _on_rm_blast], ["cron_ran", _on_cron_ran]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	var stop = player.get("sigstop")
@@ -246,6 +250,8 @@ func _start_round(number: int) -> void:
 		_player.refill_sigstop()
 	if _player != null and is_instance_valid(_player) and _player.has_method("refill_bombs"):
 		_player.refill_bombs()
+	if _player != null and is_instance_valid(_player) and _player.has_method("clear_jobs"):
+		_player.clear_jobs()  # a new round ends this player's cron jobs (C27; alone only)
 	phase = Phase.ROUND
 	_left_s = _t.round_seconds
 	_since_callout_s = INF
@@ -338,6 +344,11 @@ func _on_rm_blast() -> void:
 	_callout("rm_rf", true)
 
 
+## The first run of a mine of this player's: called out at the usual pace.
+func _on_cron_ran() -> void:
+	_callout("cron")
+
+
 ## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
 ## whatever the pace, as "kill -9" is).
 func _callout(word: String, now: bool = false) -> void:
@@ -369,6 +380,8 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = GREP_LINE
 		"rm_rf":
 			last_callout = RM_LINE
+		"cron":
+			last_callout = CRON_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

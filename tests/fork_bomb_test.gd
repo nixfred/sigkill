@@ -109,7 +109,7 @@ func _tuning_checks() -> void:
 	_check("one blast's damage: 22 at the centre, 6.6 at the edge, none past it; never 100", is_equal_approx(t.damage_at(0.0), 22.0) and is_equal_approx(t.damage_at(4.0), 6.6) and t.damage_at(4.01) == 0.0 and t.damage_at(-1.0) == 0.0 and t.damage < 100.0)
 	var w = _w
 	var shipped = load("res://resources/arsenal.tres")
-	_check("the weapon is a WeaponDef in slot 4 of the arsenal: \"fork bomb\", thrown, 2 bombs and none in reserve, a 0.6 s throw interval, its own fork light skin, the kill feed's \"fork bomb\", the chain's resource as its projectile (five slots since C24's fork() shotgun, six since C25's grep, seven since C26's rm -rf)", w is WeaponDefScript and w.problems().is_empty() and w.id == "fork_bomb" and w.short_name == "fork bomb" and w.is_thrown() and w.magazine_size == 2 and w.reserve_ammo == 0 and w.fire_cooldown == 0.6 and w.light_skin == "fork" and w.kill_word == "fork bomb" and w.projectile == t and shipped.loadout.size() == 7 and shipped.loadout[SLOT] == w, str(w.problems()) if w is WeaponDefScript else "")
+	_check("the weapon is a WeaponDef in slot 4 of the arsenal: \"fork bomb\", thrown, 2 bombs and none in reserve, a 0.6 s throw interval, its own fork light skin, the kill feed's \"fork bomb\", the chain's resource as its projectile (five slots since C24's fork() shotgun, six since C25's grep, seven since C26's rm -rf, eight since C27's cron)", w is WeaponDefScript and w.problems().is_empty() and w.id == "fork_bomb" and w.short_name == "fork bomb" and w.is_thrown() and w.magazine_size == 2 and w.reserve_ammo == 0 and w.fire_cooldown == 0.6 and w.light_skin == "fork" and w.kill_word == "fork bomb" and w.projectile == t and shipped.loadout.size() == 8 and shipped.loadout[SLOT] == w, str(w.problems()) if w is WeaponDefScript else "")
 	var cases := [
 		["generations", 5, "generations"], ["generations", 0, "generations"], ["fuse_s", 0.0, "fuse_s"], ["child_fuse_s", 20.0, "child_fuse_s"],
 		["radius_m", 0.0, "radius_m"], ["damage", -1.0, "damage"], ["live_cap", 0, "live_cap"], ["ring_shrink", 2.0, "ring_shrink"],
@@ -206,7 +206,7 @@ func _solo_checks() -> void:
 	p.respawn_at(main.to_global(Vector3(-15.0, STAND_Y, LINE_Z)))
 	_aim(p, main.to_global(Vector3(0.0, STAND_Y + 0.6, LINE_Z)))
 	await _settle(p, 0.3)
-	_check("solo: the fork bomb is slot 4 with its 2 bombs, and the strip shows them while the cannon is drawn (fork() in slot 5 and one space between slots since C24, grep in slot 6 since C25, rm -rf in slot 7 since C26)", inv.slot_count() == 7 and inv.thrown_slot() == SLOT and inv.mags[SLOT] == 2 and wh.slots_text() == "[1 cannon] 2 3 4(2) 5 6 7", wh.slots_text())
+	_check("solo: the fork bomb is slot 4 with its 2 bombs, and the strip shows them while the cannon is drawn (fork() in slot 5 and one space between slots since C24, grep in slot 6 since C25, rm -rf in slot 7 since C26, cron in slot 8 since C27)", inv.slot_count() == 8 and inv.thrown_slot() == SLOT and inv.mags[SLOT] == 2 and wh.slots_text() == "[1 cannon] 2 3 4(2) 5 6 7 8", wh.slots_text())
 	# A throw, drawn: fire.
 	p.select_slot(SLOT)
 	await _settle(p, 0.4)
@@ -241,7 +241,7 @@ func _solo_checks() -> void:
 	await _settle(p, 1.8)  # past the draw's fiction line
 	await _fire(p)
 	await _settle(p, 0.1)
-	_check("acceptance: G throws one without drawing it (the cannon stays in hand, 0 left, the strip shows \"4(0)\"); with none left neither G nor fire throws anything", quick and after_quick == 0 and inv.current == SLOT and strip_empty == "[1 cannon] 2 3 4(0) 5 6 7" and not none_left and _chains(main).is_empty() and wh.state_text() == "out of ammo", "%s %d %s %s" % [quick, after_quick, strip_empty, wh.state_text()])
+	_check("acceptance: G throws one without drawing it (the cannon stays in hand, 0 left, the strip shows \"4(0)\"); with none left neither G nor fire throws anything", quick and after_quick == 0 and inv.current == SLOT and strip_empty == "[1 cannon] 2 3 4(0) 5 6 7 8" and not none_left and _chains(main).is_empty() and wh.state_text() == "out of ammo", "%s %d %s %s" % [quick, after_quick, strip_empty, wh.state_text()])
 	round.call("_next_round")
 	var at_round: int = inv.mags[SLOT]
 	inv.mags[SLOT] = 0

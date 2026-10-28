@@ -60,18 +60,28 @@ extends "res://scripts/weapon_tuning.gd"
 ## edge, nothing beyond, and nothing through the level. It hurts its own shooter too, at
 ## self_damage_share of the blast; a shooter it kills is "<kill_word>: <name> <self_kill_word>"
 ## in the feed. The HUD types charge_prompt out as the wind-up fills. The Blast group is empty
-## (0) for every other weapon.
+## (0) for every other weapon but cron's.
+##
+## cron mines (C27, resources/cron_mines.tres): fire_mode MINE places a mine, a scheduled job,
+## on the surface aimed at within place_range_m (at the feet with none in reach). After arm_s it
+## runs every run_interval_s, `runs` times (root_extra_runs more for one placed as root), each
+## run a blast of the Blast group's numbers (never hurting its owner: self_damage_share 0), each
+## telegraphed by a ring closing over the wait and a brighten for telegraph_s; then it fades over
+## fade_s. A player holds crontab_limit at most (a new one removes the oldest, noted for
+## crontab_note_s); another player's shot within mine_hit_radius_m removes one, "remove_word" in
+## the feed. The Mine group is empty (0) for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
-## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf). Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG]
+## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf), mines since C27 (cron).
+## Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -129,6 +139,17 @@ const ROOT_BLAST_SCALE_LAST := 4.0
 const MOVE_SLOW_LAST_S := 5.0
 const RING_LAST_S := 2.0
 const WAIT_LAST_S := 5.0
+## cron mines (C27): the bounds of their numbers.
+const PLACE_RANGE_LAST_M := 20.0
+const ARM_LAST_S := 10.0
+const RUN_INTERVAL_LAST_S := 30.0
+const RUNS_LAST := 10
+const ROOT_EXTRA_RUNS_LAST := 5
+const CRONTAB_LAST := 8
+const MINE_HIT_LAST_M := 2.0
+const MINE_RADIUS_LAST_M := 1.0
+const FADE_LAST_S := 5.0
+const NOTE_LAST_S := 10.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -280,6 +301,27 @@ const WAIT_LAST_S := 5.0
 ## the blast before it gives up.
 @export var blast_wait_s: float = 0.0
 
+@export_group("Mine")
+## cron mines (C27): how far ahead a mine is placed on the surface aimed at (at the feet with
+## nothing in reach), the arm delay, the schedule (a run every run_interval_s, `runs` times,
+## root_extra_runs more for one placed as root), the crontab's limit per player, the size a shot
+## must pass within to remove one, how long it fades at its end, the stud's radius, the brighten
+## before each run, and how long the HUD notes a full crontab.
+@export var place_range_m: float = 0.0
+@export var arm_s: float = 0.0
+@export var run_interval_s: float = 0.0
+@export var runs: int = 0
+@export var root_extra_runs: int = 0
+@export var crontab_limit: int = 0
+@export var mine_hit_radius_m: float = 0.0
+@export var fade_s: float = 0.0
+@export var mine_radius_m: float = 0.0
+@export var telegraph_s: float = 0.0
+@export var crontab_note_s: float = 0.0
+## The feed's words for another player's shot removing a mine ("crontab -r: Daemon-3" /
+## "removed Daemon-2's job").
+@export var remove_word: String = ""
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -297,7 +339,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker and slug" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug and mine" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -311,6 +353,8 @@ func problems() -> PackedStringArray:
 		out.append_array(_seek_problems())
 	elif fire_mode == FireMode.SLUG:
 		out.append_array(_slug_problems())
+	elif fire_mode == FireMode.MINE:
+		out.append_array(_mine_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -325,8 +369,12 @@ func problems() -> PackedStringArray:
 		out.append("only fork() pellets (fire_mode fork pellets) fill the fork group")
 	if fire_mode != FireMode.SEEKER and (dart_speed != 0.0 or lock_s != 0.0 or max_marks != 0 or root_max_marks != 0 or lock_range_m != 0.0):
 		out.append("only grep darts (fire_mode seeker) fill the seek group")
-	if fire_mode != FireMode.SLUG and (slug_speed != 0.0 or blast_radius_m != 0.0 or self_damage_share != 0.0 or move_scale != 0.0 or root_charge_scale != 0.0 or self_kill_word != "" or charge_prompt != ""):
+	if fire_mode != FireMode.SLUG and (slug_speed != 0.0 or self_damage_share != 0.0 or move_scale != 0.0 or root_charge_scale != 0.0 or self_kill_word != "" or charge_prompt != ""):
 		out.append("only the rm -rf slug (fire_mode slug) fills the blast group, the self-kill words and the charge prompt")
+	elif fire_mode != FireMode.SLUG and fire_mode != FireMode.MINE and (blast_radius_m != 0.0 or blast_edge_damage != 0.0 or root_blast_scale != 0.0):
+		out.append("only the rm -rf slug and cron mines (fire_mode slug or mine) fill the blast group")
+	if fire_mode != FireMode.MINE and (place_range_m != 0.0 or arm_s != 0.0 or run_interval_s != 0.0 or runs != 0 or crontab_limit != 0 or remove_word != ""):
+		out.append("only cron mines (fire_mode mine) fill the mine group")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -396,14 +444,24 @@ func is_seeker() -> bool:
 
 
 ## True for a weapon whose shot flies as a volley of projectiles the host runs and every
-## screen draws from a seed: fork() (C24), grep (C25) and the rm -rf slug (C26).
+## screen draws from a seed: fork() (C24), grep (C25), the rm -rf slug (C26) and cron's mines (C27).
 func is_volley() -> bool:
-	return is_fork() or is_seeker() or is_slug()
+	return is_fork() or is_seeker() or is_slug() or is_mine()
 
 
 ## True for the rm -rf cannon's slug (C26): one slow shot that blasts where it stops.
 func is_slug() -> bool:
 	return fire_mode == FireMode.SLUG
+
+
+## True for cron mines (C27): fire places a scheduled job that runs blasts on its own.
+func is_mine() -> bool:
+	return fire_mode == FireMode.MINE
+
+
+## Runs of a mine placed as user, or with `root` (C22's "root crontab") root_extra_runs more.
+func runs_for(root: bool) -> int:
+	return runs + (root_extra_runs if root else 0)
 
 
 ## Seconds the shot winds up (charges) for: charge_s, or root_charge_scale of it with `root`
@@ -602,6 +660,44 @@ func _slug_problems() -> PackedStringArray:
 		out.append("self_kill_word must be 1 to %d printable characters" % WORD_LAST)
 	if not _is_line(charge_prompt, FICTION_LAST):
 		out.append("charge_prompt must be 1 to %d printable characters" % FICTION_LAST)
+	return out
+
+
+func _mine_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("cron places one mine a shot: pellet_count stays 1")
+	if projectile != null or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("cron places from a magazine: no projectile tuning, pierce, charge or ult")
+	if not is_finite(falloff_floor) or falloff_floor != 1.0:
+		out.append("a mine's falloff is its blast's: falloff_floor stays 1")
+	var bounds := [
+		["place_range_m", place_range_m, 0.0, PLACE_RANGE_LAST_M], ["run_interval_s", run_interval_s, 0.0, RUN_INTERVAL_LAST_S],
+		["mine_hit_radius_m", mine_hit_radius_m, 0.0, MINE_HIT_LAST_M], ["fade_s", fade_s, 0.0, FADE_LAST_S],
+		["mine_radius_m", mine_radius_m, 0.0, MINE_RADIUS_LAST_M], ["crontab_note_s", crontab_note_s, 0.0, NOTE_LAST_S],
+		["blast_radius_m", blast_radius_m, 0.0, BLAST_RADIUS_LAST_M], ["blast_ring_s", blast_ring_s, 0.0, RING_LAST_S],
+		["blast_wait_s", blast_wait_s, 0.0, WAIT_LAST_S],
+	]
+	for b in bounds:
+		var v: float = b[1]
+		if not is_finite(v) or v <= b[2] or v > b[3]:
+			out.append("%s must be above %s and at most %s" % [b[0], b[2], b[3]])
+	if not is_finite(arm_s) or arm_s < 0.0 or arm_s > ARM_LAST_S:
+		out.append("arm_s must be between 0 and %s" % ARM_LAST_S)
+	if not is_finite(telegraph_s) or telegraph_s <= 0.0 or not is_finite(run_interval_s) or telegraph_s > run_interval_s:
+		out.append("telegraph_s must be above 0 and at most run_interval_s")
+	if runs < 1 or runs > RUNS_LAST:
+		out.append("runs must be between 1 and %d" % RUNS_LAST)
+	if root_extra_runs < 0 or root_extra_runs > ROOT_EXTRA_RUNS_LAST:
+		out.append("root_extra_runs must be between 0 and %d" % ROOT_EXTRA_RUNS_LAST)
+	if crontab_limit < 1 or crontab_limit > CRONTAB_LAST:
+		out.append("crontab_limit must be between 1 and %d" % CRONTAB_LAST)
+	if not is_finite(root_blast_scale) or root_blast_scale != 1.0:
+		out.append("a mine's root overcharge is its extra run: root_blast_scale stays 1")
+	if not is_finite(blast_edge_damage) or blast_edge_damage < 0.0 or blast_edge_damage > damage:
+		out.append("blast_edge_damage must be between 0 and the centre's damage")
+	if not _is_line(remove_word, WORD_LAST):
+		out.append("remove_word must be 1 to %d printable characters" % WORD_LAST)
 	return out
 
 

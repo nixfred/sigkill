@@ -9,7 +9,8 @@ extends Control
 ## results, which arrive through the session's signals; nothing is guessed locally. While the
 ## top table (C23, scripts/hud/spectate_top.gd) is up the banner sits just below it as one
 ## smaller line. A player its own rm -rf blast killed (C26) reads "rm -rf: Daemon-2" /
-## "removed themself", the weapon's self-kill words.
+## "removed themself", the weapon's self-kill words. A player's shot removing another's cron mine
+## (C27) reads "crontab -r: Daemon-3" / "removed Daemon-2's job".
 ## Shown only while a session is online; solo play sees none of it.
 
 const Session = preload("res://scripts/net/net_session.gd")
@@ -31,6 +32,8 @@ const FEED_SECOND := "to %s"
 ## A player its own weapon killed, for a weapon with self-kill words (C26): "rm -rf: Daemon-2" /
 ## "removed themself".
 const FEED_SELF := "%s: %s"
+## The second line of a cron mine's removal (C27): whose job it was.
+const FEED_JOB := "removed %s's job"
 const FEED_FONT := 13
 ## Room below the feed for the hint line and the weapon strip (C16).
 const FEED_BOTTOM_GAP := 104
@@ -76,6 +79,8 @@ func set_session(s: Node) -> void:
 	# live match), and a lambda left on its signal would run on a freed HUD.
 	s.shot_confirmed.connect(_on_shot)
 	s.player_died.connect(_on_death)
+	if s.has_signal("job_removed"):
+		s.job_removed.connect(_on_job_removed)
 	s.player_respawned.connect(_on_respawn)
 	s.combat_changed.connect(_refresh)
 	s.changed.connect(_refresh)
@@ -89,8 +94,8 @@ func _exit_tree() -> void:
 func _unhook() -> void:
 	if session == null or not is_instance_valid(session):
 		return
-	for pair in [["shot_confirmed", _on_shot], ["player_died", _on_death], ["player_respawned", _on_respawn], ["combat_changed", _refresh], ["changed", _refresh]]:
-		if session.is_connected(pair[0], pair[1]):
+	for pair in [["shot_confirmed", _on_shot], ["player_died", _on_death], ["player_respawned", _on_respawn], ["combat_changed", _refresh], ["changed", _refresh], ["job_removed", _on_job_removed]]:
+		if session.has_signal(pair[0]) and session.is_connected(pair[0], pair[1]):
 			session.disconnect(pair[0], pair[1])
 
 
@@ -183,6 +188,16 @@ func _on_death(victim: int, killer: int) -> void:
 		return
 	var word: String = session.last_kill_word.get(victim, "")
 	entries.push_front({"killer": _name(killer), "victim": _name(victim), "word": word if word != "" else DEFAULT_WORD, "self": session.last_kill_self.get(victim, "") if killer == victim else "", "left": session.combat_tuning_in_use().kill_feed_fade_s})
+	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
+		entries.pop_back()
+	_refresh()
+
+
+## A player's shot removed another player's cron mine (C27): a feed line, as a kill's.
+func _on_job_removed(remover: int, owner: int, word: String) -> void:
+	if session == null:
+		return
+	entries.push_front({"killer": _name(remover), "victim": _name(owner), "word": word, "self": FEED_JOB % _name(owner), "left": session.combat_tuning_in_use().kill_feed_fade_s})
 	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
 		entries.pop_back()
 	_refresh()
