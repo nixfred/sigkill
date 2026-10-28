@@ -37,12 +37,12 @@ const HIP_H := 0.9
 ## Limb lengths, in metres.
 const THIGH := 0.48
 const SHIN := 0.48
-const UPPER := 0.5
-const FORE := 0.47
+const UPPER := 0.56
+const FORE := 0.52
 ## The ghosts: how many, how far behind in time (seconds) and how far set back along its way.
 const GHOSTS := 3
 const LAG_S := 0.3
-const GHOST_BACK := 0.3
+const GHOST_BACK := 0.42
 ## The ribcage's ribs a side, and the voxels it sheds: how many, and how long each lives.
 const RIBS := 3
 const BITS := 10
@@ -63,8 +63,9 @@ var _lurch := 0.0
 var _drag := 0.0
 ## Each layer's root as last posed (the body's, then each ghost's), for the checks.
 var _roots := PackedVector3Array()
-## The body's elbows as last posed.
+## The body's elbows and its head's centre as last posed (drawn or flickered out).
 var _elbows := PackedVector3Array([Vector3.ZERO, Vector3.ZERO])
+var _head := Vector3.ZERO
 
 
 func _build() -> void:
@@ -158,16 +159,18 @@ func _skeleton(t: float, layer: int, shift: Vector3, off: bool) -> void:
 	orient(_bones[first + Bone.PLATE], plate_at, s2 - s1, 0.44 * (1.0 + 0.04 * breath), 0.38, 0.24, ahead)
 	bone(_bones[first + Bone.NECK], s2, s3, 0.07)
 	orient(_bones[first + Bone.HEAD], head_at, head_way, 0.3, 0.22, 0.24, ahead)
+	if layer == 0:
+		_head = head_at
 	# The shoulders, hunched up round the head, and the broken shards on its back over them.
 	for side in 2:
 		var x := -1.0 if side == 0 else 1.0
 		var shoulder := s2 + body * Vector3(0.3 * x, 0.12, 0.05)
 		bone(_bones[first + Bone.CLAV_L + side], s2, shoulder, 0.06)
-		bone(_bones[first + Bone.SPIKE_L + side], s2 + body * Vector3(0.12 * x, 0.02, 0.12), s2 + body * Vector3(0.3 * x, 0.72, 0.42), 0.08)
+		bone(_bones[first + Bone.SPIKE_L + side], s2 + body * Vector3(0.12 * x, 0.02, 0.12), s2 + body * Vector3(0.34 * x, 0.86, 0.46), 0.09)
 		# The arms hang to the knees and swing out of step; the bad (left) one hangs limp and out;
 		# a twitch jerks one up.
 		var swing := 0.15 * sin(TAU * f + PI) if side == 0 else 0.35 * sin(TAU * f + 0.5)
-		var hang := Vector3((0.35 if side == 0 else 0.2) * x, -1.0, -0.15 + swing).normalized()
+		var hang := Vector3((0.45 if side == 0 else 0.3) * x, -1.0, -0.15 + swing).normalized()
 		var jerk := amp if (kind == 1 and side == 0) or (kind == 2 and side == 1) else 0.0
 		var upper := hang.lerp(Vector3(1.0 * x, 0.5, -0.6).normalized(), jerk).normalized()
 		var elbow := shoulder + body * upper * UPPER
@@ -333,6 +336,6 @@ func pelvis_at() -> Vector3:
 	return _roots[0]
 
 
-## The head's centre now (art space): it stays inside the hit volume's height.
+## The head's centre now (art space), drawn or not: it stays over the hit volume's head zone.
 func head_at() -> Vector3:
-	return part_transform(_bones[Bone.HEAD]).origin
+	return _head

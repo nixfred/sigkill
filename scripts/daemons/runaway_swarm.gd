@@ -16,7 +16,7 @@ const INSECTS := 36
 ## The flock: the shell they hold round the nest, the neighbours' reach, the distance they keep, in
 ## metres; how hard each pull is; their slowest and fastest speed, in m/s; the longest step one frame
 ## may take, in seconds.
-const ORBIT_M := 0.75
+const ORBIT_M := 0.62
 const HOLLOW_M := 0.45
 const NEAR_M := 0.9
 const APART_M := 0.3
@@ -27,14 +27,14 @@ const HOME := 12.0
 const SPIN := 2.2
 const FLOOR_PUSH := 6.0
 const SPEED_MIN := 1.0
-const SPEED_MAX := 2.6
+const SPEED_MAX := 2.2
 const STEP_MAX := 1.0 / 30.0
 ## Dives: one every DIVE_EVERY seconds (every third a group of three), each DIVE_S long, at a point
 ## on the ground between these radii round the nest, with this pull.
 const DIVE_EVERY := 0.45
 const DIVE_S := 0.7
-const DIVE_NEAR := 0.5
-const DIVE_FAR := 1.3
+const DIVE_NEAR := 0.4
+const DIVE_FAR := 1.1
 const DIVE_PULL := 10.0
 ## A hit's scatter, in m/s, and its reach, in metres.
 const SCATTER := 4.5

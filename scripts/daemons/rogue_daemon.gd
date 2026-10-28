@@ -346,6 +346,14 @@ func planted() -> Array[bool]:
 	return out
 
 
+## Whether each foot is in a step's swing now (a rearing front leg held up is not).
+func swinging() -> Array[bool]:
+	var out: Array[bool] = []
+	for i in LEGS:
+		out.append(_lift_at[i] >= 0.0)
+	return out
+
+
 ## Steps each leg has finished.
 func steps() -> PackedInt32Array:
 	return _steps

@@ -283,6 +283,14 @@ func part_custom(id: int) -> Color:
 	return _custom[id]
 
 
+## How many of the hit spray's shards are drawn now.
+func spraying() -> int:
+	var count := 0
+	for i in SPRAY:
+		count += 1 if shown(_spray_first + i) else 0
+	return count
+
+
 ## True when part `id` is drawn: posed at some size and present.
 func shown(id: int) -> bool:
 	return _xf[id].basis.determinant() > 0.0000001 and _custom[id].b > 0.0
@@ -374,11 +382,11 @@ func _send(all: bool) -> void:
 		return
 	for node in _drawn:
 		if hit:
-			node.set_instance_shader_parameter("hit", _hit)
+			node.set_instance_shader_parameter(&"hit", _hit)
 		if locked:
-			node.set_instance_shader_parameter("locked", _locked)
+			node.set_instance_shader_parameter(&"locked", _locked)
 		if unstable:
-			node.set_instance_shader_parameter("unstable", _unstable)
+			node.set_instance_shader_parameter(&"unstable", _unstable)
 	_sent_hit = _hit
 	_sent_locked = _locked
 	_sent_unstable = _unstable
