@@ -159,8 +159,7 @@ func end_now() -> void:
 			_asked = false
 			intent.emit(false)
 		_host_on = false
-	else:
-		meter.stop()
+	meter.stop()  # in a match the copy too, so the strip is not left waiting for the host's word
 	_ease_left = 0.0
 	if _time_holder == self:
 		restore_time()

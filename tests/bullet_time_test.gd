@@ -524,6 +524,18 @@ func _match_checks() -> void:
 	await _settle(cp, 0.4)
 	cst.press()
 	var again := await _until(func(): return hs.combat.sigstop_on(cid) and cst.is_on(), 2000)
+	# A hard stop in a match: the joiner's Esc menu.
+	var cmenu = client["hud"].pause_menu()
+	var strip: WeaponHud = client["hud"].weapon_hud()
+	client["hud"].open_menu()
+	await _frames(1)
+	var at_menu := [cst.is_on(), strip.stop_dimmed(), Engine.time_scale]
+	var host_off := await _until(func(): return not hs.combat.sigstop_on(cid), 2000)
+	cmenu.close()
+	await _frames(2)
+	_check("in a match the Esc menu ends SIGSTOP too: off on the joiner's screen at once, its strip ready again rather than waiting on the host's word, and the host told to end it", again and at_menu == [false, false, 1.0] and host_off and hs.combat.sigstop_meter(cid) > 1.0 and not cmenu.is_open(), str(at_menu))
+	cst.press()
+	again = await _until(func(): return hs.combat.sigstop_on(cid) and cst.is_on(), 2000)
 	hp.respawn_at(host["main"].to_global(Vector3(-8.0, STAND_Y, LINE_Z)))
 	hp.select_slot(0)
 	await _settle(hp, 0.5)

@@ -536,11 +536,11 @@ func host(port: int = -1) -> bool:
 	combat.add_player(1)
 	_reset_player_weapons()
 	_mirror_from_combat()
-	_send_sigstop(1)
 	error = ""
 	notice = ""
 	address_text = ""
 	state = State.HOSTING
+	_send_sigstop(1)  # the host's own word, once it is hosting
 	if _rv.is_live():
 		_room_attempts = 0
 		_register_room()
