@@ -17,11 +17,11 @@ extends "res://relay/relay_server.gd"
 ## a fresh code when its code runs out) keeps its room and joiners under the new code and
 ## tokens, and the old code answers "expired".
 ##
-## On top: connections at once (the --sources setting), the WebSocket handshake done within
-## HANDSHAKE_S, a connection silent for idle_s closed, a room ended when its host link closes
-## (its joiners' links closed with it), a slot freed when its joiner's link closes, a joiner
-## link joining one room only, and a message a link's outbound buffer cannot take dropped and
-## counted, never queued without end.
+## On top: connections at once, open or still closing (the --sources setting), the WebSocket
+## handshake done within HANDSHAKE_S, a connection silent for idle_s closed, a room ended when
+## its host link closes (its joiners' links closed with it), a slot freed when its joiner's
+## link closes, a joiner link joining one room only, and a message a link's outbound buffer
+## cannot take dropped and counted, never queued without end.
 ##
 ## Addresses: a connection's address and port live in memory only while it is open (the
 ## cookie and the per-address limits need them), as the UDP relay keeps them. Behind a proxy
@@ -140,8 +140,10 @@ func poll(now: float) -> void:
 		_housekeeping(now)
 
 
+## A new connection, unless the relay already holds --sources of them: open ones and ones
+## still closing alike, so a churn of connections dropped at once cannot pile up past it.
 func _accept(tcp: StreamPeerTCP, now: float) -> void:
-	if _links.size() >= config["max_clients"]:
+	if _links.size() + _closing.size() >= config["max_clients"]:
 		counters["busy"] += 1
 		tcp.disconnect_from_host()
 		return

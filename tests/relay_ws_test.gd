@@ -131,6 +131,7 @@ func _source_checks() -> void:
 		if relay.contains(word):
 			found.append(word)
 	_check("the WebSocket relay starts no program, opens no other kind of socket, reads and writes no file, decodes no objects and prints nothing at all", found.is_empty() and not relay.contains("print") and relay.count("TCPServer.new()") == 1 and relay.count("WebSocketPeer.new()") == 1 and relay.count("PacketPeer") == 0, ", ".join(found))
+	_check("the connection cap counts links still closing as well as open ones, so a churn of dropped connections cannot pile up past it", _body(relay, "_accept").contains("if _links.size() + _closing.size() >= config[\"max_clients\"]:"))
 	_check("it is the UDP relay's control path with another transport: it extends relay/relay_server.gd and sends every control answer through the same cookie, rate and room rules", relay.begins_with("extends \"res://relay/relay_server.gd\"") and _body(relay, "_on_message").contains("_on_control(data, link.ip, link.port, now)") and not relay.contains("func _on_control(") and not relay.contains("func _cookie_ok(") and not relay.contains("func _client("))
 	var said := PackedStringArray()
 	var private := RegEx.create_from_string("\\b(ip|owner|token|code|req|room)\\b")

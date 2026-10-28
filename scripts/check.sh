@@ -89,6 +89,9 @@ run_godot() {
 	if [ "$bad" -eq 0 ]; then
 		ok "$label: exit 0, no error lines"
 	else
+		# Every FAIL line of the step first (a flaky check is named even when it is not in the
+		# tail), then the tail.
+		grep -E '^FAIL' <<<"$out" >&2
 		printf '%s\n' "$out" | tail -15 >&2
 	fi
 }
