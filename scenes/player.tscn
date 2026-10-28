@@ -21,6 +21,3 @@ position = Vector3(0, 0.7, 0)
 
 [node name="Camera" type="Camera3D" parent="Head"]
 current = true
-
-[node name="Muzzle" type="Marker3D" parent="Head/Camera"]
-position = Vector3(0.22, -0.2, -0.7)

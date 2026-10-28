@@ -15,6 +15,16 @@ const SWAP_LAST_S := 2.0
 const DROP_LAST_M := 1.0
 const TILT_LAST := 90.0
 const FICTION_LAST_S := 10.0
+## The bounds of the drawn weapon's motion (A1).
+const SWAY_LAG_LAST_S := 0.2
+const SWAY_CAP_LAST := 30.0
+const RECOVERY_FIRST := 0.5
+const RECOVERY_LAST := 60.0
+const BOB_LAST_M := 0.1
+const ROLL_LAST := 15.0
+const FALL_LAG_LAST_M := 0.05
+const FALL_CAP_LAST_M := 0.2
+const KICK_LIFT_LAST := 2.0
 
 @export_group("Loadout")
 ## The weapons in slot order, slot 1 first: keys 1 to 9 pick them. Each is a WeaponDef.
@@ -29,6 +39,29 @@ const FICTION_LAST_S := 10.0
 @export var reload_tilt_degrees: float = 25.0
 ## How long the HUD shows a weapon's fiction line after it is drawn.
 @export var fiction_s: float = 1.6
+
+@export_group("Viewmodel motion")
+## The drawn weapon's own motion in view (A1). Visual only: none of it moves the aim or the shot.
+## How far it lags a turn: its tilt is the turn's rate times this, in seconds.
+@export var sway_lag_s: float = 0.025
+## The most it tilts behind a turn, in degrees.
+@export var sway_cap_degrees: float = 5.0
+## Easing rate of the sway and of the fall's trail settling, per second.
+@export var sway_recovery: float = 9.0
+## How far it sways with the stride at a walk, across and up, in metres; none with the head bob
+## off.
+@export var bob_m: Vector2 = Vector2(0.008, 0.006)
+## How far it rolls with the stride, in degrees.
+@export var bob_roll_degrees: float = 1.5
+## How far it trails a jump or a fall, in metres per metre a second of it, and the most it trails.
+@export var fall_lag_m: float = 0.0025
+@export var fall_lag_cap_m: float = 0.02
+## The share of a shot's kick back that also lifts it.
+@export var kick_lift_share: float = 0.35
+## How far a weapon being drawn is tipped down as it rises, in degrees.
+@export var swap_tilt_degrees: float = 22.0
+## The share of the sway, the stride and the fall's trail kept while aiming down the sights.
+@export var aim_motion_share: float = 0.35
 
 
 ## Everything wrong with these values, or empty when they are safe to use. A refused weapon
@@ -57,6 +90,12 @@ func problems() -> PackedStringArray:
 		out.append("reload_tilt_degrees must be between 0 and %s" % TILT_LAST)
 	if not is_finite(fiction_s) or fiction_s < 0.0 or fiction_s > FICTION_LAST_S:
 		out.append("fiction_s must be between 0 and %s" % FICTION_LAST_S)
+	for bound in [["sway_lag_s", 0.0, SWAY_LAG_LAST_S], ["sway_cap_degrees", 0.0, SWAY_CAP_LAST], ["sway_recovery", RECOVERY_FIRST, RECOVERY_LAST], ["bob_roll_degrees", 0.0, ROLL_LAST], ["fall_lag_m", 0.0, FALL_LAG_LAST_M], ["fall_lag_cap_m", 0.0, FALL_CAP_LAST_M], ["kick_lift_share", 0.0, KICK_LIFT_LAST], ["swap_tilt_degrees", 0.0, TILT_LAST], ["aim_motion_share", 0.0, 1.0]]:
+		var value: float = get(bound[0])
+		if not is_finite(value) or value < bound[1] or value > bound[2]:
+			out.append("%s must be between %s and %s" % bound)
+	if not bob_m.is_finite() or bob_m.x < 0.0 or bob_m.y < 0.0 or bob_m.x > BOB_LAST_M or bob_m.y > BOB_LAST_M:
+		out.append("bob_m must be between 0 and %s on each axis" % BOB_LAST_M)
 	return out
 
 

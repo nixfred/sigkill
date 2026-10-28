@@ -17,13 +17,17 @@ extends Resource
 @export_flags_3d_physics var hit_mask: int = 5
 
 @export_group("Viewmodel")
-## Size of the placeholder cannon box, in metres.
+## The weapon's model in first person (A1): a script extending scripts/viewmodels/viewmodel.gd
+## that builds it, with a Muzzle marker at its barrel's tip where the beam and the muzzle flash
+## start. None gets the placeholder box below.
+@export var viewmodel_model: Script = preload("res://scripts/viewmodels/terminal_cannon.gd")
+## Size of the placeholder box, for a weapon with no model of its own, in metres.
 @export var viewmodel_size: Vector3 = Vector3(0.09, 0.09, 0.5)
-## Cannon position relative to the camera, at rest.
+## The model's position relative to the camera, at rest.
 @export var viewmodel_offset: Vector3 = Vector3(0.22, -0.2, -0.45)
-## Barrel tip relative to the camera: where the beam and the muzzle flash start.
+## The placeholder box's barrel tip relative to the camera; a model's own Muzzle marker is its tip.
 @export var muzzle_offset: Vector3 = Vector3(0.22, -0.2, -0.7)
-## Glow of the cannon body.
+## Glow of the model's neon trim; its hot parts glow brighter in step.
 @export var viewmodel_glow_energy: float = 0.6
 ## How far the cannon jolts back on a shot, in metres.
 @export var viewmodel_kick_back: float = 0.07
@@ -171,6 +175,8 @@ func problems() -> PackedStringArray:
 			out.append("%s must be finite" % field)
 	if not (viewmodel_size.x > 0.0 and viewmodel_size.y > 0.0 and viewmodel_size.z > 0.0):
 		out.append("viewmodel_size must be above 0 on every axis")
+	if viewmodel_model != null and not Viewmodel.is_model(viewmodel_model):
+		out.append("viewmodel_model must be a viewmodel script (one extending scripts/viewmodels/viewmodel.gd)")
 	if fire_range <= 0.0:
 		out.append("fire_range must be above 0")
 	if hit_mask == 0:

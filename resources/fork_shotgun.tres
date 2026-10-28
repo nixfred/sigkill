@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="WeaponDef" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponDef" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/weapon_def.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/viewmodels/fork_shotgun.gd" id="9_viewmodel"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -8,8 +9,9 @@ fire_cooldown = 1.2
 fire_range = 30.0
 damage = 12.0
 hit_mask = 5
+viewmodel_model = ExtResource("9_viewmodel")
 viewmodel_size = Vector3(0.14, 0.11, 0.36)
-viewmodel_offset = Vector3(0.22, -0.22, -0.42)
+viewmodel_offset = Vector3(0.24, -0.24, -0.48)
 muzzle_offset = Vector3(0.22, -0.22, -0.64)
 viewmodel_glow_energy = 0.8
 viewmodel_kick_back = 0.14

@@ -209,14 +209,21 @@ var _fire_queued := false
 var _throw_queued := false
 var _throw_pressed := false
 var _bomb_rng := RandomNumberGenerator.new()
-var _viewmodel: MeshInstance3D  # the drawn weapon's
-var _viewmodels: Array[MeshInstance3D] = []
+var _viewmodel: Viewmodel  # the drawn weapon's model (A1)
+var _viewmodels: Array[Viewmodel] = []
+## The drawn weapon's barrel tip, its model's Muzzle marker: beams and the muzzle flash start here.
+var _muzzle: Marker3D
 var _rng := RandomNumberGenerator.new()
 ## Draws this player's own pellets: cosmetic tracers and its own dummies. In a match the
 ## host draws the pellets that count with its own generator.
 var _pellet_rng := RandomNumberGenerator.new()
 var _recoil := Vector2.ZERO  # pitch and yaw kick in radians, applied to the camera
 var _viewmodel_kick := 0.0
+# The drawn weapon's own motion (A1), visual only: its lag behind a turn, the turn since the last
+# step (radians right and down) and its trail behind a jump or a fall.
+var _sway := Vector2.ZERO
+var _turned := Vector2.ZERO
+var _fall_lag := 0.0
 var _shake := 0.0  # the camera's shot jolt in metres, visual only
 var _shake_rng := RandomNumberGenerator.new()
 var _fire_sfx: AudioStreamPlayer  # the drawn weapon's
@@ -276,7 +283,6 @@ var _scripted_input := false
 
 @onready var _head: Node3D = $Head
 @onready var _camera: Camera3D = $Head/Camera
-@onready var _muzzle: Marker3D = $Head/Camera/Muzzle
 
 
 func _ready() -> void:
@@ -415,6 +421,7 @@ func _turn(right: float, down: float) -> void:
 		down = -down
 	rotate_y(-right)
 	_head.rotation.x = clampf(_head.rotation.x - down, -pitch_limit, pitch_limit)
+	_turned += Vector2(right, down)  # the drawn weapon lags it (A1)
 	_apply_recoil()
 
 
@@ -896,11 +903,34 @@ func _step_weapon(delta: float) -> void:
 	if _throw_pressed and alive:
 		quick_throw()
 	_throw_pressed = false
-	# A weapon being drawn rises from below; one being reloaded tips over and back.
-	var drop := _a.swap_drop_m * (1.0 - inventory.swap_progress())
-	_viewmodel.position = _w.viewmodel_offset + Vector3(0.0, -drop, _w.viewmodel_kick_back * _viewmodel_kick)
-	_viewmodel.rotation.x = deg_to_rad(_w.viewmodel_kick_pitch_degrees) * _viewmodel_kick
-	_viewmodel.rotation.z = deg_to_rad(_a.reload_tilt_degrees) * sin(PI * inventory.reload_progress())
+	_place_viewmodel(delta)
+
+
+## The drawn weapon's place in view (A1), visual only: at its offset, risen from below and tipped
+## as it is drawn, kicked back and up by a shot and settling, tipped over and back by a reload,
+## lagging the view's turn, swaying with the stride and trailing a jump or a fall, all calmer aimed
+## down the sights. Its muzzle rides along; the shot itself still leaves from the eyes.
+func _place_viewmodel(delta: float) -> void:
+	var calm := lerpf(1.0, _a.aim_motion_share, _ads_blend)
+	var cap := deg_to_rad(_a.sway_cap_degrees)
+	var rate := _turned / maxf(delta, 0.0001)
+	_turned = Vector2.ZERO
+	var lag := Vector2(clampf(rate.x * _a.sway_lag_s, -cap, cap), clampf(rate.y * _a.sway_lag_s, -cap, cap)) * calm
+	var settle := _smoothing(_a.sway_recovery, delta)
+	_sway = _sway.lerp(lag, settle)
+	_fall_lag = lerpf(_fall_lag, clampf(-velocity.y * _a.fall_lag_m, -_a.fall_lag_cap_m, _a.fall_lag_cap_m) * calm, settle)
+	var stride := _bob_weight * calm
+	var rising := 1.0 - inventory.swap_progress()
+	var kick := _viewmodel_kick
+	_viewmodel.position = _w.viewmodel_offset + Vector3(
+		-sin(_bob_phase_h) * _a.bob_m.x * stride,
+		-sin(_bob_phase_v) * _a.bob_m.y * stride - _a.swap_drop_m * rising + _w.viewmodel_kick_back * _a.kick_lift_share * kick + _fall_lag,
+		_w.viewmodel_kick_back * kick)
+	_viewmodel.rotation = Vector3(
+		deg_to_rad(_w.viewmodel_kick_pitch_degrees) * kick - deg_to_rad(_a.swap_tilt_degrees) * rising + _sway.y,
+		_sway.x,
+		deg_to_rad(_a.reload_tilt_degrees) * sin(PI * inventory.reload_progress()) + deg_to_rad(_a.bob_roll_degrees) * sin(_bob_phase_h) * stride)
+	_viewmodel.idle(delta)
 
 
 ## A charging rail: the glow grows, and when the charge is done the shot goes off along the
@@ -912,6 +942,7 @@ func _step_charge(delta: float) -> void:
 		return
 	_charge_left -= delta
 	_set_glow(_charge_slot, 1.0 + 3.0 * charge_progress())
+	_viewmodels[_charge_slot].set_charge(charge_progress())  # the rail's coils, rm -rf's core (A1)
 	if _charge_left > CHARGE_EPS:
 		return
 	_end_charge()
@@ -923,6 +954,8 @@ func _step_charge(delta: float) -> void:
 func _end_charge() -> void:
 	# The charging slot's own model gets its glow back, even when another weapon is now drawn.
 	_set_glow(_charge_slot, 1.0)
+	if _charge_slot >= 0 and _charge_slot < _viewmodels.size():
+		_viewmodels[_charge_slot].set_charge(0.0)
 	_charge_left = 0.0
 	_charge_slot = -1
 
@@ -931,9 +964,7 @@ func _end_charge() -> void:
 func _set_glow(slot: int, scale: float) -> void:
 	if slot < 0 or slot >= _viewmodels.size():
 		return
-	var glow := _viewmodels[slot].material_override as StandardMaterial3D
-	if glow != null:
-		glow.emission_energy_multiplier = inventory.defs[slot].viewmodel_glow_energy * scale
+	_viewmodels[slot].set_glow(inventory.defs[slot].viewmodel_glow_energy * scale)
 
 
 ## How far the rail's charge (or the rm -rf cannon's wind-up, C26) has come, from 0 to 1; 0 when
@@ -1444,13 +1475,9 @@ func _step_root() -> void:
 	_root_look = root
 	var scale: float = sudo.tuning_in_use().glow_scale if root else 1.0
 	for i in _viewmodels.size():
-		var glow := _viewmodels[i].material_override as StandardMaterial3D
-		if glow == null:
-			continue
 		var color: Color = Palette.HOSTILE_RED if root else inventory.defs[i].skin_body()
-		glow.emission = color
-		glow.albedo_color = color.darkened(0.65)
-		glow.emission_energy_multiplier = inventory.defs[i].viewmodel_glow_energy * scale
+		var beam: Color = Palette.HOSTILE_RED if root else inventory.defs[i].skin_beam()
+		_viewmodels[i].set_look(color, beam, inventory.defs[i].viewmodel_glow_energy * scale)
 
 
 ## True while the weapons wear root's red (C22).
@@ -1469,10 +1496,10 @@ func _show_weapon() -> void:
 	if grep != null:
 		grep.clear()  # putting grep away, or drawing it again, drops its marks (C25)
 	_w = inventory.def()
-	_muzzle.position = _w.muzzle_offset
 	for i in _viewmodels.size():
 		_viewmodels[i].visible = i == inventory.current and alive
 	_viewmodel = _viewmodels[inventory.current]
+	_muzzle = _viewmodel.muzzle
 	_fire_sfx = _sfx[inventory.current][0]
 	_hit_sfx = _sfx[inventory.current][1]
 	_reload_sfx = _sfx[inventory.current][2]
@@ -1513,17 +1540,10 @@ func _fx_root() -> Node:
 	return scene if scene != null else get_parent()
 
 
-## A placeholder viewmodel: a glowing box in the weapon's light skin, out of view until drawn.
-func _build_viewmodel(def: WeaponDefScript) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = def.viewmodel_size
-	var model := MeshInstance3D.new()
-	model.name = def.display_name.to_pascal_case()
-	model.mesh = mesh
-	model.material_override = Palette.glow(def.skin_body(), def.viewmodel_glow_energy)
-	model.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	model.position = def.viewmodel_offset
-	model.visible = false
+## The weapon's model in first person (A1, scripts/viewmodels/), the one its viewmodel_model names,
+## out of view until drawn.
+func _build_viewmodel(def: WeaponDefScript) -> Viewmodel:
+	var model := Viewmodel.make(def)
 	_camera.add_child(model)
 	return model
 

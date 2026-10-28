@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="WeaponDef" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponDef" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/weapon_def.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/viewmodels/sigterm.gd" id="9_viewmodel"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -8,13 +9,14 @@ fire_cooldown = 0.9
 fire_range = 40.0
 damage = 14.0
 hit_mask = 5
+viewmodel_model = ExtResource("9_viewmodel")
 viewmodel_size = Vector3(0.13, 0.1, 0.4)
-viewmodel_offset = Vector3(0.22, -0.22, -0.42)
+viewmodel_offset = Vector3(0.24, -0.24, -0.48)
 muzzle_offset = Vector3(0.22, -0.22, -0.64)
 viewmodel_glow_energy = 0.7
-viewmodel_kick_back = 0.14
-viewmodel_kick_pitch_degrees = 14.0
-viewmodel_recovery = 9.0
+viewmodel_kick_back = 0.06
+viewmodel_kick_pitch_degrees = 6.0
+viewmodel_recovery = 14.0
 recoil_pitch_degrees = 5.5
 recoil_yaw_degrees = 1.5
 recoil_max_pitch_degrees = 12.0

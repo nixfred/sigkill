@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="WeaponDef" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponDef" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/weapon_def.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/viewmodels/rm_rf_cannon.gd" id="9_viewmodel"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -8,8 +9,9 @@ fire_cooldown = 2.5
 fire_range = 45.0
 damage = 140.0
 hit_mask = 5
+viewmodel_model = ExtResource("9_viewmodel")
 viewmodel_size = Vector3(0.2, 0.18, 0.5)
-viewmodel_offset = Vector3(0.24, -0.26, -0.46)
+viewmodel_offset = Vector3(0.25, -0.27, -0.55)
 muzzle_offset = Vector3(0.24, -0.26, -0.74)
 viewmodel_glow_energy = 1.1
 viewmodel_kick_back = 0.24

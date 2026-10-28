@@ -42,6 +42,9 @@ const REACH_EPS := 0.0001
 ## so a blast on a wall is on this side of it and the wall shields what is behind it.
 const STANDOFF_M := 0.05
 const NEAR_PARALLEL := 0.98
+## The slug is not drawn for its first metres from the eyes it leaves (A1): that close it would fill
+## its shooter's view, and the muzzle flash at the barrel covers the moment. Drawing only.
+const EYE_CLEAR_M := 0.75
 ## How bright the slug, its trail and the ring glow.
 const HEAD_ENERGY := 5.0
 const TRAIL_ENERGY := 3.0
@@ -240,10 +243,11 @@ func _ray(from: Vector3, to: Vector3) -> Dictionary:
 
 
 ## The slug at its place, its trail behind it: as long as the weapon's trail, never longer than
-## it has flown.
+## it has flown past the eyes' clearance.
 func _place() -> void:
 	_head.global_position = _pos
-	var length := minf(def.slug_trail_m, flown)
+	_head.visible = flown >= EYE_CLEAR_M
+	var length := minf(def.slug_trail_m, flown - EYE_CLEAR_M)
 	_trail.visible = length > REACH_EPS
 	if not _trail.visible:
 		return

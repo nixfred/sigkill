@@ -34,6 +34,11 @@ const EMBER := Color(1.0, 0.415686275, 0.101960784)  # #ff6a1a rm -rf body, slug
 const EMBER_HI := Color(1.0, 0.788235294, 0.639215686)  # #ffc9a3 rm -rf slug trail and muzzle flash
 const ROSE := Color(1.0, 0.37254902, 0.690196078)  # #ff5fb0 cron mines, their rings and schedule text (C27): pink, between the fork bomb's magenta and hostile red
 const ROSE_HI := Color(1.0, 0.760784314, 0.88627451)  # #ffc2e2 a cron mine's brighten before a run
+# Weapon viewmodels (A1): dark gunmetal bodies, lighter plates and shrouds, near-black polymer
+# grips, under each weapon's neon trim (its light skin) and hot parts (its beam colour).
+const GUNMETAL := Color(0.047058824, 0.062745098, 0.078431373)  # #0c1014 viewmodel body
+const GUNMETAL_LIGHT := Color(0.109803922, 0.137254902, 0.164705882)  # #1c232a viewmodel plates and shrouds
+const POLYMER := Color(0.023529412, 0.027450980, 0.031372549)  # #060708 viewmodel grips and bands
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
 const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI]}
@@ -58,10 +63,22 @@ const WALL_EDGE_ENERGY := 2.0
 const ACCENT_EDGE_ENERGY := 2.6
 const CRATE_EDGE_ENERGY := 1.6
 const HOSTILE_ENERGY := 3.0
+# Viewmodel metal (A1): how shiny, the neon rim round the silhouette, the glowing seams, and the
+# panel and hex cell sizes, in metres.
+const VIEWMODEL_METALLIC := 0.75
+const VIEWMODEL_ROUGHNESS := 0.32
+const VIEWMODEL_PLATE_ROUGHNESS := 0.5
+const VIEWMODEL_RIM_ENERGY := 0.06
+const VIEWMODEL_SEAM_ENERGY := 0.05
+const VIEWMODEL_CELL_M := 0.045
+const VIEWMODEL_HEX_CELL_M := 0.022
+const VIEWMODEL_LINE_M := 0.0016
+const POLYMER_ROUGHNESS := 0.85
 
 # Shader names under res://shaders/.
 const NEON_EDGE_SHADER := "neon_edge"
 const CODE_RAIN_SHADER := "code_rain"
+const VIEWMODEL_SHADER := "viewmodel_metal"
 
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
@@ -119,6 +136,41 @@ static func glow(color: Color, energy: float = 1.5) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color.darkened(0.65)
 	mat.roughness = 0.6
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = energy
+	return mat
+
+
+## A viewmodel's metal (A1): `base` gunmetal or a lighter plate, panel lines or hex cells, and a rim
+## of `neon`, the weapon's light skin, round its silhouette.
+static func viewmodel_metal(base: Color, neon: Color, hex: bool = false, plate: bool = false) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(VIEWMODEL_SHADER)
+	mat.set_shader_parameter("base_color", base)
+	mat.set_shader_parameter("neon", neon)
+	mat.set_shader_parameter("metallic_amount", VIEWMODEL_METALLIC)
+	mat.set_shader_parameter("roughness_amount", VIEWMODEL_PLATE_ROUGHNESS if plate else VIEWMODEL_ROUGHNESS)
+	mat.set_shader_parameter("rim_energy", VIEWMODEL_RIM_ENERGY)
+	mat.set_shader_parameter("seam_energy", VIEWMODEL_SEAM_ENERGY)
+	mat.set_shader_parameter("cell_m", VIEWMODEL_HEX_CELL_M if hex else VIEWMODEL_CELL_M)
+	mat.set_shader_parameter("line_m", VIEWMODEL_LINE_M)
+	mat.set_shader_parameter("hex_cells", hex)
+	return mat
+
+
+## A viewmodel's grips and bands (A1): near-black polymer, matte.
+static func viewmodel_polymer() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = POLYMER
+	mat.roughness = POLYMER_ROUGHNESS
+	return mat
+
+
+## A viewmodel's hot parts (A1): lenses, cores and bores, lit through in `color` at `energy`.
+static func viewmodel_hot(color: Color, energy: float) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
 	mat.emission_enabled = true
 	mat.emission = color
 	mat.emission_energy_multiplier = energy
