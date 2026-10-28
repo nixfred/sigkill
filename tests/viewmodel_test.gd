@@ -9,16 +9,16 @@ extends SceneTree
 ## models and the capture tool touch nothing outside the game, nothing is rebuilt while a model is
 ## held, and the game never runs the tool. Each model built alone: its Muzzle marker at its front,
 ## in front of the camera and in view at the arena's field of view, never over the crosshair; its
-## trim glowing in its own skin at its own energy; a low triangle budget; one mesh with a surface per
-## material; eight different shapes; root's red on the trim, the hot parts and the rims, and back;
-## the rail's coils lighting in order with its charge, rm -rf's core and vents with its wind-up; the
-## placeholder box where none is named. In the real arena with the real player: only the drawn model
-## shown, the player's muzzle its Muzzle; a shot's beam starting at it and its flash on it while the
-## shot itself still leaves from the eyes; the kick back and up and the settle, SIGTERM's light and
-## the rail's and rm -rf's heavy; the raise from below; the lag behind a turn and the settle; the
-## sway with the stride and none standing; the charges lighting and going back; the fork bomb's drum
-## and cron's clock hand turning while held; nothing rebuilt by any of it. Deterministic: frames
-## counted, only counts and outcomes printed.
+## trim glowing in its own skin at its own energy; a low triangle budget; one mesh with a surface
+## per material; eight different shapes; root's red on the trim, the hot parts and the rims, and
+## back; the rail's coils lighting in order with its charge, rm -rf's core and vents with its
+## wind-up; the placeholder box where none is named. In the real arena with the real player: only
+## the drawn model shown, the player's muzzle its Muzzle; a shot's beam starting at it and its flash
+## on it while the shot itself still leaves from the eyes; the kick back and up and the settle,
+## SIGTERM's light and the rail's and rm -rf's heavy; the raise from below; the lag behind a turn
+## and the settle; the sway with the stride and none standing; the charges lighting and going back;
+## the fork bomb's drum and cron's clock hand turning while held; nothing rebuilt by any of it.
+## Deterministic: frames counted, only counts and outcomes printed.
 
 const Link = preload("res://scripts/guide/guide_link.gd")
 const MainScene = preload("res://scenes/main.tscn")

@@ -25,7 +25,7 @@ func _build() -> void:
 	tube(Part.TRIM, Vector3(0.0, 0.074, -0.08), 0.013, 0.019, 0.006, 12)
 	prism(Part.HOT, Vector3(0.0, 0.074, -0.082), 0.013, 0.002, 12)
 	tube(Part.TRIM, Vector3(0.0, 0.074, 0.118), 0.012, 0.019, 0.004, 12)
-	prism(Part.HOT, Vector3(0.0, 0.074, 0.121), 0.012, 0.002, 12)
+	prism(Part.TRIM, Vector3(0.0, 0.074, 0.121), 0.012, 0.002, 12)
 	for z in [0.07, -0.04]:
 		box(Part.DARK, Vector3(0.0, 0.05, z), Vector3(0.012, 0.03, 0.014))
 	muzzle.position = Vector3(0.0, 0.0, -0.47)

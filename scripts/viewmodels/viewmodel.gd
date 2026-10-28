@@ -33,9 +33,10 @@ enum Part { BODY, PLATE, DARK, HOT, TRIM }
 const PARTS := 5
 ## The hot parts glow this many times the trim's energy.
 const HOT_SHARE := 1.8
-## A charge piece rests at this share of its energy, and a full charge adds CHARGE_GAIN more.
+## A charge piece rests at this share of the weapon's own glow, and a full charge adds CHARGE_GAIN
+## more. It lights from the weapon's own glow, not the trim's, which the charge already raises.
 const CHARGE_REST := 0.35
-const CHARGE_GAIN := 4.0
+const CHARGE_GAIN := 2.5
 ## Shapes with more sides than this are shaded smooth; the rest are faceted.
 const FACETED_SIDES := 8
 ## The trim's base under its glow, as dark under the colour as the old box was.
@@ -69,6 +70,8 @@ var _spins: Array = []
 var _pulses: Array = []
 var _clock := 0.0
 var _energy := 1.0
+## The weapon's own glow, viewmodel_glow_energy: what the charge pieces light from.
+var _base := 1.0
 var _beam := Color.WHITE
 var _metal: ShaderMaterial
 var _plate: ShaderMaterial
@@ -101,6 +104,7 @@ func setup(weapon: Resource) -> void:
 	var body_color: Color = weapon.skin_body() if weapon.has_method("skin_body") else Palette.TEAL
 	_beam = weapon.skin_beam() if weapon.has_method("skin_beam") else Palette.MINT
 	_energy = weapon.viewmodel_glow_energy
+	_base = maxf(_energy, 0.0001)
 	for i in PARTS:
 		_new_tool()
 	muzzle = Marker3D.new()
@@ -118,7 +122,6 @@ func setup(weapon: Resource) -> void:
 	position = weapon.viewmodel_offset
 	visible = false
 	set_look(body_color, _beam, _energy)
-
 
 
 ## The model's shapes. The placeholder: one glowing box of viewmodel_size, its muzzle where
@@ -176,10 +179,10 @@ func idle(delta: float) -> void:
 		_refresh()
 
 
-## How bright piece `id` glows now, as a share of the trim's energy.
+## How bright piece `id` glows now, as a share of the weapon's own glow.
 func piece_energy(id: int) -> float:
 	var mat := _pieces[id - PARTS]["material"] as StandardMaterial3D
-	return mat.emission_energy_multiplier / maxf(_energy, 0.0001) if mat != null else 0.0
+	return mat.emission_energy_multiplier / _base if mat != null else 0.0
 
 
 ## Triangles in the whole model: its budget.
@@ -403,8 +406,9 @@ static func _node(node_name: String, node_mesh: Mesh, at: Vector3) -> MeshInstan
 	return node
 
 
-## Every glow from the trim's energy: the hot parts, each piece by its kind, a charge piece by the
-## charge reached (a piece of order k is lit through the k-th share of it), a pulse by the clock.
+## Every glow from the trim's energy: the hot parts, each piece by its kind, a charge piece from the
+## weapon's own glow by the charge reached (a piece of order k is lit through the k-th share of it),
+## a pulse by the clock.
 func _refresh() -> void:
 	_hot.emission_energy_multiplier = _energy * HOT_SHARE
 	for i in _pieces.size():
@@ -418,7 +422,8 @@ func _refresh() -> void:
 		if mat == null:
 			continue
 		var fill := clampf(_charge * _charge_orders - entry[1], 0.0, 1.0)
-		mat.emission_energy_multiplier *= CHARGE_REST + CHARGE_GAIN * fill
+		var share := HOT_SHARE if _pieces[entry[0] - PARTS]["kind"] == Part.HOT else 1.0
+		mat.emission_energy_multiplier = _base * share * (CHARGE_REST + CHARGE_GAIN * fill)
 	for entry in _pulses:
 		var mat := _pieces[entry[0] - PARTS]["material"] as StandardMaterial3D
 		if mat != null:

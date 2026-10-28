@@ -1,8 +1,8 @@
 extends Viewmodel
-## The grep seeker's model (weapon 6, cobalt, A1): a smart gun. A fat scope sits high, lit lenses at
-## both ends, the one toward the eye breathing while held, over a tapered hex nose and a short
-## barrel; a pod of three dart tubes rides its left side, their darts' tips lit, with a sensor fin
-## up front.
+## The grep seeker's model (weapon 6, cobalt, A1): a smart gun. A fat scope sits high with lit
+## lenses at both ends, the one toward the eye a cobalt glow breathing while held, over a tapered
+## hex nose and a short barrel; a pod of three dart tubes rides its left side, their darts' tips
+## lit, with a sensor fin up front.
 
 
 func _build() -> void:
@@ -18,7 +18,7 @@ func _build() -> void:
 	prism(Part.HOT, Vector3(0.0, 0.08, -0.077), 0.029, 0.004, 16)
 	tube(Part.TRIM, Vector3(0.0, 0.08, -0.08), 0.029, 0.038, 0.003, 16)
 	tube(Part.TRIM, Vector3(0.0, 0.08, 0.072), 0.022, 0.031, 0.004, 16)
-	var lens := piece(Part.HOT)
+	var lens := piece(Part.TRIM)
 	prism(lens, Vector3(0.0, 0.08, 0.0755), 0.022, 0.002, 16)
 	pulse(lens, 0.8, 0.35)
 	for z in [0.05, -0.03]:
