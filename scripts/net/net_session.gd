@@ -58,6 +58,13 @@ extends Node
 ## connects. Every packet of the match then goes through the relay, and a room code only
 ## ever leads to the relay the player set, never to an address the relay names.
 ##
+## Over WebSocket (C16d): a ws:// or wss:// relay URL picks WsRendezvous
+## (scripts/net/ws_rendezvous.gd) instead, for a relay behind an HTTPS proxy on one TCP port.
+## The session's relay path stays exactly the same: the rendezvous answers with loopback ports
+## of its own (127.0.0.1) where the UDP relay's answers name the relay's ports, so the host's
+## probes and the joiner's ENet go there, and the rendezvous carries every datagram over its
+## one link. It is pumped once a frame and its tunnel closes with the peer.
+##
 ## The SIGKILL rail (C17): a rail shot is an ordinary intent naming the rail; the host
 ## believes it only with the shooter's ult meter full (scripts/net/combat.gd owns every
 ## meter), traces the line itself through every player on it to the first wall, and applies
@@ -89,6 +96,7 @@ const Combat = preload("res://scripts/net/combat.gd")
 const RoomCode = preload("res://scripts/net/room_code.gd")
 const NullRendezvous = preload("res://scripts/net/null_rendezvous.gd")
 const UdpRendezvous = preload("res://scripts/net/udp_rendezvous.gd")
+const WsRendezvous = preload("res://scripts/net/ws_rendezvous.gd")
 const RelayWire = preload("res://scripts/net/relay_wire.gd")
 ## A host probes its relay slot ports this often, which keeps the relay's path and the NAT's
 ## mapping open while it waits for players.
@@ -406,12 +414,15 @@ func _refresh_rendezvous() -> void:
 
 
 ## The rendezvous for the relay URL in use: NullRendezvous when there is none, the default,
-## which never opens a socket or sends anything; a UdpRendezvous to the relay the player set
-## (C16c). Making one sends nothing either: its socket opens on its first request.
+## which never opens a socket or sends anything; for the relay the player set, the transport
+## its scheme picks, a UdpRendezvous for udp:// (C16c) or a WsRendezvous for ws:// and wss://
+## (C16d). Making one sends nothing either: its socket opens on its first request.
 static func rendezvous_for(tuning: Resource) -> RefCounted:
 	var url := relay_url_for(tuning)
 	if url == "":
 		return NullRendezvous.new()
+	if RelayWire.transport_of(url) == "ws":
+		return WsRendezvous.new(url)
 	return UdpRendezvous.new(url)
 
 
@@ -731,6 +742,8 @@ func state_word() -> String:
 func _physics_process(delta: float) -> void:
 	if _player_ready():
 		_player.match_meter = is_online()  # in a match the meter fills only from the host's word
+	if _rv != null and _rv.has_method("pump"):
+		_rv.pump()  # a relay link's tunnel, both ways (C16d)
 	match state:
 		State.RESOLVING:
 			_tick_resolve(delta)
@@ -1033,6 +1046,11 @@ func _shut_peer() -> void:
 	if _enet != null:
 		_enet.close()
 		_enet = null
+	if _rv != null and _rv.has_method("end_tunnel"):
+		# A relay link's tunnel goes with the peer (C16d), after the peer's goodbye: ENet's
+		# close has just put it on the loopback sockets, and it goes out before the link closes.
+		_rv.pump()
+		_rv.end_tunnel()
 	if is_inside_tree():
 		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 

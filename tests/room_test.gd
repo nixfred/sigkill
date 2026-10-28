@@ -259,7 +259,8 @@ func _source_checks() -> void:
 	var session := _code("res://scripts/net/net_session.gd")
 	var factory := _body(session, "rendezvous_for")
 	# C16c: a relay URL the player sets now gets the real UDP client; empty stays NullRendezvous.
-	_check("rendezvous_for makes NullRendezvous with no relay URL and a UdpRendezvous only for one, nothing else", factory.contains("if url == \"\":\n\t\treturn NullRendezvous.new()") and factory.contains("return UdpRendezvous.new(url)") and factory.count("return") == 2 and not session.contains("Fake") and not session.contains("fake_rendezvous"))
+	# C16d: and ws:// or wss:// gets the WebSocket client, picked by the scheme alone.
+	_check("rendezvous_for makes NullRendezvous with no relay URL and, by the URL's scheme, a UdpRendezvous or a WsRendezvous only for one, nothing else", factory.contains("if url == \"\":\n\t\treturn NullRendezvous.new()") and factory.contains("if RelayWire.transport_of(url) == \"ws\":\n\t\treturn WsRendezvous.new(url)") and factory.contains("return UdpRendezvous.new(url)") and factory.count("return") == 3 and not session.contains("Fake") and not session.contains("fake_rendezvous"))
 	_check("the session's sockets are still exactly C13's: two ENet peers and the two port probes", session.count("ENetMultiplayerPeer.new()") == 2 and session.count("PacketPeerUDP.new()") == 2 and session.count("create_client(") == 1 and session.count("create_server(") == 1)
 	var to_rv := PackedStringArray()
 	for call in ["_rv.register(", "_rv.resolve(", "_rv.close("]:

@@ -8,11 +8,16 @@ extends SceneTree
 ## prints why and exits 2. Every stats_s seconds (and when it stops) it prints one line of
 ## aggregate counters: never an address, a room code or a token.
 ##
+## Transport (C16d): the UDP relay (relay/relay_server.gd) by default; with --ws-port <port>
+## the WebSocket relay (relay/relay_ws.gd) instead, on that one TCP port of the bind address,
+## for a machine reached only through an HTTPS proxy. One transport per process.
+##
 ## Stopping: a service manager's SIGTERM ends the process at once, which loses nothing (all
 ## state is in memory, by design). --stop-file <path> also stops it cleanly, exit 0, once
 ## that file exists: the tests use it, checked twice a second.
 
 const RelayServer = preload("res://relay/relay_server.gd")
+const RelayWs = preload("res://relay/relay_ws.gd")
 
 const STOP_CHECK_S := 0.5
 
@@ -35,7 +40,7 @@ func _initialize() -> void:
 		printerr("SIGKILL relay: ", config["error"])
 		quit(2)
 		return
-	_server = RelayServer.new(config)
+	_server = RelayWs.new(config) if config["ws_port"] > 0 else RelayServer.new(config)
 	var why := _server.start()
 	if why != "":
 		printerr("SIGKILL relay: ", why)
@@ -44,7 +49,10 @@ func _initialize() -> void:
 	_stop_file = config["stop_file"]
 	_stats_left = config["stats_s"]
 	Engine.max_fps = config["tick_hz"]
-	print("SIGKILL relay: up, control port %d, data ports %s, up to %d rooms of %d players, codes live %d s" % [_server.control_port(), "system-picked" if config["data_first"] == 0 else "%d-%d" % [config["data_first"], config["data_last"]], config["max_rooms"], config["max_players"], config["room_ttl_s"]])
+	if config["ws_port"] > 0:
+		print("SIGKILL relay: up, ws port %d (one TCP port for every match), up to %d rooms of %d players, codes live %d s" % [_server.control_port(), config["max_rooms"], config["max_players"], config["room_ttl_s"]])
+	else:
+		print("SIGKILL relay: up, control port %d, data ports %s, up to %d rooms of %d players, codes live %d s" % [_server.control_port(), "system-picked" if config["data_first"] == 0 else "%d-%d" % [config["data_first"], config["data_last"]], config["max_rooms"], config["max_players"], config["room_ttl_s"]])
 
 
 func _process(delta: float) -> bool:

@@ -22,6 +22,16 @@ extends RefCounted
 ##
 ## The relay URL a player sets is udp://<host>[:<port>]: an IPv4 address or a host name, and
 ## the control port (DEFAULT_PORT when left out). Empty means no relay and no network call.
+##
+## Over WebSocket (C16d, relay/relay_ws.gd): ws://<host>[:<port>] or wss://<host>[:<port>]
+## picks the relay's WebSocket transport, for a host with one TCP port behind an HTTPS proxy
+## and no inbound UDP. The scheme alone picks the transport (transport_of()). Every room
+## shares that one port: control requests and replies and probes are the same bytes as above,
+## each one WebSocket message, and the host-facing list of a register reply names the room's
+## joiner slots (1 to 15) instead of ports. A datagram goes as a data message: "SD", wire 2,
+## a slot (from the host: the joiner it is for; to the host: the joiner it came from; 0
+## between the relay and a joiner), then the game's ENet datagram untouched. wss:// is TLS,
+## which the proxy in front of the relay terminates; the relay itself speaks plain ws://.
 
 const WIRE := 2
 const REQUEST_SIZE := 64
@@ -41,6 +51,16 @@ const HOSTNAME_LAST := 50
 const LABEL_LAST := 63
 const MAGIC_CONTROL := [0x53, 0x52]  # "SR"
 const MAGIC_PROBE := [0x53, 0x50]  # "SP"
+const MAGIC_DATA := [0x53, 0x44]  # "SD"
+## Bytes before the datagram in a data message.
+const DATA_HEAD := 4
+const WS_SCHEME := "ws://"
+const WSS_SCHEME := "wss://"
+## The ports a WebSocket URL means when it names none: the web's own.
+const WS_DEFAULT_PORT := 80
+const WSS_DEFAULT_PORT := 443
+## The slot numbers a WebSocket relay names: 1 to this.
+const SLOT_LAST := PORTS_LAST
 
 enum Op { REGISTER = 1, RESOLVE = 2, CLOSE = 3 }
 enum Status { OK, UNKNOWN, EXPIRED, VERSION, TAKEN, BUSY, COOKIE }
@@ -130,18 +150,60 @@ static func parse_probe(data: PackedByteArray) -> Dictionary:
 	return {"kind": data[3], "token": data.slice(4, PROBE_SIZE)}
 
 
-## True for an empty relay URL (no relay), or udp://<IPv4 or host name>[:<port>].
+## A data message: `slot` and a datagram.
+static func data_bytes(slot: int, payload: PackedByteArray) -> PackedByteArray:
+	var out := PackedByteArray([MAGIC_DATA[0], MAGIC_DATA[1], WIRE, clampi(slot, 0, 255)])
+	out.append_array(payload)
+	return out
+
+
+## {slot, payload} from a data message, or {} when the message is not one.
+static func parse_data(data: PackedByteArray) -> Dictionary:
+	if data.size() < DATA_HEAD or data[0] != MAGIC_DATA[0] or data[1] != MAGIC_DATA[1] or data[2] != WIRE:
+		return {}
+	return {"slot": data[3], "payload": data.slice(DATA_HEAD)}
+
+
+## True for an empty relay URL (no relay), udp://<IPv4 or host name>[:<port>] (C16c), or
+## ws:// or wss:// with the same (C16d).
 static func url_ok(url: String) -> bool:
-	return url.is_empty() or not parse_url(url).is_empty()
+	return url.is_empty() or transport_of(url) != ""
+
+
+## The transport a relay URL picks, by its scheme: "udp" for udp://, "ws" for ws:// and
+## wss://, "" for an empty URL or any other (no relay, and no connection of any kind).
+static func transport_of(url: String) -> String:
+	if not parse_url(url).is_empty():
+		return "udp"
+	if not parse_ws_url(url).is_empty():
+		return "ws"
+	return ""
+
+
+## {host, port, tls} from ws://<host>[:<port>] or wss://<host>[:<port>], or {}. No path, the
+## same hosts as a udp:// URL, 80 and 443 when no port is named.
+static func parse_ws_url(url: String) -> Dictionary:
+	var tls := url.begins_with(WSS_SCHEME)
+	if url.length() > URL_LAST or (not tls and not url.begins_with(WS_SCHEME)):
+		return {}
+	var out := _host_port(url.substr((WSS_SCHEME if tls else WS_SCHEME).length()), WSS_DEFAULT_PORT if tls else WS_DEFAULT_PORT)
+	if not out.is_empty():
+		out["tls"] = tls
+	return out
 
 
 ## {host, port} from a relay URL, or {} when it is empty or not udp://<host>[:<port>].
 static func parse_url(url: String) -> Dictionary:
 	if url.length() > URL_LAST or not url.begins_with(SCHEME):
 		return {}
-	var rest := url.substr(SCHEME.length())
+	return _host_port(url.substr(SCHEME.length()), DEFAULT_PORT)
+
+
+## {host, port} from "<host>[:<port>]", or {}: an IPv4 address or a plain host name, a port
+## from 1 to 65535 (`default_port` when left out), nothing after it.
+static func _host_port(rest: String, default_port: int) -> Dictionary:
 	var host := rest
-	var port := DEFAULT_PORT
+	var port := default_port
 	if rest.count(":") == 1:
 		host = rest.get_slice(":", 0)
 		var digits := rest.get_slice(":", 1)

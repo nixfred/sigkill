@@ -6,9 +6,10 @@ extends Resource
 ## and attempts.
 
 @export_group("Rendezvous")
-## The SIGKILL relay for room codes, udp://<host>[:<port>] (C16c, docs/RELAY.md). Empty, the
-## default, means NullRendezvous: no online rooms and no network call. The player's own
-## relay URL, in the settings' Multiplayer section, comes first when one is set.
+## The SIGKILL relay for room codes, udp://<host>[:<port>] (C16c, docs/RELAY.md), or ws:// or
+## wss://<host>[:<port>] for its WebSocket transport (C16d). Empty, the default, means
+## NullRendezvous: no online rooms and no network call. The player's own relay URL, in the
+## settings' Multiplayer section, comes first when one is set.
 @export var relay_url: String = ""
 
 @export_group("Codes")
@@ -29,7 +30,7 @@ const TIMEOUT_LAST_MS := 30000
 const ATTEMPTS_LAST := 20
 
 
-## True for an empty relay_url, or udp://<IPv4 address or host name>[:<port>] (C16c).
+## True for an empty relay_url, or udp://, ws:// or wss://<IPv4 address or host name>[:<port>].
 static func url_ok(url: String) -> bool:
 	return RelayWire.url_ok(url)
 
@@ -38,7 +39,7 @@ static func url_ok(url: String) -> bool:
 func problems() -> PackedStringArray:
 	var out := PackedStringArray()
 	if not url_ok(relay_url):
-		out.append("relay_url must be empty or udp://<host>[:<port>], at most %d characters" % URL_LAST)
+		out.append("relay_url must be empty or udp://, ws:// or wss://<host>[:<port>], at most %d characters" % URL_LAST)
 	if code_ttl_s < TTL_FIRST_S or code_ttl_s > TTL_LAST_S:
 		out.append("code_ttl_s must be between %d and %d" % [TTL_FIRST_S, TTL_LAST_S])
 	if request_timeout_ms < TIMEOUT_FIRST_MS or request_timeout_ms > TIMEOUT_LAST_MS:

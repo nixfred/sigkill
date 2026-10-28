@@ -599,7 +599,8 @@ func _build_multiplayer(col: VBoxContainer) -> void:
 	_check(col, "net stats", "multiplayer", "net_stats")
 
 
-## The relay URL as typed, trimmed; refused (and said why) unless empty or udp://host[:port].
+## The relay URL as typed, trimmed; refused (and said why) unless empty or a relay URL:
+## udp://, ws:// or wss://host[:port] (C16c, C16d).
 func _set_relay(text: String) -> void:
 	var url := text.strip_edges()
 	if url == settings.value("multiplayer", "relay_url"):
@@ -609,7 +610,7 @@ func _set_relay(text: String) -> void:
 		_dirty = true
 		_say("Relay %s: it counts from your next host or join." % ("cleared" if url == "" else "set"))
 	else:
-		_say("A relay is udp://host or udp://host:port, or empty for none.")
+		_say("A relay is udp://host, ws://host or wss://host (each with an optional :port), or empty for none.")
 	_refresh()
 
 

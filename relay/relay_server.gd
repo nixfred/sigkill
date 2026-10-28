@@ -26,6 +26,10 @@ extends RefCounted
 ## carries traffic, a host's for its room's, a registering host's for its code's life (the
 ## per-address room cap), a source's for its one-minute rate window. Only aggregate counters
 ## ever leave the process.
+##
+## The WebSocket transport (C16d, relay/relay_ws.gd) extends this one and keeps its control
+## path and limits whole; --ws-port picks it in relay/relay_main.gd, and 0, the default, keeps
+## this UDP relay.
 
 const Wire = preload("res://scripts/net/relay_wire.gd")
 const RoomCode = preload("res://scripts/net/room_code.gd")
@@ -51,6 +55,7 @@ const SETTINGS := {
 	"room_pps": ["SIGKILL_RELAY_ROOM_PPS", "--room-pps", 400, 10, 100000],
 	"tick_hz": ["SIGKILL_RELAY_TICK_HZ", "--tick-hz", 500, 10, 2000],
 	"stats_s": ["SIGKILL_RELAY_STATS_S", "--stats-s", 300, 0, 86400],
+	"ws_port": ["SIGKILL_RELAY_WS_PORT", "--ws-port", 0, 0, 65535],
 }
 const COUNTERS := ["requests", "registered", "resolved", "closed", "cookies", "rooms_peak", "relayed_packets", "relayed_bytes", "dropped_bad", "dropped_oversize", "dropped_rate", "dropped_unknown_source", "dropped_full", "busy", "taken", "unknown", "expired", "bad_code"]
 
