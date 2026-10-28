@@ -1,9 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/grey_block.tscn" id="1_block"]
 [ext_resource type="PackedScene" path="res://scenes/target_dummy.tscn" id="2_dummy"]
 [ext_resource type="Script" path="res://scripts/code_rain_driver.gd" id="3_rain"]
 [ext_resource type="Resource" path="res://resources/code_rain.tres" id="4_rain_tuning"]
+[ext_resource type="Script" path="res://scripts/daemons/zombie_process.gd" id="5_zombie"]
+[ext_resource type="Script" path="res://scripts/daemons/runaway_swarm.gd" id="6_swarm"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -145,14 +147,17 @@ tag_text = "rogue.d"
 [node name="DummyB" parent="Targets" instance=ExtResource("2_dummy")]
 position = Vector3(-17.5, 0, 5)
 tag_text = "zombie"
+art = ExtResource("5_zombie")
 
 [node name="DummyC" parent="Targets" instance=ExtResource("2_dummy")]
 position = Vector3(12, 0, 5)
 tag_text = "<defunct>"
+art = ExtResource("5_zombie")
 
 [node name="DummyD" parent="Targets" instance=ExtResource("2_dummy")]
 position = Vector3(-8, 1, 12)
 tag_text = "runaway"
+art = ExtResource("6_swarm")
 
 [node name="CodeRain" type="Node" parent="."]
 script = ExtResource("3_rain")
