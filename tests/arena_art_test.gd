@@ -88,6 +88,8 @@ spawn S2 at (-15.000, 0.950, 15.000)
 spawn S3 at (15.000, 0.950, 15.000)
 spawn S4 at (15.000, 0.950, -15.000)
 spawn S5 at (-15.000, 0.950, -15.000)"""
+## A daemon's body box (C27b), by its node's name.
+const BODY_BOX := "BodyBox"
 ## The sight lines as they were before A3 (b38a900): from each spawn point at eye height to each
 ## daemon's middle, what the ray hits first.
 const SIGHT_TEXT := """S1 > DummyA: DummyA at (0.000, 0.916, -14.450)
@@ -431,12 +433,16 @@ static func gameplay_scene_text(scene: String) -> String:
 
 ## Every collision body and shape in the arena as text: the body's class, layer and mask; each shape's
 ## kind and sizes, where it is, whether it is on; and the spawn points. Rounded to the millimetre.
+## Since C27b a daemon's body box (rogue.d's, BODY_BOX) turns and moves with the creature: it is
+## not the arena's fixed collision, so it is left out here (the fight test checks it).
 static func collision_text(arena: Node) -> String:
 	var lines := PackedStringArray()
 	for node in arena.find_children("*", "CollisionObject3D", true, false):
 		var body := node as CollisionObject3D
 		lines.append("%s | %s layer %d mask %d" % [arena.get_path_to(body), body.get_class(), body.collision_layer, body.collision_mask])
 	for node in arena.find_children("*", "CollisionShape3D", true, false):
+		if node.name == BODY_BOX:
+			continue
 		var cs := node as CollisionShape3D
 		lines.append("%s | %s | %s | %s" % [arena.get_path_to(cs), _shape_text(cs.shape), _xf_text(cs.global_transform), "disabled" if cs.disabled else "enabled"])
 	for marker in arena.get_node("Spawns").get_children():
@@ -444,15 +450,22 @@ static func collision_text(arena: Node) -> String:
 	return "\n".join(lines)
 
 
-## From each spawn point at eye height to each daemon's middle: what the ray hits first.
+## From each spawn point at eye height to each daemon's middle: what the ray hits first. The
+## daemons' body boxes (C27b) are switched off for it and back on after: the A3 lines are the
+## level's and the cylinders'.
 static func sight_text(arena: Node, space: PhysicsDirectSpaceState3D) -> String:
 	var lines := PackedStringArray()
+	var boxes := arena.find_children(BODY_BOX, "CollisionShape3D", true, false).filter(func(b): return not b.disabled)
+	for box in boxes:
+		box.disabled = true
 	for marker in arena.get_node("Spawns").get_children():
 		for dummy in arena.get_node("Targets").get_children():
 			var from: Vector3 = (marker as Node3D).global_position + Vector3(0.0, 0.7, 0.0)
 			var to: Vector3 = (dummy as Node3D).global_position + Vector3(0.0, 0.9, 0.0)
 			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
 			lines.append("%s > %s: %s" % [marker.name, dummy.name, (hit["collider"] as Node).name + " at " + _v(hit["position"]) if not hit.is_empty() else "clear"])
+	for box in boxes:
+		box.disabled = false
 	return "\n".join(lines)
 
 

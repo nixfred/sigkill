@@ -2,15 +2,18 @@ extends RefCounted
 ## One round's numbers (C12), and nothing else: the round HUD feeds it from the game's own
 ## signals (the cannon's shot_fired, a dummy's downed, the player's jumped and slid, and how
 ## far the player moved), and payload() hands the whitelisted keys to the C9b request
-## builder. Numbers only: no names, paths, system details or text ever live here.
+## builder. Numbers only: no names, paths, system details or text ever live here. Since C27b
+## the daemons fight back, so a round counts this player's deaths too (derezzed by a daemon
+## alone, or by anything in a match), under the whitelist's own "deaths", which comes first.
 ##
 ## Each event also says which in-round callout it earns, if any, as a word: "first_derezz"
 ## for the round's first process down, "streak" at every streak_at hits in a row,
 ## "misses" at every misses_at misses in a row. The round HUD pages those to the screen
 ## through its rate limit. Callouts are game logic only; the AI never sees them.
 
-## The keys payload() gives, in this order: exactly the round keys of the request whitelist.
-const KEYS := ["round_number", "duration_s", "shots", "hits", "accuracy_pct", "derezzes", "longest_streak", "time_to_first_derezz_s", "distance_m", "slides", "jumps"]
+## The keys payload() gives, in this order: exactly the round keys of the request whitelist, in
+## the whitelist's order ("deaths" is one of its first, kept for the guide since C9b).
+const KEYS := ["deaths", "round_number", "duration_s", "shots", "hits", "accuracy_pct", "derezzes", "longest_streak", "time_to_first_derezz_s", "distance_m", "slides", "jumps"]
 ## time_to_first_derezz_s when no process went down this round.
 const NEVER := -1.0
 
@@ -27,6 +30,8 @@ var first_derezz_s := NEVER
 var distance_m := 0.0
 var slides := 0
 var jumps := 0
+## Times this player was derezzed this round (C27b).
+var deaths := 0
 
 var _streak_at := 3
 var _misses_at := 10
@@ -51,6 +56,7 @@ func reset(number: int) -> void:
 	distance_m = 0.0
 	slides = 0
 	jumps = 0
+	deaths = 0
 
 
 func tick(seconds: float) -> void:
@@ -85,6 +91,11 @@ func on_jump() -> void:
 	jumps += 1
 
 
+## This player was derezzed (C27b).
+func on_death() -> void:
+	deaths += 1
+
+
 func on_slide() -> void:
 	slides += 1
 
@@ -101,6 +112,7 @@ func accuracy_pct() -> float:
 ## The round's numbers under the whitelisted round keys: ints, and floats to one decimal.
 func payload() -> Dictionary:
 	return {
+		"deaths": deaths,
 		"round_number": round_number,
 		"duration_s": snappedf(elapsed_s, 0.1),
 		"shots": shots,

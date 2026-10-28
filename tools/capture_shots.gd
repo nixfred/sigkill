@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3 or a2b):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4 or c27b):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -12,7 +12,9 @@ extends SceneTree
 ## rogue daemon into its lair's wall: the muzzle burst, the beam, the sparks), the west corridor with the zombie,
 ## one view at the low and the high preset side by side (with each preset's GPU time printed), the
 ## same view with both post effects on, and every weapon held at the spawn as a4-weapon-* stills.
-## The a4 set uses nothing A4 made, so it shoots the same views from a copy from before A4.
+## The a4 set uses nothing A4 made, so it shoots the same views from a copy from before A4. c27b,
+## the daemons fighting back, in play: a rogue daemon mid-lunge, a zombie's bolt in flight, and
+## the hit's red vignette; every other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -94,6 +96,15 @@ const A4_CORRIDOR_LOOK := Vector3(-17.5, 1.6, -6.0)
 const A4_COMPARE_AT := Vector3(-1.5, 0.95, 18.5)
 const A4_COMPARE_LOOK := Vector3(-1.0, 1.2, 0.0)
 const A4_GPU_FRAMES := 90
+## c27b (C27b): where the player stands and where each daemon is put, facing it, in arena space;
+## where the still is taken: the lunge this far through its strike, the bolt this long in flight.
+const C27B_PLAYER_AT := Vector3(0.0, 0.95, 15.0)
+const C27B_ROGUE_AT := Vector3(0.6, 0.0, 12.9)
+const C27B_LUNGE_SHARE := 0.45
+const C27B_ZOMBIE_AT := Vector3(-3.2, 0.0, 7.4)
+const C27B_BOLT_FRAMES := 26
+## Under the floor: where a daemon a still does not use waits, out of every sight line.
+const C27B_PARKED := Vector3(0.0, -50.0, 0.0)
 
 var _main: Node
 var _player: Node
@@ -124,7 +135,14 @@ func _run() -> void:
 	_player = _main.get_node("Player")
 	_player.assume_captured = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Every set but c27b is shot as it was: practice, the old dummies (C27b).
+	GameSettings.current().set_value("gameplay", "practice", _set != "c27b")
 	await _frames(90)  # shaders compiled, the code rain running
+	if _set == "c27b":
+		await _c27b()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
 	if _set == "a2":
 		await _a2()
 		print("capture: %d stills" % _shots)
@@ -319,6 +337,48 @@ func _a4() -> void:
 		_player.select_slot(slot)
 		await _frames(SETTLE_FRAMES)
 		await _save("a4-weapon-%d-%s" % [slot + 1, defs[slot].id.replace("_", "-")])
+
+
+## c27b: the daemons fighting back, from the player's own view: a rogue daemon mid-lunge, the hit's
+## vignette as its slash lands, and a zombie's amber bolt in flight. Every daemon a still does not
+## use waits under the floor.
+func _c27b() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var life := _main.get_node("SoloLife")
+	var rogue: Node3D = targets.get_node("DummyA")
+	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ROGUE_AT + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	_c27b_place(rogue, _main.to_global(C27B_ROGUE_AT))
+	var strike_s: float = (load("res://resources/daemon_ai.tres") as DaemonAiTuning).rogue_strike_s
+	while not (rogue.brain.state == DaemonBrain.State.STRIKE and rogue.brain.state_t >= C27B_LUNGE_SHARE * strike_s):
+		await _frames(1)
+	await _save("c27b-lunge")
+	while life.health() >= 100.0:
+		await _frames(1)
+	await _frames(1)
+	await _save("c27b-hit")
+	_c27b_place(rogue, C27B_PARKED)
+	life.reset_for_round()
+	var zombie: Node3D = targets.get_node("DummyC")
+	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ZOMBIE_AT + DUMMY_MIDDLE + Vector3(0.0, 0.3, 0.0)))
+	_c27b_place(zombie, _main.to_global(C27B_ZOMBIE_AT))
+	var director: DaemonDirector = _main.get_node("DaemonDirector")
+	while director.bolts_live() == 0:
+		await _frames(1)
+	await _frames(C27B_BOLT_FRAMES)
+	await _save("c27b-bolt")
+
+
+## Daemon `dummy` put at `at` (world space), facing the player, at home there.
+func _c27b_place(dummy: Node3D, at: Vector3) -> void:
+	dummy.global_position = at
+	var way := _player.global_position - at
+	dummy.global_rotation = Vector3(0.0, atan2(-way.x, -way.z), 0.0)
+	dummy.brain.take_home()
+	dummy.brain.moved = false
+	dummy.brain.state = DaemonBrain.State.HOME
+	dummy.brain.prey = 0
 
 
 ## The GPU's time for the root viewport, in milliseconds a frame, averaged over `frames` frames.

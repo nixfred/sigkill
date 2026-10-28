@@ -13,6 +13,12 @@ extends DaemonArt
 ## and settles. The back shards flex in a wave and now and then one breaks away and re-forms; the
 ## abdomen breathes and its segments ripple; now and then a leg fidgets a step. Visual only: it
 ## never leaves its spot (the hit volume), and the strike hits nothing.
+##
+## Fighting back (C27b), its brain drives it: it hunts on its legs (the body stops gliding and
+## wandering and faces its prey, the feet stay planted in the world as the daemon moves and step
+## to catch up), the rear-up is its tell, then the lunge and the slash are its strike and it
+## settles. Only practice, or no brain, keeps the threat display on its own clock. Its hit
+## volume beyond the cylinder is the box round its body, head to tail (body_box()).
 
 const LEGS := 6
 ## Each walking leg's hip on the thorax and its foot's home on the ground round the body (body
@@ -43,6 +49,12 @@ const REAR_PITCH := 0.62
 const PIVOT := Vector3(0.0, 0.0, 0.3)
 const LIFT := 0.22
 const LUNGE := 0.28
+## The box round its body for a shot (C27b): head to tail spike, and the back shards' bases, in
+## body space (its centre) and its size.
+const BOX_AT := Vector3(0.0, 0.12, 0.2)
+const BOX_SIZE := Vector3(0.9, 1.0, 2.5)
+## Where the scythes come down in the strike, in body space.
+const STRIKE_AT := Vector3(0.0, -0.35, -1.25)
 ## The abdomen's three gems: their lengths, widths and depths, in metres.
 const ABDOMEN := [Vector3(0.36, 0.55, 0.42), Vector3(0.33, 0.46, 0.36), Vector3(0.3, 0.32, 0.26)]
 ## The back's burning shards: their bases (body space) and lengths.
@@ -86,9 +98,13 @@ var _p := PackedFloat32Array()
 ## The rear and the strike as last posed, for the checks.
 var _rear := 0.0
 var _strike := 0.0
+## The body's turn and its centre as last posed (art space), for the box and the strike.
+var _turn := Basis.IDENTITY
+var _centre := Vector3.ZERO
 
 
 func _build() -> void:
+	ai_kind = "rogue"
 	core_color = Palette.HOSTILE_RED
 	edge_color = Palette.HOSTILE_RED
 	glyph_count = 10
@@ -134,15 +150,23 @@ func _build() -> void:
 
 func _pose(t: float, delta: float) -> void:
 	var s := t + SKITTER * sin(TAU * t / SKITTER_S) * SKITTER_S / TAU
-	_display_now(t)
+	if act == Act.IDLE and displays:
+		_display_now(t)
+	else:
+		_act_now()
 	var rear := _rear
 	var strike := _strike
-	var yaw := _p[0] + 0.85 * sin(0.31 * t + _p[3]) + 0.35 * sin(0.9 * s)
+	# Driven, it stops wandering and faces its prey (the daemon's own -Z), and stops gliding round
+	# its spot: the daemon itself moves.
+	var idle := 1.0 - _drive
+	var yaw := (_p[0] + 0.85 * sin(0.31 * t + _p[3]) + 0.35 * sin(0.9 * s)) * idle
 	var turn := Basis(Vector3.UP, yaw)
 	var breath := sin(TAU * 0.55 * t + _p[1])
-	var tremble := sin(t * 61.0) * 0.014 * rear * (1.0 - strike)
-	var centre := Vector3(GLIDE.x * sin(1.25 * s + _p[1]) + tremble, GROUND_Y + BODY_H + 0.025 * breath + LIFT * rear, GLIDE.y * sin(0.83 * s + _p[2]))
+	var tremble := sin(t * 61.0) * (0.014 + 0.02 * _drive) * rear * (1.0 - strike)
+	var centre := Vector3(GLIDE.x * sin(1.25 * s + _p[1]) * idle + tremble, GROUND_Y + BODY_H + 0.025 * breath + LIFT * rear, GLIDE.y * sin(0.83 * s + _p[2]) * idle)
 	centre += turn * Vector3.FORWARD * (LUNGE * strike) + recoil()
+	_turn = turn
+	_centre = centre
 	var pitch := REAR_PITCH * rear * (1.0 - 0.7 * strike) - 0.25 * strike + 0.3 * jolt()
 	var body := turn * Basis(Vector3.RIGHT, pitch)
 	var xf := Transform3D(body, centre + turn * PIVOT - body * PIVOT)
@@ -224,6 +248,15 @@ func _pose_spines(t: float, xf: Transform3D, body: Basis, rear: float) -> void:
 ## and out by two-bone IK; the front pair lift off the ground while it rears.
 func _pose_legs(t: float, delta: float, xf: Transform3D, turn: Basis, centre: Vector3, rear: float) -> void:
 	var ground := Vector3(centre.x, GROUND_Y, centre.z)
+	# Planted feet stay put in the world while the daemon moves under them (C27b).
+	if _feet_ready and _carry != Transform3D.IDENTITY:
+		for i in LEGS:
+			_foot[i] = _carry * _foot[i]
+			_from[i] = _carry * _from[i]
+			_to[i] = _carry * _to[i]
+			_home_last[i] = _carry * _home_last[i]
+			_foot[i].y = GROUND_Y
+			_to[i].y = GROUND_Y
 	if not _feet_ready:
 		for i in LEGS:
 			var h: Vector2 = HOMES[i]
@@ -276,8 +309,9 @@ func _pose_legs(t: float, delta: float, xf: Transform3D, turn: Basis, centre: Ve
 
 
 func _on_hit() -> void:
-	# A hit makes it rear up at once, unless it already is.
-	if since(_forced_at) >= DISPLAY_S and _rear < 0.05:
+	# A hit makes it rear up at once, unless it already is; never while its brain drives it, when
+	# a rear-up is only ever its tell (C27b).
+	if act == Act.IDLE and displays and since(_forced_at) >= DISPLAY_S and _rear < 0.05:
 		_forced_at = _clock
 
 
@@ -297,6 +331,36 @@ func _display_now(t: float) -> void:
 		return
 	_rear = smoothstep(0.0, 0.4, tau) * (1.0 - smoothstep(1.15, 1.8, tau))
 	_strike = smoothstep(1.0, 1.1, tau) * (1.0 - smoothstep(1.15, 1.6, tau))
+
+
+## The rear and the strike from the brain's act (C27b): the tell rears it up and holds it there
+## trembling, the strike lunges and slashes down, the recovery settles it.
+func _act_now() -> void:
+	match act:
+		Act.TELL:
+			_rear = smoothstep(0.0, 0.7, act_u)
+			_strike = 0.0
+		Act.STRIKE:
+			_rear = 1.0
+			_strike = smoothstep(0.0, 0.5, act_u)
+		Act.RECOVER:
+			_rear = 1.0 - smoothstep(0.0, 1.0, act_u)
+			_strike = 1.0 - smoothstep(0.0, 0.6, act_u)
+		_:
+			_rear = move_toward(_rear, 0.0, 0.08)
+			_strike = move_toward(_strike, 0.0, 0.08)
+
+
+func _muzzle() -> Vector3:
+	return Transform3D(_turn, _centre) * STRIKE_AT
+
+
+func body_box() -> Transform3D:
+	return Transform3D(_turn, _centre + _turn * BOX_AT)
+
+
+func body_box_size() -> Vector3:
+	return BOX_SIZE
 
 
 ## The head's jerk now: a sharp sideways twitch every 0.7 s or so, sometimes.

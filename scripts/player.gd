@@ -105,6 +105,8 @@ const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
 const VIEWMODEL_FOV_DEGREES := 80.0
 const VIEWMODEL_SHRINK := 0.25
 const VIEWMODEL_NEAR_M := 0.01
+## How far a daemon's hit jolts the view alone (C27b), in metres, when screen shake is on.
+const HIT_SHAKE_M := 0.035
 const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
@@ -716,6 +718,13 @@ func _smoothing(rate: float, delta: float) -> float:
 func _respawn() -> void:
 	respawn_at(_spawn.origin)
 	global_transform = _spawn
+
+
+## A daemon's hit landed on this player alone (C27b): the view jolts, if screen shake is on.
+## The flash and the vignette are the combat HUD's.
+func take_hit(_amount: float) -> void:
+	if _shake_on:
+		_shake = maxf(_shake, HIT_SHAKE_M)
 
 
 ## Put down at `pos` with everything at rest; the view keeps its direction.

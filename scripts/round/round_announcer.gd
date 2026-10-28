@@ -24,7 +24,7 @@ const Adapter = preload("res://scripts/ai/guide_adapter.gd")
 const Link = preload("res://scripts/guide/guide_link.gd")
 const TuningScript = preload("res://scripts/round/announcer_tuning.gd")
 
-const DEMO_STATS := {"round_number": 3, "duration_s": 90.0, "shots": 41, "hits": 17, "accuracy_pct": 41.5, "derezzes": 9, "longest_streak": 4, "time_to_first_derezz_s": 6.2, "distance_m": 312.4, "slides": 7, "jumps": 12}
+const DEMO_STATS := {"deaths": 2, "round_number": 3, "duration_s": 90.0, "shots": 41, "hits": 17, "accuracy_pct": 41.5, "derezzes": 9, "longest_streak": 4, "time_to_first_derezz_s": 6.2, "distance_m": 312.4, "slides": 7, "jumps": 12}
 const DEMO_ROAST := "Demo mode: 41 shots, 17 hits. The walls are filing a complaint."
 const DEMO_TIP := "Demo mode: fire in short bursts and let the crosshair settle; your streaks die on the third shot."
 ## Markup tags such as [b], [/i] or [color=red] in what the AI says. A Label never parses
@@ -53,6 +53,8 @@ const REASONS := {
 }
 ## Less than this many metres in a round counts as standing still.
 const STILL_M := 2.0
+## This many deaths in a round and SIGKILL's own line is about them (C27b).
+const DEATHS_NOTED := 3
 
 ## Where the round's line stands: "" (none), "thinking", "ai" (their AI's words), "game"
 ## (SIGKILL's own line) or "demo".
@@ -193,9 +195,12 @@ static func scripted_line(stats: Dictionary, roast: bool) -> String:
 	var best := int(stats.get("longest_streak", 0))
 	var moves := int(stats.get("slides", 0)) + int(stats.get("jumps", 0))
 	var still := float(stats.get("distance_m", 0.0)) < STILL_M
+	var deaths := int(stats.get("deaths", 0))
 	if roast:
 		if shots == 0:
 			return "Zero shots fired. The processes thank you for your mercy."
+		if deaths >= DEATHS_NOTED:
+			return "Derezzed %d times in one round. The daemons are starting a fan club." % deaths
 		if down == 0:
 			return "%d shots and not one process down. They are still running, and so is the clock." % shots
 		if accuracy < 35.0:
@@ -207,6 +212,8 @@ static func scripted_line(stats: Dictionary, roast: bool) -> String:
 		return "%d down, best streak %d. Respectable, for a screensaver." % [down, best]
 	if shots == 0:
 		return "No shots this round. Find a process and fire: the cannon is the left mouse button."
+	if deaths >= DEATHS_NOTED:
+		return "Derezzed %d times. Watch the tells and step aside: a rear-up, a raised claw, a swarm pulling tight." % deaths
 	if down == 0:
 		return "No process went down. Aim at the middle of a dummy and fire while the crosshair is still."
 	if accuracy < 35.0:

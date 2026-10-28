@@ -6,7 +6,7 @@ extends Resource
 ## The difficulty's two multipliers live here too: damage scales every hit a daemon lands,
 ## aggression shortens every wait between attacks (the tells never get shorter: an attack is
 ## always readable). The default instance is resources/daemon_ai.tres; the brains
-## (scripts/daemons/daemon_brain.gd) and their director (scripts/daemons/daemon_director.gd)
+## (scripts/fight/daemon_brain.gd) and their director (scripts/fight/daemon_director.gd)
 ## read it. Units are metres, seconds, metres a second and health points. Fiction only:
 ## nothing here touches a real process.
 
@@ -27,6 +27,8 @@ extends Resource
 ## How far it keeps from other daemons, and how far ahead its feelers reach for walls.
 @export var keep_apart_m: float = 1.8
 @export var feeler_m: float = 1.6
+## How often a daemon at home (or going home) looks for prey, in seconds: its reaction time.
+@export var look_every_s: float = 0.2
 
 @export_group("rogue.d")
 ## It walks this fast, and starts its tell once its prey is this close.
@@ -59,6 +61,8 @@ extends Resource
 @export var zombie_bolt_damage: float = 12.0
 @export var zombie_recover_s: float = 0.4
 @export var zombie_cooldown_s: float = 2.6
+## How long its throw takes, the strike between the tell and the recovery.
+@export var zombie_throw_s: float = 0.15
 
 @export_group("runaway")
 ## It flies this fast round its prey, this far out, this high over its spot's floor.
@@ -71,10 +75,13 @@ extends Resource
 @export var swarm_dive_s: float = 0.7
 @export var swarm_hit_m: float = 1.0
 @export var swarm_damage: float = 5.0
-## Dives in one burst, the wait between them, and the wait after a burst.
+## Dives in one burst, the wait between them, its recovery after the last, and the wait after a
+## burst; how far past its mark a dive may carry.
 @export var swarm_burst: int = 3
 @export var swarm_burst_gap_s: float = 0.35
+@export var swarm_recover_s: float = 0.4
 @export var swarm_cooldown_s: float = 3.0
+@export var swarm_dive_past_m: float = 1.5
 ## A hit scatters it: it flees the shot this fast for this long, and any dive is off.
 @export var swarm_scatter_s: float = 1.0
 @export var swarm_scatter_speed: float = 7.0
@@ -94,14 +101,14 @@ const DIFFICULTIES := ["easy", "normal", "hard"]
 ## [first, last] for every number above.
 const RANGES := {
 	"aggro_range_m": [1.0, 100.0], "leash_m": [1.0, 100.0], "lose_s": [0.1, 30.0],
-	"eye_height_m": [0.1, 3.0], "turn_rate": [0.5, 50.0], "keep_apart_m": [0.0, 10.0], "feeler_m": [0.2, 10.0],
+	"eye_height_m": [0.1, 3.0], "turn_rate": [0.5, 50.0], "keep_apart_m": [0.0, 10.0], "feeler_m": [0.2, 10.0], "look_every_s": [0.0, 5.0],
 	"rogue_speed": [0.1, 20.0], "rogue_reach_m": [0.5, 10.0], "rogue_tell_s": [0.2, 5.0], "rogue_lunge_m": [0.0, 10.0],
 	"rogue_strike_s": [0.05, 2.0], "rogue_slash_m": [0.3, 5.0], "rogue_damage": [0.0, 1000.0], "rogue_recover_s": [0.0, 10.0], "rogue_cooldown_s": [0.1, 60.0],
 	"zombie_speed": [0.1, 20.0], "zombie_keep_m": [0.0, 50.0], "zombie_range_m": [1.0, 100.0], "zombie_tell_s": [0.2, 5.0],
 	"zombie_bolt_speed": [1.0, 100.0], "zombie_bolt_radius_m": [0.05, 2.0], "zombie_bolt_life_s": [0.2, 30.0], "zombie_bolt_damage": [0.0, 1000.0],
-	"zombie_recover_s": [0.0, 10.0], "zombie_cooldown_s": [0.1, 60.0],
+	"zombie_recover_s": [0.0, 10.0], "zombie_cooldown_s": [0.1, 60.0], "zombie_throw_s": [0.02, 2.0],
 	"swarm_speed": [0.1, 30.0], "swarm_orbit_m": [0.5, 30.0], "swarm_tell_s": [0.2, 5.0], "swarm_dive_speed": [1.0, 60.0], "swarm_dive_s": [0.1, 5.0],
-	"swarm_hit_m": [0.1, 5.0], "swarm_damage": [0.0, 1000.0], "swarm_burst_gap_s": [0.0, 10.0], "swarm_cooldown_s": [0.1, 60.0],
+	"swarm_hit_m": [0.1, 5.0], "swarm_damage": [0.0, 1000.0], "swarm_burst_gap_s": [0.0, 10.0], "swarm_recover_s": [0.02, 10.0], "swarm_cooldown_s": [0.1, 60.0], "swarm_dive_past_m": [0.0, 10.0],
 	"swarm_scatter_s": [0.0, 10.0], "swarm_scatter_speed": [0.0, 50.0],
 	"easy_damage": [0.0, 10.0], "easy_aggression": [0.1, 10.0], "normal_damage": [0.0, 10.0], "normal_aggression": [0.1, 10.0],
 	"hard_damage": [0.0, 10.0], "hard_aggression": [0.1, 10.0],

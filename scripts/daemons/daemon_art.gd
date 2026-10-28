@@ -27,6 +27,15 @@ extends Node3D
 ## _pose(), named by its target's `art` (scripts/daemons/<type>.gd), so a new enemy type slots in
 ## the same way. Art space: metres, the origin at the body's centre, the ground 0.9 below it, +Y
 ## up, -Z ahead.
+##
+## Fighting back (C27b): a daemon's brain (scripts/fight/daemon_brain.gd) moves the daemon
+## itself and tells its art what it is doing, an act (drive()): moving, its tell, its strike, its
+## recovery, a scatter. While it does, the type drops its own idle wandering and plays the act
+## (the rogue's rear-up is the tell, its lunge and slash the strike), and what should stay put in
+## the world as the daemon moves (the rogue's planted feet, a share of each insect's flight) is
+## carried back by the daemon's own motion (carried()). With no act (practice, or no brain) the
+## type lives its old idle life, the threat displays included. Still visual only: what lands is
+## the brain's judgement, never the art's.
 
 const Palette = preload("res://scripts/palette.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
@@ -56,6 +65,8 @@ const SPRAY_SPEED := 3.4
 const GRAVITY := 9.8
 ## Where a part goes when it is not drawn: nowhere, at no size.
 const HIDDEN := Transform3D(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+## How fast a type eases between its idle life and a brain's acts, a second (C27b).
+const DRIVE_EASE := 4.0
 
 ## A part's unit shape: SHARD a six-sided crystal from its base (the origin) to its tip (+Y 1), a
 ## unit across; GEM a cut gem centred on the origin, a unit across and tall; CUBE a unit voxel;
@@ -63,6 +74,9 @@ const HIDDEN := Transform3D(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZE
 enum Shape { SHARD, GEM, CUBE, STREAK }
 ## A part's look: the obsidian shell, the glowing core, or a trail's added light.
 enum Look { SHELL, CORE, TRAIL }
+## What a brain has the daemon doing (C27b): nothing (its own idle life), moving, its tell, its
+## strike, recovering from it, scattering from a hit.
+enum Act { IDLE, MOVE, TELL, STRIKE, RECOVER, SCATTER }
 const SHAPE_NAMES := ["Shard", "Gem", "Cube", "Streak"]
 const LOOK_NAMES := ["Shell", "Core", "Trail"]
 
@@ -85,6 +99,22 @@ var tag_height := 2.25
 ## The type's budget: the most triangles and draw calls it may take (triangles(), draw_calls()).
 var budget_triangles := 800
 var budget_draw_calls := 6
+## Which brain it fights with (C27b): "rogue", "zombie" or "swarm".
+var ai_kind := "rogue"
+## Whether the type may put on its own threat displays (the rogue's rear-up on its own clock and
+## at a hit): only when no brain fights with it (practice, or no brain). A rear-up is otherwise
+## only ever a tell.
+var displays := true
+## The brain's act now, how far through it (0 to 1), and how far the type has eased from its idle
+## life into being driven (0 to 1).
+var act: int = Act.IDLE
+var act_u := 0.0
+var _drive := 0.0
+## The daemon's motion since the last pose, as a map from the last pose's art space into this
+## one's: what stays put in the world is carried back by it. Identity while nothing drives it.
+var _carry := Transform3D.IDENTITY
+var _last_world := Transform3D.IDENTITY
+var _have_world := false
 
 ## Per set (one MultiMesh of one shape in one look): its shape, its look, its parts, its node.
 var _set_shape := PackedInt32Array()
@@ -227,6 +257,35 @@ func shatter(into: Node, shot: Vector3 = Vector3.ZERO) -> Node3D:
 	return burst
 
 
+# --- What the brain tells it (C27b). ---
+
+## The brain's act now and how far through it it is, 0 to 1 (Act.IDLE: none, the type's own life).
+func drive(new_act: int, u: float = 0.0) -> void:
+	act = new_act
+	act_u = clampf(u, 0.0, 1.0)
+
+
+## How far the type is into being driven, 0 (its idle life) to 1.
+func drive_amount() -> float:
+	return _drive
+
+
+## Where the daemon's attack comes from now, in the world: the rogue's scythes, the zombie's claw,
+## the swarm's nest. The type gives it in art space (_muzzle()).
+func muzzle() -> Vector3:
+	return global_transform * _muzzle() if is_inside_tree() else _muzzle()
+
+
+## The box round the body a shot should hit (C27b's fair hit volume), in art space, beyond the
+## daemon's cylinder: its transform (no scale) and its size; ZERO size for none.
+func body_box() -> Transform3D:
+	return Transform3D.IDENTITY
+
+
+func body_box_size() -> Vector3:
+	return Vector3.ZERO
+
+
 func hit_glow() -> float:
 	return _hit
 
@@ -344,12 +403,24 @@ func _process(delta: float) -> void:
 		_poll = LOCK_POLL_S
 		_locked_goal = 1.0 if _marked() else 0.0
 	_locked = move_toward(_locked, _locked_goal, LOCK_EASE * delta)
+	_drive = move_toward(_drive, 0.0 if act == Act.IDLE else 1.0, DRIVE_EASE * delta)
+	_step_carry()
 	_pose(_clock, delta)
 	if _spray_live:
 		_pose_spray()
 	if _glyphs != null:
 		_glyphs.rotate_object_local(Vector3.UP, TAU * glyph_turns * delta)
 	_send(false)
+
+
+## The daemon's motion since the last pose (C27b): only while driven and whole (not mid-respawn,
+## when the body grows from nothing), else identity.
+func _step_carry() -> void:
+	var now := global_transform if is_inside_tree() else Transform3D.IDENTITY
+	var whole := absf(now.basis.determinant() - 1.0) < 0.01
+	_carry = now.affine_inverse() * _last_world if _have_world and whole and _drive > 0.0 else Transform3D.IDENTITY
+	_last_world = now
+	_have_world = whole
 
 
 ## Steps the shared shader clock once a frame, whichever daemon (or death's burst) draws first.
@@ -421,6 +492,11 @@ func _on_hit() -> void:
 ## The type's own reset when it comes back from a derezz.
 func _on_return() -> void:
 	pass
+
+
+## Where its attack comes from, in art space (C27b).
+func _muzzle() -> Vector3:
+	return Vector3(0.0, 0.2, -0.6)
 
 
 # --- Building and posing parts. ---

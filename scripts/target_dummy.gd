@@ -8,8 +8,16 @@ extends StaticBody3D
 ## over the derezz. The art is visual only.
 ## States: ALIVE, DEREZZING (collision off, hidden, not hittable), RESPAWNING (growing
 ## back, still not hittable), then ALIVE again. Only an ALIVE dummy can be hit, so it dies
-## exactly once per life. It never moves or attacks. The tag text is invented flavour only;
-## it never reflects anything on the player's system.
+## exactly once per life. The tag text is invented flavour only; it never reflects anything on
+## the player's system.
+##
+## Since C27b the daemons fight back: each dummy carries a brain (scripts/fight/daemon_brain.gd)
+## that the arena's director steps: it hunts, tells and strikes, and moves the dummy itself (its
+## hit volume goes with it); a respawn puts it back at its spot. In practice it is the old dummy
+## that never moves or attacks. On a joiner in a match where they fight, its daemons are the
+## host's: they follow the host's word, and a shot here takes nothing off them (the host judges
+## every shot at a daemon). rogue.d's hit volume is fair to what is seen of it: beyond the
+## cylinder, a box round its body from head to tail turns and moves with its art.
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -41,6 +49,12 @@ var _state_time := 0.0
 var _hex: CylinderMesh
 var _art: DaemonArt
 var _d: Derezz
+## Its brain (C27b), and the box round its body when its art gives one.
+var brain: DaemonBrain
+var _box: CollisionShape3D
+## True while down on the host's word on a joiner (C27b): not this player's kill, so neither its
+## down nor its return is told.
+var _mirrored := false
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -55,6 +69,18 @@ func _ready() -> void:
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_art = DaemonArt.make(art, self)
 	_body.add_child(_art)
+	brain = DaemonBrain.new(self, _art)
+	brain.take_home()
+	# The box round the body (C27b), on the dummy itself beside the cylinder: a shot that meets
+	# what is seen of the creature hits it.
+	if _art.body_box_size() != Vector3.ZERO:
+		var box := BoxShape3D.new()
+		box.size = _art.body_box_size()
+		_box = CollisionShape3D.new()
+		_box.name = "BodyBox"
+		_box.shape = box
+		add_child(_box)
+		_fit_box()
 
 	_tag.text = tag_text
 	_tag.position.y = _art.tag_height  # clear of the creature (A2b)
@@ -77,7 +103,6 @@ func _ready() -> void:
 		for issue in issues:
 			push_warning("derezz tuning: " + issue + "; using the built-in defaults instead")
 		_d = Derezz.new()
-	set_physics_process(false)
 
 
 ## True only while the dummy is alive. Derezzing and respawning dummies ignore hits.
@@ -108,18 +133,32 @@ func is_head_hit(point: Vector3) -> bool:
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,
 ## false if the dummy is derezzing or respawning. `point` is where the shot struck and
 ## `direction` the way it travelled; both are optional.
+## On a joiner in a match where the daemons fight (C27b), the host's daemons follow its word and
+## this machine's shots land nothing on them: false.
 func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> bool:
-	if state != State.ALIVE:
+	if state != State.ALIVE or _follows():
 		return false
 	_health -= damage
 	if _health > 0.0:
 		_pulse(point, direction)
+		var director := DaemonDirector.of(self)
+		if brain != null and director != null:
+			brain.on_hit(point, director)  # roused, or a swarm scattered (C27b)
 		return true
 	_start_derezz(point, direction)
 	return true
 
 
+## True while this daemon follows the host's word (C27b): a joiner's, in a match where they fight.
+func _follows() -> bool:
+	var director := DaemonDirector.of(self)
+	return director != null and director.mode == DaemonDirector.Mode.FOLLOW
+
+
 func _physics_process(delta: float) -> void:
+	_fit_box()
+	if state == State.ALIVE:
+		return
 	_state_time += delta
 	if state == State.DEREZZING:
 		if _state_time >= _d.respawn_delay:
@@ -138,9 +177,10 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	state = State.DEREZZING
 	_state_time = 0.0
 	_shape.set_deferred("disabled", true)
+	if _box != null:
+		_box.set_deferred("disabled", true)
 	_body.visible = false
 	_tag.visible = false
-	set_physics_process(true)
 	# The voxels get a push along the killing shot: its real direction when the shooter
 	# gives one, otherwise from where it struck toward the body's centre.
 	var shot := Vector3(direction.x, 0.0, direction.z)
@@ -152,7 +192,8 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	_fx_root().add_child(fx)
 	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
-	downed.emit(self)
+	if not _mirrored:
+		downed.emit(self)
 
 
 ## Where world-space effects live: the running scene, or the dummy's parent in tests.
@@ -164,6 +205,7 @@ func _fx_root() -> Node:
 func _begin_rematerialise() -> void:
 	state = State.RESPAWNING
 	_state_time = 0.0
+	_go_home()
 	_body.scale = Vector3.ONE * MIN_BODY_SCALE
 	_body.visible = true
 	_art.set_unstable(1.0)
@@ -176,18 +218,65 @@ func _finish_respawn() -> void:
 	_art.set_unstable(0.0)
 	_tag.visible = true
 	_shape.set_deferred("disabled", false)
-	set_physics_process(false)
-	respawned.emit(self)
+	if _box != null:
+		_box.set_deferred("disabled", false)
+	if _mirrored:
+		_mirrored = false
+	else:
+		respawned.emit(self)
+
+
+## On a joiner in a match where the daemons fight (C27b), the host's word on this daemon's life:
+## down when the host's is (its derezz plays here, counted as nobody's kill on this screen), back
+## when the host's is, and its health, a drop flashing it as a hit does.
+func follow_life(word: int, host_health: float) -> void:
+	if word == State.DEREZZING and state == State.ALIVE:
+		_mirrored = true
+		_start_derezz(Vector3.INF, Vector3.ZERO)
+	elif word != State.DEREZZING and state == State.DEREZZING:
+		_begin_rematerialise()
+	if state == State.ALIVE:
+		if host_health < _health - 0.001:
+			_pulse()
+		_health = clampf(host_health, 0.0, max_health)
 
 
 ## A new round: back at once, alive, hittable and at full health. A dummy that was down
 ## (derezzing or growing back) says so with `respawned`; its voxels finish on their own.
 func reset_for_round() -> void:
+	if _follows():
+		return  # a joiner's copy of the host's daemon: the host's word owns its life (C27b)
 	if state == State.DEREZZING:
 		_begin_rematerialise()
 	if state == State.RESPAWNING:
 		_finish_respawn()
 	_health = max_health
+	_go_home()
+
+
+## Back at its spot at once, facing as it did, its hunt dropped (C27b): a respawn, a new round.
+func _go_home() -> void:
+	if brain == null or not brain.has_home:
+		return
+	var director := DaemonDirector.of(self)
+	if director != null:
+		director.release_slot(brain)
+	brain.holds_slot = false
+	brain.prey = 0
+	brain.burst_left = 0
+	brain.state = DaemonBrain.State.HOME if state == State.ALIVE else DaemonBrain.State.DOWN
+	brain.state_t = 0.0
+	if brain.moved:
+		global_transform = brain.home
+		brain.moved = false
+
+
+## The box round the body where the art has it now (C27b): beside the cylinder, under the Body.
+func _fit_box() -> void:
+	if _box != null:
+		var xf := _body.transform * _art.transform * _art.body_box()
+		xf.basis = xf.basis.orthonormalized()  # never scaled: a body growing back from nothing
+		_box.transform = xf
 
 
 ## A hit that did not kill: the art flares (A2), recoils and sprays shards from where it struck (A2b).

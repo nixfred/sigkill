@@ -47,7 +47,8 @@ const DUMMY := "dummy-%d"
 const SOLO_NAME := "player"
 ## Alone, the player's key in the record (each dummy's is its command).
 const YOU := "you"
-## The player's health alone, where nothing can hurt it: the combat tuning's full health.
+## The player's health alone in practice, where nothing can hurt it: the combat tuning's full health
+## (since C27b, with the daemons fighting back, its life's health).
 const FULL_HEALTH := 100.0
 const FONT := 13
 const MARGIN := 18
@@ -67,6 +68,8 @@ var tuning: Resource = null
 
 ## The player whose own row this is (alone: its root, SIGSTOP and name).
 var player: Node = null
+## This player's life alone (C27b); set through set_life.
+var _life: Node = null
 ## The session beside the arena (scripts/net/net_session.gd): in a match, every number.
 var session: Node = null
 ## The round HUD: the round clock, and the round whose damage %CPU shares out.
@@ -144,6 +147,33 @@ func set_targets(targets: Array) -> void:
 			dummy.connect("downed", _on_dummy_downed)
 		if dummy.has_signal("respawned"):
 			dummy.connect("respawned", _on_dummy_respawned)
+
+
+## This player's life alone (C27b): its health is its RES, and the daemons' hits and kills on it
+## are counted as theirs (damage dealt, a kill), its deaths as its own.
+func set_life(l: Node) -> void:
+	_life = l
+	if l == null:
+		return
+	for pair in [["hurt", _on_life_hurt], ["died", _on_life_died], ["respawned", _on_life_respawned]]:
+		if l.has_signal(pair[0]) and not l.is_connected(pair[0], pair[1]):
+			l.connect(pair[0], pair[1])
+
+
+func _on_life_hurt(amount: float, _health: float, by: Node) -> void:
+	var key: String = _dummy_keys.get(by.get_instance_id(), "") if by != null and is_instance_valid(by) else ""
+	if key != "":
+		_solo.hit(key, YOU, amount)
+
+
+func _on_life_died(_cause: String) -> void:
+	var by: Node = _life.killer if _life != null else null
+	var key: String = _dummy_keys.get(by.get_instance_id(), "") if by != null and is_instance_valid(by) else ""
+	_solo.kill(key if key != "" else YOU, YOU)
+
+
+func _on_life_respawned() -> void:
+	_solo.respawn(YOU)
 
 
 ## True while the table is on the screen.
@@ -290,7 +320,7 @@ func _solo_rows() -> Array:
 		"user": ROOT if sudo != null and sudo.state != null and sudo.is_root() else USER,
 		"s": ZOMBIE if not alive else (STOPPED if stop != null and stop.is_on() else RUNNING),
 		"cpu": shares.get(YOU, 0.0),
-		"res": ceili(_full_health()),
+		"res": ceili(_life.health() if _life != null and is_instance_valid(_life) and _life.shown() else _full_health()),
 		"time": you["alive_s"],
 		"kills": you["kills"],
 		"deaths": you["deaths"],

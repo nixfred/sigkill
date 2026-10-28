@@ -36,8 +36,12 @@ const Player = preload("res://scripts/player.gd")
 ## daemon_ai.tres, the daemons' own numbers: the pin covers the files dee2482 had (DEE2482_TRES),
 ## and nothing else may join them.
 const RESOURCES_SHA := "bff9abb41595538b62df6ff11d662bc8ae685d0f6ed79eb5088ddaacc1babeda"
-const NET_SHA := "eeca5f69c759986124bcf62e491630d93120df6b5acb27d2e0f0e9d3d5ed71f2"
-const PROTOCOL := 9
+## Since C27b the session carries the daemons (its brief changes scripts/net/, protocol 10): the
+## pin over scripts/net/ (eeca5f69c759 at dee2482, every .gd) is now its files that hold numbers,
+## as they were at dee2482 (NET_NUMBERS_SHA).
+const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
+const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
+const PROTOCOL := 10
 const DEE2482_TRES := ["announcer.tres", "arsenal.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may.
@@ -152,9 +156,9 @@ func _source_checks() -> void:
 	var expected_tres := DEE2482_TRES + C27B_TRES
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
-	var net := _dir_sha("res://scripts/net/", ".gd")
+	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
 	var protocol := _code("res://scripts/net/net_session.gd").contains("const PROTOCOL := %d" % PROTOCOL)
-	_check("acceptance: no gameplay number changed: resources/ and scripts/net/ byte for byte as at dee2482, the protocol still %d" % PROTOCOL, resources == RESOURCES_SHA and net == NET_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---

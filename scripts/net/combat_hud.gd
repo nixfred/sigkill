@@ -11,7 +11,13 @@ extends Control
 ## smaller line. A player its own rm -rf blast killed (C26) reads "rm -rf: Daemon-2" /
 ## "removed themself", the weapon's self-kill words. A player's shot removing another's cron mine
 ## (C27) reads "crontab -r: Daemon-3" / "removed Daemon-2's job".
-## Shown only while a session is online; solo play sees none of it.
+## Shown only while a session is online; solo play saw none of it until C27b. Now the daemons
+## fight back, the player's life alone (scripts/fight/solo_life.gd) shows here the same way:
+## the health line, the red flash and the mint border, and the death banner ("DEREZZED by
+## rogue.d", the respawn counting down); in practice none of it, as before. Every hit also
+## presses a hostile red vignette in from the screen's edges (alone or in a match), which stays
+## faintly on, pulsing, while health is low; it is colour only, never a warp, and the hit's view
+## jolt is the player's, only with screen shake on.
 
 const Session = preload("res://scripts/net/net_session.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -38,12 +44,23 @@ const FEED_FONT := 13
 ## Room below the feed for the hint line and the weapon strip (C16).
 const FEED_BOTTOM_GAP := 104
 const FLASH_ALPHA := 0.28
+## The vignette (C27b): its strength at a hit, under this share of health its low-health glow,
+## and that glow's strength and pulse a second.
+const VIGNETTE_HIT := 0.9
+const LOW_SHARE := 0.35
+const LOW_GLOW := 0.4
+const LOW_PULSE_HZ := 0.9
+const VignetteShader = preload("res://shaders/damage_vignette.gdshader")
+## Who took this player alone, when the daemon has no name.
+const SOMETHING := "a daemon"
 ## The death banner's place: this far down the screen, unless the top table is up above it.
 const BANNER_ANCHOR := 0.38
 const BORDER_WIDTH := 3
 
 ## The session whose results to show; set through set_session.
 var session: Node = null
+## This player's life alone (C27b); set through set_life.
+var life: Node = null
 ## The hud.gd that owns the hit marker.
 var hud: CanvasLayer = null
 ## The kill feed, newest first: {killer, victim, word, left}, the names and the weapon's
@@ -55,6 +72,9 @@ var _line: Label
 var _feed: VBoxContainer
 var _feed_labels: Array = []
 var _flash: ColorRect
+var _vignette: ColorRect
+var _vignette_paint: ShaderMaterial
+var _vignette_clock := 0.0
 var _border: PanelContainer
 var _banner: Label
 ## Where the top table put the banner (its top, in pixels), or -1 for its own place.
@@ -86,6 +106,28 @@ func set_session(s: Node) -> void:
 	s.changed.connect(_refresh)
 
 
+## This player's life alone (C27b): its hits flash, its health, death and respawn show here.
+func set_life(l: Node) -> void:
+	life = l
+	if l != null and l.has_signal("hurt") and not l.is_connected("hurt", _on_life_hurt):
+		l.connect("hurt", _on_life_hurt)
+
+
+func _on_life_hurt(_amount: float, _health: float, _by: Node) -> void:
+	_flash_left = life.tuning.damage_flash_s
+	_refresh()
+
+
+## How strong the vignette is now, 0 to 1 (C27b).
+func vignette_strength() -> float:
+	return _vignette_paint.get_shader_parameter("strength") if _vignette.visible else 0.0
+
+
+## True while the life alone is the one shown (C27b): no match, the daemons fighting back.
+func _solo() -> bool:
+	return life != null and is_instance_valid(life) and life.shown()
+
+
 func _exit_tree() -> void:
 	_unhook()
 
@@ -104,6 +146,7 @@ func _on_respawn(_id: int) -> void:
 
 
 func _process(delta: float) -> void:
+	_vignette_clock = fmod(_vignette_clock + delta, 3600.0)
 	if _flash_left > 0.0:
 		_flash_left = maxf(_flash_left - delta, 0.0)
 	var fade: float = session.combat_tuning_in_use().kill_feed_fade_s if session != null and is_instance_valid(session) else 6.0
@@ -211,8 +254,12 @@ func _refresh(fade: float = -1.0) -> void:
 	if _line == null:
 		return
 	var online: bool = session != null and is_instance_valid(session) and session.is_online()
-	_line.visible = online
-	_flash.visible = online and _flash_left > 0.0
+	var solo := not online and _solo()
+	_line.visible = online or solo
+	_flash.visible = (online or solo) and _flash_left > 0.0
+	if solo:
+		_refresh_solo()
+		return
 	if not online:
 		# The match is over: nothing of it carries into the next one. (A player merely
 		# leaving keeps the session online, and the feed with it.)
@@ -220,6 +267,7 @@ func _refresh(fade: float = -1.0) -> void:
 		_flash_left = 0.0
 		_border.visible = false
 		_banner.visible = false
+		_vignette.visible = false
 		for label in _feed_labels:
 			label.visible = false
 		return
@@ -237,6 +285,7 @@ func _refresh(fade: float = -1.0) -> void:
 	_banner.visible = dead
 	_border.visible = not dead and protect > 0.0
 	_flash.color = Color(Palette.HOSTILE_RED, FLASH_ALPHA * (_flash_left / maxf(session.combat_tuning_in_use().damage_flash_s, 0.001)))
+	_set_vignette(_flash_left / maxf(session.combat_tuning_in_use().damage_flash_s, 0.001), 0.0 if dead else session.health.get(me, 0.0) / maxf(session.combat_tuning_in_use().max_health, 1.0))
 	for i in _feed_labels.size():
 		var label: Label = _feed_labels[i]
 		if i < entries.size():
@@ -253,7 +302,49 @@ func _refresh(fade: float = -1.0) -> void:
 			label.visible = false
 
 
+## The life alone (C27b): the health line or the death line and banner, the flash, the border.
+func _refresh_solo() -> void:
+	entries.clear()
+	for label in _feed_labels:
+		label.visible = false
+	var dead: bool = not life.alive()
+	var protect: float = life.protect_left()
+	if dead:
+		var killer: String = life.cause if life.cause != "" else SOMETHING
+		var left: float = life.respawn_left()
+		_line.text = DEAD_LINE % [killer, left]
+		_banner.text = (BANNER_LINE if _banner_top >= 0.0 else BANNER) % [killer, left]
+	else:
+		_line.text = HEALTH_LINE % roundi(life.health()) + (PROTECT_LINE % protect if protect > 0.0 else "")
+	_line.add_theme_color_override("font_color", Palette.HOSTILE_AMBER if dead else Palette.MINT)
+	_banner.visible = dead
+	_border.visible = not dead and protect > 0.0
+	var flash_s: float = maxf(life.tuning.damage_flash_s, 0.001)
+	_flash.color = Color(Palette.HOSTILE_RED, FLASH_ALPHA * (_flash_left / flash_s))
+	_set_vignette(_flash_left / flash_s, 0.0 if dead else life.health() / maxf(life.max_health(), 1.0))
+
+
+## The vignette from `hit` (the flash's share left, 0 to 1) and `share` (health left, 0 to 1; 0
+## while dead, when nothing glows).
+func _set_vignette(hit: float, share: float) -> void:
+	var low := 0.0
+	if share > 0.0 and share < LOW_SHARE:
+		low = LOW_GLOW * (1.0 - share / LOW_SHARE) * (0.75 + 0.25 * sin(TAU * LOW_PULSE_HZ * _vignette_clock))
+	var strength := maxf(VIGNETTE_HIT * clampf(hit, 0.0, 1.0), low)
+	_vignette.visible = strength > 0.0
+	_vignette_paint.set_shader_parameter("strength", strength)
+
+
 func _build() -> void:
+	_vignette_paint = ShaderMaterial.new()
+	_vignette_paint.shader = VignetteShader
+	_vignette_paint.set_shader_parameter("color", Palette.HOSTILE_RED)
+	_vignette = ColorRect.new()
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vignette.material = _vignette_paint
+	_vignette.visible = false
+	add_child(_vignette)
+	_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_flash = ColorRect.new()
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flash.color = Color(Palette.HOSTILE_RED, 0.0)

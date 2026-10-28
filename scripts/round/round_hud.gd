@@ -97,6 +97,9 @@ var last_callout := ""
 var _t: Resource
 var _player: Node = null
 var _targets: Array = []
+## This player's life alone and the session beside the arena (C27b): deaths for the round.
+var _life: Node = null
+var _session: Node = null
 var _left_s := 0.0
 var _since_callout_s := INF
 var _callout_left_s := 0.0
@@ -164,6 +167,21 @@ func set_player(player: Node) -> void:
 			if stop.has_signal(pair[0]) and not stop.is_connected(pair[0], pair[1]):
 				stop.connect(pair[0], pair[1])
 	_last_pos = Vector3.INF
+
+
+## This player's life alone (C27b, scripts/fight/solo_life.gd): its deaths count in the round,
+## and a new round brings it back full.
+func set_life(life: Node) -> void:
+	_life = life
+	if life != null and life.has_signal("died") and not life.is_connected("died", _on_died):
+		life.connect("died", _on_died)
+
+
+## The session beside the arena: this player's deaths in a match count in the round too (C27b).
+func set_session(session: Node) -> void:
+	if session != null and session.has_signal("player_died") and not session.is_connected("player_died", _on_player_died):
+		session.connect("player_died", _on_player_died)
+	_session = session
 
 
 ## The dummies whose downs a round counts and that come back when a round starts.
@@ -277,6 +295,8 @@ func _next_round() -> void:
 	for dummy in _targets:
 		if is_instance_valid(dummy) and dummy.has_method("reset_for_round"):
 			dummy.reset_for_round()
+	if _life != null and is_instance_valid(_life) and _life.has_method("reset_for_round"):
+		_life.reset_for_round()  # alone, back at full health (C27b)
 	_start_round(stats.round_number + 1)
 
 
@@ -299,6 +319,18 @@ func _on_shot(hit: bool) -> void:
 func _on_downed(_dummy: Node3D) -> void:
 	if phase == Phase.ROUND:
 		_callout(stats.on_derezz())
+
+
+## This player was derezzed alone (C27b).
+func _on_died(_cause: String) -> void:
+	if phase == Phase.ROUND:
+		stats.on_death()
+
+
+## A player died in a match: this player's own deaths count (C27b).
+func _on_player_died(victim: int, _killer: int) -> void:
+	if phase == Phase.ROUND and _session != null and is_instance_valid(_session) and victim == _session.my_id:
+		stats.on_death()
 
 
 func _on_jumped() -> void:
@@ -444,10 +476,10 @@ func _refresh() -> void:
 	var demo: bool = announcer.state == "demo"
 	_heading.text = "ROUND %d OVER%s   next round in %d s" % [int(shown.get("round_number", 0)), "   (demo data)" if demo else "", maxi(ceili(_left_s), 0)]
 	var first := float(shown.get("time_to_first_derezz_s", -1.0))
-	_numbers.text = "shots %d   hits %d   accuracy %.1f%%\nprocesses down %d   best streak %d   first down %s\nmoved %.1f m   slides %d   jumps %d" % [
+	_numbers.text = "shots %d   hits %d   accuracy %.1f%%\nprocesses down %d   best streak %d   first down %s\nmoved %.1f m   slides %d   jumps %d   derezzed %d" % [
 		int(shown.get("shots", 0)), int(shown.get("hits", 0)), float(shown.get("accuracy_pct", 0.0)),
 		int(shown.get("derezzes", 0)), int(shown.get("longest_streak", 0)), ("%.1f s" % first) if first >= 0.0 else "none",
-		float(shown.get("distance_m", 0.0)), int(shown.get("slides", 0)), int(shown.get("jumps", 0))]
+		float(shown.get("distance_m", 0.0)), int(shown.get("slides", 0)), int(shown.get("jumps", 0)), int(shown.get("deaths", 0))]
 	var ai: bool = announcer.state == "ai" or demo or announcer.state == "thinking"
 	_who.text = announcer.title() + ("  " + SPINNER[_spin_at] if announcer.state == "thinking" else "")
 	_who.add_theme_color_override("font_color", Palette.TEAL if ai else Palette.HOSTILE_AMBER)

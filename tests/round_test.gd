@@ -345,7 +345,7 @@ func _request_checks() -> void:
 	for key in r.stats:
 		numbers = numbers and (typeof(r.stats[key]) == TYPE_INT or typeof(r.stats[key]) == TYPE_FLOAT)
 	_check("the request carries exactly the whitelisted round keys, numbers only; names, paths and lists handed in are dropped", r.stats.keys() == Stats.KEYS and numbers and leaks.is_empty() and r.text == "", ", ".join(leaks))
-	_check("the stats line is the round's numbers and no message", message == "Game stats: round_number=1, duration_s=90.0, shots=2, hits=1, accuracy_pct=50.0, derezzes=1, longest_streak=1, time_to_first_derezz_s=90.0, distance_m=0.0, slides=0, jumps=0\nPlayer: (no message)", message.c_escape())
+	_check("the stats line is the round's numbers and no message", message == "Game stats: deaths=0, round_number=1, duration_s=90.0, shots=2, hits=1, accuracy_pct=50.0, derezzes=1, longest_streak=1, time_to_first_derezz_s=90.0, distance_m=0.0, slides=0, jumps=0\nPlayer: (no message)", message.c_escape())
 	var wrong := Request.build({"shots": "9", "hits": 2.5, "accuracy_pct": 140.0, "time_to_first_derezz_s": -0.5, "distance_m": INF, "round_number": 0, "jumps": -1}, "", 0)
 	var unset := Request.build({"time_to_first_derezz_s": -1}, "", 0)
 	_check("wrong types and out-of-range numbers are dropped; -1 (never) is kept for the first down only", wrong.stats.is_empty() and unset.stats == {"time_to_first_derezz_s": -1.0}, str(wrong.stats))

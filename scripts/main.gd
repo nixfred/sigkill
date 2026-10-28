@@ -5,7 +5,8 @@ extends Node3D
 ## (scripts/settings/settings_apply.gd), and the graphics settings into the arena: bloom (the
 ## environment's glow), shadows (the sun's; the room light never casts any) and the code rain
 ## (C16b); SSAO, SSR, the full or plain skyline, the particle level, and the two screen post
-## effects (A4). It makes the arena's particle pool and post layer once, when it loads.
+## effects (A4). It makes the arena's particle pool and post layer once, when it loads, and
+## (C27b) the daemons' director and this player's life alone: the daemons fight back.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -33,6 +34,16 @@ func _ready() -> void:
 	_apply_palette_to_environment()
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
+	# The daemons fight back (C27b): this player's health alone, and the director that steps
+	# every daemon's brain.
+	var life := SoloLife.new()
+	life.player = _player
+	add_child(life)
+	var director := DaemonDirector.new()
+	director.player = _player
+	director.life = life
+	add_child(director)
+	_hud.set_solo_life(life)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -50,6 +61,8 @@ func _ready() -> void:
 	# reload; this arena shows its players and sends this player's movement.
 	var session = NetSession.of(self)
 	if session != null:
+		life.session = session
+		director.session = session
 		session.attach(self, _player)
 		_hud.set_net_session(session)
 		# A room code or invite link on the command line (C15), once per run: the panel opens

@@ -15,6 +15,12 @@ extends DaemonArt
 ## its body at an earlier time and the same zombie moves the same way on every run. Its head stays
 ## inside the hit volume's head zone (it hunches; the shards on its back stand over it). Visual
 ## only: it never leaves its spot.
+##
+## Fighting back (C27b), its brain drives it: it shambles after its prey (its loop closes in to
+## the daemon's own place and it faces the way the daemon goes, limping on; the ghosts trail
+## behind along its way), and its tell is the right claw raised at its prey with the ember pulled
+## out of its ribs into the claw, swelling and burning brighter; the strike throws it as an amber
+## bolt (the brain's, scripts/fight/glitch_bolt.gd) and the arm drops back.
 
 ## Its bones, in order.
 enum Bone { PELVIS, LUMBAR, CHEST, PLATE, NECK, HEAD, CLAV_L, CLAV_R, UPPER_L, UPPER_R, FORE_L, FORE_R, CLAW_L1, CLAW_L2, CLAW_R1, CLAW_R2, THIGH_L, THIGH_R, SHIN_L, SHIN_R, FOOT_L, FOOT_R, SPIKE_L, SPIKE_R }
@@ -66,9 +72,12 @@ var _roots := PackedVector3Array()
 ## The body's elbows and its head's centre as last posed (drawn or flickered out).
 var _elbows := PackedVector3Array([Vector3.ZERO, Vector3.ZERO])
 var _head := Vector3.ZERO
+## The right claw's wrist as last posed (art space): where its bolt comes from.
+var _wrist := Vector3(0.3, 0.3, -0.5)
 
 
 func _build() -> void:
+	ai_kind = "zombie"
 	core_color = Palette.HOSTILE_AMBER
 	edge_color = Palette.HOSTILE_AMBER
 	gutter = 1.0
@@ -173,9 +182,16 @@ func _skeleton(t: float, layer: int, shift: Vector3, off: bool) -> void:
 		var hang := Vector3((0.45 if side == 0 else 0.3) * x, -1.0, -0.15 + swing).normalized()
 		var jerk := amp if (kind == 1 and side == 0) or (kind == 2 and side == 1) else 0.0
 		var upper := hang.lerp(Vector3(1.0 * x, 0.5, -0.6).normalized(), jerk).normalized()
-		var elbow := shoulder + body * upper * UPPER
 		var fore := (upper + Vector3(0.0, 0.3, -0.55)).normalized()
+		# The tell (C27b): the right claw raised at its prey, thrown forward in the strike.
+		var raise := _raise() if side == 1 else 0.0
+		if raise > 0.0:
+			upper = upper.lerp(Vector3(0.3, 0.45, -1.0).normalized(), raise).normalized()
+			fore = fore.lerp(Vector3(0.05, 0.25, -1.0).normalized(), raise).normalized()
+		var elbow := shoulder + body * upper * UPPER
 		var wrist := elbow + body * fore * FORE
+		if side == 1 and layer == 0:
+			_wrist = wrist
 		bone(_bones[first + Bone.UPPER_L + side], shoulder, elbow, 0.075)
 		bone(_bones[first + Bone.FORE_L + side], elbow, wrist, 0.06)
 		for c in 2:
@@ -219,8 +235,10 @@ func _skeleton(t: float, layer: int, shift: Vector3, off: bool) -> void:
 		for k in RIBS:
 			var base := s1.lerp(s2, 0.3 + 0.25 * k)
 			bone(_ribs[side * RIBS + k], base, base + body * Vector3(0.22 * x, -0.1 + 0.03 * k, -0.16), 0.035)
-	orient(_ember, plate_at, s2 - s1, 0.2, 0.14)
-	brighten(_ember, 1.1 + 0.3 * breath)
+	# The ember, pulled out into the raised claw and swelling in the tell (C27b).
+	var charge := _charge()
+	orient(_ember, plate_at.lerp(_wrist + ahead * 0.08, charge), s2 - s1, 0.2 * (1.0 + 0.9 * charge), 0.14 * (1.0 + 0.9 * charge))
+	brighten(_ember, 1.1 + 0.3 * breath + 2.2 * charge)
 
 
 ## The voxels it sheds: each born at a spot on its body as it stood then, rising, turning and
@@ -239,6 +257,30 @@ func _pose_bits(t: float) -> void:
 		present(_bits[i], 1.0 - u * u)
 
 
+## How far the right claw is raised now, from the brain's act (C27b): up through the tell, held in
+## the strike, down in the recovery.
+func _raise() -> float:
+	match act:
+		Act.TELL:
+			return smoothstep(0.0, 0.45, act_u)
+		Act.STRIKE:
+			return 1.0
+		Act.RECOVER:
+			return 1.0 - smoothstep(0.0, 1.0, act_u)
+	return 0.0
+
+
+## How far the ember is out in the claw: through the tell; gone with the bolt in the strike.
+func _charge() -> float:
+	if act == Act.TELL:
+		return smoothstep(0.15, 0.85, act_u)
+	return 0.0
+
+
+func _muzzle() -> Vector3:
+	return _wrist + Vector3(0.0, 0.0, -0.12)
+
+
 ## Path progress, in strides, at time `t`: quick in the lurch, slow in the drag. Sets the stride's
 ## phase, the lurch and the drag.
 func _progress(t: float) -> float:
@@ -253,13 +295,14 @@ func _progress(t: float) -> float:
 
 func _root_at(p: float) -> Vector3:
 	var a := p * TAU / STRIDES_PER_LOOP + _p[1]
-	return Vector3(PATH.x * cos(a), GROUND_Y, PATH.y * sin(a)) + Basis(Vector3.UP, _yaw_at(p)) * Vector3(0.0, 0.0, HUNCH_BACK)
+	var idle := 1.0 - _drive
+	return Vector3(PATH.x * cos(a) * idle, GROUND_Y, PATH.y * sin(a) * idle) + Basis(Vector3.UP, _yaw_at(p)) * Vector3(0.0, 0.0, HUNCH_BACK)
 
 
-## The way it faces at progress `p`: along its loop.
+## The way it faces at progress `p`: along its loop; driven, the daemon's own way (C27b).
 func _yaw_at(p: float) -> float:
 	var a := p * TAU / STRIDES_PER_LOOP + _p[1]
-	return atan2(PATH.x * sin(a), -PATH.y * cos(a))
+	return atan2(PATH.x * sin(a), -PATH.y * cos(a)) * (1.0 - _drive)
 
 
 ## The good foot in stride `n` at phase `f`: swinging in the lurch, then planted.

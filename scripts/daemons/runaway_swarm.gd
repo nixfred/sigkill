@@ -11,6 +11,12 @@ extends DaemonArt
 ## an insect glitches a hand's width off its place for a frame. A hit scatters them away from the
 ## shot before they regroup. They step at the game's pace (SIGSTOP slows them), seeded per daemon.
 ## Visual only.
+##
+## Fighting back (C27b), its brain flies the whole swarm: round its prey, then in dives at it.
+## Each insect keeps a share of its own flight in the world as the daemon moves (they stream
+## behind a fast move and catch up) and its trail follows where it truly went. The tell before
+## every dive pulls the swarm into a tight, bright ball; it stays tight through the dive; a
+## scatter flings it wide.
 
 const INSECTS := 36
 ## The flock: the shell they hold round the nest, the neighbours' reach, the distance they keep, in
@@ -50,6 +56,11 @@ const WING_HZ := 11.0
 const BODY_L := 0.36
 const BODY_W := 0.1
 const WING_L := 0.27
+## The share of its own flight an insect keeps in the world as the daemon moves (C27b), and the
+## shell the tell pulls it into and a scatter throws it out to.
+const INERTIA := 0.55
+const TIGHT_M := 0.3
+const WIDE_M := 1.3
 
 var _body := PackedInt32Array()
 var _wing := PackedInt32Array()
@@ -79,6 +90,7 @@ var _p := PackedFloat32Array()
 
 
 func _build() -> void:
+	ai_kind = "swarm"
 	core_color = Palette.HOSTILE_RED
 	edge_color = Palette.HOSTILE_RED
 	glyph_count = 8
@@ -124,11 +136,19 @@ func _pose(t: float, delta: float) -> void:
 	_anchor = Vector3(0.0, 0.06 * sin(1.1 * t + _p[0]), 0.0) + recoil()
 	if not _flock_ready:
 		_seed_flock()
+	elif _carry != Transform3D.IDENTITY:
+		# The daemon moved: each insect keeps a share of its flight in the world, its trail all of
+		# it (C27b).
+		for i in INSECTS:
+			_pos[i] = _pos[i].lerp(_carry * _pos[i], INERTIA)
+			_hist[i * 2] = _carry * _hist[i * 2]
+			_hist[i * 2 + 1] = _carry * _hist[i * 2 + 1]
 	if delta > 0.0:
 		_fly(t, minf(delta, STEP_MAX))
 	var pulse := sin(TAU * 1.3 * t + _p[1])
-	orient(_nest, _anchor, Vector3.UP, 0.36 * (1.0 + 0.15 * pulse), 0.28 * (1.0 + 0.15 * pulse))
-	brighten(_nest, 1.2 + 0.4 * pulse)
+	var hot := _tight()
+	orient(_nest, _anchor, Vector3.UP, 0.36 * (1.0 + 0.15 * pulse + 0.3 * hot), 0.28 * (1.0 + 0.15 * pulse + 0.3 * hot))
+	brighten(_nest, 1.2 + 0.4 * pulse + 1.6 * hot)
 	for k in 4:
 		var a := TAU * k / 4.0 + 1.7 * t
 		var out := Vector3(cos(a), 0.35 * sin(2.0 * t + k), sin(a)) * 0.3
@@ -195,6 +215,10 @@ func _fly(t: float, dt: float) -> void:
 				_sep[i] -= push
 				_sep[j] += push
 	var axis := Vector3(0.4 * sin(0.3 * t + _p[2]), 1.0, 0.4 * cos(0.23 * t + _p[2])).normalized()
+	# The shell they hold: tight in the tell and the dive, wide in a scatter (C27b).
+	var hot := _tight()
+	var orbit := lerpf(lerpf(ORBIT_M, TIGHT_M, hot), WIDE_M, 1.0 if act == Act.SCATTER else 0.0)
+	var hollow := minf(HOLLOW_M, orbit * 0.6)
 	# Just after a hit the scatter may outrun the top speed, easing back to it.
 	var fastest := SPEED_MAX + SCATTER * maxf(0.0, 1.0 - since(_hit_at) / SCATTER_S)
 	for i in INSECTS:
@@ -206,14 +230,14 @@ func _fly(t: float, dt: float) -> void:
 		var out := p - _anchor
 		var dist := out.length()
 		var radial := out / dist if dist > 0.0001 else Vector3.UP
-		var diving := _dive_at[i] >= 0.0 and since(_dive_at[i]) < DIVE_S
+		var diving := _dive_at[i] >= 0.0 and since(_dive_at[i]) < DIVE_S and act == Act.IDLE
 		if diving:
 			force += (_dive_to[i] + _anchor * Vector3(1.0, 0.0, 1.0) - p).normalized() * DIVE_PULL
 		else:
 			_dive_at[i] = -1.0
-			force -= radial * (dist - ORBIT_M) * HOME
-			if dist < HOLLOW_M:
-				force += radial * (HOLLOW_M - dist) * HOME * 2.0
+			force -= radial * (dist - orbit) * HOME
+			if dist < hollow:
+				force += radial * (hollow - dist) * HOME * 2.0
 			force += (axis + _tilt[i]).normalized().cross(radial) * SPIN
 		var above := p.y - (GROUND_Y + 0.12)
 		if above < 0.25:
@@ -265,6 +289,23 @@ func _on_hit() -> void:
 
 func _on_return() -> void:
 	_flock_ready = false
+
+
+## How tight and bright the swarm is pulled now, 0 to 1 (C27b): in through the tell, held in the
+## dive, easing out in the recovery.
+func _tight() -> float:
+	match act:
+		Act.TELL:
+			return smoothstep(0.0, 0.8, act_u)
+		Act.STRIKE:
+			return 1.0
+		Act.RECOVER:
+			return 1.0 - act_u
+	return 0.0
+
+
+func _muzzle() -> Vector3:
+	return _anchor
 
 
 # --- For the checks. ---

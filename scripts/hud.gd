@@ -170,10 +170,19 @@ func set_player(player: Node) -> void:
 		player.menu_requested.connect(open_menu)
 
 
+## This player's life alone (C27b): its health, the hit flash and the death banner on the combat
+## HUD, its deaths in the round.
+func set_solo_life(life: Node) -> void:
+	_combat.set_life(life)
+	_round.set_life(life)
+	_top.set_life(life)
+
+
 ## The session beside the arena, for the multiplayer panel and the combat HUD.
 func set_net_session(session: Node) -> void:
 	_net.session = session
 	_combat.set_session(session)
+	_round.set_session(session)
 	_menu.session = session
 	_top.session = session
 
