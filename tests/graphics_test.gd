@@ -32,10 +32,14 @@ const SettingsFile = preload("res://scripts/settings/settings_file.gd")
 const Player = preload("res://scripts/player.gd")
 
 ## resources/ (every .tres) and scripts/net/ (every .gd) as they were at dee2482: SHA-256 over each
-## file's name and a newline, then its bytes, in name order.
+## file's name and a newline, then its bytes, in name order. Since C27b resources/ also holds
+## daemon_ai.tres, the daemons' own numbers: the pin covers the files dee2482 had (DEE2482_TRES),
+## and nothing else may join them.
 const RESOURCES_SHA := "bff9abb41595538b62df6ff11d662bc8ae685d0f6ed79eb5088ddaacc1babeda"
 const NET_SHA := "eeca5f69c759986124bcf62e491630d93120df6b5acb27d2e0f0e9d3d5ed71f2"
 const PROTOCOL := 9
+const DEE2482_TRES := ["announcer.tres", "arsenal.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
+const C27B_TRES := ["daemon_ai.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may.
 const PARTICLE_BUDGET := 1600
 const MUZZLE_BUDGET := 32
@@ -60,6 +64,7 @@ var _arenas: Array = []
 
 
 func _initialize() -> void:
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_run()
 
 
@@ -74,6 +79,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(_tmp)
 	Controls.ensure()
 	GameSettings.current().reset()
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_source_checks()
 	_settings_checks()
 	var main := await _arena()
@@ -140,7 +146,12 @@ func _source_checks() -> void:
 	var post := _shader_code("res://shaders/screen_post.gdshader")
 	_check("the post effects never warp the picture: no curve or zoom, the aberration's pull zero at the screen's middle (it grows with the distance from it), so the crosshair's point stays true", post.contains("hint_screen_texture") and post.contains("dot(d, d)") and not post.contains("barrel") and not post.contains("curv"))
 
-	var resources := _dir_sha("res://resources/", ".tres")
+	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
+	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
+	tres.sort()
+	var expected_tres := DEE2482_TRES + C27B_TRES
+	expected_tres.sort()
+	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd")
 	var protocol := _code("res://scripts/net/net_session.gd").contains("const PROTOCOL := %d" % PROTOCOL)
 	_check("acceptance: no gameplay number changed: resources/ and scripts/net/ byte for byte as at dee2482, the protocol still %d" % PROTOCOL, resources == RESOURCES_SHA and net == NET_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
@@ -576,8 +587,8 @@ func _arena() -> Node:
 	return main
 
 
-func _dir_sha(dir: String, ext: String) -> String:
-	var names := Array(DirAccess.get_files_at(dir)).filter(func(n): return n.ends_with(ext))
+func _dir_sha(dir: String, ext: String, only: Array = []) -> String:
+	var names := Array(DirAccess.get_files_at(dir)).filter(func(n): return n.ends_with(ext) and (only.is_empty() or only.has(n)))
 	names.sort()
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
@@ -635,6 +646,7 @@ func _body(source: String, name: String) -> String:
 func _cleanup() -> void:
 	Engine.time_scale = 1.0
 	GameSettings.current().reset()
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	for node in _arenas.duplicate():
 		if is_instance_valid(node):
 			for sfx in node.find_children("*", "AudioStreamPlayer", true, false):

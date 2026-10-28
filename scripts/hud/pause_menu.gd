@@ -17,7 +17,9 @@ extends Control
 ## and real-machine data is the privacy answer guide_settings.gd keeps, which counts from
 ## the next launch (off means demo data, as --demo does). The display name is a label only:
 ## in a match everyone is Daemon-<slot> (C14). Light trails (C20) is the match rule a host
-## plays by, at once when changed mid-match; a joiner plays by its host's.
+## plays by, at once when changed mid-match; a joiner plays by its host's. Gameplay (C27b): the
+## daemons' difficulty, and practice (daemons that never attack); in a match both are the
+## host's, like light trails.
 
 signal closed
 
@@ -39,6 +41,7 @@ const REAL_DATA_DEMO := "this run: demo data"
 const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
 const RELAY_NOTE := "empty: no online rooms, no network call"
 const TRAILS_NOTE := "your match when you host; joiners get the host's"
+const PRACTICE_NOTE := "daemons don't attack"
 const RELAY_HINT := "udp://host:9010"
 ## The graphics toggles (A4) in a grid under the preset, three to a row: [label, key].
 const GRAPHICS_TOGGLES := [["bloom", "bloom"], ["shadows", "shadows"], ["code rain", "code_rain"], ["SSAO", "ssao"], ["SSR", "ssr"], ["skyline", "skyline"], ["aberration", "chromatic_aberration"], ["CRT lines", "crt"]]
@@ -469,6 +472,7 @@ func _build() -> void:
 	var middle := _column(columns)
 	_build_video(middle)
 	_build_audio(middle)
+	_build_gameplay(middle)
 	var right := _column(columns)
 	_build_hud(right)
 	_build_privacy(right)
@@ -557,6 +561,14 @@ func _build_audio(col: VBoxContainer) -> void:
 	_label(col, "AUDIO", HEAD_FONT, Palette.TEAL)
 	for pair in [["master", "master"], ["effects", "effects"], ["music", "music"], ["announcer", "announcer"]]:
 		_slider(col, pair[0], "audio", pair[1], 0.0, 1.0, 0.05, func(v): return "%d%%" % roundi(v * 100.0))
+
+
+## The daemons fighting back (C27b): how hard, or not at all.
+func _build_gameplay(col: VBoxContainer) -> void:
+	_label(col, "GAMEPLAY", HEAD_FONT, Palette.TEAL)
+	_option(col, "difficulty", "gameplay", "difficulty", ["easy", "normal", "hard"])
+	_check(col, "practice", "gameplay", "practice")
+	_label(_rows["gameplay/practice"]["widget"].get_parent(), PRACTICE_NOTE, FONT - 2, Palette.TEAL)
 
 
 func _build_hud(col: VBoxContainer) -> void:

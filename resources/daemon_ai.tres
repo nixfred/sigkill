@@ -1,0 +1,51 @@
+[gd_resource type="Resource" script_class="DaemonAiTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/daemons/daemon_ai_tuning.gd" id="1_ai"]
+
+[resource]
+script = ExtResource("1_ai")
+aggro_range_m = 16.0
+leash_m = 14.0
+lose_s = 2.5
+max_attackers = 2
+eye_height_m = 1.2
+turn_rate = 6.0
+keep_apart_m = 1.8
+feeler_m = 1.6
+rogue_speed = 4.5
+rogue_reach_m = 2.4
+rogue_tell_s = 0.6
+rogue_lunge_m = 1.4
+rogue_strike_s = 0.25
+rogue_slash_m = 1.5
+rogue_damage = 20.0
+rogue_recover_s = 0.5
+rogue_cooldown_s = 1.8
+zombie_speed = 1.4
+zombie_keep_m = 6.0
+zombie_range_m = 14.0
+zombie_tell_s = 0.7
+zombie_bolt_speed = 9.0
+zombie_bolt_radius_m = 0.3
+zombie_bolt_life_s = 2.5
+zombie_bolt_damage = 12.0
+zombie_recover_s = 0.4
+zombie_cooldown_s = 2.6
+swarm_speed = 5.5
+swarm_orbit_m = 5.0
+swarm_tell_s = 0.45
+swarm_dive_speed = 12.0
+swarm_dive_s = 0.7
+swarm_hit_m = 1.0
+swarm_damage = 5.0
+swarm_burst = 3
+swarm_burst_gap_s = 0.35
+swarm_cooldown_s = 3.0
+swarm_scatter_s = 1.0
+swarm_scatter_speed = 7.0
+easy_damage = 0.6
+easy_aggression = 0.75
+normal_damage = 1.0
+normal_aggression = 1.0
+hard_damage = 1.5
+hard_aggression = 1.35

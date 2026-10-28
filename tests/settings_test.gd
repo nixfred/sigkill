@@ -49,6 +49,7 @@ var _branches: Array = []
 
 
 func _initialize() -> void:
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_run()
 
 
@@ -188,7 +189,7 @@ func _persist_checks() -> void:
 	var asked := Privacy.save("claude", true, path)
 	var a := GameSettings.new()
 	a.path = path
-	var changes := [["controls", "invert_y", true], ["controls", "mouse_sensitivity", 1.75], ["controls", "ads_sensitivity", 0.5], ["controls", "crouch_mode", "toggle"], ["controls", "aim_mode", "toggle"], ["video", "window_mode", "borderless"], ["video", "resolution_scale", 0.75], ["video", "fps_cap", 144], ["video", "vsync", false], ["video", "fov", 100], ["video", "quality", "medium"], ["audio", "master", 0.4], ["audio", "effects", 0.55], ["audio", "music", 0.0], ["audio", "announcer", 0.9], ["hud", "crosshair_style", "circle"], ["hud", "crosshair_color", "magenta"], ["hud", "colorblind", true], ["hud", "screen_shake", false], ["hud", "motion_blur", false], ["hud", "subtitles", false], ["multiplayer", "display_name", "Neo"], ["multiplayer", "port", 9123], ["multiplayer", "net_stats", true]]
+	var changes := [["controls", "invert_y", true], ["controls", "mouse_sensitivity", 1.75], ["controls", "ads_sensitivity", 0.5], ["controls", "crouch_mode", "toggle"], ["controls", "aim_mode", "toggle"], ["video", "window_mode", "borderless"], ["video", "resolution_scale", 0.75], ["video", "fps_cap", 144], ["video", "vsync", false], ["video", "fov", 100], ["video", "quality", "medium"], ["audio", "master", 0.4], ["audio", "effects", 0.55], ["audio", "music", 0.0], ["audio", "announcer", 0.9], ["hud", "crosshair_style", "circle"], ["hud", "crosshair_color", "magenta"], ["hud", "colorblind", true], ["hud", "screen_shake", false], ["hud", "motion_blur", false], ["hud", "subtitles", false], ["multiplayer", "display_name", "Neo"], ["multiplayer", "port", 9123], ["multiplayer", "net_stats", true], ["gameplay", "difficulty", "hard"], ["gameplay", "practice", true]]
 	var all_set := true
 	for c in changes:
 		all_set = all_set and a.set_value(c[0], c[1], c[2])
@@ -996,6 +997,7 @@ func _cleanup() -> void:
 		left.shut_down(null)
 	GameSettings.current().path = ""
 	GameSettings.current().reset()
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	await process_frame
 	OS.delay_msec(300)
 	await process_frame

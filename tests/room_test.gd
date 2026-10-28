@@ -32,6 +32,7 @@ var _server_port := 0
 
 
 func _initialize() -> void:
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_run()
 
 

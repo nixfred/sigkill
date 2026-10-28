@@ -59,6 +59,7 @@ class RawWs:
 
 
 func _initialize() -> void:
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_run()
 
 
@@ -73,6 +74,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(_tmp)
 	Controls.ensure()
 	GameSettings.current().reset()
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	_wire_checks()
 	_config_checks()
 	_source_checks()
@@ -761,6 +763,7 @@ func _cleanup() -> void:
 	if left != null:
 		left.shut_down(null)
 	GameSettings.current().reset()
+	GameSettings.current().set_value("gameplay", "practice", true)  # these checks predate C27b: the daemons stay the old never-attack dummies
 	await process_frame
 	OS.delay_msec(300)
 	await process_frame
