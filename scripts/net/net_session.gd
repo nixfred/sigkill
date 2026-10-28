@@ -79,8 +79,9 @@ extends Node
 ##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
-## and results, health, deaths and respawns by id. Nothing about the AI guide, the
-## settings, paths, processes or the machine. Nothing real is signalled, killed or run.
+## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
+## (on or off, the seconds left). Nothing about the AI guide, the settings, paths, processes
+## or the machine. Nothing real is signalled, killed or run.
 
 const Tuning = preload("res://scripts/net/net_tuning.gd")
 const RemotePlayer = preload("res://scripts/net/remote_player.gd")
