@@ -10,8 +10,9 @@
 # player's own is read or written. This script deletes nothing; remove <work-dir> yourself.
 #
 # Safety: Xvnc on display :97 (CAPTURE_DISPLAY to change it) with no TCP listener at all, its VNC
-# side on a unix socket only the owner can open; Godot on X11 only, with no Wayland socket it could
-# fall back to, and no sound; Xvnc is stopped by its own PID when the run ends. Demo data only.
+# side on a unix socket only the owner can open, and a fresh random cookie in <work-dir> as its only
+# way in, so no other program can join the display; Godot on X11 only, with no Wayland socket it
+# could fall back to, and no sound; Xvnc is stopped by its own PID when the run ends. Demo data only.
 
 set -u -o pipefail
 
@@ -25,21 +26,26 @@ if [ -e "/tmp/.X11-unix/X$display" ] || [ -e "/tmp/.X$display-lock" ]; then
 	echo "display :$display is taken (or its lock file is stale; check /tmp/.X$display-lock)" >&2
 	exit 2
 fi
-command -v Xvnc >/dev/null && command -v godot >/dev/null || { echo "need Xvnc and godot" >&2; exit 2; }
+for tool in Xvnc godot xauth mcookie; do
+	command -v "$tool" >/dev/null || { echo "need $tool" >&2; exit 2; }
+done
 
 mkdir -p "$work/data" "$work/config" "$work/cache" "$work/run" "$work/shots"
 chmod 700 "$work/run"
+(umask 077 && touch "$work/xauthority")
+xauth -q -f "$work/xauthority" add ":$display" MIT-MAGIC-COOKIE-1 "$(mcookie)" \
+	|| { echo "could not make the display's cookie" >&2; exit 1; }
 private=(env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE XDG_SESSION_TYPE=x11
 	XDG_RUNTIME_DIR="$work/run" XDG_DATA_HOME="$work/data" XDG_CONFIG_HOME="$work/config"
-	XDG_CACHE_HOME="$work/cache")
+	XDG_CACHE_HOME="$work/cache" XAUTHORITY="$work/xauthority")
 
 if [ ! -d "$copy/.godot" ]; then
 	"${private[@]}" nice -n 10 godot --headless --path "$copy" --import > "$work/import.log" 2>&1 \
 		|| { echo "import failed: see $work/import.log" >&2; exit 1; }
 fi
 
-(Xvnc ":$display" -nolisten tcp -rfbport -1 -rfbunixpath "$work/vnc.sock" -rfbunixmode 384 \
-	-SecurityTypes None -geometry 1920x1080 -depth 24 > "$work/xvnc.log" 2>&1 &)
+(Xvnc ":$display" -auth "$work/xauthority" -nolisten tcp -rfbport -1 -rfbunixpath "$work/vnc.sock" \
+	-rfbunixmode 384 -SecurityTypes None -geometry 1920x1080 -depth 24 > "$work/xvnc.log" 2>&1 &)
 for _ in $(seq 1 50); do
 	[ -S "/tmp/.X11-unix/X$display" ] && [ -f "/tmp/.X$display-lock" ] && break
 	sleep 0.1

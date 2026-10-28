@@ -198,11 +198,12 @@ func _model_checks() -> void:
 		var at := model.transform * tip
 		if at.z > -MUZZLE_NEAREST_M or absf(at.y) / -at.z > tan(half) * VIEW_SHARE or absf(at.x) / -at.z > tan(half) * (4.0 / 3.0) * VIEW_SHARE:
 			view.append(def.id)
-		for corner in 8:
-			var p := model.transform * box.get_endpoint(corner)
-			if p.z < 0.0 and rad_to_deg(atan2(Vector2(p.x, p.y).length(), -p.z)) < CROSSHAIR_CLEAR_DEGREES:
-				clear.append(def.id)
-				break
+		# The box's nearest approach to the line of sight: its point closest to the axis, as far out
+		# as the box goes (the model at rest only moves, never turns, so the box moves with it).
+		var seen := AABB(model.transform * box.position, box.size)
+		var aside := Vector2(clampf(0.0, seen.position.x, seen.end.x), clampf(0.0, seen.position.y, seen.end.y))
+		if seen.position.z < 0.0 and rad_to_deg(atan2(aside.length(), -seen.position.z)) < CROSSHAIR_CLEAR_DEGREES:
+			clear.append(def.id)
 		shapes["%d %d %d %d" % [roundi(box.size.x * 100.0), roundi(box.size.y * 100.0), roundi(box.size.z * 100.0), tris]] = def.id
 	_check("acceptance: every model is built: a Muzzle marker of its own, a Body mesh of 2 to 4 surfaces each with its material (body, plates, polymer, hot parts), the trim its own mesh, the script its weapon names", built.is_empty(), ", ".join(built))
 	_check("acceptance: every model's trim glows in its weapon's own light skin at the weapon's own energy, its base darkened under it as the old box's was", glow.is_empty(), ", ".join(glow))
@@ -422,6 +423,7 @@ func _charge_checks(p: Node, models: Array) -> void:
 	var shots: int = p.shots_fired
 	var order_held := true
 	var all_lit := false
+	var peak := 0.0
 	p.drive_input(Vector2.ZERO, false, false, true)
 	for k in 90:
 		await physics_frame
@@ -431,6 +433,7 @@ func _charge_checks(p: Node, models: Array) -> void:
 		var row := []
 		for id in coils:
 			row.append(rail.piece_energy(id))
+			peak = maxf(peak, rail.piece_energy(id))
 		for c in 3:
 			order_held = order_held and row[c] >= row[c + 1] - EPS
 		all_lit = row[3] > Viewmodel.HOT_SHARE * Viewmodel.CHARGE_REST * 2.0
@@ -438,7 +441,8 @@ func _charge_checks(p: Node, models: Array) -> void:
 	var rested := true
 	for id in coils:
 		rested = rested and is_equal_approx(rail.piece_energy(id), Viewmodel.HOT_SHARE * Viewmodel.CHARGE_REST)
-	_check("acceptance: through the rail's real charge its coils light in order, every one lit by the shot, and all back to rest after it", p.shots_fired == shots + 1 and order_held and all_lit and rested)
+	var cap := Viewmodel.HOT_SHARE * (Viewmodel.CHARGE_REST + Viewmodel.CHARGE_GAIN)
+	_check("acceptance: through the rail's real charge its coils light in order, every one lit by the shot, never past a full charge's own glow (%.2f times the weapon's) however the trim's charge glow climbs, and all back to rest after it" % cap, p.shots_fired == shots + 1 and order_held and all_lit and peak <= cap + EPS and rested, "peak %.2f" % peak)
 	p.select_slot(6)
 	await _settle(p, 0.6)
 	p.inventory.refill()  # its one round went in the kick check
