@@ -105,7 +105,8 @@ func add_meter(id: int, share: float, killed: bool) -> void:
 	var ult := ult_def()
 	if ult == null or not states.has(id) or states[id]["dead"]:
 		return
-	states[id]["meter"] = minf(states[id]["meter"] + ult.meter_gain(share, killed), ult.ult_meter)
+	var meter: float = minf(states[id]["meter"] + ult.meter_gain(share, killed), ult.ult_meter)
+	states[id]["meter"] = ult.ult_meter if meter >= ult.ult_meter - METER_EPS else meter  # as the player's own
 
 
 ## The weapon `id` holds, as the host knows it.

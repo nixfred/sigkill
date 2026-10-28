@@ -133,6 +133,14 @@ func _inventory_checks() -> void:
 	inv.add_meter(2.5)
 	inv.add_meter(2.5)
 	_check("the meter caps at full, and one shot empties it", inv.meter == 3.0 and inv.meter_ready() and inv.try_fire() == "" and inv.meter == 0.0 and inv.try_fire() == Inventory.BLOCK_COOLDOWN)
+	var near := Inventory.new([_cannon, _rail], 0.3, 1.6)
+	near.add_meter(2.99999999)
+	var sums := Inventory.new([_cannon, _rail], 0.3, 1.6)
+	for i in 15:
+		sums.add_meter(_rail.meter_gain(0.25, false))
+		if i % 5 == 4:
+			sums.add_meter(_rail.meter_gain(0.0, true))
+	_check("a meter a hair short of full from float sums counts as full, so the player's own and the host's agree", near.meter == 3.0 and near.meter_ready() and sums.meter == 3.0 and sums.meter_ready(), "%.17f %.17f" % [near.meter, sums.meter])
 	inv.add_meter(3.0)
 	inv.select(0)
 	inv.tick(0.4)
@@ -297,13 +305,15 @@ func _solo_checks() -> void:
 	p.select_slot(2)
 	await _settle(p, 0.4)
 	p.drive_input(Vector2.ZERO, false, false, true)
-	await physics_frame
-	await physics_frame
+	for i in 12:
+		await physics_frame
 	var was_charging: bool = p.is_charging()
 	shots = p.shots_fired
 	p.select_slot(0)
 	await _settle(p, 0.6)
-	_check("drawing another weapon mid-charge lets the charge go: no shot, the meter still full", was_charging and not p.is_charging() and p.shots_fired == shots and inv.meter == 3.0)
+	var rail_glow: float = (p.get("_viewmodels")[2].material_override as StandardMaterial3D).emission_energy_multiplier
+	var cannon_glow: float = (p.get("_viewmodels")[0].material_override as StandardMaterial3D).emission_energy_multiplier
+	_check("drawing another weapon mid-charge lets the charge go: no shot, the meter still full, and the rail's glow back to its own base (the cannon's untouched)", was_charging and not p.is_charging() and p.shots_fired == shots and inv.meter == 3.0 and is_equal_approx(rail_glow, _rail.viewmodel_glow_energy) and is_equal_approx(cannon_glow, _cannon.viewmodel_glow_energy), "rail %.3f cannon %.3f" % [rail_glow, cannon_glow])
 	_drop(arena)
 
 

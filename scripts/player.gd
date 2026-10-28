@@ -707,7 +707,7 @@ func _step_charge(delta: float) -> void:
 		_end_charge()
 		return
 	_charge_left -= delta
-	_set_glow(1.0 + 3.0 * charge_progress())
+	_set_glow(_charge_slot, 1.0 + 3.0 * charge_progress())
 	if _charge_left > 0.0:
 		return
 	_end_charge()
@@ -717,15 +717,19 @@ func _step_charge(delta: float) -> void:
 
 
 func _end_charge() -> void:
+	# The charging slot's own model gets its glow back, even when another weapon is now drawn.
+	_set_glow(_charge_slot, 1.0)
 	_charge_left = 0.0
 	_charge_slot = -1
-	_set_glow(1.0)
 
 
-func _set_glow(scale: float) -> void:
-	var glow := _viewmodel.material_override as StandardMaterial3D if _viewmodel != null else null
+## The glow of slot `slot`'s viewmodel at `scale` times that weapon's own base.
+func _set_glow(slot: int, scale: float) -> void:
+	if slot < 0 or slot >= _viewmodels.size():
+		return
+	var glow := _viewmodels[slot].material_override as StandardMaterial3D
 	if glow != null:
-		glow.emission_energy_multiplier = _w.viewmodel_glow_energy * scale
+		glow.emission_energy_multiplier = inventory.defs[slot].viewmodel_glow_energy * scale
 
 
 ## How far the rail's charge has come, from 0 to 1; 0 when it is not charging.

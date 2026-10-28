@@ -24,6 +24,10 @@ const BLOCK_COOLDOWN := "cooldown"
 const BLOCK_EMPTY := "empty"
 const BLOCK_DRY := "dry"
 const BLOCK_METER := "meter"
+## A meter this close below full counts as full: sums of float shares (a joiner adds a hit
+## and its kill bonus in two steps where the host adds them in one) must never leave it a
+## hair short.
+const METER_EPS := 0.0001
 
 ## The weapons, slot 1 first. Every one is a usable WeaponDef.
 var defs: Array = []
@@ -91,6 +95,8 @@ func meter_share() -> float:
 func add_meter(amount: float) -> void:
 	if is_finite(amount) and amount > 0.0:
 		meter = minf(meter + amount, meter_full())
+		if meter >= meter_full() - METER_EPS:
+			meter = meter_full()
 
 
 func reset_meter() -> void:
