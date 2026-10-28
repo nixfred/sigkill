@@ -525,11 +525,12 @@ The rules that make this safe, in plain words:
 ### Built: derezz on the target dummies
 
 - **The effect**, `scripts/derezz_fx.gd`. A killed dummy shatters into voxels that fill its hexagonal prism. One MultiMeshInstance3D per death holds every voxel as an instance, so there is no node and no physics body per voxel, and the count is capped, at 160 by default. Every derezz shares one voxel mesh and one unlit, over-bright material. About half the voxels glow hostile red; the rest are obsidian with a faint red tint.
+- **The look since A2**, `shaders/derezz_voxel.gdshader`. Each voxel glows along its edges round a dimmer face in its own colour, and as it fades its faces fall away cell by cell, the edges last, so a cube derezzes instead of only shrinking. The death opens with a flash: a column of light up through the body and a ring spreading along the ground, gone in 0.35 s. The motion, the counts, the sizes, the colours and the timing are as they were; the players' own derezz is the same effect.
 - **Motion** is scripted on the CPU at a fixed 60 Hz step, so it plays the same at any frame rate: an outward burst from the body's centre, a push along the killing shot's direction, random spread, gravity, a tumble, and a damped bounce with friction on landing. Each voxel finds the real ground below it with a downward ray that only hits the world, measured again whenever it moves sideways on the way down, so voxels knocked off the raised platform fall to the floor beneath it and voxels flying over a higher surface land on top of it. Voxels shrink and fade along a power curve, and the effect frees itself once the last one is gone.
 - **The dummy**, `scripts/target_dummy.gd`, is a small state machine. Alive: it takes hits. Derezzing: collision off, body and tag hidden, every hit ignored, and cannon shots pass straight through. Respawning: it grows back in its own spot, still not hittable. Then alive again at full health.
 - **Tuning**, `scripts/derezz_tuning.gd` with `resources/derezz.tres`: the voxel cap, size and colours, the burst, push and spread, gravity, bounce, friction and the ground layers, the tumble, the lifetime and fade curve, the respawn delay and the regrow time.
 
-The kill feed is not part of this chunk; it arrives with synced combat (C14). Like the rest of the look, the derezz has only run headless so far. Under `--headless` Godot keeps no MultiMesh data to read back, so the test checks the voxel state, and through a test hook the transform and colour each frame builds from it for the MultiMesh. A1's wide still catches a derezz on a real GPU, in [Screenshots](#screenshots); no one has watched one in play yet.
+The kill feed is not part of this chunk; it arrives with synced combat (C14). Like the rest of the look, the derezz has only run headless so far. Under `--headless` Godot keeps no MultiMesh data to read back, so the test checks the voxel state, and through a test hook the transform and colour each frame builds from it for the MultiMesh. A1's wide still catches a derezz on a real GPU, and A2's one mid-shatter, in [Screenshots](#screenshots); no one has watched one in play yet.
 
 ### Built: code rain on the walls
 
@@ -547,6 +548,14 @@ Like the rest of the look, the rain has only run headless so far: the shader com
 - **The look**, `shaders/viewmodel_metal.gdshader`. Dark gunmetal with machined panel lines, or hex cells, cut in the model's own space so they ride on the weapon, and a faint rim of the weapon's neon round its silhouette; lighter plates, near-black polymer grips, neon trim in the weapon's light skin, and hot parts (bores, lenses, cores) in its beam colour. Root (C22) turns all of it red. Colours in `scripts/palette.gd`.
 - **Alive in the hand.** The model lags a turn, sways with the stride (off with head bob), trails a jump or a fall, kicks back and up on a shot by the weapon's own weight (SIGTERM light, the rail and `rm -rf` heavy) and settles, rises tipped from below when drawn, and calms down aimed. The rail's coils light one after another as it charges; `rm -rf`'s core and vents glow up through its wind-up; the fork bomb's drum turns, `cron`'s clock hand goes round once a run interval, `grep`'s lens breathes. The numbers are in ArsenalTuning's Viewmodel motion group (`resources/arsenal.tres`).
 - **The shot is unchanged.** Every shot still leaves from the eyes, exactly as before; the muzzle only moves where beams and the muzzle flash start. Projectiles are still drawn from the eyes too, except that the `rm -rf` slug is not drawn for its first 0.75 m, where it filled the view.
+
+### Built: daemons (A2)
+
+- **Three kinds, from the PRD's enemies.** The arena's four targets are dressed by what their tags say: `rogue.d` is a **rogue daemon**, a red-hot crystal core in a twisted crown of obsidian blades, hovering on a point; `zombie` and `<defunct>` (a defunct process is a zombie) are a **zombie process**, an obsidian obelisk broken into chunks that grind against each other round an ember guttering amber through the cracks; `runaway` is a **swarm**, angular obsidian drones with glowing tails in three tilted rings round a small hot core. Red terminal glyphs float round every one. Faceless and geometric, as the [enemy art bar](#enemy-art-bar) asks.
+- **Built like the weapons.** `scripts/daemons/`: one script per kind builds its daemon once, from the shared shape kit (`scripts/art/shape_kit.gd`), into turning layers: one node and one mesh each, an obsidian surface and a core surface, and the glyphs one MultiMesh that orbits as a node. Nothing is rebuilt while it is drawn; it turns, bobs and glitches by transforms and shader values alone. A rogue daemon is 136 triangles in 4 draw calls, a zombie 126 in 5, a swarm 340 in 8.
+- **The look.** `shaders/daemon_shell.gdshader`: black glass whose true edges are thin lines of hostile red (the shape kit marks each triangle's real edges, so the triangulation never shows), a faint rim, red scanlines climbing it, and a glitch: a few bands jump sideways and split red and blue a few times a second. `shaders/daemon_core.gdshader`: the core in the kind's own colour, breathing, a zombie's guttering. `shaders/daemon_glyphs.gdshader`: the glyphs, procedural like the code rain's, no font.
+- **Alive to the game.** A hit that does not kill flares it; a daemon growing back after a derezz glitches hard and settles; the grep seeker's mark sweeps a cobalt band down it; its clock runs at the game's pace, so SIGSTOP slows its turning, flicker and glitch with the world. Every daemon of every kind shares the same three materials; what differs is per daemon, in instance uniforms.
+- **The game is unchanged.** Visual only: the hit volume, health, states and timing are byte for byte what they were, checked against the commit before A2. The hexagonal prism is still the daemon's volume (its size, its centre, its head zone, the shape of its derezz), drawn by no camera now.
 
 ### Where the look is heading
 
@@ -572,7 +581,7 @@ Fred's bar for every hostile: faceless and geometric, never cartoon monsters.
 - Bosses: giant red-hot lattice cores, the CPU core being the first.
 - Deaths: voxel derezz into glowing cubes.
 
-Today's targets are greybox hexagonal prisms with red neon edges, tagged with invented process names. They already die the way daemons will: a voxel derezz (C7).
+Built in A2: the daemons and the swarm above, and the derezz into glowing cubes (C7, upgraded in A2). Bosses come with process enemies (M5): there is no boss in the game yet, so none is drawn.
 
 ## Multiplayer
 
@@ -687,7 +696,7 @@ sigkill/
 │   ├── arena.tscn              Greybox arena, its WorldEnvironment, five spawn points, the four target dummies and the code rain driver
 │   ├── player.tscn             First-person player: capsule, head, camera, the movement tuning
 │   ├── grey_block.tscn         One greybox building block
-│   ├── target_dummy.tscn       Hexagonal-prism target dummy with a floating tag
+│   ├── target_dummy.tscn       A target daemon: its hexagonal hit volume, its art (A2) and a floating tag
 │   └── hud.tscn                Canvas layer for the code-built HUD
 ├── scripts/
 │   ├── ai/
@@ -757,6 +766,13 @@ sigkill/
 │   │   ├── sudo_overcharge.gd      Root vs user and sudo: Z, root's timer, the host's word in a match, off at death and respawn
 │   │   ├── sudo_state.gd           The sudo rules (kills to a charge, the cap, root, death), shared by player and host
 │   │   └── sudo_overcharge_tuning.gd   SudoOverchargeTuning: kills needed, charges, root time, damage scale, the look, validated
+│   ├── art/
+│   │   └── shape_kit.gd            ShapeKit: boxes, prisms, tubes, spikes, glyphs, true edges; the weapons' and daemons' shapes
+│   ├── daemons/
+│   │   ├── daemon_art.gd           DaemonArt: a daemon's look, turning layers, glyphs, flash, lock, glitch; visual only
+│   │   ├── rogue_daemon.gd         The rogue daemon: a crystal core in a crown of obsidian blades, hovering
+│   │   ├── zombie_process.gd       The zombie process: a broken obsidian obelisk round a guttering amber ember
+│   │   └── runaway_swarm.gd        The runaway app: a swarm of angular drones in three rings round a hot core
 │   ├── viewmodels/
 │   │   ├── viewmodel.gd            Viewmodel: a weapon held in first person, built once from shapes; glow, look, charge, Muzzle
 │   │   ├── terminal_cannon.gd      The terminal cannon's model: compact carbine, brake, ">_" prompt
@@ -788,8 +804,8 @@ sigkill/
 │   ├── guide_tuning.gd         GuideTuning: the guide's switch, pacing, timeouts and caps, validated
 │   ├── palette.gd              Every colour, plus the material factory
 │   ├── grey_block.gd           Builds a block's mesh, collision and material; registers for code rain; previews in the editor
-│   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health
-│   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death; self-freeing
+│   ├── target_dummy.gd         Dummy state machine: takes hits, derezzes, respawns at full health; wears its art
+│   ├── derezz_fx.gd            The derezz: capped voxels in one MultiMesh per death, its flash; self-freeing
 │   ├── code_rain_driver.gd     Feeds live enemy positions and faded weights to the code rain shader
 │   ├── hud.gd                  Status line, hint line, click-to-engage overlay, crosshair, hit marker, the HUDs, the Esc menu, the colour filter
 │   ├── crosshair.gd            Crosshair drawn in code, in the style and colour the settings pick; kicks on every shot
@@ -813,6 +829,10 @@ sigkill/
 │   ├── colorblind_safe.gdshader The colorblind-safe palette: a full-screen hue filter to the Okabe-Ito pair
 │   ├── sigstop_look.gdshader   SIGSTOP's look on your own screen: grey, the theme's teal, motion trails
 │   ├── viewmodel_metal.gdshader The viewmodels' dark metal: panel lines or hex cells, a faint neon rim
+│   ├── daemon_shell.gdshader   The daemons' obsidian: true edges in red, scanlines, the glitch, the hit and the lock
+│   ├── daemon_core.gdshader    A daemon's core in its kind's colour: breathing, guttering, flaring
+│   ├── daemon_glyphs.gdshader  The daemons' floating red glyphs, procedural, facing the camera
+│   ├── derezz_voxel.gdshader   A derezz's voxels: edges lit, faces falling away as they fade
 │   └── vision_glyphs.gdshader  Code-rain vision's silhouettes: the walls' glyphs, additive, with no depth test
 ├── resources/
 │   ├── movement_tuning.tres    Default movement tuning
@@ -864,6 +884,7 @@ sigkill/
 │   ├── rm_rf_cannon_test.gd    Headless rm -rf cannon test: the wind-up to the frame, cancels, the weight, falloff, cover, self-kills, 3 players
 │   ├── cron_mines_test.gd      Headless cron mines test: runs to the frame, placement, the crontab, falloff, persistence, crontab -r, 3 players
 │   ├── viewmodel_test.gd       Headless viewmodel test: every model built, muzzles in view, kick, sway, stride, charges, nothing rebuilt
+│   ├── enemy_art_test.gd       Headless enemy art test: each daemon kind, budget, shared materials, its clock, the hit volume unchanged, the derezz
 │   ├── code_rain_vision_test.gd  Headless code-rain vision test: the meter to the frame, the silhouettes behind a wall, a match on 127.0.0.1
 │   ├── root_sudo_test.gd       Headless root and sudo test: the rules, 1.5x and free ammo on a real dummy, a match the host judges
 │   ├── spectate_top_test.gd    Headless spectate top test: the record, top's columns, Tab alone, a match on 127.0.0.1, protocol 8 (9 since C25)
@@ -875,7 +896,7 @@ sigkill/
 │   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for the AI tests, with a README.md
 │       └── guide/              Stub claude and codex CLIs that record how they were launched
 ├── tools/
-│   ├── capture_shots.gd        Demo-data stills of every weapon held and a gameplay view, for this page; the game never runs it
+│   ├── capture_shots.gd        Demo-data stills for this page, by set: a1 the weapons, a2 the daemons; the game never runs it
 │   └── capture_shots.sh        Runs it on a private Xvnc display: no TCP, never the desktop, no sound, user data in a work folder
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
@@ -946,6 +967,7 @@ All seventeen resources validate themselves on load with `problems()`. If a valu
 30. **rm -rf cannon test**, `tests/rm_rf_cannon_test.gd`.
 31. **cron mines test**, `tests/cron_mines_test.gd`.
 32. **Viewmodel test**, `tests/viewmodel_test.gd`.
+33. **Enemy art test**, `tests/enemy_art_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -978,6 +1000,7 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
 - **cron mines test.** The resource and its numbers, 21 bad values refused (and the mine group on any other weapon); a moderate blast (one run short of a full player, three past it, under rm -rf's); rose unlike every other weapon's colour; the fiction-only hard rule as a scan (no OS call, no DirAccess or FileAccess, no /proc, nothing setting a clock, no crontab, systemctl, cron or at called, the HUD's "crontab" words told apart); the wire (protocol 9, nothing new, only the host's mine scheduling and judging). Mines in an empty test world, frame by frame: runs on exactly frames 60, 180 and 300, gone 36 frames after; "*/2s x3" down to x0; the ring closing and the 18-frame brighten before each run; four runs as root; a joiner's mine running on the word alone, ended by a removal, and waiting a whole interval for a late last word. In the real arena with the real player: slot 8 on key 8, the wheel and Q; mines on the floor, on a wall and at the feet; the crontab's limit and its note; daemons taking each run's falloff, none past 3 m or behind cover; the "cron" callout; root's four runs at 1.5 times with no mine spent; a new round clearing them. Eight slots inside the screen and clear of the guide panel at 1280x720 and 960x540. Over 127.0.0.1, a host and two joiners: a protocol 8 joiner refused; a joiner arriving mid-job sent the running mine; one run on the host (survived) and the other joiner, the owner untouched; the owner's death leaving its mine to finish the host, the kill its own; the owner's copy running on the host's words alone; another player's cannon shot removing a mine with "crontab -r" in every feed; the owner leaving taking its mine off every screen.
 - **Viewmodel test.** The resources: every weapon of the arsenal names a model of its own, a script that is not a model refused, none allowed (the placeholder box); the arsenal's motion numbers, 13 bad ones refused. A scan: the models and the capture tool touch nothing outside the game, nothing that runs each frame makes a mesh, a node or a material, and the game never names the tool. Each model alone: its Muzzle at its front, in front of the camera and in view at 80 degrees at 16:9 and 4:3, never within 4 degrees of the crosshair; its trim in its own skin at its own energy; 200 to 3000 triangles; one mesh with a surface per material; eight different shapes; root's red on every part and back; the rail's coils lighting in order, rm -rf's core and vents together. In the real arena: each weapon drawn shows its model alone with the player's muzzle its Muzzle; a cannon shot's beam starting at the muzzle and its flash on it while the shot's origin is still the eyes; the kick back and up and the settle, SIGTERM's light, the rail's and rm -rf's heavy; the raise from below; the lag behind a turn each way and the settle; the stride's sway within its numbers and none standing; the real charge and wind-up lighting and going back; the drum and the clock hand turning; the very same meshes at the end.
 
+- **Enemy art test.** The sources: every target of the arena names its art, a script that is not art gets the plain look; the art code calls nothing outside the game, no wall clock, nothing loaded at run time, and builds nothing per frame; the daemons' shaders run on each daemon's own clock, never the wall clock; the hit volume byte for byte as before A2 (the collision shape, its place, layer and mask, the four targets' places) and nothing under the art can collide; the players' derezz is the same effect. Each kind alone: 120 to 2500 triangles and at most 10 draw calls, three different shapes, its core in its own palette colour, one shared obsidian, core and glyph material, turning by transforms only with every mesh kept, its clock half as far at half the engine's time, the flash and the glitch reaching the shaders. In the real arena: each target drawn by its art with the hex volume by no camera; a grep mark locking onto the marked daemon alone; a hit that does not kill flashing it; a kill's derezz with the voxel shader and the flash gone on time, the effect freeing itself, the daemon back after the respawn delay, glitching as it grows, whole after the rematerialise time.
 - **Bullet time test.** SIGSTOP's resource and numbers, nine bad values refused, the meter's rules alone. A scan proves the engine's time scale is written in two places only, both in `scripts/abilities/sigstop.gd` (a hold that returns first in a match, and a restore to exactly 1.0), that the ability runs, reads and signals nothing, and that the wire is protocol 4 with the host's meter check and zero spread on its word only. F moved to G, saved to a settings file in a temporary folder and read back; Ctrl+Alt+F refused. In the real arena: no start below a quarter of the meter; during SIGSTOP the time scale is exactly 0.3, a falling body, the physics time and the round clock run at 0.3x, while the player walks 6.30 m/s against its 7.00 (0.9x in real time) and its weapon cools at 0.9x, with zero recoil and nine straight pellets; the meter drains a second per real second and refills 0.2 s a second; and the time scale is exactly 1.0 again after SIGCONT's ease, after the meter runs out, at once after a death, a round's end, the Esc menu (mid-ease too), a stray change and the arena being freed. Over 127.0.0.1: hosting mid-SIGSTOP ends it before the match's first frame; the joiner's SIGSTOP, started and ended by the host's word, never moves the time scale off 1.0 or the host's clock off 1/60 s a frame, and both players walk at their normal speed; the host draws the joiner's pellets straight while it says SIGSTOP is on and from its generator again after; an R reload keeps the host's word; a forged empty-meter ask is dropped as "sigstop"; the host's own SIGSTOP slows nothing; a death empties the meter on both sides.
 
 Before a test is trusted, deliberately broken copies of the project prove it can fail: no friction, a missing slide timer, a hit marker that never shows, effects that never free, a cooldown cut short, a dummy that stays solid while it derezzes, voxel motion that changes with the frame rate, voxels resting on air past a ledge, rain that never fades out, an enemy cap ignored, a detector that runs the agent's command or an extra nvidia-smi flag, a hung agent reported as anything but a timeout, a boot screen with its headless guard removed (the fixtures' agent stub then runs and leaves its mark), a player that ignores the ask box's input lock (it then drifts and fires while you type), a loader that ignores what was loaded when you said Y (it then loads and unloads someone else's model), a round announcer that skips the link's gate (it then calls with the AI off, mid-call, in the cooldown, at the cap and under the headless guard), one that forgets which call is its own (it then takes T's answer and stops T's call), a guide HUD that ignores the break's hold (the panels then overlap at 960x540), a net test told to expect 60 sends a second, a session that lets a yaw of 1e300 through (the avatar's rotation then goes infinite for a few frames), an avatar that accepts any newer sequence number (one far-ahead packet then freezes it 2.9 m behind), one that keeps only twelve positions (a 1000 ms delay then jumps and lags 3 m), one with no baseline for a fresh avatar (invisible after a reload), a host that skips the fire-rate check (two shots in one frame both land), a combat test told to expect the wrong health, a host without the life number on positions (a respawned avatar dragged back to its corpse), a host that marks a player dead before telling of the death (no derezz on its screen), a host that skips the cover probe (damage through a wall), a ray blind from inside a body, a probe that counts the dead host as cover, a respawn lost during a reload, a host that lets a shot stop at a corpse, a feed that forgets who a departed player was, a host without the life check on intents, a feed kept across matches, a HUD that lights the hit marker on a local guess in a match, a room code without its checksum (every typo then accepted), a session that applies `--join` before it is ready (a script error, the invite lost), a session that follows a rendezvous to any address, one that forgets an unanswered registration, a panel that keeps saying a code is coming after the registration failed, a weapon test told to expect 8 pellets, an inventory that lets a shot through mid-swap (the first shot then on frame 1), a host that takes an unknown weapon for the cannon, one that ignores the magazine, damage with no falloff, a session that refills ammo on an R reload mid-match, a host that refills on a draw, ignores the draw time or the weapon in hand, or loses a finished reload to a draw, no refill for a respawn while away, no fresh start to a match, no weapon handed back at a respawn, pellets from an aim not made unit length, no draw at the first roster, a joiner sending shots before its fresh start, two copies of one weapon after a slot 1 override, only one pellet doing damage, a reload refused when it comes with a late draw, a host that keeps its count to itself, a game that takes a stale count or loses one that came during an R reload, one that does not wait for the host's longer reload or draw (or waits to the exact frame, or only while its own is still running), one that lets a late count undo its finished reload, a right stick that ignores invert Y, a settings file scan that lets any value through (a `Color()` then loads), a bind check that lets Ctrl+Alt through, a menu that pauses the tree, a relay that ignores its payload cap, skips the cookie or never expires a code, a game that falls back to a relay with no URL set, a menu that saves before the relay box gives up its text, a rail that does not pierce, a host that skips the rail's meter check, a SIGSTOP whose restore never puts the time scale back to 1.0, a SIGCONT that never brings the world back with no safety check behind it, a SIGSTOP that slows the world in a match by the host's word, a host that slows the world for everyone while a player's SIGSTOP is on, a WebSocket relay that lets oversize datagrams through or never closes an idle link, a fork bomb with no generation cap, a joiner's screen that decides the chain, a host that takes a throw with no bomb left, light trails with no grace on your own wall, a trail kill credited to the victim, walls laid in the air, no cap, a death that leaves the walls, a late joiner never sent the standing walls, code-rain vision with no start minimum, no range limit, a death that empties its meter, silhouettes that obey the depth test, no turning off at a death, a host that believes a chargeless sudo ask, a host that skips root's scale, sudo charges that stack, a death that keeps the charge, root that still spends rounds, a meter filled from root's harder hit, a top table that refreshes every frame, one sorted by name, a joiner that shows its own guess at another player's health, a table that stays up after the respawn, one that asks the system for its process id, a host that sends its table every frame, fork() pellets that never fork, grep darts that turn without a limit, a host that believes every grep claim, a lock with no lock time, no cap on marks, marks kept when grep is put away, a joiner that drops a shot whose marked player has left, a lock that holds a freed target typed (a script error every frame), an rm -rf cannon with no wind-up, a blast through cover, a blast that spares its shooter, a cancelled wind-up that spends its round, joiners' slugs that decide, no weight, the weight cutting the air speed at once, a blast with no falloff, an OS call in the slug (a harmless one, never run, to prove the scan), cron mines with no arm delay, no root crontab, a mine hurting its owner, no crontab limit, no brighten before a run, every screen keeping its own schedule, no counterplay, a joiner's mine giving up too soon, an OS call in the mine, no mines for a late joiner, a mine stopping once its owner is dead, jobs outliving their owner, and more. Each one makes `scripts/check.sh` exit 1.
@@ -1190,7 +1213,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence (`3184454`) · C11 guide HUD (`be2f220`) · C11b local model-load consent (`1fc87b7`) · C12 coaching and roasts (`e72c644`) | ✅ Done |
 | M3 Multiplayer | C13 LAN and tailnet (`6a83ae0`) · C14 synced combat (`19a4781`) · C15 room codes and invite links, client side and relay design (`5c1a8d3`) · C16c the relay itself, local only (`b5a2f42`) · C16d WebSocket relay mode, tested on 127.0.0.1, hosted nowhere yet (`3c78dc3`), relay hosting waits on Fred | ✅ Done, relay hosting waits on Fred |
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM (`619a109`) · C16b full settings screen (`76afcbc`) · C17 SIGKILL rail rifle (`e10a006`) · C18 SIGSTOP bullet time (`7927cb2`) · C19 fork bomb (`372d91a`) · C20 light-trail mode (`4d5e92e`) · C21 code-rain vision (`d6d4576`) · C22 root vs user and `sudo` (`658a09f`) · C23 spectate as top (`cf991a5`) · C24 the `fork()` shotgun (`88aeb92`) · C25 the `grep` seeker (`23dd69b`) · C26 the `rm -rf` cannon (`7a7c042`) · C27 `cron` mines (`eac8a86`) · C28 to C32 the shell-command weapons · C33 unlocks, mods and skins | 🔧 In progress: C16, C16b, C17, C18, C19, C20, C21, C22, C23, C24, C25, C26 and C27 done |
-| Art pass | A1 weapon viewmodels (`aa3ca98`) · A2 daemons · A3 arena · A4 lighting and post; right after C27 and before C28, so the site launches with real captures | 🔧 In progress: A1 done |
+| Art pass | A1 weapon viewmodels (`aa3ca98`) · A2 enemy art: daemons, a drone swarm, the derezz (`0d7cbdb`) · A3 arena · A4 lighting and post; right after C27 and before C28, so the site launches with real captures | 🔧 In progress: A1 and A2 done |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
 | M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
 
@@ -1215,11 +1238,11 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 ## Screenshots
 
-Real in-game captures, demo data only (A1). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest.
+Real in-game captures, demo data only (A1 and A2). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest.
 
 <p align="center">
   <img src="docs/media/a1-gameplay.png" alt="In-game first-person view: the SIGKILL rail's beam hits a daemon between two neon pillars, which derezzes into glowing voxels, on the teal grid arena with code rain on the walls"><br>
-  <em>The rail on a daemon between the pillars, its derezz starting.</em>
+  <em>The rail on a daemon between the pillars, its derezz starting (A1: the daemons as they were before A2's art).</em>
 </p>
 
 **Held.** Every weapon of the arsenal in first person, at rest.
@@ -1265,6 +1288,23 @@ Real in-game captures, demo data only (A1). The game drew them itself on a real 
   <tr>
     <td align="center" width="50%"><img src="docs/media/a1-weapon-7-rm-rf-cannon-fire.png" alt="In-game first-person view of a heavy ember cannon with vent fins and hazard stripes, mid-shot, the muzzle flash at the barrel"><br><em>7. rm -rf, firing</em></td>
     <td align="center" width="50%"><img src="docs/media/a1-weapon-8-cron-mines-fire.png" alt="In-game first-person view of a rose dispenser with a hex mine loaded and a clock on top, a mine just placed on the floor ahead"><br><em>8. cron, placed</em></td>
+  </tr>
+</table>
+
+**Daemons (A2).** Each kind up close, two in one view, a derezz, and the grep seeker locked on.
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/a2-daemon-rogue.png" alt="In-game view of the rogue daemon: a red-hot crystal core inside a twisted crown of black obsidian blades edged in red, red glyphs floating round it, hovering in a room of code rain"><br><em>The rogue daemon (rogue.d).</em></td>
+    <td align="center" width="50%"><img src="docs/media/a2-daemon-zombie.png" alt="In-game view of the zombie process: a broken black obsidian obelisk edged in red, its chunks knocked off true, an amber ember glowing through the cracks, its tip floating tilted above it"><br><em>The zombie process (zombie).</em></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/a2-daemon-swarm.png" alt="In-game view of the runaway swarm: angular black drones edged in red with glowing tails circling a small red-hot core in three tilted rings above a platform"><br><em>The runaway swarm (runaway).</em></td>
+    <td align="center" width="50%"><img src="docs/media/a2-mixed.png" alt="In-game view across the arena: the drone swarm on its platform and a zombie obelisk further off, red glyphs round both"><br><em>A swarm and a zombie in one view.</em></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/a2-derezz.png" alt="In-game view of a daemon derezzing: edge-lit red and black voxels bursting out, a column of red light through where it stood and a ring spreading on the floor"><br><em>A derezz mid-shatter, its column and ring.</em></td>
+    <td align="center" width="50%"><img src="docs/media/a2-gameplay.png" alt="In-game first-person view holding the grep seeker, locked on a zombie obelisk between two pillars, a cobalt band sweeping down it and the lock bracket on it"><br><em>grep locked on the defunct zombie between the pillars.</em></td>
   </tr>
 </table>
 
