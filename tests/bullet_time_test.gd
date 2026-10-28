@@ -299,8 +299,18 @@ func _solo_checks() -> void:
 	round.call("_next_round")
 	_check("acceptance: a new round fills the SIGSTOP meter: 4 s again", st.meter.meter == 4.0 and round.stats.round_number == 2)
 	# The Esc menu.
-	await _start(st)
 	var menu = hud.pause_menu()
+	await _start(st)
+	st.press()
+	await _frames(3)
+	var easing := Engine.time_scale
+	hud.open_menu()
+	await _frames(1)
+	var snapped := Engine.time_scale
+	menu.close()
+	await _frames(2)
+	_check("the menu stops SIGCONT's ease too: opened mid-ease (the world at x%.2f), the time scale is exactly 1.0 a frame later" % easing, easing > _t.world_scale and easing < 1.0 and snapped == 1.0 and not menu.is_open(), "%s -> %s" % [easing, snapped])
+	await _start(st)
 	hud.open_menu()
 	await _frames(1)
 	var menu_scale := Engine.time_scale
@@ -401,13 +411,29 @@ func _spread(points: PackedVector3Array) -> float:
 func _match_checks() -> void:
 	var host := _branch("Host", Vector3.ZERO)
 	var client := _branch("Client", CLIENT_OFFSET)
-	var joined := await _join(host, client)
 	var hs: Session = host["session"]
 	var cs: Session = client["session"]
 	var hp: Node = host["player"]
 	var cp: Node = client["player"]
 	var hst = hp.sigstop
 	var cst = cp.sigstop
+	# Hosting mid-SIGSTOP: it ends right there, before a frame of the match runs.
+	await _frames(3)
+	await _start(hst)
+	var solo_scale := Engine.time_scale
+	# Between frames, where a key press lands: the engine reads the time scale for a frame's
+	# physics as the frame begins.
+	await process_frame
+	hs.host(0)
+	var at_host := Engine.time_scale
+	# physics_frame comes before the nodes' physics: the gap between two is one whole frame.
+	await physics_frame
+	var c1: float = hs.get("_clock")
+	await physics_frame
+	var first_frame: float = hs.get("_clock") - c1
+	_check("hosting a match mid-SIGSTOP (from a key, between frames) ends it at once: the time scale exactly 1.0 the moment the host opens, and the match's first frame runs 1/60 s", solo_scale == _t.world_scale and at_host == 1.0 and is_equal_approx(first_frame, FRAME) and not hst.is_on() and Engine.time_scale == 1.0, "%s -> %s, first frame %.5f" % [solo_scale, at_host, first_frame])
+	client["session"].join("127.0.0.1:%d" % hs.listen_port())
+	var joined := await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2 and cs.players.size() == 2)
 	var cid: int = cs.my_id
 	await _until(func(): return hs.avatars.has(cid) and cs.avatars.has(1) and hs.combat.has_player(cid), 6000)
 	await _frames(10)
@@ -435,6 +461,22 @@ func _match_checks() -> void:
 	var host_during := await _walk(hp, host, hs)
 	var joiner_during := await _walk(cp, client, hs)
 	_check("acceptance: the joiner's SIGSTOP does not touch the host's time scale (exactly 1.0 every frame) or its clock (1/60 s a frame), and the host's player and the joiner move at their normal speeds", host_during["scale_ok"] and joiner_during["scale_ok"] and host_during["clock_ok"] and joiner_during["clock_ok"] and absf(host_during["walk"] - host_walk["walk"]) < 0.01 and absf(joiner_during["walk"] - joiner_walk["walk"]) < 0.01 and cst.is_on(), "host %.3f vs %.3f, joiner %.3f vs %.3f, scales %s %s, clocks %s %s" % [host_during["walk"], host_walk["walk"], joiner_during["walk"], joiner_walk["walk"], host_during["scale_ok"], joiner_during["scale_ok"], host_during["clock_ok"], joiner_during["clock_ok"]])
+	# An R reload of the joiner's arena mid-SIGSTOP: the new arena's player takes the host's
+	# word, and its first frame in the match does not wipe it.
+	client["main"].free()
+	await _frames(2)
+	var main_r = MainScene.instantiate()
+	client["branch"].add_child(main_r)
+	client["main"] = main_r
+	client["hud"] = main_r.get_node("Hud")
+	client["hud"].guide().focus_check = func(): return false
+	cp = main_r.get_node("Player")
+	cp.assume_captured = true
+	client["player"] = cp
+	cst = cp.sigstop
+	cst.continued.connect(func(): continued.append(true))
+	await _frames(10)
+	_check("an R reload of the joiner's arena mid-SIGSTOP keeps the host's word: the new arena's SIGSTOP is on, its look up, the time scale exactly 1.0", hs.combat.sigstop_on(cid) and cst.is_on() and cst.look_strength() > 0.0 and Engine.time_scale == 1.0, "host %s joiner %s look %.2f" % [hs.combat.sigstop_on(cid), cst.is_on(), cst.look_strength()])
 	# The host's meter runs out on the host's clock.
 	var scale_kept := true
 	var ended := false

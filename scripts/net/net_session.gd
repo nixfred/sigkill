@@ -513,6 +513,7 @@ func _on_arena_exit() -> void:
 func host(port: int = -1) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
+	_end_solo_sigstop()
 	_refresh_rendezvous()
 	var p := default_port() if port < 0 else port
 	if p != 0 and not _port_free(p):
@@ -553,6 +554,7 @@ func host(port: int = -1) -> bool:
 func join_room(text: String) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
+	_end_solo_sigstop()
 	_refresh_rendezvous()
 	var parsed := RoomCode.parse_join(text)
 	if parsed.has("error"):
@@ -607,6 +609,7 @@ func _apply_launch(parsed: Dictionary) -> void:
 func join(text: String) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
+	_end_solo_sigstop()
 	var parsed := parse_address(text, default_port())
 	if parsed.is_empty():
 		_fail(BAD_ADDRESS)
@@ -1568,6 +1571,14 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	for victim in killed:
 		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
+
+
+## Going online (C18): a solo SIGSTOP ends at once, right here, so not one frame of the
+## match (or of the join's own timers) runs with the world slowed.
+func _end_solo_sigstop() -> void:
+	var stop = _player.get("sigstop") if _player != null and is_instance_valid(_player) else null
+	if stop != null and stop.has_method("end_now") and not is_online():
+		stop.end_now()
 
 
 ## This player pressed SIGSTOP's key (C18): the ask goes to the host, which, when this is the

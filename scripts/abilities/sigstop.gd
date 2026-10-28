@@ -177,7 +177,10 @@ func on_death() -> void:
 
 
 ## The host's word in a match: SIGSTOP on or off for this player, and the meter it counts.
+## A word handed over by the session (an arena back from an R reload) counts as the match
+## already seen, so the first frame's change to online never wipes it.
 func take_host(on: bool, left: float) -> void:
+	_was_online = _online()
 	var was := _host_on
 	_host_on = on
 	_asked = on
@@ -220,8 +223,8 @@ func _step_solo(real: float, pressed: bool, alive: bool, blocked: bool) -> void:
 		elif meter.start():
 			_ease_left = 0.0
 			started.emit()
-	if meter.on and (not alive or blocked):
-		end_now()
+	if (meter.on or _ease_left > 0.0) and (not alive or blocked):
+		end_now()  # SIGCONT's ease too: nothing eases on behind the menu or a death
 	if meter.tick(real, alive):
 		_sigcont()  # the meter ran out
 	if _ease_left > 0.0:
