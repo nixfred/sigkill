@@ -1011,10 +1011,10 @@ func _fire_fork() -> void:
 
 ## A volley of this player's own fork() shot, alone or drawn from the host's word in a match:
 ## its first fork is the "fork()" callout, and when it is done the shot counts as fired, and
-## as a hit when a pellet of it landed here.
+## as a hit, with the weapon's own hit sound, when a pellet of it landed here.
 func take_volley(volley: Node) -> void:
 	volley.forked.connect(_on_volley_forked)
-	volley.finished.connect(_on_volley_finished)
+	volley.finished.connect(_on_volley_finished.bind(inventory.slot_of(volley.def.id)))
 
 
 func _on_volley_forked(gen: int) -> void:
@@ -1022,9 +1022,11 @@ func _on_volley_forked(gen: int) -> void:
 		fork_split.emit()
 
 
-func _on_volley_finished(landed: int) -> void:
+func _on_volley_finished(landed: int, slot: int) -> void:
 	if landed > 0:
 		hits_landed += 1
+		if slot >= 0 and slot < _sfx.size():
+			_sfx[slot][1].play()
 	shot_fired.emit(landed > 0)
 
 

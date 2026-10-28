@@ -301,7 +301,7 @@ func _arena_checks() -> void:
 	# Point-blank: every pellet lands before its fork, at full damage.
 	p.respawn_at(main.to_global(Vector3(-12.0, STAND_Y, LINE_Z)))
 	var pb := await _shot_at(main, p, dummy, -9.5)
-	_check("acceptance: a pellet that hits before its fork distance does full damage and never forks: point-blank all 6 land on the dummy at 12 each (72 off it), no fork, nothing judged as a child", pb["landed"] == 6 and pb["forked"] == 0 and absf(pb["taken"] - 72.0) < EPS and pb["landed_by_gen"] == [6, 0] and pb["spawned"] == [6, 0], str(pb))
+	_check("acceptance: a pellet that hits before its fork distance does full damage and never forks: point-blank all 6 land on the dummy at 12 each (72 off it), no fork, nothing judged as a child; the weapon's hit sound as the shot lands", pb["hit_sound"] and pb["landed"] == 6 and pb["forked"] == 0 and absf(pb["taken"] - 72.0) < EPS and pb["landed_by_gen"] == [6, 0] and pb["spawned"] == [6, 0], str(pb))
 	# Past the fork: every landed pellet a child, at 0.6 of the parent.
 	var mid := await _shot_at(main, p, dummy, -6.0)
 	_check("acceptance: past the fork, children land at the parent's damage times 0.6: %d children, %.1f off the dummy (7.2 each), no parent" % [mid["landed"], mid["taken"]], mid["landed"] > 0 and mid["landed_by_gen"][0] == 0 and absf(mid["taken"] - mid["landed"] * 7.2) < 0.001 and mid["forked"] == 6, str(mid))
@@ -317,7 +317,7 @@ func _arena_checks() -> void:
 	_aim(p, up)
 	var mag_before: int = inv.mags[SLOT]
 	var sky := await _fire_tracked(main, p)
-	_check("acceptance: with sudo overcharge on, a real shot's children fork once more: 6, 12, 24 into the open sky, every one gone at the range, no shell spent (root's free ammo, C22)", rooted and sky.get("spawned", []) == [6, 12, 24] and sky.get("expired", -1) == 24 and inv.mags[SLOT] == mag_before, str(sky))
+	_check("acceptance: with sudo overcharge on, a real shot's children fork once more: 6, 12, 24 into the open sky, every one gone at the range, no shell spent (root's free ammo, C22), and no hit sound for a shot that landed nothing", not sky.get("hit_sound", true) and rooted and sky.get("spawned", []) == [6, 12, 24] and sky.get("expired", -1) == 24 and inv.mags[SLOT] == mag_before, str(sky))
 	await _until(func(): return not sudo.is_root(), 12000)
 	var plain := await _fire_tracked(main, p)
 	_check("after root it is one fork again: 6, then 12", plain.get("spawned", []) == [6, 12], str(plain))
@@ -340,11 +340,18 @@ func _shot_at(main: Node, p: Node, dummy: Node, x: float) -> Dictionary:
 	p.get("inventory").mags[SLOT] = 4
 	var before: float = dummy.health()
 	var store := await _fire_tracked(main, p)
-	return {"taken": before - dummy.health(), "landed": store.get("landed", -1), "landed_by_gen": store.get("landed_by_gen", []), "forked": store.get("forked", -1), "spawned": store.get("spawned", [])}
+	return {"taken": before - dummy.health(), "landed": store.get("landed", -1), "landed_by_gen": store.get("landed_by_gen", []), "forked": store.get("forked", -1), "spawned": store.get("spawned", []), "hit_sound": store.get("hit_sound", false)}
 
 
-## Fires the drawn weapon once and waits for its volley to be done: what it recorded.
+## Fires the drawn weapon once and waits for its volley to be done: what it recorded. The
+## player's own generators are pinned first (the fan's seed, the recoil), so every run is the
+## same.
 func _fire_tracked(main: Node, p: Node) -> Dictionary:
+	for rng in ["_pellet_rng", "_rng", "_shake_rng"]:
+		(p.get(rng) as RandomNumberGenerator).seed = SEED  # the fan, and the recoil it leaves
+	# The last shot's hit sound may still count as playing: stopped, so a sound at this volley's
+	# end is this shot's own.
+	(p.get("_sfx")[SLOT][1] as AudioStreamPlayer).stop()
 	p.drive_input(Vector2.ZERO, false, false, true)
 	await physics_frame
 	var v: Node = null
@@ -353,7 +360,7 @@ func _fire_tracked(main: Node, p: Node) -> Dictionary:
 			v = node
 	if v == null:
 		return {}
-	var store := _track(v)
+	var store := _track(v, p)
 	await _until(func(): return store["done"], 4000)
 	await _settle(p, 1.3)
 	return store
@@ -444,8 +451,10 @@ func _match_checks() -> void:
 
 
 ## `shooter` fires once in the match; waits for the host's volley and the joiner's drawn one of
-## that shot to be done: [the host's record, the joiner's].
+## that shot to be done: [the host's record, the joiner's]. The host's seed generator is
+## pinned first, so every run draws the same fan.
 func _match_shot(hs: Session, cs: Session, shooter: Node) -> Array:
+	(hs.get("_seeds") as RandomNumberGenerator).seed = SEED
 	var before: int = hs.get("_throws")
 	shooter.drive_input(Vector2.ZERO, false, false, true)
 	await physics_frame
@@ -460,15 +469,18 @@ func _match_shot(hs: Session, cs: Session, shooter: Node) -> Array:
 
 # --- Helpers. ---
 
-## A record of `v` taken the moment it is done.
-func _track(v: Node) -> Dictionary:
+## A record of `v` taken the moment it is done (with `player`, whether its fork() hit sound is
+## playing then).
+func _track(v: Node, player: Node = null) -> Dictionary:
 	var store := {"done": false, "authoritative": v.authoritative}
-	v.finished.connect(_snap.bind(v, store))
+	v.finished.connect(_snap.bind(v, store, player))
 	return store
 
 
-func _snap(landed: int, v: Node, store: Dictionary) -> void:
+func _snap(landed: int, v: Node, store: Dictionary, player: Node) -> void:
 	store["done"] = true
+	if player != null:
+		store["hit_sound"] = (player.get("_sfx")[SLOT][1] as AudioStreamPlayer).playing
 	store["landed"] = landed
 	store["spawned"] = v.spawned.duplicate()
 	store["landed_by_gen"] = v.landed_by_gen.duplicate()
