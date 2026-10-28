@@ -2,8 +2,10 @@ extends Node3D
 ## Root of the prototype level. Wires targets and the player to the HUD (its round HUD
 ## counts each round from their signals), and handles "respawn all targets" (reloads the
 ## scene). Settings (C16b): puts the engine's into effect when it loads and on every change
-## (scripts/settings/settings_apply.gd), and the quality preset into the arena: bloom (the
-## environment's glow), shadows (the sun's; the room light never casts any) and the code rain.
+## (scripts/settings/settings_apply.gd), and the graphics settings into the arena: bloom (the
+## environment's glow), shadows (the sun's; the room light never casts any) and the code rain
+## (C16b); SSAO, SSR, the full or plain skyline, the particle level, and the two screen post
+## effects (A4). It makes the arena's particle pool and post layer once, when it loads.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -29,6 +31,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_apply_palette_to_environment()
+	add_child(ScreenPost.new())
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -68,18 +71,28 @@ func _apply_palette_to_environment() -> void:
 	Palette.apply_arena_environment(world_env.environment)
 
 
-## The quality preset in the arena: bloom, shadows and the code rain on or off.
+## The graphics settings in the arena: bloom, shadows and the code rain on or off (C16b); SSAO,
+## SSR, the full or plain skyline, the particle level and the post effects (A4).
 func apply_quality() -> void:
-	var q := GameSettings.current().quality()
+	var g := GameSettings.current().graphics()
 	var world_env := find_child("WorldEnvironment", true, false) as WorldEnvironment
 	if world_env != null and world_env.environment != null:
-		world_env.environment.glow_enabled = q["bloom"]
+		var env := world_env.environment
+		env.glow_enabled = g["bloom"]
+		env.ssao_enabled = g["ssao"]
+		env.ssr_enabled = g["ssr"]
 	var sun := get_node_or_null("Sun") as Light3D
 	if sun != null:
-		sun.shadow_enabled = q["shadows"]
+		sun.shadow_enabled = g["shadows"]
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null and rain.has_method("set_enabled"):
-		rain.set_enabled(q["code_rain"])
+		rain.set_enabled(g["code_rain"])
+	var skyline := get_node_or_null("Arena/Skyline")
+	if skyline != null and skyline.has_method("set_full"):
+		skyline.set_full(g["skyline"])
+	var post := get_node_or_null("ScreenPost") as ScreenPost
+	if post != null:
+		post.set_effects(g["chromatic_aberration"], g["crt"])
 
 
 func _on_setting_changed(section: String, key: String) -> void:
@@ -88,7 +101,7 @@ func _on_setting_changed(section: String, key: String) -> void:
 		SettingsApply.apply_audio(s)
 	if section == "" or section == "video":
 		SettingsApply.apply_display(s, get_tree())
-		if section == "" or key == "quality":
+		if section == "" or GameSettings.GRAPHICS_KEYS.has(key):
 			apply_quality()
 	if section == "" or section == GameSettings.BINDS:
 		Controls.apply_binds(s.binds())

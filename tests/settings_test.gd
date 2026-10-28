@@ -112,7 +112,7 @@ func _model_checks() -> void:
 	s.set_value("hud", "colorblind", true)
 	s.reset()
 	_check("changed fires once per real change, and once for a reset; reset is every default again", events == ["hud/colorblind", "/"] and s.value("hud", "colorblind") == false and s.value("video", "fov") == 0, str(events))
-	_check("the quality presets: low has no bloom, shadows or code rain, medium no shadows, high everything", GameSettings.QUALITY["low"] == {"bloom": false, "shadows": false, "code_rain": false} and GameSettings.QUALITY["medium"] == {"bloom": true, "shadows": false, "code_rain": true})
+	_check("the quality presets: low has no bloom, shadows or code rain, medium no shadows, high everything", _three(GameSettings.PRESETS["low"]) == {"bloom": false, "shadows": false, "code_rain": false} and _three(GameSettings.PRESETS["medium"]) == {"bloom": true, "shadows": false, "code_rain": true} and _three(GameSettings.PRESETS["high"]) == {"bloom": true, "shadows": true, "code_rain": true})
 
 
 func _bind_checks() -> void:
@@ -999,3 +999,8 @@ func _cleanup() -> void:
 	await process_frame
 	OS.delay_msec(300)
 	await process_frame
+
+
+## A preset's C16b keys (bloom, shadows and the code rain); A4 added more.
+func _three(preset: Dictionary) -> Dictionary:
+	return {"bloom": preset["bloom"], "shadows": preset["shadows"], "code_rain": preset["code_rain"]}

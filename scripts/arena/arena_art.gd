@@ -28,7 +28,7 @@ const GreyBlock = preload("res://scripts/grey_block.gd")
 const BUDGET_TRIANGLES := 32000
 const BUDGET_DRAW_CALLS := 16
 ## Bumped whenever the layout below changes, so a kept build is never reused for a different one.
-const LAYOUT_VERSION := 1
+const LAYOUT_VERSION := 2
 
 ## Blocks lower than this can be stood on: their tops get a lip under the edge, never a crown that
 ## would rise above a player's feet.
@@ -59,16 +59,25 @@ const NARROW := 1.2
 const FRAMED := 6.0
 ## How far screens, signs and vents stand off a wall: clear of its ribs.
 const MOUNT_OUT := 0.07
+## A sign's lamp (A4): how far under the sign and out from the wall it hangs.
+const LAMP_DOWN_M := 0.3
+const LAMP_OUT_M := 0.8
 
 ## Where the hostile side lives: strips facing into it burn red instead of mint (the north room,
 ## the rogue daemon's lair).
 @export var lair := AABB(Vector3(-8.0, 0.0, -20.0), Vector3(16.0, 4.0, 12.0))
 
 ## The shape kit's buckets, made in this order so each one's id is its name here.
-enum { PANEL, DARK, TEAL, MINT, RED, FLOW, BEACON, SCREEN, RACK, BUCKETS }
+enum { PANEL, DARK, TEAL, MINT, RED, FLOW, BEACON, SCREEN, RACK, WARM, BUCKETS }
 ## The buckets of each mesh, in surface order.
 const SOLID := [PANEL, DARK]
-const GLOW := [TEAL, MINT, RED, FLOW, BEACON, SCREEN, RACK]
+const GLOW := [TEAL, MINT, RED, FLOW, BEACON, SCREEN, RACK, WARM]
+## The arena's shared shader clock (A4): wrapped as the shaders' ticks always were.
+const SHADER_CLOCK := &"arena_clock"
+const CLOCK_WRAP := 1024.0
+## The lair's two danger lights (A4): how far in from its sides and down from its top.
+const DANGER_IN_M := 4.0
+const DANGER_DOWN_M := 0.8
 
 ## Builds kept for the next arena with the same blocks: layout key -> {solid, glow, holo, dressed, signs}.
 static var _kept: Dictionary = {}
@@ -83,6 +92,12 @@ var _solid: MeshInstance3D
 var _glow: MeshInstance3D
 var _holograms: MultiMeshInstance3D
 var _fresh := false
+## The lamps by the big signs (A4): [where, which way the sign faces] per lamp, in the dressing's space.
+var _lamps: Array = []
+var _lamp_nodes: Array[OmniLight3D] = []
+var _danger_nodes: Array[OmniLight3D] = []
+static var _clock := 0.0
+static var _clock_frame := -1
 
 
 func _ready() -> void:
@@ -95,6 +110,39 @@ func _ready() -> void:
 	_dressed = built["dressed"]
 	_signs = built["signs"]
 	_show(built)
+
+
+## Steps the arena's shader clock (A4), once a frame at the game's pace, so SIGSTOP slows the
+## strips' waves, the beacons, the screens and the holograms; and pulses the lair's danger lights on
+## it. Makes nothing.
+func _process(delta: float) -> void:
+	step_clock(delta)
+	var glow := 1.0 + Palette.DANGER_PULSE * sin(_clock * Palette.DANGER_PULSE_HZ * TAU)
+	for light in _danger_nodes:
+		light.light_energy = Palette.DANGER_LIGHT_ENERGY * glow
+
+
+## The arena's shader clock: stepped once a frame by whichever dressing is drawn first.
+static func step_clock(delta: float) -> void:
+	var frame := Engine.get_process_frames()
+	if frame == _clock_frame:
+		return
+	_clock_frame = frame
+	_clock = fmod(_clock + delta, CLOCK_WRAP)
+	RenderingServer.global_shader_parameter_set(SHADER_CLOCK, _clock)
+
+
+static func clock() -> float:
+	return _clock
+
+
+## The warm lamps by the big signs and the lair's two danger lights (A4), for the checks.
+func lamp_lights() -> Array[OmniLight3D]:
+	return _lamp_nodes
+
+
+func danger_lights() -> Array[OmniLight3D]:
+	return _danger_nodes
 
 
 ## The solid parts' node, the light's and the holograms', for the checks.
@@ -186,6 +234,7 @@ func _build() -> Dictionary:
 	_holo.clear()
 	_dressed = PackedStringArray()
 	_signs = PackedStringArray()
+	_lamps = []
 	for id in BUCKETS:
 		_kit.bucket(Vector3.ZERO, id in SOLID)
 	var mounts := {}
@@ -202,7 +251,7 @@ func _build() -> Dictionary:
 	_props(mounts)
 	_outside(mounts)
 	_signage(mounts)
-	return {"solid": _merge(SOLID), "glow": _merge(GLOW), "holo": _holo_multimesh(), "dressed": _dressed, "signs": _signs}
+	return {"solid": _merge(SOLID), "glow": _merge(GLOW), "holo": _holo_multimesh(), "dressed": _dressed, "signs": _signs, "lamps": _lamps}
 
 
 func _merge(ids: Array) -> ArrayMesh:
@@ -230,6 +279,8 @@ static func _material(id: int) -> Material:
 			return Palette.arena_light_material("flow")
 		BEACON:
 			return Palette.arena_light_material("beacon")
+		WARM:
+			return Palette.arena_light_material("warm")
 		SCREEN:
 			return Palette.arena_screen_material()
 		_:
@@ -283,6 +334,31 @@ func _show(built: Dictionary) -> void:
 	_holograms.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_holograms.material_override = Palette.arena_holo_material()
 	add_child(_holograms)
+	# Light (A4): a warm lamp before each big sign, lighting it and the floor under it, and two red
+	# danger lights in the lair, pulsing slowly. No shadows: a few clustered lights cost little.
+	_lamp_nodes.clear()
+	for lamp in built["lamps"]:
+		_lamp_nodes.append(_light("SignLamp", lamp[0], Palette.SODIUM, Palette.SIGN_LAMP_ENERGY, Palette.SIGN_LAMP_RANGE_M))
+	_danger_nodes.clear()
+	var top := lair.position.y + lair.size.y - DANGER_DOWN_M
+	var mid := lair.get_center()
+	for side in [-1.0, 1.0]:
+		var at := Vector3(mid.x + side * (lair.size.x * 0.5 - DANGER_IN_M), top, mid.z)
+		_danger_nodes.append(_light("DangerLight", at, Palette.HOSTILE_RED, Palette.DANGER_LIGHT_ENERGY, Palette.DANGER_LIGHT_RANGE_M))
+
+
+func _light(node_name: String, at: Vector3, color: Color, energy: float, reach: float) -> OmniLight3D:
+	var light := OmniLight3D.new()
+	light.name = node_name
+	light.position = at
+	light.light_color = color
+	light.light_energy = energy
+	light.omni_range = reach
+	light.omni_attenuation = 1.6
+	light.shadow_enabled = false
+	light.light_specular = 0.6
+	add_child(light)
+	return light
 
 
 # --- The blocks. ---
@@ -724,24 +800,24 @@ func _signage(mounts: Dictionary) -> void:
 		_text("RING 0", Vector3(mid.x, top + 0.2, mid.z - deep * 0.5), Vector3.LEFT, Vector3.FORWARD, 0.045, RED, false)
 	var front_l := _mount(mounts, "RoomFrontL", Vector3.BACK)
 	if not front_l.is_empty():
-		_wall_text(front_l, "KILL -9", 0.0, 2.65, 0.06)
+		_wall_text(front_l, "KILL -9", 0.0, 2.65, 0.06, true, -1, true)
 	var front_r := _mount(mounts, "RoomFrontR", Vector3.BACK)
 	if not front_r.is_empty():
-		_wall_text(front_r, "EXIT 137", 0.0, 2.65, 0.06, true, 5)
+		_wall_text(front_r, "EXIT 137", 0.0, 2.65, 0.06, true, 5, true)
 	var north := _mount(mounts, "WallN", Vector3.BACK)
 	if not north.is_empty():
-		_wall_text(north, "PID 1", -4.5, 2.75, 0.05)
-		_wall_text(north, "TTY0", 4.5, 2.75, 0.05)
+		_wall_text(north, "PID 1", -4.5, 2.75, 0.05, true, -1, true)
+		_wall_text(north, "TTY0", 4.5, 2.75, 0.05, true, -1, true)
 	var east := _mount(mounts, "WallE", Vector3.LEFT)
 	if not east.is_empty():
-		_wall_text(east, "SIGKILL", _along(east, 3.0), 2.95, 0.085)
+		_wall_text(east, "SIGKILL", _along(east, 3.0), 2.95, 0.085, true, -1, true)
 		_wall_text(east, "ARENA 01", _along(east, 3.0), 2.3, 0.04, false)
 	var west := _mount(mounts, "WallW", Vector3.RIGHT)
 	if not west.is_empty():
-		_wall_text(west, "/DEV/NULL", _along(west, -3.0), 2.95, 0.075)
+		_wall_text(west, "/DEV/NULL", _along(west, -3.0), 2.95, 0.075, true, -1, true)
 	var south := _mount(mounts, "WallS", Vector3.FORWARD)
 	if not south.is_empty():
-		_wall_text(south, "CORE DUMPED", 0.0, 2.95, 0.07)
+		_wall_text(south, "CORE DUMPED", 0.0, 2.95, 0.07, true, -1, true)
 	for spec in [["CoverL1", Vector3.FORWARD, "SIGTERM"], ["CoverL1", Vector3.BACK, "SIGSTOP"], ["LowWall", Vector3.BACK, "SUDO !!"]]:
 		var m := _mount(mounts, spec[0], spec[1])
 		if not m.is_empty():
@@ -766,13 +842,16 @@ func _signage(mounts: Dictionary) -> void:
 		_wall_text(west_out, "/PROC/ARENA", 0.0, 2.6, 0.12)
 
 
-## A sign on mount `m`, standing off it clear of its ribs, mint, on a dark plate with a lit frame
-## unless `plate` is off; the characters from `red_from` on in hostile red.
-func _wall_text(m: Dictionary, text: String, along: float, y: float, px: float, plate: bool = true, red_from: int = -1) -> void:
+## A sign on mount `m`, standing off it clear of its ribs, in warm sodium (mint before A4), on a dark
+## plate with a lit frame unless `plate` is off; the characters from `red_from` on in hostile red;
+## with a warm lamp before it when `lamp` (A4).
+func _wall_text(m: Dictionary, text: String, along: float, y: float, px: float, plate: bool = true, red_from: int = -1, lamp: bool = false) -> void:
 	if plate:
 		# What holds the plate off the wall.
 		_wall_box(PANEL, m, along, y, SignFont.width(text) * px * 0.6, SignFont.ROWS * px, MOUNT_OUT)
-	_text(text, _on(m, along, y, MOUNT_OUT), m["right"], m["n"], px, MINT, plate, red_from)
+	_text(text, _on(m, along, y, MOUNT_OUT), m["right"], m["n"], px, WARM, plate, red_from)
+	if lamp:
+		_lamps.append([_on(m, along, y - SignFont.ROWS * px * 0.5 - LAMP_DOWN_M, MOUNT_OUT + LAMP_OUT_M), m["n"]])
 
 
 ## `text` in the sign font, `px` metres a pixel, centred on `at` on a surface facing `normal`, reading

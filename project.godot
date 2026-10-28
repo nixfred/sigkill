@@ -39,3 +39,10 @@ daemon_clock={
 "type": "float",
 "value": 0.0
 }
+
+; The arena's shared shader clock (A4): stepped once a frame at the game's pace by
+; scripts/arena/arena_art.gd, read by the arena's lights, screens and holograms.
+arena_clock={
+"type": "float",
+"value": 0.0
+}

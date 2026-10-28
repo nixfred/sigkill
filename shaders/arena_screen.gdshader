@@ -9,8 +9,12 @@
 // small integers, every tick wrapped at 1024, so nothing in it grows with time.
 // Defaults only mirror scripts/palette.gd so the material previews in the editor; palette.gd sets
 // every value at runtime and is the single source.
+// Its time is the arena's clock (A4), the shader global arena_clock stepped at the game's pace by
+// scripts/arena/arena_art.gd, so SIGSTOP slows the scrolling with everything else.
 shader_type spatial;
 render_mode unshaded;
+
+global uniform float arena_clock;
 
 uniform vec4 back_color : source_color = vec4(0.008, 0.024, 0.027, 1.0);
 uniform vec4 text_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
@@ -64,7 +68,7 @@ float lines(float v, float every, float width) {
 vec3 terminal(vec2 uv) {
 	vec2 cell = uv / glyph_m;
 	int col = int(mod(floor(cell.x), 64.0));
-	int scroll = int(mod(floor(TIME * lines_per_s), 1024.0));
+	int scroll = int(mod(floor(arena_clock * lines_per_s), 1024.0));
 	int line = int(floor(cell.y)) - scroll;
 	int indent = int(floor(4.0 * hash3(line, 1, 0)));
 	int len = 5 + int(floor(34.0 * hash3(line, 2, 0)));
@@ -84,7 +88,7 @@ vec3 terminal(vec2 uv) {
 	}
 	// A block cursor after a few lines' text, blinking.
 	if (col == indent + len && hash3(line, 5, 0) < 0.12 && inside) {
-		rgb += hot_color.rgb * energy * step(0.5, fract(mod(TIME * blink_hz, 1024.0)));
+		rgb += hot_color.rgb * energy * step(0.5, fract(mod(arena_clock * blink_hz, 1024.0)));
 	}
 	return rgb * (0.8 + 0.2 * lines(uv.y, glyph_m * 0.25, glyph_m * 0.08));
 }
@@ -101,12 +105,12 @@ vec3 rack(vec2 uv) {
 		vec2 p = vec2(x - (rack_m - 0.045 - float(k) * 0.03), (in_unit - 0.55) * unit_m);
 		float led = 1.0 - smoothstep(0.004, 0.007, length(p));
 		float rate = 0.3 + 2.7 * hash3(unit, bay, k);
-		float on = step(0.45, fract(mod(TIME * blink_hz * rate, 1024.0) + hash3(unit, bay, k + 8)));
+		float on = step(0.45, fract(mod(arena_clock * blink_hz * rate, 1024.0) + hash3(unit, bay, k + 8)));
 		vec3 led_rgb = hash3(unit, bay, k + 16) > 0.95 ? alert_color.rgb : (k == 0 ? hot_color.rgb : text_color.rgb);
 		rgb += led_rgb * (energy * 2.0 * led * on);
 	}
 	// The activity bar, its lit length jumping a few times a second.
-	int tick = int(mod(floor(TIME * 3.0), 1024.0));
+	int tick = int(mod(floor(arena_clock * 3.0), 1024.0));
 	float bar_m = 0.04 + 0.16 * hash3(unit, bay, tick);
 	float bar = step(0.04, x) * step(x, 0.04 + bar_m) * step(abs(in_unit - 0.55), 0.07);
 	rgb += text_color.rgb * (energy * 0.5 * bar);

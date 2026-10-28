@@ -3,7 +3,9 @@ extends RefCounted
 ## SIGKILL palette and material factory. The single source for every colour and look tunable.
 ##
 ## Tron look: void-black sky, near-black faces, glowing neon edges and grid lines.
-## Teal and mint belong to the player side, red and amber to hostiles.
+## Teal and mint belong to the player side, red and amber to hostiles, magenta to a daemon's
+## glitch (A4). Warm sodium (A4) belongs to the world's signs and key lights only, so the eye has
+## a warm accent to read against the teal.
 ## The .gdshader files carry matching defaults only so a material previews sensibly in the
 ## editor. Every value set here wins at runtime. Change colours here, nowhere else.
 
@@ -42,7 +44,9 @@ const POLYMER := Color(0.023529412, 0.027450980, 0.031372549)  # #060708 viewmod
 # Daemons (A2): black obsidian glass, a hostile red rim and scanlines, a cyan split in a glitch,
 # cores in the type's own hostile colour, red glyphs.
 const OBSIDIAN := Color(0.011764706, 0.015686275, 0.019607843)  # #030405 daemon shells
-const GLITCH_SPLIT := Color(0.301960784, 0.882352941, 1.0)  # #4de1ff the blue side of a daemon's glitch split
+const GLITCH_SPLIT := Color(1.0, 0.168627451, 0.839215686)  # #ff2bd6 the far side of a daemon's glitch split: hostile magenta (A4; cyan #4de1ff before)
+# Lighting (A4): the warm accent of the arena's signs and the key lights by them.
+const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
 # skyline's near-black towers, screen and rack faces; the depth fog's colour, and the sky's haze at the
 # horizon and its abyss below.
@@ -189,6 +193,54 @@ const FLOOR_INSET_ENERGY := 0.07
 const FLOOR_VENT_SHARE := 0.06
 const FLOOR_VENT_ENERGY := 0.12
 
+# Lighting and post (A4). The tonemapper is AgX: very bright saturated neon rolls off toward white
+# without ACES's hue skew (ACES turns hot red toward orange and teal toward a flat cyan-white), so
+# each side keeps its colour at the core of a glow; its contrast raised over Godot's so the dark
+# world keeps its depth. The glow: only what is over the threshold glows (the neon, never a dark
+# face, so no blown-out mush), a tight bright core over a wider soft halo, mixed by Screen so a
+# pile of glows never clips to a white blot. SSAO and SSR (the high preset): a short, light
+# occlusion in the corners and under the cover, and reflections in the floor's gloss. The grade:
+# a touch more contrast and saturation and a per-channel curve that cools the shadows and warms
+# the highlights. The floor's deck plates are gloss (seams and vents stay matt) so the neon has
+# something to shine in. The signs' lamps and the lair's danger lights (their reach and glow,
+# and the danger lights' slow pulse). The screen post effects' strengths (see
+# shaders/screen_post.gdshader), off unless their settings are on.
+const TONEMAP_AGX_WHITE := 10.0
+const TONEMAP_AGX_CONTRAST := 1.35
+const TONEMAP_EXPOSURE := 1.05
+const GLOW_INTENSITY := 0.8
+const GLOW_STRENGTH := 1.1
+const GLOW_THRESHOLD := 0.9
+const GLOW_HDR_SCALE := 1.4
+const GLOW_LUMINANCE_CAP := 5.0
+## Each glow level's weight, levels 1 to 7 (the first is the tightest).
+const GLOW_LEVELS := [0.0, 0.9, 0.7, 0.5, 0.35, 0.15, 0.0]
+const SSAO_RADIUS := 0.9
+const SSAO_INTENSITY := 1.4
+const SSAO_POWER := 1.6
+const SSAO_DETAIL := 0.4
+const SSR_STEPS := 40
+const SSR_FADE_IN := 0.15
+const SSR_FADE_OUT := 2.0
+const SSR_DEPTH_TOLERANCE := 0.25
+const GRADE_CONTRAST := 1.06
+const GRADE_SATURATION := 1.1
+## The grade's curve: [input, output red, green, blue] at each point, 0 to 1.
+const GRADE_CURVE := [[0.0, 0.0, 0.006, 0.02], [0.25, 0.225, 0.248, 0.27], [0.5, 0.5, 0.5, 0.49], [0.75, 0.775, 0.76, 0.725], [1.0, 1.0, 0.99, 0.95]]
+const FLOOR_GLOSS := 0.18
+const FLOOR_SPECULAR := 0.5
+const SIGN_LAMP_ENERGY := 1.6
+const SIGN_LAMP_RANGE_M := 5.0
+const DANGER_LIGHT_ENERGY := 2.2
+const DANGER_LIGHT_RANGE_M := 7.5
+const DANGER_PULSE := 0.35
+const DANGER_PULSE_HZ := 0.4
+const POST_ABERRATION_PX := 3.0
+const POST_SCANLINE_DARK := 0.22
+const POST_SCANLINE_PX := 3.0
+const POST_GRILLE := 0.06
+const POST_VIGNETTE := 0.35
+
 # Shader names under res://shaders/.
 const NEON_EDGE_SHADER := "neon_edge"
 const CODE_RAIN_SHADER := "code_rain"
@@ -206,7 +258,7 @@ const ARENA_HOLO_SHADER := "arena_holo"
 const ARENA_TOWER_SHADER := "arena_tower"
 ## The arena's light materials (A3) by name: its colour, and whether it flows (the conduits) or
 ## blinks (the beacons) instead of breathing like a strip.
-const ARENA_LIGHTS := {"teal": [TEAL, "strip"], "mint": [MINT, "strip"], "red": [HOSTILE_RED, "strip"], "flow": [TEAL, "flow"], "beacon": [HOSTILE_RED, "beacon"]}
+const ARENA_LIGHTS := {"teal": [TEAL, "strip"], "mint": [MINT, "strip"], "red": [HOSTILE_RED, "strip"], "flow": [TEAL, "flow"], "beacon": [HOSTILE_RED, "beacon"], "warm": [SODIUM, "strip"]}
 
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
@@ -519,11 +571,39 @@ static func arena_materials() -> Array:
 
 
 ## The arena's environment in the palette's exact colours (the scene file carries approximations so
-## the editor previews it): the void, the ambient teal, the depth fog (A3) and the sky's (A3).
+## the editor previews it): the void, the ambient teal, the depth fog (A3) and the sky's (A3); and the
+## A4 look: the tonemapper, the glow, SSAO's and SSR's settings (the quality preset turns them on)
+## and the grade. Bloom, SSAO and SSR are switched by scripts/main.gd from the settings.
 static func apply_arena_environment(env: Environment) -> void:
 	env.background_color = VOID
 	env.ambient_light_color = TEAL
 	env.fog_light_color = FOG
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_agx_white = TONEMAP_AGX_WHITE
+	env.tonemap_agx_contrast = TONEMAP_AGX_CONTRAST
+	env.tonemap_exposure = TONEMAP_EXPOSURE
+	env.glow_intensity = GLOW_INTENSITY
+	env.glow_strength = GLOW_STRENGTH
+	env.glow_bloom = 0.0
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	env.glow_hdr_threshold = GLOW_THRESHOLD
+	env.glow_hdr_scale = GLOW_HDR_SCALE
+	env.glow_hdr_luminance_cap = GLOW_LUMINANCE_CAP
+	env.glow_normalized = false
+	for level in GLOW_LEVELS.size():
+		env.set_glow_level(level, GLOW_LEVELS[level])
+	env.ssao_radius = SSAO_RADIUS
+	env.ssao_intensity = SSAO_INTENSITY
+	env.ssao_power = SSAO_POWER
+	env.ssao_detail = SSAO_DETAIL
+	env.ssr_max_steps = SSR_STEPS
+	env.ssr_fade_in = SSR_FADE_IN
+	env.ssr_fade_out = SSR_FADE_OUT
+	env.ssr_depth_tolerance = SSR_DEPTH_TOLERANCE
+	env.adjustment_enabled = true
+	env.adjustment_contrast = GRADE_CONTRAST
+	env.adjustment_saturation = GRADE_SATURATION
+	env.adjustment_color_correction = grade_curve()
 	if env.sky != null and env.sky.sky_material is ShaderMaterial:
 		var sky := env.sky.sky_material as ShaderMaterial
 		sky.set_shader_parameter("zenith_color", VOID)
@@ -535,6 +615,18 @@ static func apply_arena_environment(env: Environment) -> void:
 		sky.set_shader_parameter("glow_energy", SKY_GLOW_ENERGY)
 		sky.set_shader_parameter("point_share", SKY_POINT_SHARE)
 		sky.set_shader_parameter("point_energy", SKY_POINT_ENERGY)
+
+
+## The grade's per-channel curve (A4) as a one-row lookup table, made once.
+static func grade_curve() -> GradientTexture1D:
+	if not _arena_cache.has("grade"):
+		var ramp := Gradient.new()
+		ramp.offsets = PackedFloat32Array(GRADE_CURVE.map(func(p): return p[0]))
+		ramp.colors = PackedColorArray(GRADE_CURVE.map(func(p): return Color(p[1], p[2], p[3])))
+		var lut := GradientTexture1D.new()
+		lut.gradient = ramp
+		_arena_cache["grade"] = lut
+	return _arena_cache["grade"]
 
 
 ## Unlit translucent material for beams and impact flashes.
@@ -614,6 +706,8 @@ static func _floor_material() -> ShaderMaterial:
 		mat.set_shader_parameter("inset_energy", FLOOR_INSET_ENERGY)
 		mat.set_shader_parameter("vent_share", FLOOR_VENT_SHARE)
 		mat.set_shader_parameter("vent_energy", FLOOR_VENT_ENERGY)
+		mat.set_shader_parameter("gloss", FLOOR_GLOSS)
+		mat.set_shader_parameter("specular_amount", FLOOR_SPECULAR)
 		_floor_material_cache = mat
 	return _floor_material_cache
 

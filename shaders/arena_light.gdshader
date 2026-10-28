@@ -6,8 +6,12 @@
 // Nothing here grows with time: the blink's tick wraps at 1024.
 // Defaults only mirror scripts/palette.gd so the material previews in the editor; palette.gd sets
 // every value at runtime and is the single source.
+// Its time is the arena's clock (A4), the shader global arena_clock stepped at the game's pace by
+// scripts/arena/arena_art.gd, so SIGSTOP slows the waves and the blinks with everything else.
 shader_type spatial;
 render_mode unshaded;
+
+global uniform float arena_clock;
 
 uniform vec4 light_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
 uniform float energy : hint_range(0.0, 32.0) = 2.2;
@@ -33,12 +37,12 @@ void vertex() {
 
 void fragment() {
 	float along = world_pos.x + world_pos.z + 0.5 * world_pos.y;
-	float wave = sin((along * waves_per_m - TIME * wave_speed) * TAU);
+	float wave = sin((along * waves_per_m - arena_clock * wave_speed) * TAU);
 	float e = energy * (1.0 + pulse * wave);
 	if (blink > 0.0) {
 		ivec3 cell = ivec3(floor(world_pos / blink_cell_m));
 		float phase = float(pcg(uint(cell.x & 0x3ff) | (uint(cell.y & 0x3ff) << 10u) | (uint(cell.z & 0x3ff) << 20u)) & 0xffffu) / 65535.0;
-		float t = fract(mod(TIME * blink_hz, 1024.0) + phase);
+		float t = fract(mod(arena_clock * blink_hz, 1024.0) + phase);
 		e *= mix(1.0, step(t, blink_on), blink);
 	}
 	ALBEDO = light_color.rgb * e;

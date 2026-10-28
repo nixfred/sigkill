@@ -7,10 +7,11 @@
 // Every line is anti-aliased with fwidth and loses energy as it shrinks below a pixel, so the far
 // floor fades into the dark instead of shimmering; the plates' details give way the same way. Each
 // plate's choices come from an integer hash (PCG) of its index.
+// The plates are gloss (A4), the seams and vents matt, so the neon shines in the deck and the
+// high preset's screen-space reflections have something to show.
 // Colour defaults only mirror scripts/palette.gd so the material previews in the editor.
 // palette.gd sets every value at runtime and is the single source.
 shader_type spatial;
-render_mode specular_disabled;
 
 uniform vec4 base_color : source_color = vec4(0.0196, 0.0314, 0.0392, 1.0);
 uniform vec4 minor_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
@@ -32,6 +33,8 @@ uniform float inset_energy : hint_range(0.0, 8.0) = 0.07;
 uniform float vent_share : hint_range(0.0, 1.0) = 0.06;
 uniform float vent_slot_m : hint_range(0.01, 0.5) = 0.09;
 uniform float vent_energy : hint_range(0.0, 8.0) = 0.12;
+uniform float gloss : hint_range(0.0, 1.0) = 0.18;
+uniform float specular_amount : hint_range(0.0, 1.0) = 0.5;
 
 varying vec3 world_pos;
 
@@ -88,7 +91,8 @@ void fragment() {
 	}
 
 	ALBEDO = base_color.rgb * tone * (1.0 - 0.6 * seam) * (1.0 - 0.5 * vent);
-	ROUGHNESS = 1.0;
+	ROUGHNESS = mix(gloss, 1.0, max(seam, vent));
+	SPECULAR = specular_amount;
 	EMISSION = minor_color.rgb * (minor_energy * minor_line + seam_energy * seam + inset_energy * inset + vent_energy * vent * 0.5 + plate_glow * tone * tone)
 		+ major_color.rgb * (major_energy * major_line);
 }

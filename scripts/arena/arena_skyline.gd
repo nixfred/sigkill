@@ -89,6 +89,18 @@ func _process(delta: float) -> void:
 	_drift_b.basis = Basis(Vector3.UP, _drift_b_angle)
 
 
+## The full skyline, or with `full` off the plain one (A4, the low preset): the tower ring alone,
+## without the orbital ring and the two drifting groups of slabs. Nothing is made or freed: the
+## parts are only hidden, and keep turning so they are where they belong when shown again.
+func set_full(full: bool) -> void:
+	for mover in [_ring, _drift, _drift_b]:
+		(mover as Node3D).visible = full
+
+
+func is_full() -> bool:
+	return _ring.visible
+
+
 ## Every mesh node of the skyline, for the checks.
 func mesh_nodes() -> Array[MeshInstance3D]:
 	var out: Array[MeshInstance3D] = []

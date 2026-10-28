@@ -178,8 +178,13 @@ func _source_checks() -> void:
 	for word in ["SurfaceTool", "commit(", "ArrayMesh", "Mesh.new", ".new(", "add_child", "duplicate", "_build", "Material", "bucket("]:
 		if held.contains(word):
 			rebuilt.append(word)
-	var per_frame := art.contains("func _process(") or art.contains("func _physics_process(") or skyline.contains("func _physics_process(")
-	_check("acceptance: nothing is rebuilt while the arena is drawn: the dressing has no per-frame code at all, and the skyline's only turns its ring and its drift by their transforms", not per_frame and rebuilt.is_empty() and held.contains("_ring.basis =") and held.contains("_drift.basis ="), ", ".join(rebuilt))
+	# A4: the dressing's only per-frame code steps the arena's shader clock and the danger lights' glow.
+	var art_held := _body(art, "_process") + _body(art, "step_clock")
+	for word in ["SurfaceTool", "commit(", "ArrayMesh", "Mesh.new", ".new(", "add_child", "duplicate", "_build", "Material", "bucket("]:
+		if art_held.contains(word):
+			rebuilt.append("dressing: " + word)
+	var per_frame := art.contains("func _physics_process(") or skyline.contains("func _physics_process(")
+	_check("acceptance: nothing is rebuilt while the arena is drawn: the dressing's per-frame code only steps the arena's shader clock and its danger lights' glow (A4), and the skyline's only turns its ring and its drift by their transforms", not per_frame and rebuilt.is_empty() and held.contains("_ring.basis =") and held.contains("_drift.basis =") and art_held.contains("global_shader_parameter_set") and art_held.contains("light_energy ="), ", ".join(rebuilt))
 	var sky_code := _shader_code("res://shaders/arena_sky.gdshader")
 	_check("the sky never runs on the clock (no TIME), so its light is worked out once, not every frame", sky_code.contains("shader_type sky") and not sky_code.contains("TIME"))
 

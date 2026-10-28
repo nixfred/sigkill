@@ -40,7 +40,9 @@ const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
 const RELAY_NOTE := "empty: no online rooms, no network call"
 const TRAILS_NOTE := "your match when you host; joiners get the host's"
 const RELAY_HINT := "udp://host:9010"
-const QUALITY_LINE := "bloom %s   shadows %s   code rain %s"
+## The graphics toggles (A4) in a grid under the preset, three to a row: [label, key].
+const GRAPHICS_TOGGLES := [["bloom", "bloom"], ["shadows", "shadows"], ["code rain", "code_rain"], ["SSAO", "ssao"], ["SSR", "ssr"], ["skyline", "skyline"], ["aberration", "chromatic_aberration"], ["CRT lines", "crt"]]
+const TOGGLES_PER_ROW := 3
 const FONT := 13
 const HEAD_FONT := 15
 const LABEL_W := 132
@@ -85,7 +87,6 @@ var _resume: Button
 var _pause_note: Label
 var _sheet_note: Label
 var _status: Label
-var _quality_line: Label
 var _ai_button: Button
 var _roast: CheckButton
 var _real_data: CheckButton
@@ -317,8 +318,8 @@ func _refresh() -> void:
 		var row: Dictionary = _rows[id]
 		var v = settings.value(row["section"], row["key"])
 		var widget: Control = row["widget"]
-		if widget is CheckButton:
-			(widget as CheckButton).set_pressed_no_signal(v)
+		if widget is CheckButton or widget is CheckBox:
+			(widget as BaseButton).set_pressed_no_signal(v)
 		elif widget is OptionButton:
 			(widget as OptionButton).select(row["choices"].find(v))
 		elif widget is HSlider and id != "video/fov":
@@ -334,8 +335,6 @@ func _refresh() -> void:
 		_name.text = settings.value("multiplayer", "display_name")
 	if not _relay.has_focus():
 		_relay.text = settings.value("multiplayer", "relay_url")
-	var q := settings.quality()
-	_quality_line.text = QUALITY_LINE % [_word(q["bloom"]), _word(q["shadows"]), _word(q["code_rain"])]
 	var clashes := settings.conflicts()
 	for action in _keys:
 		var parts: Dictionary = _keys[action]
@@ -533,8 +532,25 @@ func _build_video(col: VBoxContainer) -> void:
 	row.add_child(_fov)
 	_fov_value = _label(row, "", FONT, Palette.MINT)
 	_fov_value.custom_minimum_size.x = VALUE_W
-	_option(col, "quality", "video", "quality", ["low", "medium", "high"])
-	_quality_line = _label(col, "", FONT - 1, Palette.TEAL)
+	# Graphics (A4): the preset, each thing it sets as a toggle of its own beside the two post
+	# effects, and the particle level. "custom" shows when the toggles match no preset; it is
+	# never picked.
+	_option(col, "quality", "video", "quality", ["low", "medium", "high", GameSettings.CUSTOM])
+	(_rows["video/quality"]["widget"] as OptionButton).set_item_disabled(3, true)
+	var grid := GridContainer.new()
+	grid.columns = TOGGLES_PER_ROW
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 0)
+	col.add_child(grid)
+	for pair in GRAPHICS_TOGGLES:
+		var box := CheckBox.new()
+		box.text = pair[0]
+		box.custom_minimum_size.x = (COLUMN_W - 12) / TOGGLES_PER_ROW
+		box.add_theme_color_override("font_color", Palette.MINT)
+		box.toggled.connect(func(on): _change("video", pair[1], on))
+		grid.add_child(box)
+		_rows["video/" + pair[1]] = {"section": "video", "key": pair[1], "widget": box}
+	_option(col, "particles", "video", "particles", ["low", "medium", "high"])
 
 
 func _build_audio(col: VBoxContainer) -> void:

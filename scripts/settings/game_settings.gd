@@ -12,7 +12,12 @@ extends RefCounted
 ## changes it: fov 0 and port 0 mean the tuning's own (80 degrees, 9009), an empty display
 ## name the tuning's own ("player"), sensitivity multipliers of 1, and no relay URL: no
 ## online rooms and no network call (C16c). Light-trail mode (C20) is off: it is the host's
-## match rule, and a joiner's own setting never counts. Key binds live in their
+## match rule, and a joiner's own setting never counts. Graphics (A4): the quality preset
+## (low, medium or high) sets every costly feature at once, each one its own toggle too (see
+## PRESETS); a toggle changed by hand makes the preset read "custom", and picking a preset
+## sets them all again. The default is high, everything on. Chromatic aberration and the CRT
+## scanlines are taste, not cost: off by default and in no preset. A file from before A4
+## holds the preset alone: each toggle it lacks takes that preset's value. Key binds live in their
 ## own section, one per action the player changed (scripts/controls.gd says which actions
 ## and what a bind may be); an action left out has its default.
 ##
@@ -49,7 +54,16 @@ const SCHEMA := {
 		"fps_cap": [TYPE_INT, 0, [0, 30, 60, 75, 90, 120, 144, 165, 240]],
 		"vsync": [TYPE_BOOL, true],
 		"fov": [TYPE_INT, 0, [0, FOV_LAST]],
-		"quality": [TYPE_STRING, "high", ["low", "medium", "high"]],
+		"quality": [TYPE_STRING, "high", ["low", "medium", "high", CUSTOM]],
+		"bloom": [TYPE_BOOL, true],
+		"shadows": [TYPE_BOOL, true],
+		"code_rain": [TYPE_BOOL, true],
+		"ssao": [TYPE_BOOL, true],
+		"ssr": [TYPE_BOOL, true],
+		"skyline": [TYPE_BOOL, true],
+		"particles": [TYPE_STRING, "high", ["low", "medium", "high"]],
+		"chromatic_aberration": [TYPE_BOOL, false],
+		"crt": [TYPE_BOOL, false],
 	},
 	"audio": {
 		"master": [TYPE_FLOAT, 1.0, [0.0, 1.0]],
@@ -73,12 +87,24 @@ const SCHEMA := {
 		"light_trails": [TYPE_BOOL, false],
 	},
 }
-## What a quality preset turns on.
-const QUALITY := {
-	"low": {"bloom": false, "shadows": false, "code_rain": false},
-	"medium": {"bloom": true, "shadows": false, "code_rain": true},
-	"high": {"bloom": true, "shadows": true, "code_rain": true},
+## The quality preset's name when the toggles match no preset.
+const CUSTOM := "custom"
+## What each quality preset sets (A4; bloom, shadows and code rain since C16b): bloom (the
+## environment's glow), the sun's shadows, the code rain, screen-space ambient occlusion and
+## reflections, the full skyline (off: its tower ring alone, no drifting slabs, ring, giant
+## towers or lit windows), and how many particles an effect may show. Low is the cheap one:
+## none of the screen-space passes, no glow, the plain skyline, a quarter of the particles.
+## Medium is the 4050-class target: glow, the rain and the full skyline, no shadows, SSAO or
+## SSR, a half share of the particles. Every value here is a key in the video section.
+const PRESETS := {
+	"low": {"bloom": false, "shadows": false, "code_rain": false, "ssao": false, "ssr": false, "skyline": false, "particles": "low"},
+	"medium": {"bloom": true, "shadows": false, "code_rain": true, "ssao": false, "ssr": false, "skyline": true, "particles": "medium"},
+	"high": {"bloom": true, "shadows": true, "code_rain": true, "ssao": true, "ssr": true, "skyline": true, "particles": "high"},
 }
+## The settings a preset sets, in the order the screen shows them.
+const PRESET_KEYS := ["bloom", "shadows", "code_rain", "ssao", "ssr", "skyline", "particles"]
+## Every graphics setting (A4): the preset, its keys, and the two post effects.
+const GRAPHICS_KEYS := ["quality", "bloom", "shadows", "code_rain", "ssao", "ssr", "skyline", "particles", "chromatic_aberration", "crt"]
 
 static var _current: GameSettings
 
@@ -138,6 +164,14 @@ func load_file() -> String:
 				var good = checked(section, key, saved[key])
 				if good != null:
 					_values[section][key] = good
+	# A file from before A4 holds the preset alone: each toggle it lacks takes the preset's.
+	var preset: String = _values["video"]["quality"]
+	var saved_video = doc.get("video", {})
+	if PRESETS.has(preset):
+		for key in PRESET_KEYS:
+			if not (saved_video is Dictionary and saved_video.has(key) and checked("video", key, saved_video[key]) != null):
+				_values["video"][key] = PRESETS[preset][key]
+	_values["video"]["quality"] = _matching_preset()
 	var saved_binds = doc.get(BINDS, {})
 	for pair in Controls.REBINDABLE:
 		var bind = saved_binds.get(pair[0])
@@ -166,14 +200,38 @@ func value(section: String, key: String) -> Variant:
 
 ## Sets one setting. The value is checked as a loaded one is: a float in range is snapped to
 ## STEP, a string out of its choices or a value of the wrong type is refused (false).
+##
+## Graphics (A4): a preset sets each of its keys first (each change fired), then itself; a
+## preset key set by hand makes the preset whichever one its keys now match, or "custom".
+## "custom" itself sets nothing, so it holds only while the keys match no preset.
 func set_value(section: String, key: String, v: Variant) -> bool:
 	var good = checked(section, key, v)
 	if good == null:
 		return false
+	if section == "video" and key == "quality" and PRESETS.has(good):
+		for preset_key in PRESET_KEYS:
+			_put("video", preset_key, PRESETS[good][preset_key])
+	_put(section, key, good)
+	if section == "video" and (key == "quality" or PRESET_KEYS.has(key)):
+		_put("video", "quality", _matching_preset())
+	return true
+
+
+func _put(section: String, key: String, good: Variant) -> void:
 	if _values[section][key] != good:
 		_values[section][key] = good
 		changed.emit(section, key)
-	return true
+
+
+## The preset the video section's keys match now, or "custom".
+func _matching_preset() -> String:
+	for preset in PRESETS:
+		var same := true
+		for key in PRESET_KEYS:
+			same = same and _values["video"][key] == PRESETS[preset][key]
+		if same:
+			return preset
+	return CUSTOM
 
 
 ## `v` as the setting can hold it, or null when it can't.
@@ -263,6 +321,15 @@ func conflicts() -> Dictionary:
 	return Controls.conflicts(_binds)
 
 
-## What the quality preset turns on: {bloom, shadows, code_rain}.
+## Bloom, shadows and the code rain as set now: {bloom, shadows, code_rain} (C16b).
 func quality() -> Dictionary:
-	return QUALITY[value("video", "quality")]
+	return {"bloom": value("video", "bloom"), "shadows": value("video", "shadows"), "code_rain": value("video", "code_rain")}
+
+
+## Every graphics setting as set now (A4): the preset's name, each of its keys, and the two
+## post effects, {key: value} for each of GRAPHICS_KEYS.
+func graphics() -> Dictionary:
+	var out := {}
+	for key in GRAPHICS_KEYS:
+		out[key] = value("video", key)
+	return out
