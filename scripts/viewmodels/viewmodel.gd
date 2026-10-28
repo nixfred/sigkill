@@ -14,6 +14,8 @@ extends MeshInstance3D
 ## charge, in order (the rail's coils, the rm -rf cannon's core and vents), pulse or turn while
 ## held (a drum, a lens, a clock hand).
 ##
+## The shapes come from the shared kit, scripts/art/shape_kit.gd (A2's daemons use it too).
+##
 ## Each weapon's model is a script extending this one that builds itself in _build(), named by its
 ## WeaponDef's viewmodel_model (scripts/viewmodels/<weapon>.gd), so a new weapon slots in the same
 ## way. A weapon with none gets the placeholder: a glowing box of viewmodel_size. Every model has a
@@ -37,8 +39,6 @@ const HOT_SHARE := 1.8
 ## more. It lights from the weapon's own glow, not the trim's, which the charge already raises.
 const CHARGE_REST := 0.35
 const CHARGE_GAIN := 2.5
-## Shapes with more sides than this are shaded smooth; the rest are faceted.
-const FACETED_SIDES := 8
 ## The trim's base under its glow, as dark under the colour as the old box was.
 const TRIM_DARKEN := 0.65
 
@@ -55,11 +55,15 @@ var body_hex := false
 var plate_hex := false
 ## How the model is held: every shape, pivot and the muzzle are placed through it. A model sets it
 ## first in _build(), to hold a canister turned toward the eye, say.
-var pose := Transform3D.IDENTITY
+var pose := Transform3D.IDENTITY:
+	set(value):
+		pose = value
+		if _kit != null:
+			_kit.pose = value
 
-var _tools: Array[SurfaceTool] = []
-var _counts: Array[int] = []
-## Per piece: its kind (a Part), its pivot, its node and its own material once built.
+## The shapes being built, until the merge: a bucket per Part, then one per piece.
+var _kit: ShapeKit
+## Per piece: its kind (a Part), its node and its own material once built.
 var _pieces: Array[Dictionary] = []
 ## Pieces lit by a charge: [piece id, order]; orders count up from 0.
 var _charge_pieces: Array = []
@@ -105,8 +109,10 @@ func setup(weapon: Resource) -> void:
 	_beam = weapon.skin_beam() if weapon.has_method("skin_beam") else Palette.MINT
 	_energy = weapon.viewmodel_glow_energy
 	_base = maxf(_energy, 0.0001)
+	_kit = ShapeKit.new()
+	_kit.pose = pose
 	for i in PARTS:
-		_new_tool()
+		_kit.bucket()
 	muzzle = Marker3D.new()
 	muzzle.name = "Muzzle"
 	add_child(muzzle)
@@ -202,9 +208,8 @@ func triangles() -> int:
 ## A separate piece of kind `kind` (a Part) that can light, pulse or turn on its own about
 ## `pivot`. Its shapes are given in model space like the rest. Returns its id for the shapes.
 func piece(kind: Part, pivot: Vector3 = Vector3.ZERO) -> int:
-	_pieces.append({"kind": kind, "pivot": pose * pivot, "node": null, "material": null})
-	_new_tool()
-	return PARTS + _pieces.size() - 1
+	_pieces.append({"kind": kind, "node": null, "material": null})
+	return _kit.bucket(pivot)
 
 
 ## A piece that lights with a charge, after every piece of a lower order.
@@ -227,161 +232,57 @@ func pulse(id: int, hertz: float, depth: float) -> void:
 
 ## A box of `size` centred on `center`, turned by `turn` (degrees about X, Y and Z).
 func box(into: int, center: Vector3, size: Vector3, turn: Vector3 = Vector3.ZERO) -> void:
-	var h := size * 0.5
-	var b := _basis(turn)
-	for axis in 3:
-		for side in [-1.0, 1.0]:
-			var n := Vector3.ZERO
-			n[axis] = side
-			var u := Vector3.ZERO
-			u[(axis + 1) % 3] = 1.0
-			var v := Vector3.ZERO
-			v[(axis + 2) % 3] = 1.0
-			var corners := []
-			for c in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
-				corners.append(center + b * ((n + u * c[0] + v * c[1]) * h))
-			_face(into, corners, b * n)
+	_kit.box(into, center, size, turn)
 
 
 ## A prism of `sides` round the local Z axis, `length` long and centred on `center`: radius at
 ## the back (+Z) and `end_radius` at the front (-Z), the same when below 0. `phase` turns its
 ## corners, in degrees. Many sides make a cylinder; a different end radius a cone or a frustum.
 func prism(into: int, center: Vector3, radius: float, length: float, sides: int, turn: Vector3 = Vector3.ZERO, end_radius: float = -1.0, phase: float = 0.0) -> void:
-	var b := _basis(turn)
-	var front_r := radius if end_radius < 0.0 else end_radius
-	var back := []
-	var front := []
-	var dirs := []
-	for i in sides:
-		var a := TAU * i / sides + deg_to_rad(phase)
-		var d := Vector3(cos(a), sin(a), 0.0)
-		dirs.append(b * d)
-		back.append(center + b * (d * radius + Vector3(0.0, 0.0, length * 0.5)))
-		front.append(center + b * (d * front_r + Vector3(0.0, 0.0, -length * 0.5)))
-	for i in sides:
-		var j := (i + 1) % sides
-		if sides > FACETED_SIDES:
-			_smooth_quad(into, [back[i], back[j], front[j], front[i]], [dirs[i], dirs[j], dirs[j], dirs[i]])
-		else:
-			_face(into, [back[i], back[j], front[j], front[i]], (dirs[i] + dirs[j]))
-	_face(into, back, b * Vector3.BACK)
-	_face(into, front, b * Vector3.FORWARD)
+	_kit.prism(into, center, radius, length, sides, turn, end_radius, phase)
 
 
 ## A ring round the local Z axis, `length` deep: a coil, a band or a muzzle's lip. `phase` turns
 ## its corners, in degrees, to match a prism's.
 func tube(into: int, center: Vector3, inner: float, outer: float, length: float, sides: int, turn: Vector3 = Vector3.ZERO, phase: float = 0.0) -> void:
-	var b := _basis(turn)
-	var rings := []  # back outer, front outer, back inner, front inner
-	var dirs := []
-	for i in sides:
-		var a := TAU * i / sides + deg_to_rad(phase)
-		var d := Vector3(cos(a), sin(a), 0.0)
-		dirs.append(b * d)
-		rings.append([
-			center + b * (d * outer + Vector3(0.0, 0.0, length * 0.5)),
-			center + b * (d * outer + Vector3(0.0, 0.0, -length * 0.5)),
-			center + b * (d * inner + Vector3(0.0, 0.0, length * 0.5)),
-			center + b * (d * inner + Vector3(0.0, 0.0, -length * 0.5)),
-		])
-	for i in sides:
-		var j := (i + 1) % sides
-		var p: Array = rings[i]
-		var q: Array = rings[j]
-		_face(into, [p[0], q[0], q[1], p[1]], dirs[i] + dirs[j])
-		_face(into, [p[2], q[2], q[3], p[3]], -(dirs[i] + dirs[j]))
-		_face(into, [p[0], q[0], q[2], p[2]], b * Vector3.BACK)
-		_face(into, [p[1], q[1], q[3], p[3]], b * Vector3.FORWARD)
+	_kit.tube(into, center, inner, outer, length, sides, turn, phase)
 
 
 ## A ">" of two bars, `size` tall, on a side face: flat against the plane x = at.x, its tip toward
 ## -Z (the muzzle) with `toward` -1 or +Z (the back) with +1, `thick` out from the face. Seen from
 ## the eye, on the left face, +Z reads as ">" and -Z as "<".
 func chevron(into: int, at: Vector3, size: float, toward: float = -1.0, thick: float = 0.002) -> void:
-	var bar := Vector3(thick, size * 0.16, size * 0.62)
-	box(into, at + Vector3(0.0, size * 0.21, -toward * size * 0.12), bar, Vector3(36.0 * toward, 0.0, 0.0))
-	box(into, at + Vector3(0.0, -size * 0.21, -toward * size * 0.12), bar, Vector3(-36.0 * toward, 0.0, 0.0))
+	_kit.chevron(into, at, size, toward, thick)
 
 
 static func _basis(turn: Vector3) -> Basis:
-	return Basis.from_euler(Vector3(deg_to_rad(turn.x), deg_to_rad(turn.y), deg_to_rad(turn.z)))
-
-
-func _new_tool() -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_tools.append(st)
-	_counts.append(0)
-
-
-## A flat polygon facing `outward`, as a fan. Godot draws clockwise triangles as front faces, so
-## each triangle is wound against its outward normal.
-func _face(into: int, corners: Array, outward: Vector3) -> void:
-	var n := _normal(corners, outward)
-	for i in range(1, corners.size() - 1):
-		_tri(into, [corners[0], corners[i], corners[i + 1]], [n, n, n], n)
-
-
-func _smooth_quad(into: int, corners: Array, normals: Array) -> void:
-	var outward: Vector3 = normals[0] + normals[2]
-	_tri(into, [corners[0], corners[1], corners[2]], [normals[0], normals[1], normals[2]], outward)
-	_tri(into, [corners[0], corners[2], corners[3]], [normals[0], normals[2], normals[3]], outward)
-
-
-func _tri(into: int, v: Array, n: Array, outward: Vector3) -> void:
-	var a: Vector3 = v[0]
-	var b: Vector3 = v[1]
-	var c: Vector3 = v[2]
-	var order := [0, 1, 2]
-	if (b - a).cross(c - a).dot(outward) > 0.0:
-		order = [0, 2, 1]
-	var st := _tools[into]
-	var pivot: Vector3 = _pieces[into - PARTS]["pivot"] if into >= PARTS else Vector3.ZERO
-	for k in order:
-		st.set_normal((pose.basis * (n[k] as Vector3)).normalized())
-		st.add_vertex(pose * (v[k] as Vector3) - pivot)
-	_counts[into] += 3
-
-
-## A polygon's own normal (Newell's), turned to face `outward`.
-static func _normal(corners: Array, outward: Vector3) -> Vector3:
-	var n := Vector3.ZERO
-	for i in corners.size():
-		var p: Vector3 = corners[i]
-		var q: Vector3 = corners[(i + 1) % corners.size()]
-		n += Vector3((p.y - q.y) * (p.z + q.z), (p.z - q.z) * (p.x + q.x), (p.x - q.x) * (p.y + q.y))
-	if n.is_zero_approx():
-		return outward.normalized()
-	n = n.normalized()
-	return n if n.dot(outward) >= 0.0 else -n
+	return ShapeKit.basis(turn)
 
 
 ## The merge: the trim into this node's own mesh, the body, plates, polymer and hot parts into
 ## one mesh with a surface each, and every piece into a node of its own at its pivot.
 func _commit() -> void:
-	if _counts[Part.TRIM] > 0:
-		mesh = _tools[Part.TRIM].commit()
+	if _kit.count(Part.TRIM) > 0:
+		mesh = _kit.commit(Part.TRIM)
 	var body := ArrayMesh.new()
 	for part in [Part.BODY, Part.PLATE, Part.DARK, Part.HOT]:
-		if _counts[part] > 0:
-			_tools[part].commit(body)
+		if _kit.count(part) > 0:
+			_kit.commit(part, body)
 			body.surface_set_material(body.get_surface_count() - 1, _material(part))
 	if body.get_surface_count() > 0:
 		add_child(_node("Body", body, Vector3.ZERO))
 	for i in _pieces.size():
-		var piece_mesh := ArrayMesh.new()
-		if _counts[PARTS + i] > 0:
-			_tools[PARTS + i].commit(piece_mesh)
+		var piece_mesh := _kit.commit(PARTS + i)
 		var kind: int = _pieces[i]["kind"]
 		var mat: Material = _material(kind)
 		if kind == Part.HOT or kind == Part.TRIM:
 			mat = mat.duplicate()  # its own, to light on its own
-		var node := _node("Piece%d" % i, piece_mesh, _pieces[i]["pivot"])
+		var node := _node("Piece%d" % i, piece_mesh, _kit.pivot(PARTS + i))
 		node.material_override = mat
 		_pieces[i]["node"] = node
 		_pieces[i]["material"] = mat
 		add_child(node)
-	_tools.clear()
+	_kit = null
 
 
 func _material(kind: int) -> Material:
