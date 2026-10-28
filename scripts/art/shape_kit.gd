@@ -1,8 +1,9 @@
 class_name ShapeKit
 extends RefCounted
-## Low-poly shapes for SIGKILL's procedural art (A1's viewmodels, A2's daemons): boxes, prisms,
-## tubes, spikes and a ">" glyph, written into buckets that each become one mesh surface. Built
-## once, merged, never rebuilt while drawn: original geometry, no model, texture or font files.
+## Low-poly shapes for SIGKILL's procedural art (A1's viewmodels, A2's daemons, A3's arena): boxes,
+## prisms, tubes, spikes, frustums, flat polygons and a ">" glyph, written into buckets that each
+## become one mesh surface. Built once, merged, never rebuilt while drawn: original geometry, no
+## model, texture or font files.
 ##
 ## A bucket is a SurfaceTool with a pivot: shapes are given in the art's own space, through the
 ## kit's pose, and land relative to their bucket's pivot, so a bucket made into a node of its own
@@ -148,6 +149,30 @@ func spike(into: int, from: Vector3, to: Vector3, radius: float, sides: int, wai
 		var mid: Vector3 = (ring[i] + ring[j]) * 0.5 - middle
 		_face(into, [ring[i], ring[j], to], mid + axis * radius)
 		_face(into, [ring[j], ring[i], from], mid - axis * radius)
+
+
+## A rectangular frustum standing on its base: `bottom` (its X and Z sizes) at the base, centred on
+## `base`, `top` at `height` above it, turned by `turn`. The same sizes make a box; a smaller top a
+## bevelled cap, a stepped tier or a tower's setback (A3).
+func frustum(into: int, base: Vector3, bottom: Vector2, top: Vector2, height: float, turn: Vector3 = Vector3.ZERO) -> void:
+	var b := basis(turn)
+	var lo := []
+	var hi := []
+	for c in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
+		lo.append(base + b * Vector3(bottom.x * 0.5 * c[0], 0.0, bottom.y * 0.5 * c[1]))
+		hi.append(base + b * Vector3(top.x * 0.5 * c[0], height, top.y * 0.5 * c[1]))
+	for i in 4:
+		var j := (i + 1) % 4
+		_face(into, [lo[i], lo[j], hi[j], hi[i]], (lo[i] + lo[j]) * 0.5 - base)
+	if top.x > 0.0 and top.y > 0.0:
+		_face(into, hi, b * Vector3.UP)
+	_face(into, lo, b * Vector3.DOWN)
+
+
+## A flat polygon of `corners` (in order round its rim) facing `outward`: a plate, a screen or a
+## pixel of a sign (A3).
+func polygon(into: int, corners: Array, outward: Vector3) -> void:
+	_face(into, corners, outward)
 
 
 ## A ">" of two bars, `size` tall, on a side face: flat against the plane x = at.x, its tip toward
