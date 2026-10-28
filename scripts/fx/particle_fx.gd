@@ -14,15 +14,23 @@ extends Node3D
 ## (scripts/cannon_fx.gd). Every kind shares one process material and one mesh, and every colour one
 ## draw material, made on first use and kept; nothing is made per shot or per frame.
 ##
-## The settings' particle level (scripts/settings/game_settings.gd) sets the share of each effect's
-## particles shown, and low has no trails. Particles step at the game's pace, so SIGSTOP slows them.
+## The settings' particle level (scripts/settings/game_settings.gd) sets how many particles every
+## emitter holds (its amount, so low simulates and draws a quarter of high's, not just shows them;
+## the emitters are resized on a change of level, never per shot), and low has no trails: a change
+## to it stops the trails flying. Remote players' hitscan shots, which the net session draws as
+## beams alone, get sparks where each beam ends (beam_end()). Every colour an effect can take has
+## its draw material made with the pools. Particles step at the game's pace, so SIGSTOP slows them.
 
 const Palette = preload("res://scripts/palette.gd")
 
 ## Every particle pool node joins this group, so effects can find it from anywhere in its tree.
 const GROUP := &"particle_fx"
-## The muzzle burst's node name under a model's Muzzle.
+## The muzzle burst's node name under a model's Muzzle, and the group every burst joins, so a change
+## of level reaches them.
 const MUZZLE_NAME := "MuzzleBurst"
+const MUZZLE_GROUP := &"particle_muzzle_burst"
+## A beam that ends this short of its weapon's range met something; one that reaches it hit the sky.
+const BEAM_OPEN_M := 1.0
 
 enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL }
 ## Each pool: [emitters, particles each, lifetime in seconds, how far its particles may fly, metres].
@@ -79,6 +87,9 @@ var _busy := PackedByteArray()
 var _free_at := PackedFloat32Array()
 var _heavy := PackedByteArray()
 var _clock := 0.0
+## Where this frame's last impact struck: a beam ending there already has its sparks.
+var _last_impact := Vector3.INF
+var _last_impact_frame := -1
 
 
 func _init() -> void:
@@ -87,6 +98,12 @@ func _init() -> void:
 
 func _ready() -> void:
 	add_to_group(GROUP)
+	# Every colour an effect can take, its draw material made now, so no shot makes one (Codex review).
+	for pair in Palette.SKINS.values():
+		_draw_material(pair[0])
+		_draw_material(pair[1])
+	for color in [Palette.HOSTILE_AMBER, Palette.HOSTILE_RED, Palette.FLASH, Palette.MINT, Palette.TEAL]:
+		_draw_material(color)
 	for kind in POOLS:
 		var spec: Array = POOLS[kind]
 		var pool: Array[GPUParticles3D] = []
@@ -112,6 +129,7 @@ func _ready() -> void:
 		_pools[kind] = pool
 		_next[kind] = 0
 		_fired[kind] = 0
+	set_level(level)
 
 
 ## The particle pool in `node`'s tree, or null (a test with no arena).
@@ -119,6 +137,27 @@ static func of(node: Node) -> ParticleFx:
 	if node == null or not node.is_inside_tree():
 		return null
 	return node.get_tree().get_first_node_in_group(GROUP) as ParticleFx
+
+
+## Sets the particle level: every pool's emitters and every muzzle burst resized to its share (a
+## change of level reallocates them, as a settings change may; nothing else ever does), and with
+## trails off at it, the trails flying now stopped.
+func set_level(level_name: String) -> void:
+	level = level_name if LEVELS.has(level_name) else "high"
+	for kind in POOLS:
+		var amount := maxi(1, roundi(POOLS[kind][1] * share()))
+		for p in _pools[kind]:
+			if p.amount != amount:
+				p.amount = amount
+	if is_inside_tree():
+		var burst_amount := maxi(1, roundi(MUZZLE_PARTICLES * share()))
+		for burst in get_tree().get_nodes_in_group(MUZZLE_GROUP):
+			if (burst as GPUParticles3D).amount != burst_amount:
+				(burst as GPUParticles3D).amount = burst_amount
+	if not trails_on():
+		for i in _followers.size():
+			if _busy[i] == 1:
+				_release(i)
 
 
 ## The share of each effect's particles shown at the current level.
@@ -134,9 +173,23 @@ static func trails_on() -> bool:
 ## daemon (`hostile`), red and magenta derezz bits tumbling off it as well.
 func impact(point: Vector3, normal: Vector3, hostile: bool, color: Color) -> void:
 	var xf := Transform3D(_basis_up(normal), point)
+	_last_impact = point
+	_last_impact_frame = Engine.get_physics_frames()
 	_fire(Kind.SPARK, xf, Palette.HOSTILE_AMBER if hostile else color, 1.0)
 	if hostile:
 		_fire(Kind.DEREZZ, xf, Palette.FLASH, 1.0)
+
+
+## Sparks where a beam from `start` ends at `finish`, in `color`, for a shot drawn as a beam alone (a
+## remote player's, Codex review): none when this frame's impact already struck there (this player's
+## own shots spark through impact()), nor for a beam that ran its weapon's full `reach_m` into the
+## open. The sparks fly back along the beam.
+func beam_end(start: Vector3, finish: Vector3, color: Color, reach_m: float) -> void:
+	if _last_impact_frame == Engine.get_physics_frames() and _last_impact.distance_to(finish) < 0.001:
+		return
+	if start.distance_to(finish) >= reach_m - BEAM_OPEN_M:
+		return
+	_fire(Kind.SPARK, Transform3D(_basis_up(start - finish), finish), color, 1.0)
 
 
 ## Debris from a blast at `point` in `color`: more of it the farther the blast reaches.
@@ -154,7 +207,6 @@ func follow(target: Node3D, color: Color, heavy: bool = false) -> bool:
 			continue
 		var p := _followers[i]
 		p.material_override = _draw_material(color)
-		p.amount_ratio = share()
 		p.global_position = target.global_position
 		p.emitting = true
 		_follow[i] = target
@@ -204,10 +256,15 @@ func _process(delta: float) -> void:
 			if _followers[i].emitting != shown:
 				_followers[i].emitting = shown
 			continue
-		_followers[i].emitting = false
-		_follow[i] = null
-		_busy[i] = 0
-		_free_at[i] = _clock + _followers[i].lifetime
+		_release(i)
+
+
+## Stops follower `i` and frees it once its last spark has burnt out.
+func _release(i: int) -> void:
+	_followers[i].emitting = false
+	_follow[i] = null
+	_busy[i] = 0
+	_free_at[i] = _clock + _followers[i].lifetime
 
 
 func _fire(kind: Kind, xf: Transform3D, color: Color, more: float) -> void:
@@ -217,7 +274,7 @@ func _fire(kind: Kind, xf: Transform3D, color: Color, more: float) -> void:
 	var p := pool[at]
 	p.global_transform = xf
 	p.material_override = _draw_material(color)
-	p.amount_ratio = clampf(share() * more, 0.05, 1.0)
+	p.amount_ratio = clampf(more, 0.05, 1.0)
 	p.restart()
 	_fired[kind] += 1
 
@@ -248,6 +305,8 @@ static func make_muzzle_burst(def: Resource, color: Color) -> GPUParticles3D:
 	var spec: Array = MUZZLE[family]
 	var p := _emitter(_muzzle_process(family), _cube_mesh() if spec[9] else _streak_mesh(), MUZZLE_PARTICLES, spec[1], true, 1.0)
 	p.name = MUZZLE_NAME
+	p.amount = maxi(1, roundi(MUZZLE_PARTICLES * share()))
+	p.add_to_group(MUZZLE_GROUP)
 	p.local_coords = true
 	if not spec[9]:
 		p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
@@ -265,7 +324,7 @@ static func fire_muzzle(muzzle: Node, tint: Color = Color.TRANSPARENT) -> bool:
 	if p == null:
 		return false
 	p.material_override = _draw_material(tint) if tint.a > 0.0 else p.get_meta(&"base")
-	p.amount_ratio = clampf(float(p.get_meta(&"share")) * share(), 0.05, 1.0)
+	p.amount_ratio = clampf(float(p.get_meta(&"share")), 0.05, 1.0)
 	p.restart()
 	return true
 

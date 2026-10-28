@@ -23,6 +23,10 @@ const SPHERE_HEIGHT_PER_RADIUS := 2.0
 
 ## Thin glowing beam from the barrel to where the shot ended, fading out.
 static func spawn_beam(root: Node, start: Vector3, finish: Vector3, w: Weapon) -> void:
+	# A beam with no impact of its own (a remote player's shot) sparks where it ends (A4).
+	var fx := ParticleFx.of(root)
+	if fx != null:
+		fx.beam_end(start, finish, _beam_color(w), w.fire_range)
 	var length := start.distance_to(finish)
 	if length < w.beam_min_length:
 		return

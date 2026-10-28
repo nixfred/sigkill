@@ -45,9 +45,9 @@ const PLAYER_RADIUS_M := 0.4
 const SCREEN_EPS_PX := 1.5
 ## Run each frame or each shot: none of these may make a node, mesh or material.
 const PER_FRAME := {
-	"res://scripts/fx/particle_fx.gd": ["_process", "_fire", "impact", "blast", "follow", "fire_muzzle", "following", "share", "trails_on", "of"],
+	"res://scripts/fx/particle_fx.gd": ["_process", "_fire", "_release", "impact", "beam_end", "blast", "follow", "fire_muzzle", "following", "share", "trails_on", "of"],
 	"res://scripts/arena/arena_art.gd": ["_process", "step_clock"],
-	"res://scripts/player.gd": ["_fit_viewmodels", "muzzle_point"],
+	"res://scripts/player.gd": ["_fit_viewmodels", "muzzle_point", "take_volley"],
 	"res://scripts/weapons/rm_slug.gd": ["_place", "draw_from"],
 	"res://scripts/weapons/seeker_volley.gd": ["_place", "draw_from"],
 	"res://scripts/weapons/fork_volley.gd": ["_place", "draw_from"],
@@ -328,10 +328,8 @@ func _particle_checks(main: Node) -> void:
 	var spark_pool := fx.pool(ParticleFx.Kind.SPARK)
 	var before_children := fx.get_child_count()
 	var fired_before := fx.fired(ParticleFx.Kind.SPARK)
-	# Every colour's draw material is made on its first use and kept: use each one once first.
-	fx.impact(Vector3.ZERO, Vector3.UP, false, Palette.MINT)
-	fx.impact(Vector3.ZERO, Vector3.UP, true, Palette.MINT)
-	fx.blast(Vector3.ZERO, Palette.EMBER, 3.0)
+	# Every colour's draw material is made with the pools: even the first impact, derezz and blast
+	# of the run make nothing.
 	var warm_objects := Performance.get_monitor(Performance.OBJECT_COUNT)
 	for i in 40:
 		fx.impact(Vector3(i * 0.1, 1.0, 0.0), Vector3.UP, i % 2 == 0, Palette.MINT)
@@ -340,7 +338,7 @@ func _particle_checks(main: Node) -> void:
 	var mats := {}
 	for e in spark_pool:
 		mats[e.material_override] = true
-	_check("acceptance: capped, no per-shot allocation: 40 impacts and 40 blasts in one frame reuse the same %d spark emitters round the pool (the oldest cut short), make no object at all, and every mint spark draws with one shared material" % spark_pool.size(), fx.get_child_count() == before_children and fx.fired(ParticleFx.Kind.SPARK) == fired_before + 42 and after_objects == warm_objects and spark_pool.size() == ParticleFx.POOLS[ParticleFx.Kind.SPARK][0] and mats.size() <= 2, "%d objects before, %d after" % [warm_objects, after_objects])
+	_check("acceptance: capped, no per-shot allocation: 40 impacts and 40 blasts in one frame, the first of the run among them, reuse the same %d spark emitters round the pool (the oldest cut short), make no object at all, and every mint spark draws with one shared material" % spark_pool.size(), fx.get_child_count() == before_children and fx.fired(ParticleFx.Kind.SPARK) == fired_before + 40 and after_objects == warm_objects and spark_pool.size() == ParticleFx.POOLS[ParticleFx.Kind.SPARK][0] and mats.size() <= 2, "%d objects before, %d after" % [warm_objects, after_objects])
 
 	# Trails: as many as the pool holds, the rest none; each moves with its target, made of nothing.
 	var targets: Array[Node3D] = []
@@ -376,17 +374,42 @@ func _particle_checks(main: Node) -> void:
 	await process_frame
 	_check("a trail stops when its projectile is gone, and frees its follower once its sparks have burnt out", fx.following() == 0 and not follower.emitting)
 
+	# A beam drawn alone (a remote player's shot) sparks where it ends; this player's own beam does
+	# not spark twice; one into the open does not spark at all.
+	var sparks_before := fx.fired(ParticleFx.Kind.SPARK)
+	fx.beam_end(Vector3(0.0, 1.6, 10.0), Vector3(0.0, 1.2, -6.0), Palette.MINT, 120.0)
+	var remote := fx.fired(ParticleFx.Kind.SPARK) - sparks_before
+	fx.impact(Vector3(1.0, 1.2, -6.0), Vector3.BACK, false, Palette.MINT)
+	fx.beam_end(Vector3(0.0, 1.6, 10.0), Vector3(1.0, 1.2, -6.0), Palette.MINT, 120.0)
+	fx.beam_end(Vector3(0.0, 1.6, 10.0), Vector3(0.0, 1.6, -110.0), Palette.MINT, 120.0)
+	_check("a remote player's hitscan shot, drawn as a beam alone, sparks where its beam ends; a beam with its own impact or into the open does not", remote == 1 and fx.fired(ParticleFx.Kind.SPARK) - sparks_before == 2)
+
+	# Low: every emitter and every muzzle burst holds a quarter of high's particles, the trails flying
+	# stop, and no new one starts.
+	# The followers freed above are free again once their last sparks are out.
+	for _i in 40:
+		await process_frame
+	var flying := Node3D.new()
+	main.add_child(flying)
+	var high_trail := fx.follow(flying, Palette.COBALT)
 	GameSettings.current().set_value("video", "quality", "low")
 	await process_frame
 	var spare := Node3D.new()
 	main.add_child(spare)
 	var low_trail := fx.follow(spare, Palette.COBALT)
-	fx.impact(Vector3.ZERO, Vector3.UP, false, Palette.MINT)
-	var last := spark_pool[(fx.fired(ParticleFx.Kind.SPARK) - 1) % spark_pool.size()]
-	_check("acceptance: low really is cheaper: no trails at all, and an impact shows a quarter of its sparks", not low_trail and is_equal_approx(last.amount_ratio, 0.25), "ratio %.2f" % last.amount_ratio)
+	var quarter := true
+	for kind in ParticleFx.POOLS:
+		for e in fx.pool(kind):
+			quarter = quarter and e.amount == maxi(1, roundi(ParticleFx.POOLS[kind][1] * 0.25))
+	for model in models:
+		var b := (model as Viewmodel).muzzle.get_node(ParticleFx.MUZZLE_NAME) as GPUParticles3D
+		quarter = quarter and b.amount == roundi(ParticleFx.MUZZLE_PARTICLES * 0.25)
+	_check("acceptance: low really is cheaper: every emitter and every muzzle burst holds a quarter of high's particles (simulated and drawn, not just hidden), the trail flying when it was picked stops, and no trail starts", quarter and high_trail and not low_trail and fx.following() == 0, "spark emitter %d particles, all a quarter %s, trail on high %s, on low %s, %d flying" % [spark_pool[0].amount, quarter, high_trail, low_trail, fx.following()])
 	spare.queue_free()
+	flying.queue_free()
 	GameSettings.current().set_value("video", "quality", "high")
 	await process_frame
+	_check("high again: every emitter back to its full amount", spark_pool[0].amount == ParticleFx.POOLS[ParticleFx.Kind.SPARK][1] and burst0.amount == ParticleFx.MUZZLE_PARTICLES)
 
 
 # --- The viewmodels' fixed projection. ---
@@ -446,6 +469,21 @@ func _viewmodel_checks(main: Node) -> void:
 	_check("acceptance: a fixed viewmodel projection: the drawn model covers the same rectangle of the screen at a 60, 80 and 120 degree field of view (within %.1f px)" % SCREEN_EPS_PX, same and (rects[80] as Rect2).size.x > 100.0, str(rects))
 	_check("acceptance: no barrel pokes into a wall: every model part stays within %.2f m of the eye, inside the player's own %.1f m radius, and in front of the camera's near plane" % [reach, PLAYER_RADIUS_M], reach < PLAYER_RADIUS_M and nearest > cam.near and cam.near <= Player.VIEWMODEL_NEAR_M, "reach %.3f, nearest %.3f, near %.3f" % [reach, nearest, cam.near])
 	_check("the muzzle point (where beams start and projectiles are drawn from) is the Muzzle marker on screen at every field of view", on_screen < 0.5, "%.3f px" % on_screen)
+	# A shot's jolt moves the camera's lens: the rig follows it, so the models jolt as full-sized ones
+	# would and the muzzle point stays on the marker.
+	var shot_eye := cam.get_camera_transform().origin
+	var tip_before: Vector3 = model.muzzle.global_position
+	cam.h_offset = 0.03
+	cam.v_offset = -0.02
+	p.call("_fit_viewmodels")
+	var jolted := cam.unproject_position(p.muzzle_point()).distance_to(cam.unproject_position(model.muzzle.global_position))
+	# As full-sized: the marker's shift on screen is what the same point at full size would get.
+	var full := shot_eye + (tip_before - shot_eye) / Player.VIEWMODEL_SHRINK
+	var as_full := cam.unproject_position(model.muzzle.global_position).distance_to(cam.unproject_position(full))
+	cam.h_offset = 0.0
+	cam.v_offset = 0.0
+	p.call("_fit_viewmodels")
+	_check("acceptance: through a shot's jolt the shrunk model moves on screen as a full-sized one would, and the muzzle point stays on its marker (Codex review)", jolted < 0.5 and as_full < 0.5, "%.3f px, %.3f px" % [jolted, as_full])
 
 
 # --- Projectiles drawn from the muzzle. ---
@@ -459,10 +497,12 @@ func _projectile_checks(main: Node) -> void:
 			rm = def
 	var origin := Vector3(0.0, 1.6, 10.0)
 	var aim := Vector3.FORWARD
-	var muzzle_at := origin + Vector3(0.18, -0.16, -0.5)
+	var muzzle_at := Vector3.ZERO
 	var drawn = RmSlug.spawn(main, rm, origin, aim, false, false, 1)
 	var plain = RmSlug.spawn(main, rm, origin, aim, false, false, 1)
-	drawn.draw_from(muzzle_at)
+	# As every volley of this player's reaches it, alone or from the host's word in a match.
+	p.take_volley(drawn)
+	muzzle_at = p.muzzle_point()
 	var head: MeshInstance3D = drawn.get("_head")
 	var start_ok: bool = head.visible and head.global_position.distance_to(muzzle_at) < 0.001
 	var frames := 0
@@ -471,7 +511,7 @@ func _projectile_checks(main: Node) -> void:
 		frames += 1
 	var joined: bool = head.global_position.distance_to(drawn.position_now()) < 0.001
 	var same_path: bool = drawn.position_now().distance_to(plain.position_now()) < 0.0001
-	_check("acceptance: projectiles drawn from the muzzle: a slug is seen leaving the barrel's tip and closes on its true path within %.0f m, while its path (the one that counts) is the very path of one not drawn so, still from the eyes" % RmSlug.CONVERGE_M, start_ok and joined and same_path, "start %s, joined %s, same path %s after %d frames" % [start_ok, joined, same_path, frames])
+	_check("acceptance: projectiles drawn from the muzzle, alone or in a match (the player's take_volley draws it): a slug is seen leaving the barrel's tip and closes on its true path within %.0f m, while its path (the one that counts) is the very path of one not drawn so, still from the eyes" % RmSlug.CONVERGE_M, start_ok and joined and same_path, "start %s, joined %s, same path %s after %d frames" % [start_ok, joined, same_path, frames])
 	for node in [drawn, plain]:
 		if is_instance_valid(node):
 			node.free()

@@ -691,15 +691,21 @@ func _fit_viewmodels() -> void:
 		return
 	var wide := tan(deg_to_rad(_camera.fov) * 0.5) / tan(deg_to_rad(VIEWMODEL_FOV_DEGREES) * 0.5)
 	_viewmodel_rig.basis = Basis.from_scale(Vector3(wide, wide, 1.0) * VIEWMODEL_SHRINK)
+	# The shot jolt moves the picture by the camera's lens offset; the rig moves with it by all but
+	# the shrink's share, so the shrunk models jolt on screen exactly as full-sized ones would
+	# (Codex review).
+	_viewmodel_rig.position = Vector3(_camera.h_offset, _camera.v_offset, 0.0) * (1.0 - VIEWMODEL_SHRINK)
 
 
 ## Where the eye sees the drawn weapon's barrel tip, in the world (A4): the Muzzle marker grown back
-## out from the eye to the model's full size, so on screen it is exactly the marker, at the distance
-## the model's offsets mean. Beams start here, and projectiles are drawn coming out of it.
+## out from the eye (the camera's, its shot jolt included) to the model's full size, so on screen it
+## is exactly the marker, at the distance the model's offsets mean. Beams start here, and
+## projectiles are drawn coming out of it.
 func muzzle_point() -> Vector3:
+	var eye := _camera.get_camera_transform().origin
 	if _muzzle == null:
-		return _camera.global_position
-	return _camera.to_global(_camera.to_local(_muzzle.global_position) / VIEWMODEL_SHRINK)
+		return eye
+	return eye + (_muzzle.global_position - eye) / VIEWMODEL_SHRINK
 
 ## Share of the way to move toward a target this frame, for exponential easing at `rate`
 ## per second. The same total easing happens per second at any frame rate.
@@ -911,6 +917,7 @@ func _step_weapon(delta: float) -> void:
 	_shake = lerpf(_shake, 0.0, _smoothing(_w.recoil_recovery, delta)) if _shake_on else 0.0
 	_camera.h_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
 	_camera.v_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
+	_fit_viewmodels()  # the models ride the jolt's offset (A4)
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
 	_step_root()
@@ -1172,7 +1179,6 @@ func _fire_fork() -> void:
 		return
 	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 	var volley := ForkVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), _w.forks_for(root), true, _w.hit_mask, _not_me, fork_hit.bind(_w))
-	volley.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(volley)
 
 
@@ -1180,6 +1186,10 @@ func _fire_fork() -> void:
 ## match: a fork()'s first fork is the "fork()" callout, and when it is done the shot counts as
 ## fired, and as a hit, with the weapon's own hit sound, when a pellet or dart of it landed here.
 func take_volley(volley: Node) -> void:
+	# Drawn coming out of this player's barrel (A4), alone or in a match; it still flies from the
+	# eyes (Codex review: a match's volleys reach the player only here).
+	if volley.has_method("draw_from"):
+		volley.draw_from(muzzle_point())
 	if volley.has_signal("forked"):
 		volley.forked.connect(_on_volley_forked)
 	if volley.has_signal("blasted"):
@@ -1246,7 +1256,6 @@ func _fire_grep() -> void:
 	for m in held:
 		points.append(GrepLock.mark_point.bind(m["target"]))
 	var volley := SeekerVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), points, true, _w.hit_mask, _not_me, fork_hit.bind(_w))
-	volley.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(volley)
 
 
@@ -1270,7 +1279,6 @@ func _fire_slug() -> void:
 		return
 	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 	var slug := RmSlug.spawn(_fx_root(), _w, origin, forward, root, true, _w.hit_mask, _not_me, _judge_slug.bind(_w, root))
-	slug.draw_from(muzzle_point())  # drawn out of the barrel (A4); it still flies from the eyes
 	take_volley(slug)
 
 

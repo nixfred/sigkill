@@ -91,7 +91,11 @@ func apply_quality() -> void:
 	var skyline := get_node_or_null("Arena/Skyline")
 	if skyline != null and skyline.has_method("set_full"):
 		skyline.set_full(g["skyline"])
-	ParticleFx.level = g["particles"]
+	var fx := get_node_or_null("ParticleFx") as ParticleFx
+	if fx != null:
+		fx.set_level(g["particles"])
+	else:
+		ParticleFx.level = g["particles"]
 	var post := get_node_or_null("ScreenPost") as ScreenPost
 	if post != null:
 		post.set_effects(g["chromatic_aberration"], g["crt"])
