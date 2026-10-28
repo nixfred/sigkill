@@ -8,7 +8,11 @@ extends SceneTree
 ## ahead and a weapon in hand; a2b, the daemons as creatures: each one's hero view from a free
 ## camera and a strip of three stills of its motion side by side (the rogue daemon's through a rear
 ## and its strike), one view in play with all three kinds in it, and the rogue daemon's death in
-## shards.
+## shards; a4, the arena lit and finished: the overview from above, a fight (the cannon fired past the
+## rogue daemon into its lair's wall: the muzzle burst, the beam, the sparks), the west corridor with the zombie,
+## one view at the low and the high preset side by side (with each preset's GPU time printed), the
+## same view with both post effects on, and every weapon held at the spawn as a4-weapon-* stills.
+## The a4 set uses nothing A4 made, so it shoots the same views from a copy from before A4.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -76,6 +80,20 @@ const A2B_SHATTER_AT := Vector3(3.4, 1.5, -10.6)
 const A2B_SHATTER_LOOK := Vector3(0.0, 1.0, -15.0)
 const A2B_SHATTER_TARGET := "DummyA"
 const A2B_SHATTER_FRAMES := 14
+## a4: the fight (where the player stands, the daemon it shoots, the weapon, where it aims: past the
+## daemon's side into the lair's wall, as every hit is a kill and a kill's flash would hide the rest;
+## frames after the shot), the corridor, the view shown at low and high (each half the size, side
+## by side), and how many frames each preset's GPU time is averaged over.
+const A4_FIGHT_AT := Vector3(2.6, 0.95, -9.4)
+const A4_FIGHT_TARGET := "DummyA"
+const A4_FIGHT_SLOT := 0
+const A4_FIGHT_AIM := Vector3(1.7, 0.4, 0.0)
+const A4_FIGHT_FRAMES := 3
+const A4_CORRIDOR_AT := Vector3(-17.5, 0.95, 18.0)
+const A4_CORRIDOR_LOOK := Vector3(-17.5, 1.6, -6.0)
+const A4_COMPARE_AT := Vector3(-1.5, 0.95, 18.5)
+const A4_COMPARE_LOOK := Vector3(-1.0, 1.2, 0.0)
+const A4_GPU_FRAMES := 90
 
 var _main: Node
 var _player: Node
@@ -119,6 +137,11 @@ func _run() -> void:
 		return
 	if _set == "a2b":
 		await _a2b()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "a4":
+		await _a4()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -247,6 +270,69 @@ func _a2b() -> void:
 	await _frames(A2B_SHATTER_FRAMES)
 	await _save("a2b-shatter")
 	_free_camera_done(cam)
+
+
+## a4: the overview, a fight, the corridor, low beside high (and each preset's GPU time), the post
+## effects, then every weapon held at the spawn.
+func _a4() -> void:
+	var settings := GameSettings.current()
+	settings.set_value("video", "quality", "high")
+	await _free_view("a4-overview", A3_OVERVIEW_AT, A3_OVERVIEW_LOOK)
+	var rogue: Node3D = _main.get_node("Arena/Targets/" + A4_FIGHT_TARGET)
+	_player.select_slot(A4_FIGHT_SLOT)
+	await _stand(A4_FIGHT_AT, rogue.global_position + DUMMY_MIDDLE + A4_FIGHT_AIM)
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
+	await _frames(A4_FIGHT_FRAMES)
+	await _save("a4-fight")
+	_player.select_slot(0)
+	await _stand(A4_CORRIDOR_AT, _main.to_global(A4_CORRIDOR_LOOK))
+	await _save("a4-corridor")
+	await _stand(A4_COMPARE_AT, _main.to_global(A4_COMPARE_LOOK))
+	var halves: Array[Image] = []
+	for preset in ["low", "medium", "high"]:
+		settings.set_value("video", "quality", preset)
+		await _frames(30)
+		print("capture: %s preset, GPU %.2f ms a frame at 1920x1080" % [preset, await _gpu_ms(A4_GPU_FRAMES)])
+		if preset != "medium":
+			var still := await _grab()
+			still.resize(still.get_width() / 2, still.get_height() / 2, Image.INTERPOLATE_LANCZOS)
+			halves.append(still)
+	var pair := Image.create(halves[0].get_width() * 2, halves[0].get_height(), false, Image.FORMAT_RGBA8)
+	for i in halves.size():
+		pair.blit_rect(halves[i], Rect2i(Vector2i.ZERO, halves[i].get_size()), Vector2i(halves[0].get_width() * i, 0))
+	pair.save_png(OUT.path_join("a4-low-high.png"))
+	_shots += 1
+	print("capture: a4-low-high, the low preset left of the high one")
+	if GameSettings.SCHEMA["video"].has("crt"):
+		settings.set_value("video", "chromatic_aberration", true)
+		settings.set_value("video", "crt", true)
+		await _frames(10)
+		await _save("a4-post")
+		settings.set_value("video", "chromatic_aberration", false)
+		settings.set_value("video", "crt", false)
+	_player.respawn_at(_main.to_global(Vector3(0.0, 0.95, 10.0)))
+	_player.rotation.y = 0.0
+	_player.get_node("Head").rotation.x = 0.0
+	var defs: Array = _player.inventory.defs
+	for slot in defs.size():
+		_player.select_slot(slot)
+		await _frames(SETTLE_FRAMES)
+		await _save("a4-weapon-%d-%s" % [slot + 1, defs[slot].id.replace("_", "-")])
+
+
+## The GPU's time for the root viewport, in milliseconds a frame, averaged over `frames` frames.
+func _gpu_ms(frames: int) -> float:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var total := 0.0
+	for i in frames:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		total += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	return total / frames
 
 
 ## A free camera at `at` looking at `look` (arena space), made current, the player and the HUD
