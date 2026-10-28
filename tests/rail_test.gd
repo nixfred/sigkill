@@ -34,6 +34,7 @@ const RAIL_PATH := "res://resources/sigkill_rail.tres"
 const CANNON_PATH := "res://resources/terminal_cannon.tres"
 const SIGTERM_PATH := "res://resources/sigterm.tres"
 const FX_GROUP := &"cannon_fx"
+const DEREZZ_GROUP := &"derezz_fx"  # scripts/derezz_fx.gd FX_GROUP
 const WATCHDOG_MS := 10000
 const CLIENT_OFFSET := Vector3(1000.0, 0.0, 0.0)
 const STAND_Y := 0.95
@@ -550,14 +551,10 @@ func _aim(player: Node, target: Vector3) -> void:
 	player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
 
 
-func _count_derezz(scope: Node) -> int:
-	var n := 0
-	for node in scope.find_children("*", "MultiMeshInstance3D", true, false):
-		n += 1
-	for node in root.find_children("*", "MultiMeshInstance3D", true, false):
-		if not scope.is_ancestor_of(node):
-			n += 1
-	return n
+## Derezz effects alive anywhere, each a kill's voxels: counted by the effect's own group, so no
+## other MultiMesh (a daemon's glyphs since A2, the arena's holograms since A3) can stand in for one.
+func _count_derezz(_scope: Node) -> int:
+	return get_nodes_in_group(DEREZZ_GROUP).size()
 
 
 ## The rail's beam: an effect holding a cylinder as wide as the rail's.

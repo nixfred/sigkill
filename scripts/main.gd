@@ -65,10 +65,7 @@ func _apply_palette_to_environment() -> void:
 	if world_env == null or world_env.environment == null:
 		push_error("main: no WorldEnvironment with an Environment found")
 		return
-	var env := world_env.environment
-	env.background_color = Palette.VOID
-	env.ambient_light_color = Palette.TEAL
-	env.fog_light_color = Palette.VOID
+	Palette.apply_arena_environment(world_env.environment)
 
 
 ## The quality preset in the arena: bloom, shadows and the code rain on or off.

@@ -1,6 +1,7 @@
 // SIGKILL code rain: the neon edge look plus Matrix glyph streams that bleed through the
-// greybox blocks when daemons are near. With no enemy in reach the result is exactly the
-// neon edge shader: black faces, glowing edges, nothing else.
+// greybox blocks when daemons are near. With no enemy in reach the result is the neon edge
+// shader's look: black faces, glowing edges, and since A3 the faint wash of the arena's light strips
+// on the sides (wash_energy, 0 for none).
 //
 // Reach: scripts/code_rain_driver.gd fills `enemies` with up to MAX_ENEMIES world positions
 // and a weight each (0 to 1, faded in and out over time). Every pixel measures its own
@@ -53,6 +54,10 @@ uniform float flicker_rate = 6.0;
 uniform float rain_energy = 3.0;
 uniform vec4 head_color : source_color = vec4(0.784, 1.0, 0.816, 1.0);
 uniform vec4 tail_color : source_color = vec4(0.0, 1.0, 0.255, 1.0);
+// The arena's light strips spilling onto a block's sides (A3): a faint wash of the edge colour,
+// strongest at the top and the foot of each side face and gone wash_m from them. 0 is none.
+uniform float wash_energy : hint_range(0.0, 4.0) = 0.0;
+uniform float wash_m : hint_range(0.01, 4.0) = 0.6;
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -147,6 +152,11 @@ void fragment() {
 	ALBEDO = face_color.rgb;
 	ROUGHNESS = 1.0;
 	EMISSION = edge_color.rgb * (edge_energy * cover);
+	if (wash_energy > 0.0 && !hex_prism && abs(world_normal.y) < 0.5) {
+		float from_top = half_extents.y - local_pos.y;
+		float from_foot = half_extents.y + local_pos.y;
+		EMISSION += edge_color.rgb * wash_energy * (exp(-from_top / wash_m) + 0.6 * exp(-from_foot / wash_m));
+	}
 	float intensity = mix(min_intensity, max_intensity, proximity());
 	if (intensity > 0.0) {
 		EMISSION += rain() * (rain_energy * intensity);

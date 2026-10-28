@@ -43,6 +43,16 @@ const POLYMER := Color(0.023529412, 0.027450980, 0.031372549)  # #060708 viewmod
 # cores in the type's own hostile colour, red glyphs.
 const OBSIDIAN := Color(0.011764706, 0.015686275, 0.019607843)  # #030405 daemon shells
 const GLITCH_SPLIT := Color(0.301960784, 0.882352941, 1.0)  # #4de1ff the blue side of a daemon's glitch split
+# Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
+# skyline's near-black towers, screen and rack faces; the depth fog's colour, and the sky's haze at the
+# horizon and its abyss below.
+const ARENA_PANEL := Color(0.062745098, 0.086274510, 0.105882353)  # #10161b trims, caps, ribs, racks, pylons
+const ARENA_PANEL_DARK := Color(0.031372549, 0.043137255, 0.054901961)  # #080b0e the plinth's tiers, the corner towers
+const ARENA_TOWER := Color(0.015686275, 0.027450980, 0.039215686)  # #04070a the skyline's towers and slabs
+const ARENA_SCREEN := Color(0.007843137, 0.023529412, 0.027450980)  # #020607 a screen's or a rack's face
+const FOG := Color(0.011764706, 0.070588235, 0.078431373)  # #031214 the depth fog
+const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the sky's haze at the horizon
+const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
 const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI]}
@@ -61,7 +71,7 @@ const GRID_CELL := 1.0
 const GRID_MAJOR_EVERY := 8.0
 const GRID_MINOR_WIDTH := 0.02
 const GRID_MAJOR_WIDTH := 0.05
-const GRID_MINOR_ENERGY := 1.0
+const GRID_MINOR_ENERGY := 0.05  # 1.0 before A3: the deck plates carry the floor now
 const GRID_MAJOR_ENERGY := 2.2
 const WALL_EDGE_ENERGY := 2.0
 const ACCENT_EDGE_ENERGY := 2.6
@@ -112,6 +122,55 @@ const DEREZZ_EDGE_BOOST := 1.8
 const DEREZZ_CELLS := 3.0
 const DEREZZ_FLASH_ENERGY := 5.0
 
+# Arena look (A3): the panels' true edges (glow, width in pixels, the distance they fade out by),
+# their metal and the darkening near the floor; the strips' glow and the wave through them (a share
+# of the glow, waves per metre, how fast), the conduits' data flow the same, the beacons' blink (glow,
+# blinks a second, the share of each blink lit); the screens', racks', holograms' and walls' light;
+# the towers' edges and windows; the sky's glow band and data points; the floor's deck plates.
+const ARENA_EDGE_ENERGY := 0.9
+const ARENA_DARK_EDGE_ENERGY := 0.5
+const ARENA_EDGE_PX := 1.0
+const ARENA_EDGE_FADE_M := 45.0
+const ARENA_METALLIC := 0.55
+const ARENA_ROUGHNESS := 0.45
+const ARENA_GRIME := 0.45
+const ARENA_GRIME_M := 0.6
+const ARENA_STRIP_ENERGY := 2.2
+const ARENA_STRIP_PULSE := 0.2
+const ARENA_STRIP_WAVES_PER_M := 0.12
+const ARENA_STRIP_WAVE_SPEED := 0.25
+const ARENA_FLOW_ENERGY := 3.5
+const ARENA_FLOW_PULSE := 0.85
+const ARENA_FLOW_WAVES_PER_M := 1.2
+const ARENA_FLOW_SPEED := 1.4
+const ARENA_BEACON_ENERGY := 6.0
+const ARENA_BEACON_HZ := 0.6
+const ARENA_BEACON_ON := 0.35
+const ARENA_SCREEN_ENERGY := 1.6
+const ARENA_RACK_ENERGY := 2.2
+const ARENA_HOLO_ENERGY := 3.5
+const ARENA_WALL_WASH := 0.04
+const ARENA_WALL_WASH_M := 0.6
+const TOWER_EDGE_ENERGY := 0.8
+const TOWER_WINDOW_ENERGY := 1.1
+const TOWER_WINDOW_SHARE := 0.12
+const TOWER_WINDOW_CELL_M := Vector2(2.2, 3.0)
+const TOWER_WINDOW_SIZE := Vector2(0.55, 0.42)
+const SLAB_EDGE_ENERGY := 0.9
+const SKY_GLOW_ENERGY := 0.35
+const SKY_POINT_SHARE := 0.004
+const SKY_POINT_ENERGY := 0.9
+const FLOOR_PLATE_M := 2.0
+const FLOOR_SEAM_M := 0.03
+const FLOOR_SEAM_ENERGY := 0.1
+const FLOOR_PLATE_TONE := 0.6
+const FLOOR_PLATE_GLOW := 0.008
+const FLOOR_INSET_M := 0.16
+const FLOOR_INSET_SHARE := 0.4
+const FLOOR_INSET_ENERGY := 0.07
+const FLOOR_VENT_SHARE := 0.06
+const FLOOR_VENT_ENERGY := 0.12
+
 # Shader names under res://shaders/.
 const NEON_EDGE_SHADER := "neon_edge"
 const CODE_RAIN_SHADER := "code_rain"
@@ -120,9 +179,18 @@ const DAEMON_SHELL_SHADER := "daemon_shell"
 const DAEMON_CORE_SHADER := "daemon_core"
 const DAEMON_GLYPH_SHADER := "daemon_glyphs"
 const DEREZZ_VOXEL_SHADER := "derezz_voxel"
+const ARENA_PANEL_SHADER := "arena_panel"
+const ARENA_LIGHT_SHADER := "arena_light"
+const ARENA_SCREEN_SHADER := "arena_screen"
+const ARENA_HOLO_SHADER := "arena_holo"
+const ARENA_TOWER_SHADER := "arena_tower"
+## The arena's light materials (A3) by name: its colour, and whether it flows (the conduits) or
+## blinks (the beacons) instead of breathing like a strip.
+const ARENA_LIGHTS := {"teal": [TEAL, "strip"], "mint": [MINT, "strip"], "red": [HOSTILE_RED, "strip"], "flow": [TEAL, "flow"], "beacon": [HOSTILE_RED, "beacon"]}
 
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
+static var _arena_cache: Dictionary = {}
 static var _mono: SystemFont
 
 
@@ -141,6 +209,10 @@ static func surface(kind: int, size: Vector3 = Vector3.ONE) -> ShaderMaterial:
 			mat = _neon_material(CODE_RAIN_SHADER, size, TEAL, CRATE_EDGE_ENERGY)
 		_:
 			mat = _neon_material(CODE_RAIN_SHADER, size, TEAL, WALL_EDGE_ENERGY)
+	if kind != Surface.FLOOR:
+		# The arena's light strips spilling onto the block's sides (A3).
+		mat.set_shader_parameter("wash_energy", ARENA_WALL_WASH)
+		mat.set_shader_parameter("wash_m", ARENA_WALL_WASH_M)
 	return mat
 
 
@@ -282,6 +354,133 @@ static func derezz_voxel_material(energy: float) -> ShaderMaterial:
 	return mat
 
 
+## The arena's panels (A3): gunmetal with teal true edges, or with `dark` the plinth's and corner
+## towers' darker metal with dimmer edges. One of each for the whole arena, made once.
+static func arena_panel_material(dark: bool = false) -> ShaderMaterial:
+	var key := "panel_dark" if dark else "panel"
+	if not _arena_cache.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(ARENA_PANEL_SHADER)
+		mat.set_shader_parameter("base_color", ARENA_PANEL_DARK if dark else ARENA_PANEL)
+		mat.set_shader_parameter("edge_color", TEAL)
+		mat.set_shader_parameter("edge_energy", ARENA_DARK_EDGE_ENERGY if dark else ARENA_EDGE_ENERGY)
+		mat.set_shader_parameter("edge_px", ARENA_EDGE_PX)
+		mat.set_shader_parameter("edge_fade_m", ARENA_EDGE_FADE_M * (3.0 if dark else 1.0))
+		mat.set_shader_parameter("metallic_amount", ARENA_METALLIC)
+		mat.set_shader_parameter("roughness_amount", ARENA_ROUGHNESS)
+		mat.set_shader_parameter("grime", 0.0 if dark else ARENA_GRIME)
+		mat.set_shader_parameter("grime_m", ARENA_GRIME_M)
+		_arena_cache[key] = mat
+	return _arena_cache[key]
+
+
+## One of the arena's lights (A3) by its ARENA_LIGHTS name: a strip's colour breathing, the
+## conduits' flow, or the beacons' blink. One of each for the whole arena, made once.
+static func arena_light_material(light: String) -> ShaderMaterial:
+	var key := "light_" + light
+	if not _arena_cache.has(key):
+		var spec: Array = ARENA_LIGHTS.get(light, ARENA_LIGHTS["teal"])
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(ARENA_LIGHT_SHADER)
+		mat.set_shader_parameter("light_color", spec[0])
+		match spec[1]:
+			"flow":
+				mat.set_shader_parameter("energy", ARENA_FLOW_ENERGY)
+				mat.set_shader_parameter("pulse", ARENA_FLOW_PULSE)
+				mat.set_shader_parameter("waves_per_m", ARENA_FLOW_WAVES_PER_M)
+				mat.set_shader_parameter("wave_speed", ARENA_FLOW_SPEED)
+				mat.set_shader_parameter("blink", 0.0)
+			"beacon":
+				mat.set_shader_parameter("energy", ARENA_BEACON_ENERGY)
+				mat.set_shader_parameter("pulse", 0.0)
+				mat.set_shader_parameter("blink", 1.0)
+				mat.set_shader_parameter("blink_hz", ARENA_BEACON_HZ)
+				mat.set_shader_parameter("blink_on", ARENA_BEACON_ON)
+			_:
+				mat.set_shader_parameter("energy", ARENA_STRIP_ENERGY)
+				mat.set_shader_parameter("pulse", ARENA_STRIP_PULSE)
+				mat.set_shader_parameter("waves_per_m", ARENA_STRIP_WAVES_PER_M)
+				mat.set_shader_parameter("wave_speed", ARENA_STRIP_WAVE_SPEED)
+				mat.set_shader_parameter("blink", 0.0)
+		_arena_cache[key] = mat
+	return _arena_cache[key]
+
+
+## The arena's terminal screens, or with `racks` its server racks' faces (A3). Made once each.
+static func arena_screen_material(racks: bool = false) -> ShaderMaterial:
+	var key := "racks" if racks else "screen"
+	if not _arena_cache.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(ARENA_SCREEN_SHADER)
+		mat.set_shader_parameter("back_color", ARENA_SCREEN)
+		mat.set_shader_parameter("text_color", TEAL)
+		mat.set_shader_parameter("hot_color", MINT)
+		mat.set_shader_parameter("alert_color", HOSTILE_RED)
+		mat.set_shader_parameter("racks", racks)
+		mat.set_shader_parameter("energy", ARENA_RACK_ENERGY if racks else ARENA_SCREEN_ENERGY)
+		_arena_cache[key] = mat
+	return _arena_cache[key]
+
+
+## The floating ">_" glyphs over the arena's pylons (A3): one material for their one MultiMesh.
+static func arena_holo_material() -> ShaderMaterial:
+	if not _arena_cache.has("holo"):
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(ARENA_HOLO_SHADER)
+		mat.set_shader_parameter("holo_color", MINT)
+		mat.set_shader_parameter("energy", ARENA_HOLO_ENERGY)
+		_arena_cache["holo"] = mat
+	return _arena_cache["holo"]
+
+
+## The skyline's towers with their windows, or with `windows` off the drifting slabs, edges only
+## and brighter (A3). Made once each.
+static func arena_tower_material(windows: bool = true) -> ShaderMaterial:
+	var key := "tower" if windows else "slab"
+	if not _arena_cache.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(ARENA_TOWER_SHADER)
+		mat.set_shader_parameter("body_color", ARENA_TOWER)
+		mat.set_shader_parameter("edge_color", TEAL)
+		mat.set_shader_parameter("window_color", TEAL)
+		mat.set_shader_parameter("hot_color", MINT)
+		mat.set_shader_parameter("alert_color", HOSTILE_RED)
+		mat.set_shader_parameter("edge_energy", TOWER_EDGE_ENERGY if windows else SLAB_EDGE_ENERGY)
+		mat.set_shader_parameter("window_energy", TOWER_WINDOW_ENERGY)
+		mat.set_shader_parameter("window_share", TOWER_WINDOW_SHARE if windows else 0.0)
+		mat.set_shader_parameter("window_cell_m", TOWER_WINDOW_CELL_M)
+		mat.set_shader_parameter("window_size", TOWER_WINDOW_SIZE)
+		_arena_cache[key] = mat
+	return _arena_cache[key]
+
+
+## Every material the arena's dressing and skyline use (A3), for the checks.
+static func arena_materials() -> Array:
+	var out := [arena_panel_material(), arena_panel_material(true), arena_screen_material(), arena_screen_material(true), arena_holo_material(), arena_tower_material(), arena_tower_material(false)]
+	for light in ARENA_LIGHTS:
+		out.append(arena_light_material(light))
+	return out
+
+
+## The arena's environment in the palette's exact colours (the scene file carries approximations so
+## the editor previews it): the void, the ambient teal, the depth fog (A3) and the sky's (A3).
+static func apply_arena_environment(env: Environment) -> void:
+	env.background_color = VOID
+	env.ambient_light_color = TEAL
+	env.fog_light_color = FOG
+	if env.sky != null and env.sky.sky_material is ShaderMaterial:
+		var sky := env.sky.sky_material as ShaderMaterial
+		sky.set_shader_parameter("zenith_color", VOID)
+		sky.set_shader_parameter("horizon_color", SKY_HORIZON)
+		sky.set_shader_parameter("abyss_color", SKY_ABYSS)
+		sky.set_shader_parameter("glow_color", TEAL)
+		sky.set_shader_parameter("point_color", MINT)
+		sky.set_shader_parameter("alert_color", HOSTILE_RED)
+		sky.set_shader_parameter("glow_energy", SKY_GLOW_ENERGY)
+		sky.set_shader_parameter("point_share", SKY_POINT_SHARE)
+		sky.set_shader_parameter("point_energy", SKY_POINT_ENERGY)
+
+
 ## Unlit translucent material for beams and impact flashes.
 static func unlit_alpha(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -349,6 +548,16 @@ static func _floor_material() -> ShaderMaterial:
 		mat.set_shader_parameter("major_width", GRID_MAJOR_WIDTH)
 		mat.set_shader_parameter("minor_energy", GRID_MINOR_ENERGY)
 		mat.set_shader_parameter("major_energy", GRID_MAJOR_ENERGY)
+		mat.set_shader_parameter("plate_m", FLOOR_PLATE_M)
+		mat.set_shader_parameter("seam_m", FLOOR_SEAM_M)
+		mat.set_shader_parameter("seam_energy", FLOOR_SEAM_ENERGY)
+		mat.set_shader_parameter("plate_tone", FLOOR_PLATE_TONE)
+		mat.set_shader_parameter("plate_glow", FLOOR_PLATE_GLOW)
+		mat.set_shader_parameter("inset_m", FLOOR_INSET_M)
+		mat.set_shader_parameter("inset_share", FLOOR_INSET_SHARE)
+		mat.set_shader_parameter("inset_energy", FLOOR_INSET_ENERGY)
+		mat.set_shader_parameter("vent_share", FLOOR_VENT_SHARE)
+		mat.set_shader_parameter("vent_energy", FLOOR_VENT_ENERGY)
 		_floor_material_cache = mat
 	return _floor_material_cache
 
