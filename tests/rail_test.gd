@@ -96,7 +96,7 @@ func _def_checks() -> void:
 	_check("the beam lingers about 0.6 s and is brighter and wider than the cannon's; its kill outdoes any health", r.beam_lifetime == 0.6 and r.beam_radius > _cannon.beam_radius and r.beam_energy > _cannon.beam_energy and r.damage >= CombatTuningScript.new().max_health * 10.0)
 	_check("the cannon and SIGTERM are as they were: no ult, no charge, no pierce, no pid in the feed", not _cannon.is_ult() and _cannon.charge_s == 0.0 and not _cannon.pierce and not _cannon.feed_pid and not _sigterm.is_ult() and _sigterm.charge_s == 0.0 and not _sigterm.pierce and _cannon.damage == 25.0 and _sigterm.pellet_count == 9)
 	var shipped = load("res://resources/arsenal.tres")
-	_check("the shipped arsenal carries it as weapon 3 (the fork bomb is weapon 4 since C19, the fork() shotgun weapon 5 since C24, the grep seeker weapon 6 since C25)", shipped.loadout.size() == 6 and shipped.loadout[2] == _rail and Arsenal.usable_loadout(shipped).size() == 6)
+	_check("the shipped arsenal carries it as weapon 3 (the fork bomb is weapon 4 since C19, the fork() shotgun weapon 5 since C24, the grep seeker weapon 6 since C25, the rm -rf cannon weapon 7 since C26)", shipped.loadout.size() == 7 and shipped.loadout[2] == _rail and Arsenal.usable_loadout(shipped).size() == 7)
 	var cases := [
 		["pierce", true, "fire_mode", WeaponDefScript.FireMode.HITSCAN_PELLETS, "only a single shot pierces"],
 		["ult_meter", 3.0, "magazine_size", 4, "an ult has no magazine"],

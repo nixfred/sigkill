@@ -270,7 +270,7 @@ func _arena_checks() -> void:
 	var inv = p.get("inventory")
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 5 (after the cannon, SIGTERM, the rail and the fork bomb); the player holds five (six since C25's grep)", shipped.loadout.size() == 6 and shipped.loadout[SLOT] == _w and inv.slot_count() == 6 and inv.defs[SLOT].id == "fork_shotgun", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 5 (after the cannon, SIGTERM, the rail and the fork bomb); the player holds five (six since C25's grep, seven since C26's rm -rf)", shipped.loadout.size() == 7 and shipped.loadout[SLOT] == _w and inv.slot_count() == 7 and inv.defs[SLOT].id == "fork_shotgun", str(inv.defs.map(func(d): return d.id)))
 	# Key 5, the wheel, Q.
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_5

@@ -31,8 +31,13 @@ extends Control
 ## five slots take no more room than four did and the strip stays clear of the panels centred
 ## at 960x540. grep (C25) is slot 6 ("[1 cannon] 2 3 4(2) 5 6"); its marks and their count,
 ## "grep -c: N", are under the crosshair (scripts/hud/grep_marks.gd), not on the strip, so the
-## strip keeps its five lines. The slot line is a point smaller than the ammo line (SLOT_FONT):
-## at the full size six slots with SIGTERM drawn reached 3 px under the guide panel at 960x540.
+## strip keeps its five lines. The slot line is smaller than the ammo line (SLOT_FONT): at the
+## full size six slots with SIGTERM drawn reached 3 px under the guide panel at 960x540.
+##
+## The rm -rf cannon (C26) is slot 7; the slot line is the small lines' size (12) since, so seven
+## slots stay clear of the guide panel at 960x540. While it winds up, the third line types its
+## charge prompt out as the wind-up fills ("rm: remove? [y]" whole when the shot goes); the rail's
+## charging bar is the rail's alone.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -66,8 +71,8 @@ const VISION_ON_LINE := "%s VISION [%s%s]"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
-## The slot line's size: a point under FONT, so six slots stay clear of the guide panel.
-const SLOT_FONT := 13
+## The slot line's size: the small lines' (C26), so seven slots stay clear of the guide panel.
+const SLOT_FONT := 12
 const SMALL_FONT := 12
 const MARGIN := 18
 ## Room kept below the strip for the hint line.
@@ -183,7 +188,7 @@ func _refresh() -> void:
 	_meter_ready = ult_slot >= 0 and inv.meter_ready()
 	if ult_slot >= 0:
 		var cells := roundi(inv.meter_share() * BAR_CELLS)
-		if player.has_method("is_charging") and player.is_charging():
+		if player.has_method("is_charging") and player.is_charging() and inv.def().is_ult():
 			var charged := roundi(player.charge_progress() * BAR_CELLS)
 			_meter_text = METER_CHARGING % [BAR_FULL.repeat(charged), BAR_EMPTY.repeat(BAR_CELLS - charged)]
 		elif _meter_ready:
@@ -207,6 +212,11 @@ func _refresh() -> void:
 	if inv.is_reloading():
 		var cells := roundi(inv.reload_progress() * BAR_CELLS)
 		_state.text = RELOAD_LINE % [BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
+	elif charging and def.charge_prompt != "":
+		# The wind-up's prompt, typed out as it fills (C26): at least its first letter at once.
+		var shown := clampi(ceili(player.charge_progress() * def.charge_prompt.length()), 1, def.charge_prompt.length())
+		_state.text = def.charge_prompt.left(shown)
+		state_color = def.skin_beam()
 	elif charging:
 		_state.text = _meter_text
 		state_color = def.skin_beam()

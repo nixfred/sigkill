@@ -8,7 +8,8 @@ extends Control
 ## confirmed hit is the C6 one, through hud.gd. Everything here follows the host's confirmed
 ## results, which arrive through the session's signals; nothing is guessed locally. While the
 ## top table (C23, scripts/hud/spectate_top.gd) is up the banner sits just below it as one
-## smaller line.
+## smaller line. A player its own rm -rf blast killed (C26) reads "rm -rf: Daemon-2" /
+## "removed themself", the weapon's self-kill words.
 ## Shown only while a session is online; solo play sees none of it.
 
 const Session = preload("res://scripts/net/net_session.gd")
@@ -27,6 +28,9 @@ const FEED_FIRST := "%s sent by %s"
 ## The cannon's signal: the feed's word when the weapon is not known.
 const DEFAULT_WORD := "SIGKILL"
 const FEED_SECOND := "to %s"
+## A player its own weapon killed, for a weapon with self-kill words (C26): "rm -rf: Daemon-2" /
+## "removed themself".
+const FEED_SELF := "%s: %s"
 const FEED_FONT := 13
 ## Room below the feed for the hint line and the weapon strip (C16).
 const FEED_BOTTOM_GAP := 104
@@ -178,7 +182,7 @@ func _on_death(victim: int, killer: int) -> void:
 	if session == null:
 		return
 	var word: String = session.last_kill_word.get(victim, "")
-	entries.push_front({"killer": _name(killer), "victim": _name(victim), "word": word if word != "" else DEFAULT_WORD, "left": session.combat_tuning_in_use().kill_feed_fade_s})
+	entries.push_front({"killer": _name(killer), "victim": _name(victim), "word": word if word != "" else DEFAULT_WORD, "self": session.last_kill_self.get(victim, "") if killer == victim else "", "left": session.combat_tuning_in_use().kill_feed_fade_s})
 	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
 		entries.pop_back()
 	_refresh()
@@ -222,7 +226,10 @@ func _refresh(fade: float = -1.0) -> void:
 		var label: Label = _feed_labels[i]
 		if i < entries.size():
 			var entry: Dictionary = entries[i]
-			label.text = (FEED_FIRST % [entry.get("word", DEFAULT_WORD), entry["killer"]]) + "\n" + (FEED_SECOND % entry["victim"])
+			if entry.get("self", "") != "":
+				label.text = (FEED_SELF % [entry.get("word", DEFAULT_WORD), entry["killer"]]) + "\n" + entry["self"]
+			else:
+				label.text = (FEED_FIRST % [entry.get("word", DEFAULT_WORD), entry["killer"]]) + "\n" + (FEED_SECOND % entry["victim"])
 			var full: float = fade if fade > 0.0 else session.combat_tuning_in_use().kill_feed_fade_s
 			label.modulate = Color(1, 1, 1, clampf(entry["left"] / minf(1.0, full), 0.0, 1.0))
 			label.visible = true

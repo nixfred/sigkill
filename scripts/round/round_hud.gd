@@ -41,6 +41,9 @@ extends Control
 ## grep (C25): each target this player's grep marks is called out "grep", at the usual pace (a
 ## shot's worth of marks is one callout).
 ##
+## The rm -rf cannon (C26): each blast of this player's slug is called out "rm -rf" at once,
+## whatever the pace: a slow weapon's one big moment, as the fork bomb's first blast is.
+##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
 
@@ -67,6 +70,7 @@ const SIGCONT_LINE := "SIGCONT"
 const FORK_BOMB_LINE := ":(){ :|:& };:"
 const FORK_LINE := "fork()"
 const GREP_LINE := "grep"
+const RM_LINE := "rm -rf"
 
 enum Phase { ROUND, BREAK }
 
@@ -147,7 +151,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked], ["rm_blast", _on_rm_blast]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	var stop = player.get("sigstop")
@@ -329,6 +333,11 @@ func _on_grep_marked() -> void:
 	_callout("grep")
 
 
+## A blast of this player's rm -rf slug: called out at once, whatever the pace.
+func _on_rm_blast() -> void:
+	_callout("rm_rf", true)
+
+
 ## Shows a callout unless one was shown less than callout_min_interval_s ago (`now`: show it
 ## whatever the pace, as "kill -9" is).
 func _callout(word: String, now: bool = false) -> void:
@@ -358,6 +367,8 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = FORK_LINE
 		"grep":
 			last_callout = GREP_LINE
+		"rm_rf":
+			last_callout = RM_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

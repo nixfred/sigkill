@@ -30,9 +30,11 @@ const FORK_HI := Color(1.0, 0.8, 1.0)  # #ffccff fork bomb blast rings
 const YELLOW_HI := Color(1.0, 0.960784314, 0.760784314)  # #fff5c2 fork() pellet trails and fork flashes (C24)
 const COBALT := Color(0.301960784, 0.490196078, 1.0)  # #4d7dff grep body, lock brackets and "match" tags (C25)
 const COBALT_HI := Color(0.780392157, 0.839215686, 1.0)  # #c7d6ff grep dart trails and its "grep -c" line
+const EMBER := Color(1.0, 0.415686275, 0.101960784)  # #ff6a1a rm -rf body, slug and blast ring (C26): orange, between amber and red but neither
+const EMBER_HI := Color(1.0, 0.788235294, 0.639215686)  # #ffc9a3 rm -rf slug trail and muzzle flash
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

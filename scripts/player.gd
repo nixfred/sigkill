@@ -61,6 +61,16 @@ extends CharacterBody3D
 ## with the marks' player ids as its claims, and the host decides which it believes. Putting
 ## grep away, a death and a respawn drop every mark.
 ##
+## The rm -rf cannon (C26), slot 7: fire winds it up first (the rail's charge, C17: charge_s,
+## half that as root), with the weapon's charge prompt typed out on the strip; letting go does
+## not stop it, but putting it away, dying or respawning does, with nothing spent. Through the
+## wind-up and move_slow_s after the shot the player moves at move_scale of its pace and starts
+## no slide. The shot is one slow slug (scripts/weapons/rm_slug.gd) that blasts where it stops;
+## alone the blast hurts this arena's daemons in its radius with nothing of the level between
+## (the player has no health alone, so its own share of the blast is a match's), in a match only
+## the intent goes and the host judges everyone in the radius, the shooter too. Each blast of
+## this player's is the round's "rm -rf" callout (rm_blast).
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -85,6 +95,7 @@ const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const GrepLock = preload("res://scripts/weapons/grep_lock.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
+const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -93,6 +104,9 @@ const THROW_CLEAR_M := 0.1
 ## Added to the host's remaining reload or draw time when this side's has to wait for it:
 ## three physics frames at 60 Hz.
 const TIMING_MARGIN_S := 0.05
+## A charge or wind-up counts as done within this many seconds: a sum of physics steps can leave
+## a hair over 0, which would hold the shot a frame past its time (C26).
+const CHARGE_EPS := 0.000001
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
@@ -123,6 +137,8 @@ signal fork_bomb_burst
 signal fork_split
 ## grep marked a target (C25): the round HUD's "grep" callout.
 signal grep_marked
+## A slug of this player's rm -rf went off (C26): the round HUD's "rm -rf" callout.
+signal rm_blast
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -213,6 +229,13 @@ var _aiming := false
 # its last shot struck in the head (id -> true), for the session's kill confirmations.
 var _charge_left := 0.0
 var _charge_slot := -1
+## The charge's whole length as it started: the rail's charge_s, or the rm -rf cannon's wind-up,
+## shorter as root (C26).
+var _charge_total := 0.0
+## Seconds the rm -rf cannon still slows its shooter after a shot, and the share of its pace it
+## keeps meanwhile, taken at the shot (C26).
+var _slow_left := 0.0
+var _slow_scale := 1.0
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
@@ -516,9 +539,13 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 			_end_slide()
 
 	# A jump pressed on the same frame wins: no slide starts and the normal jump runs.
+	# The rm -rf cannon's weight (C26): a share of the pace while it winds up and just after the
+	# shot, and no slide starts then.
+	var weight := move_scale()
+	_slow_left = maxf(_slow_left - delta, 0.0)
 	var start_slide := (
 		_slide_pressed and not _jump_pressed and on_floor and not _sliding and not slide_jump
-		and _slide_cooldown_left <= 0.0 and speed > 0.0 and speed >= _t.slide_min_speed
+		and _slide_cooldown_left <= 0.0 and speed > 0.0 and speed >= _t.slide_min_speed and weight >= 1.0
 	)
 
 	if slide_jump:
@@ -539,7 +566,7 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 		if wish.is_zero_approx():
 			horizontal = horizontal.move_toward(Vector3.ZERO, _t.ground_friction * delta)
 		else:
-			var pace := minf(_t.crouch_speed, _t.walk_speed) if _crouching else _t.walk_speed
+			var pace := (minf(_t.crouch_speed, _t.walk_speed) if _crouching else _t.walk_speed) * weight
 			horizontal = horizontal.move_toward(wish * pace, _t.ground_accel * delta)
 		if _jump_pressed:
 			velocity.y = _t.jump_velocity
@@ -547,11 +574,13 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 	else:
 		# Air: reduced steering. Speed is capped at walk speed or at the speed carried off
 		# the ground, whichever is higher, so strafing never builds extra speed.
+		# The rm -rf cannon's weight (C26) slows only where the steering leads, never the momentum
+		# already carried: a wind-up started mid-air eases the speed down, it does not cut it.
 		var cap := maxf(_air_speed_cap, _t.walk_speed)
 		if wish.is_zero_approx():
 			horizontal = horizontal.move_toward(Vector3.ZERO, _t.air_drag * delta)
 		else:
-			horizontal = horizontal.move_toward(wish * cap, _t.ground_accel * _t.air_control * delta)
+			horizontal = horizontal.move_toward(wish * cap * weight, _t.ground_accel * _t.air_control * delta)
 		horizontal = horizontal.limit_length(cap)
 
 	velocity.x = horizontal.x
@@ -564,6 +593,15 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 	if _was_on_floor and not grounded:
 		_air_speed_cap = clampf(horizontal_speed(), _t.walk_speed, _t.slide_jump_max_speed)
 	_was_on_floor = grounded
+
+
+## The share of its pace the player keeps right now: the rm -rf cannon's move_scale while it winds
+## up and for move_slow_s after its shot (C26), else 1.
+func move_scale() -> float:
+	var slug: bool = _charge_left > 0.0 and _charge_slot >= 0 and _charge_slot < inventory.defs.size() and inventory.defs[_charge_slot].is_slug()
+	if slug:
+		return inventory.defs[_charge_slot].move_factor()
+	return _slow_scale if _slow_left > 0.0 else 1.0
 
 
 func _end_slide() -> void:
@@ -624,6 +662,9 @@ func respawn_at(pos: Vector3) -> void:
 		sudo.end_root()  # and ends root (C22)
 	if grep != null:
 		grep.clear()  # and drops grep's marks (C25)
+	if _charge_left > 0.0:
+		_end_charge()  # and a wind-up or charge stops with nothing spent (C26)
+	_slow_left = 0.0
 	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
@@ -652,6 +693,8 @@ func set_alive(on: bool) -> void:
 		sudo.on_death()  # root over, the streak and any unused sudo charge gone (C22)
 	if not on and grep != null:
 		grep.clear()  # every grep mark gone (C25)
+	if not on:
+		_slow_left = 0.0  # the rm -rf cannon's weight goes with the life (C26)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -819,7 +862,11 @@ func _step_weapon(delta: float) -> void:
 	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
 		if _w.charge_s > 0.0:
 			if inventory.fire_block() == "":
-				_charge_left = _w.charge_s  # the shot goes off when the charge is done
+				# The shot goes off when the charge is done: the rail's charge, or the rm -rf
+				# cannon's wind-up, shorter as root (C26).
+				var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+				_charge_total = _w.charge_for(root)
+				_charge_left = _charge_total
 				_charge_slot = inventory.current
 		else:
 			var why := inventory.try_fire()
@@ -847,7 +894,7 @@ func _step_charge(delta: float) -> void:
 		return
 	_charge_left -= delta
 	_set_glow(_charge_slot, 1.0 + 3.0 * charge_progress())
-	if _charge_left > 0.0:
+	if _charge_left > CHARGE_EPS:
 		return
 	_end_charge()
 	if inventory.try_fire() == "":
@@ -871,11 +918,12 @@ func _set_glow(slot: int, scale: float) -> void:
 		glow.emission_energy_multiplier = inventory.defs[slot].viewmodel_glow_energy * scale
 
 
-## How far the rail's charge has come, from 0 to 1; 0 when it is not charging.
+## How far the rail's charge (or the rm -rf cannon's wind-up, C26) has come, from 0 to 1; 0 when
+## it is not charging.
 func charge_progress() -> float:
-	if _charge_left <= 0.0 or _w.charge_s <= 0.0:
+	if _charge_left <= 0.0 or _charge_total <= 0.0:
 		return 0.0
-	return clampf(1.0 - _charge_left / _w.charge_s, 0.0, 1.0)
+	return clampf(1.0 - _charge_left / _charge_total, 0.0, 1.0)
 
 
 func is_charging() -> bool:
@@ -933,6 +981,9 @@ func _fire() -> void:
 		return
 	if _w.is_seeker():
 		_fire_grep()
+		return
+	if _w.is_slug():
+		_fire_slug()
 		return
 	shots_fired += 1
 	var origin := _camera.global_position
@@ -1044,7 +1095,13 @@ func _fire_fork() -> void:
 func take_volley(volley: Node) -> void:
 	if volley.has_signal("forked"):
 		volley.forked.connect(_on_volley_forked)
+	if volley.has_signal("blasted"):
+		volley.blasted.connect(_on_volley_blasted)
 	volley.finished.connect(_on_volley_finished.bind(inventory.slot_of(volley.def.id)))
+
+
+func _on_volley_blasted(_at: Vector3) -> void:
+	rm_blast.emit()
 
 
 func _on_volley_forked(gen: int) -> void:
@@ -1103,6 +1160,55 @@ func _fire_grep() -> void:
 		points.append(GrepLock.mark_point.bind(m["target"]))
 	var volley := SeekerVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), points, true, _w.hit_mask, _not_me, fork_hit.bind(_w))
 	take_volley(volley)
+
+
+## A shot of the rm -rf cannon (C26), its wind-up done: the muzzle flash, the kick and the sound
+## here at once, and the weight for move_slow_s. Alone the slug flies here from the eyes along
+## the aim and blasts this arena's daemons (_judge_slug); in a match only the intent goes, and
+## the host runs the slug: every screen, this one too, draws it and its blast from the host.
+func _fire_slug() -> void:
+	shots_fired += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	if _shake_on:
+		_shake = maxf(_shake, _w.shake_m)
+	_fire_sfx.play()
+	_slow_left = _w.move_slow_s
+	_slow_scale = _w.move_factor()
+	fire_intent.emit(origin, forward, _w.id)
+	if match_meter:
+		return
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	var slug := RmSlug.spawn(_fx_root(), _w, origin, forward, root, true, _w.hit_mask, _not_me, _judge_slug.bind(_w, root))
+	take_volley(slug)
+
+
+## Alone, the blast of this player's rm -rf slug at `at` (C26): every daemon of this arena whose
+## middle is within the blast's radius (root's larger one with `root`), with nothing of the level
+## between, takes the blast's damage for its distance at this player's strength (root's harder
+## hit alone, C22) and fills the ult meter as the other weapons do. The player itself has no
+## health alone. How many it hurt.
+func _judge_slug(at: Vector3, def: WeaponDefScript, root: bool) -> int:
+	var arena := _fx_root()
+	var space := get_world_3d().direct_space_state
+	var hurt := 0
+	for dummy in get_tree().get_nodes_in_group("targets"):
+		if not arena.is_ancestor_of(dummy) or not dummy.has_method("hit") or (dummy.has_method("is_alive") and not dummy.call("is_alive")):
+			continue
+		var middle: Vector3 = (dummy as Node3D).global_position + Vector3.UP * DUMMY_MIDDLE_M
+		var base: float = def.blast_damage_at(at.distance_to(middle), root)
+		if base <= 0.0:
+			continue
+		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, 1)
+		if not space.intersect_ray(sight).is_empty():
+			continue  # a wall between: the blast does not reach
+		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
+		if dummy.call("hit", base * _damage_scale(), middle, (middle - at).normalized()) == true:
+			hurt += 1
+			_meter_from(dummy, before, base)
+	return hurt
 
 
 ## The marks' player ids the grep shot being sent claims (C25): the session reads them while

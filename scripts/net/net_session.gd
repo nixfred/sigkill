@@ -157,12 +157,24 @@ extends Node
 ## the marks as its screen shows them and never judge a player. Two messages gained a field, so
 ## protocol 9: a peer still on 8 gets the version-mismatch refusal.
 ##
+## The rm -rf cannon (C26): its wind-up is the shooter's own (the rail's charge), so the shot is
+## the usual intent sent when the wind-up ends. The host believes it as any shot and runs the
+## slug in its own world (scripts/weapons/rm_slug.gd); where it stops, the blast is judged here
+## (_judge_slug_blast): every living player within its radius (root's larger one) with nothing of
+## the level between, the shooter too at the weapon's self-damage share, takes the damage for its
+## distance at the shooter's strength (root's harder hits), told as a shot of the rm -rf cannon,
+## each kill as a death by it (a shooter it kills: "rm -rf: <name> removed themself" in the feed,
+## no kill credited). Every joiner gets the shot in the seed message, _bomb, and the blast in the
+## fork bomb's blast word, _blast (now sent from _tell_blast for both): its slug flies the same
+## line, goes off only on that word, at the host's place, and never judges anything. No message
+## changed: protocol 9 still.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
 ## player's sudo charges and root time, a fork() shot's seed, a grep shot's seed and its claimed and
-## believed marks (player ids), and the top table's numbers (game PIDs, kills,
+## believed marks (player ids), an rm -rf shot and where its blast went off, and the top table's numbers (game PIDs, kills,
 ## deaths, damage dealt, time alive, the match's uptime and load). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
@@ -189,6 +201,7 @@ const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
+const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -320,6 +333,8 @@ var last_killer := {}
 var last_killer_name := {}
 ## The signal the killing weapon sends, for the feed: "SIGKILL" for the cannon (C16).
 var last_kill_word := {}
+## For a player its own weapon killed, that weapon's self-kill words, for the feed (C26); else "".
+var last_kill_self := {}
 var respawn_left := {}
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
@@ -1271,6 +1286,7 @@ func _clear_players() -> void:
 	last_killer = {}
 	last_killer_name = {}
 	last_kill_word = {}
+	last_kill_self = {}
 	respawn_left = {}
 	lives = {}
 	_pending_spawn = Vector3.INF
@@ -1384,7 +1400,7 @@ func _on_peer_disconnected(id: int) -> void:
 	players.erase(id)
 	combat.remove_player(id)
 	_actions_from.erase(id)
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives]:
 		table.erase(id)
 	_drop_avatar(id)
 	_send_roster()
@@ -1476,7 +1492,7 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 		dead[ids[i]] = deads[i] != 0
 		protect_left[ids[i]] = protects[i]
 		lives[ids[i]] = life_numbers[i]
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -1783,6 +1799,14 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)
 		_flush_sudo()
 		return
+	if def.is_slug():
+		# The rm -rf cannon (C26): the slug flies in the host's world and its blast is judged
+		# here; every joiner draws it from the seed message and the blast word. No seed needed.
+		_throws += 1
+		_spawn_volley(_throws, shooter, weapon, 0, origin, dir, true)
+		_tell_seed(_throws, shooter, weapon, 0, origin, dir)
+		_flush_sudo()
+		return
 	if def.is_seeker():
 		# grep (C25): the claims the host believes, then the darts as a volley the host runs and
 		# judges; every joiner draws the same one from its seed and the believed marks.
@@ -1909,7 +1933,7 @@ func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vecto
 	# the darts stay as many as the host's and fan the same.
 	if marks.size() > WeaponDefScript.MARKS_LAST or (not marks.is_empty() and not _weapons[weapon].is_seeker()):
 		return
-	if _weapons[weapon].is_fork():
+	if _weapons[weapon].is_fork() or _weapons[weapon].is_slug():
 		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)
 	elif _weapons[weapon].is_seeker():
 		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false, marks)
@@ -1920,7 +1944,15 @@ func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vecto
 ## A blast of a throw, from the host: where, which generation and which bomblet of it.
 @rpc("authority", "call_remote", "reliable")
 func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
-	if state != State.JOINED or not at.is_finite() or not _chains.has(throw_id):
+	if state != State.JOINED or not at.is_finite():
+		return
+	if _volleys.has(throw_id):
+		# The blast of an rm -rf slug (C26): its slug here goes off at the host's place.
+		var slug = _volleys[throw_id]
+		if gen == 0 and index == 0 and is_instance_valid(slug) and slug.has_method("apply_blast"):
+			slug.apply_blast(_arena.to_global(at))
+		return
+	if not _chains.has(throw_id):
 		return
 	var held: Dictionary = _chains[throw_id]
 	if is_instance_valid(held["chain"]):
@@ -1952,13 +1984,18 @@ func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin
 ## A blast of a chain the host runs, to every joiner; the thrower's callout when it is the
 ## host's own first.
 func _on_chain_blasted(gen: int, index: int, at: Vector3, throw_id: int, thrower: int) -> void:
-	var local: Vector3 = _arena.to_local(at)
+	_tell_blast(throw_id, gen, index, _arena.to_local(at))
+	if gen == 0 and thrower == my_id and _player_ready():
+		_player.fork_bomb_burst.emit()
+
+
+## A blast the host's world saw, to every joiner: a fork bomb's (its generation and index) or an
+## rm -rf slug's (C26, generation 0, index 0), `local` in arena space.
+func _tell_blast(throw_id: int, gen: int, index: int, local: Vector3) -> void:
 	var connected := multiplayer.get_peers()
 	for peer in players:
 		if peer != 1 and connected.has(peer):
 			_blast.rpc_id(peer, throw_id, gen, index, local)
-	if gen == 0 and thrower == my_id and _player_ready():
-		_player.fork_bomb_burst.emit()
 
 
 ## The host's judgement of one blast (`at`, world space) of `thrower`'s chain: every living
@@ -2028,7 +2065,14 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 	elif mine:
 		judge = _player.fork_hit.bind(def)  # this machine's own dummies, never a player
 	var volley: Node3D
-	if def.is_seeker():
+	if def.is_slug():
+		# The rm -rf cannon (C26): the host's slug judges its blast; a joiner's only draws it and
+		# goes off on the host's word (_blast).
+		var blast := _judge_slug_blast.bind(shooter, weapon, root) if deciding else Callable()
+		volley = RmSlug.spawn(_arena, def, _arena.to_global(origin), along, root, deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), blast)
+		if deciding:
+			volley.blasted.connect(_on_slug_blasted.bind(shot_id))
+	elif def.is_seeker():
 		var points := []
 		for id in marks:
 			points.append(_mark_point.bind(id))
@@ -2043,6 +2087,68 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 
 func _on_volley_finished(_landed: int, shot_id: int) -> void:
 	_volleys.erase(shot_id)
+
+
+## The host's rm -rf slug went off at `at` (world space, C26): every joiner's slug goes off there.
+func _on_slug_blasted(at: Vector3, shot_id: int) -> void:
+	if _arena != null and is_instance_valid(_arena):
+		_tell_blast(shot_id, 0, 0, _arena.to_local(at))
+
+
+## The host's judgement of the blast of `shooter`'s rm -rf slug at `at` (world space, C26):
+## every living player whose middle is within the blast's radius (the larger one with `root`),
+## with nothing of the level between, takes the blast's damage for its distance at the shooter's
+## strength (combat.damage_scale, C22); the shooter itself too, at the weapon's self_damage_share
+## of it (a death it causes credits no kill). Told as a shot of the rm -rf cannon, each kill as a
+## death by it. How many players it hurt.
+func _judge_slug_blast(at: Vector3, shooter: int, weapon: String, root: bool) -> int:
+	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player) or _arena == null or not is_instance_valid(_arena):
+		return 0
+	var def: WeaponDefScript = _weapons[weapon]
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var scale := combat.damage_scale(shooter)
+	var hits := PackedInt32Array()
+	var healths := PackedFloat32Array()
+	var killed := PackedInt32Array()
+	for id in players:
+		if not combat.alive(id):
+			continue
+		var middle := Vector3.INF
+		if id == 1:
+			middle = _player.global_position
+		else:
+			var avatar = avatars.get(id)
+			if avatar != null and is_instance_valid(avatar) and avatar.visible:
+				middle = _arena.to_global(avatar.latest_position())
+		if not middle.is_finite():
+			continue
+		var base: float = def.blast_damage_at(at.distance_to(middle), root)
+		if id == shooter:
+			base *= def.self_damage_share  # the blast hurts its shooter too
+		if base <= 0.0:
+			continue
+		var sight := PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, BLAST_SIGHT_MASK)
+		if not space.intersect_ray(sight).is_empty():
+			continue  # a wall between: the blast does not reach
+		var before := combat.health_of(id)
+		var outcome := combat.damage_player(id, shooter, base * scale)
+		if outcome.is_empty():
+			continue
+		hits.append(id)
+		healths.append(outcome["health"])
+		if outcome["killed"]:
+			killed.append(id)
+		if id != shooter:
+			combat.add_meter(shooter, minf(base, before) / _ct.max_health, outcome["killed"])
+	if hits.is_empty():
+		return 0
+	var local: Vector3 = _arena.to_local(at)
+	_broadcast_shot(shooter, weapon, local, PackedVector3Array([local]), hits, healths)
+	for victim in killed:
+		_broadcast_death(victim, shooter, Vector3.UP, weapon)
+	_mirror_from_combat()
+	_flush_sudo()
+	return hits.size()
 
 
 ## The host's check of a grep shot's claimed marks (C25), the shot itself already believed from
@@ -2721,6 +2827,7 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 	last_killer[victim] = killer
 	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
 	last_kill_word[victim] = _feed_word(victim, weapon)
+	last_kill_self[victim] = _weapons[weapon].self_kill_word if killer == victim and _weapons.has(weapon) else ""
 	if killer == my_id and killer != victim and _weapons.has(weapon) and _player_ready():
 		if _weapons[weapon].is_ult():
 			_player.rail_kill.emit(_player.took_head(victim))

@@ -50,17 +50,28 @@ extends "res://scripts/weapon_tuning.gd"
 ## In a match the host believes a claimed mark within lock_range_m plus claim_tolerance_m and
 ## sight_cone_degrees plus claim_tolerance_degrees of the shot's aim, in sight. The Seek group
 ## is empty (0) for every other weapon.
+##
+## The rm -rf cannon (C26, resources/rm_rf_cannon.tres): fire_mode SLUG winds up first, charge_s
+## the "are you sure" beat (root_charge_scale of it while C22's root is on), and moves the
+## shooter at move_scale of its pace through the wind-up and move_slow_s after the shot. The
+## shot is one slow, heavy slug flying straight at slug_speed that detonates on the first wall,
+## floor or body it meets, or at fire_range. Its blast reaches blast_radius_m (root_blast_scale
+## times that as root): damage at its centre, easing straight down to blast_edge_damage at the
+## edge, nothing beyond, and nothing through the level. It hurts its own shooter too, at
+## self_damage_share of the blast; a shooter it kills is "<kill_word>: <name> <self_kill_word>"
+## in the feed. The HUD types charge_prompt out as the wind-up fills. The Blast group is empty
+## (0) for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
-## (fork()), seeker darts since C25 (grep). Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER]
+## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf). Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -108,6 +119,16 @@ const DART_SPEED_FIRST := 5.0
 const DART_SPEED_LAST := 400.0
 const DART_TURN_LAST := 1440.0
 const BRACKET_LAST_PX := 200.0
+## The rm -rf slug (C26): the bounds of its numbers.
+const SLUG_SPEED_FIRST := 1.0
+const SLUG_SPEED_LAST := 60.0
+const SLUG_RADIUS_LAST_M := 0.5
+const SLUG_TRAIL_LAST_M := 5.0
+const BLAST_RADIUS_LAST_M := 20.0
+const ROOT_BLAST_SCALE_LAST := 4.0
+const MOVE_SLOW_LAST_S := 5.0
+const RING_LAST_S := 2.0
+const WAIT_LAST_S := 5.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -121,6 +142,12 @@ const BRACKET_LAST_PX := 200.0
 @export var fiction: String = "cannon: one line, one hit."
 ## The signal the kill feed names: "<kill_word> sent by <killer>".
 @export var kill_word: String = "SIGKILL"
+## A weapon that can kill its own shooter (C26): the feed's words for that, after the name
+## ("rm -rf: Daemon-2 removed themself"). Empty for every other weapon.
+@export var self_kill_word: String = ""
+## A weapon that winds up (C26): the HUD line typed out as the wind-up fills. Empty for the
+## rest (the rail's charge shows its own bar).
+@export var charge_prompt: String = ""
 
 @export_group("Mode")
 ## How a shot travels. Hitscan single, hitscan pellets and projectile (thrown, C19) are
@@ -231,6 +258,28 @@ const BRACKET_LAST_PX := 200.0
 @export var bracket_open_px: float = 0.0
 @export var bracket_marked_px: float = 0.0
 
+@export_group("Blast")
+## The rm -rf cannon (C26): the wind-up's share as root (0 for no change: the rail).
+@export var root_charge_scale: float = 0.0
+## The shooter's pace while winding up and for move_slow_s after the shot, a share of its own.
+@export var move_scale: float = 0.0
+@export var move_slow_s: float = 0.0
+## The slug: metres a second, and the look (a heavy glowing head and a thick trail).
+@export var slug_speed: float = 0.0
+@export var slug_radius_m: float = 0.0
+@export var slug_trail_m: float = 0.0
+## The blast: its radius in metres (times root_blast_scale as root), the damage at its edge
+## (damage is the centre's), the share the shooter takes of what it would deal there, and how
+## long its ring takes to grow to the radius and fade.
+@export var blast_radius_m: float = 0.0
+@export var root_blast_scale: float = 0.0
+@export var blast_edge_damage: float = 0.0
+@export_range(0.0, 1.0) var self_damage_share: float = 0.0
+@export var blast_ring_s: float = 0.0
+## In a match: seconds a joiner's slug waits at a wall or at its range for the host's word of
+## the blast before it gives up.
+@export var blast_wait_s: float = 0.0
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -248,7 +297,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets and seeker" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker and slug" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -260,6 +309,8 @@ func problems() -> PackedStringArray:
 		out.append_array(_fork_problems())
 	elif fire_mode == FireMode.SEEKER:
 		out.append_array(_seek_problems())
+	elif fire_mode == FireMode.SLUG:
+		out.append_array(_slug_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -274,6 +325,8 @@ func problems() -> PackedStringArray:
 		out.append("only fork() pellets (fire_mode fork pellets) fill the fork group")
 	if fire_mode != FireMode.SEEKER and (dart_speed != 0.0 or lock_s != 0.0 or max_marks != 0 or root_max_marks != 0 or lock_range_m != 0.0):
 		out.append("only grep darts (fire_mode seeker) fill the seek group")
+	if fire_mode != FireMode.SLUG and (slug_speed != 0.0 or blast_radius_m != 0.0 or self_damage_share != 0.0 or move_scale != 0.0 or root_charge_scale != 0.0 or self_kill_word != "" or charge_prompt != ""):
+		out.append("only the rm -rf slug (fire_mode slug) fills the blast group, the self-kill words and the charge prompt")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -343,9 +396,41 @@ func is_seeker() -> bool:
 
 
 ## True for a weapon whose shot flies as a volley of projectiles the host runs and every
-## screen draws from a seed: fork() (C24) and grep (C25).
+## screen draws from a seed: fork() (C24), grep (C25) and the rm -rf slug (C26).
 func is_volley() -> bool:
-	return is_fork() or is_seeker()
+	return is_fork() or is_seeker() or is_slug()
+
+
+## True for the rm -rf cannon's slug (C26): one slow shot that blasts where it stops.
+func is_slug() -> bool:
+	return fire_mode == FireMode.SLUG
+
+
+## Seconds the shot winds up (charges) for: charge_s, or root_charge_scale of it with `root`
+## (C26's "--no-preserve-root"); the rail's is the same either way.
+func charge_for(root: bool) -> float:
+	return charge_s * (root_charge_scale if root and root_charge_scale > 0.0 else 1.0)
+
+
+## The share of its pace the shooter keeps while this weapon winds up and just after: 1 for
+## every weapon but the slug's.
+func move_factor() -> float:
+	return move_scale if move_scale > 0.0 else 1.0
+
+
+## The blast's reach in metres: blast_radius_m, root_blast_scale times that with `root`.
+func blast_radius_for(root: bool) -> float:
+	return blast_radius_m * (root_blast_scale if root else 1.0)
+
+
+## The blast's damage at `distance` metres from its centre, at user's strength: damage at the
+## centre, easing straight down to blast_edge_damage at the radius (the larger root one with
+## `root`), nothing beyond it.
+func blast_damage_at(distance: float, root: bool) -> float:
+	var radius := blast_radius_for(root)
+	if not is_finite(distance) or distance < 0.0 or radius <= 0.0 or distance > radius:
+		return 0.0
+	return lerpf(damage, blast_edge_damage, distance / radius)
 
 
 ## Marks held at once: as user, or with `root` (C22's overcharge) the tuning's root number.
@@ -482,6 +567,41 @@ func _seek_problems() -> PackedStringArray:
 		out.append("dart_speed must be between %s and %s" % [DART_SPEED_FIRST, DART_SPEED_LAST])
 	if is_finite(lock_range_m) and is_finite(fire_range) and fire_range < lock_range_m:
 		out.append("fire_range, the darts' reach, must be at least lock_range_m")
+	return out
+
+
+func _slug_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("the rm -rf cannon fires one slug: pellet_count stays 1")
+	if projectile != null or not has_magazine() or pierce or ult_meter > 0.0:
+		out.append("the rm -rf cannon fires from a magazine: no projectile tuning, pierce or ult")
+	if not is_finite(falloff_floor) or falloff_floor != 1.0:
+		out.append("the slug's falloff is its blast's: falloff_floor stays 1")
+	if not is_finite(charge_s) or charge_s <= 0.0:
+		out.append("the rm -rf cannon winds up: charge_s above 0")
+	var bounds := [
+		["root_charge_scale", root_charge_scale, 0.0, 1.0], ["move_scale", move_scale, 0.0, 1.0],
+		["slug_speed", slug_speed, SLUG_SPEED_FIRST, SLUG_SPEED_LAST], ["slug_radius_m", slug_radius_m, 0.0, SLUG_RADIUS_LAST_M],
+		["slug_trail_m", slug_trail_m, 0.0, SLUG_TRAIL_LAST_M], ["blast_radius_m", blast_radius_m, 0.0, BLAST_RADIUS_LAST_M],
+		["blast_ring_s", blast_ring_s, 0.0, RING_LAST_S], ["blast_wait_s", blast_wait_s, 0.0, WAIT_LAST_S],
+	]
+	for b in bounds:
+		var v: float = b[1]
+		if not is_finite(v) or v <= b[2] or v > b[3]:
+			out.append("%s must be above %s and at most %s" % [b[0], b[2], b[3]])
+	if not is_finite(root_blast_scale) or root_blast_scale < 1.0 or root_blast_scale > ROOT_BLAST_SCALE_LAST:
+		out.append("root_blast_scale must be between 1 and %s" % ROOT_BLAST_SCALE_LAST)
+	if not is_finite(move_slow_s) or move_slow_s < 0.0 or move_slow_s > MOVE_SLOW_LAST_S:
+		out.append("move_slow_s must be between 0 and %s" % MOVE_SLOW_LAST_S)
+	if not is_finite(blast_edge_damage) or blast_edge_damage < 0.0 or blast_edge_damage > damage:
+		out.append("blast_edge_damage must be between 0 and the centre's damage")
+	if not is_finite(self_damage_share) or self_damage_share <= 0.0 or self_damage_share > 1.0:
+		out.append("self_damage_share must be above 0 and at most 1: the blast hurts its shooter")
+	if not _is_line(self_kill_word, WORD_LAST):
+		out.append("self_kill_word must be 1 to %d printable characters" % WORD_LAST)
+	if not _is_line(charge_prompt, FICTION_LAST):
+		out.append("charge_prompt must be 1 to %d printable characters" % FICTION_LAST)
 	return out
 
 

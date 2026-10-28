@@ -270,7 +270,7 @@ func _arena_checks() -> void:
 	var marks_hud = hud.grep_marks()
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 6 (after the cannon, SIGTERM, the rail, the fork bomb and fork()); the player holds six", shipped.loadout.size() == 6 and shipped.loadout[SLOT] == _w and inv.slot_count() == 6 and inv.defs[SLOT].id == "grep_seeker", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 6 (after the cannon, SIGTERM, the rail, the fork bomb and fork()); the player holds six (seven since C26's rm -rf)", shipped.loadout.size() == 7 and shipped.loadout[SLOT] == _w and inv.slot_count() == 7 and inv.defs[SLOT].id == "grep_seeker", str(inv.defs.map(func(d): return d.id)))
 	# Key 6, the wheel, Q.
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_6
@@ -295,7 +295,7 @@ func _arena_checks() -> void:
 	p.swap_to_last()
 	var last: int = inv.current
 	await _settle(p, 0.5)
-	_check("acceptance: key 6 draws it; the weapon cycle reaches it after fork() and wraps from it to the cannon and back; Q returns to it; \"grep -c: 0\" under the crosshair only while it is in hand", by_key == SLOT and next == SLOT and wrapped == 0 and back == SLOT and last == SLOT and away == "" and marks_hud.count_text() == "grep -c: 0", "%d %d %d %d %d '%s' '%s'" % [by_key, next, wrapped, back, last, away, marks_hud.count_text()])
+	_check("acceptance: key 6 draws it; the weapon cycle reaches it after fork() and goes on from it (to the rm -rf cannon, slot 7 since C26) and back; Q returns to it; \"grep -c: 0\" under the crosshair only while it is in hand", by_key == SLOT and next == SLOT and wrapped == 6 and back == SLOT and last == SLOT and away == "" and marks_hud.count_text() == "grep -c: 0", "%d %d %d %d %d '%s' '%s'" % [by_key, next, wrapped, back, last, away, marks_hud.count_text()])
 	var dummies := _line_up(main)
 	var a: Node3D = dummies[0]
 	var calls := []
@@ -665,7 +665,7 @@ func _layout_checks() -> void:
 				if label != count and not strip.is_ancestor_of(label) and count.is_visible_in_tree() and count.get_global_rect().intersects(rect):
 					wrong.append("under grep's count: %s" % label.text.left(20))
 			strips.append([host["hud"].weapon_hud().slots_text(), strip_labels, count.is_visible_in_tree(), count.get_global_rect().position.y > screen.size.y * 0.5])
-		_check("acceptance: at %dx%d the strip fits six slots: with SIGTERM drawn (\"%s\") and with grep drawn (\"%s\", its \"grep -c: 0\" under the crosshair), four grep kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything" % [size.x, size.y, strips[0][0], strips[1][0]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6" and strips[1][0] == "1 2 3 4(2) 5 [6 grep]" and strips[0][1] == 10 and strips[1][1] == 10 and not strips[0][2] and strips[1][2] and strips[1][3] and hud.feed_text()[0] == "grep sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
+		_check("acceptance: at %dx%d the strip fits six slots (seven since C26): with SIGTERM drawn (\"%s\") and with grep drawn (\"%s\", its \"grep -c: 0\" under the crosshair), four grep kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything" % [size.x, size.y, strips[0][0], strips[1][0]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7" and strips[1][0] == "1 2 3 4(2) 5 [6 grep] 7" and strips[0][1] == 11 and strips[1][1] == 11 and not strips[0][2] and strips[1][2] and strips[1][3] and hud.feed_text()[0] == "grep sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
 		_drop(host)
 		await _frames(2)
 	root.size = before
