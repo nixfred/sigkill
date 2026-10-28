@@ -505,6 +505,9 @@ func attach(arena: Node, player: Node) -> void:
 		player.reload_started.connect(_on_reload_started)
 	if player.has_signal("throw_intent") and not player.throw_intent.is_connected(_on_throw_intent):
 		player.throw_intent.connect(_on_throw_intent)
+	for id in _chains.keys():
+		if not is_instance_valid(_chains[id]["chain"]):
+			_chains.erase(id)  # chains of the arena that went away with it
 	var stop = player.get("sigstop")
 	if stop != null and stop.has_signal("intent"):
 		stop.session = self

@@ -258,6 +258,25 @@ func _solo_checks() -> void:
 	await _until_done(main, 400)
 	_check("acceptance: a wall between the blasts and a daemon blocks every one of them: a full chain 2.6 m away on the wall's far side leaves it at full health", guard.is_alive() and guard.health() == 100.0, "%.1f" % guard.health())
 	wall.free()
+	# A throw against a wall: the bomb leaves on this side of it, and nothing goes off beyond.
+	p.respawn_at(main.to_global(Vector3(-15.0, STAND_Y, LINE_Z)))
+	_aim(p, main.to_global(Vector3(20.0, STAND_Y + 0.65, LINE_Z)))
+	await _settle(p, 0.3)
+	var eye_x: float = main.to_local(p.eye_position()).x
+	var face := _wall(main, Vector3(eye_x + 0.3, 1.5, LINE_Z), Vector3(0.1, 3.0, 4.0))
+	await _frames(2)
+	inv.mags[SLOT] = 2
+	inv.cooldowns[SLOT] = 0.0
+	var blasts_at := []
+	var close: bool = p.quick_throw()
+	var against = _chains(main)[0] if not _chains(main).is_empty() else null
+	var start_x: float = main.to_local(against.get("_bombs")[0]["pos"]).x if against != null else INF
+	if against != null:
+		against.blasted.connect(func(_g, _i, at): blasts_at.append(main.to_local(at)))
+	await _until_done(main, 400)
+	var beyond := blasts_at.filter(func(at): return at.x > eye_x + 0.25)
+	_check("a throw against a wall 0.3 m off leaves on this side of it (from %.2f m ahead), and none of its blasts is beyond it" % (start_x - eye_x), close and start_x < eye_x + 0.25 and beyond.is_empty(), "start %.2f, wall at %.2f, %d beyond" % [start_x, eye_x + 0.25, beyond.size()])
+	face.free()
 	# The live cap under spam: bombs and the interval forced, a throw every frame.
 	inv.mags[SLOT] = 40
 	var peak := 0

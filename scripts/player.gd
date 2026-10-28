@@ -60,8 +60,9 @@ const Sigstop = preload("res://scripts/abilities/sigstop.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
-## A throw leaves this far in front of the eyes.
+## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
 const THROW_AHEAD_M := 0.4
+const THROW_CLEAR_M := 0.1
 ## Added to the host's remaining reload or draw time when this side's has to wait for it:
 ## three physics frames at 60 Hz.
 const TIMING_MARGIN_S := 0.05
@@ -964,7 +965,14 @@ func _bombs_full(slot: int) -> bool:
 func _throw_from(slot: int) -> void:
 	var def: WeaponDefScript = inventory.defs[slot]
 	var forward := -_camera.global_transform.basis.z
-	var origin := _camera.global_position + forward * THROW_AHEAD_M
+	var eye := _camera.global_position
+	var origin := eye + forward * THROW_AHEAD_M
+	# Never past the level: against a wall the bomb leaves on this side of it (a ray that
+	# starts inside a wall would not see it, and the bomb would fly on beyond).
+	var probe := PhysicsRayQueryParameters3D.create(eye, origin, 1)
+	var wall := get_world_3d().direct_space_state.intersect_ray(probe)
+	if not wall.is_empty():
+		origin = eye + forward * maxf(eye.distance_to(wall["position"]) - THROW_CLEAR_M, 0.0)
 	_sfx[slot][0].play()
 	if slot == inventory.current:
 		_viewmodel_kick = 1.0
