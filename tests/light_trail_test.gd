@@ -16,7 +16,9 @@ extends SceneTree
 ## host's on both screens and the joiner's own walls gone; the host walking back into its own
 ## older wall kills itself, no kill counted; a respawn starts with no walls; a running jump
 ## lays nothing in the air and nothing across it; the walls expire on their lifetime on both
-## screens; turning the rule off and leaving the match take every wall away; no orphan nodes.
+## screens; turning the rule off takes every wall away; a joiner arriving while walls stand
+## gets every one from the host, each with its age; leaving the match takes them all away; no
+## orphan nodes.
 ## Deterministic: no random numbers are drawn, every walk is a fixed number of physics frames
 ## at most, and nothing waits a frame count for the network. Nothing outside this process is
 ## touched.
@@ -141,8 +143,8 @@ func _source_checks() -> void:
 	var session := _code("res://scripts/net/net_session.gd")
 	var tick := _body(session, "_tick_trails")
 	var host_only := tick.find("if state != State.HOSTING or combat == null:\n\t\treturn")
-	_check("only the host lays and judges walls: in _tick_trails both come after its hosting check, nowhere else; a joiner's _trail only adds the host's segment", host_only > 0 and tick.find("trails.advance(") > host_only and tick.find("trails.touching(") > host_only and session.count("trails.advance(") == 1 and session.count("trails.touching(") == 1 and _body(session, "_trail").contains("trails.add(id, a, b)") and not _body(session, "_trail").contains("damage_player"))
-	_check("the wire: protocol 6, the rule and the segments authority RPCs from the host; a trail death is the usual death message with the cause \"light_trail\"; the relay's own protocol is untouched (wire 2)", Session.PROTOCOL == 6 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _rules(light_trails: bool) -> void:') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _trail(id: int, life: int, a: Vector3, b: Vector3) -> void:') and _body(session, "_death").contains("weapon == LIGHT_TRAIL") and tick.contains("_broadcast_death(id, wall_owner, push, LIGHT_TRAIL)") and RelayWire.WIRE == 2)
+	_check("only the host lays and judges walls: in _tick_trails both come after its hosting check, nowhere else; a joiner's _trail only adds the host's segment", host_only > 0 and tick.find("trails.advance(") > host_only and tick.find("trails.touching(") > host_only and session.count("trails.advance(") == 1 and session.count("trails.touching(") == 1 and _body(session, "_trail").contains("trails.add(id, a, b, age)") and not _body(session, "_trail").contains("damage_player"))
+	_check("the wire: protocol 6, the rule and the segments authority RPCs from the host; a trail death is the usual death message with the cause \"light_trail\"; the relay's own protocol is untouched (wire 2)", Session.PROTOCOL == 6 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _rules(light_trails: bool) -> void:') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _trail(id: int, life: int, a: Vector3, b: Vector3, age: float) -> void:') and _body(session, "_death").contains("weapon == LIGHT_TRAIL") and tick.contains("_broadcast_death(id, wall_owner, push, LIGHT_TRAIL)") and RelayWire.WIRE == 2)
 
 
 # --- The walls' own rules, on one node. ---
@@ -371,6 +373,19 @@ func _match_checks() -> void:
 	var again := await _until(func(): return cs.light_trails_on(), 4000)
 	await _walk(hp, func(): return LightTrails.find(hm) != null and LightTrails.find(hm).count_of(1) >= 2, 60)
 	await _until(func(): return LightTrails.find(cm) != null and LightTrails.find(cm).count_of(1) >= 2, 4000)
+	# A joiner arriving while walls stand: the joiner leaves and comes back.
+	await _stop(hp)
+	cs.leave()
+	await _frames(5)
+	cs.join("127.0.0.1:%d" % hs.listen_port())
+	var rejoined := await _until(func(): return cs.state == Session.State.JOINED and hs.players.size() == 2 and cs.players.size() == 2, 6000)
+	var caught := await _until(func(): return _same_walls(hm, cm, 1), 4000)
+	var host_walls: Array = LightTrails.find(hm).walls_of(1) if LightTrails.find(hm) != null else []
+	var their_walls: Array = LightTrails.find(cm).walls_of(1) if LightTrails.find(cm) != null else []
+	var ages_close := host_walls.size() == their_walls.size() and not host_walls.is_empty()
+	for i in mini(host_walls.size(), their_walls.size()):
+		ages_close = ages_close and absf(host_walls[i][2] - their_walls[i][2]) <= 0.1
+	_check("a joiner arriving while walls stand gets every one of them from the host, each with its age, so they end on its screen when they end on the host's (%d walls, ages %s here, %s there)" % [host_walls.size(), host_walls.map(func(w): return snappedf(w[2], 0.01)), their_walls.map(func(w): return snappedf(w[2], 0.01))], rejoined and caught and ages_close and cs.light_trails_on())
 	var had: int = LightTrails.find(cm).count_of(1) if LightTrails.find(cm) != null else 0
 	hs.leave()
 	var gone := await _until(func(): return cs.state != Session.State.JOINED, 6000)

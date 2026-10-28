@@ -87,7 +87,7 @@ func reach() -> float:
 	return RemotePlayer.HIT_RADIUS + tuning.thickness_m * 0.5
 
 
-## Sets `owner`'s wall colour (its match slot's), drawn from then on.
+## Sets `id`'s wall colour (its match slot's), drawn from then on.
 func paint(id: int, color: Color) -> void:
 	var o := _owner(id)
 	if o["color"] != color:
@@ -95,7 +95,7 @@ func paint(id: int, color: Color) -> void:
 		_refresh(id)
 
 
-## `owner` seen at `ground` (the ground under them) when `grounded`, else in the air: lays a
+## `id` seen at `ground` (the ground under them) when `grounded`, else in the air: lays a
 ## segment when they have gone spacing_m along the ground since the last one ended. Returns
 ## the segment laid, [from, to], or [].
 func advance(id: int, ground: Vector3, grounded: bool) -> Array:
@@ -118,18 +118,19 @@ func advance(id: int, ground: Vector3, grounded: bool) -> Array:
 	return [anchor, ground]
 
 
-## A segment of `owner`'s wall from `a` to `b`, new: laid here, or as the host says.
-func add(id: int, a: Vector3, b: Vector3) -> void:
+## A segment of `id`'s wall from `a` to `b`, `age` seconds old: new when laid here or sent
+## by the host as it lays it; older when the host catches a new joiner up on the walls.
+func add(id: int, a: Vector3, b: Vector3, age: float = 0.0) -> void:
 	var o := _owner(id)
 	var segments: Array = o["segments"]
-	segments.append({"a": a, "b": b, "age": 0.0})
+	segments.append({"a": a, "b": b, "age": age})
 	while segments.size() > tuning.cap:
 		segments.pop_front()  # the cap: the oldest goes
 	_bounds(o)
 	_refresh(id)
 
 
-## Every wall of `owner` gone, and their next starts afresh (a death, a respawn).
+## Every wall of `id` gone, and their next starts afresh (a death, a respawn).
 func clear(id: int) -> void:
 	if not _owners.has(id):
 		return
@@ -166,8 +167,9 @@ func tick(delta: float) -> void:
 		if gone > 0:
 			o["segments"] = segments.slice(gone)  # oldest first: the expired lead
 			_bounds(o)
-		if gone > 0 or fading:
 			_refresh(id)
+		elif fading:
+			_refresh(id, true)
 
 
 ## The owner of a wall the body whose middle is at `pos` touches, `who` being that body's
@@ -196,7 +198,7 @@ func touching(pos: Vector3, who: int) -> int:
 	return -1
 
 
-## Which way a body at `pos` is thrown by the wall of `owner` it touched: away from it,
+## Which way a body at `pos` is thrown by the wall of `id` it touched: away from it,
 ## along the ground. Straight back along z when that cannot be told.
 func push_of(pos: Vector3, id: int) -> Vector3:
 	var best := INF
@@ -214,7 +216,20 @@ func push_of(pos: Vector3, id: int) -> Vector3:
 	return away
 
 
-## `owner`'s segments, oldest first, each [from, to].
+## `id`'s segments, oldest first, each [from, to, age].
+func walls_of(id: int) -> Array:
+	var out := []
+	for s in _owners.get(id, {}).get("segments", []):
+		out.append([s["a"], s["b"], s["age"]])
+	return out
+
+
+## Every player with walls here.
+func owners() -> Array:
+	return _owners.keys()
+
+
+## `id`'s segments, oldest first, each [from, to].
 func segments_of(id: int) -> Array:
 	var out := []
 	for s in _owners.get(id, {}).get("segments", []):
@@ -234,7 +249,7 @@ func total() -> int:
 	return n
 
 
-## Where `owner`'s next segment will start, INF when none (airborne, or not seen yet).
+## Where `id`'s next segment will start, INF when none (airborne, or not seen yet).
 func anchor_of(id: int) -> Vector3:
 	return _owners.get(id, {}).get("anchor", Vector3.INF)
 
@@ -256,8 +271,9 @@ func _bounds(o: Dictionary) -> void:
 	o["hi"] = hi
 
 
-## Draws `owner`'s segments: one box each, along the ground from its start to its end.
-func _refresh(id: int) -> void:
+## Draws `id`'s segments: one box each, along the ground from its start to its end. With
+## `fading_only`, only the colours of the oldest, those in their fade, change.
+func _refresh(id: int, fading_only: bool = false) -> void:
 	var o: Dictionary = _owners[id]
 	var view = o["view"]
 	if view == null or not is_instance_valid(view):
@@ -282,6 +298,11 @@ func _refresh(id: int) -> void:
 	multimesh.visible_instance_count = segments.size()
 	for i in segments.size():
 		var s: Dictionary = segments[i]
+		if fading_only:
+			if s["age"] <= tuning.lifetime_s - tuning.fade_s:
+				break  # oldest first: none after this one fades yet
+			multimesh.set_instance_color(i, Color(bright, clampf((tuning.lifetime_s - s["age"]) / tuning.fade_s, 0.0, 1.0)))
+			continue
 		var a: Vector3 = s["a"]
 		var b: Vector3 = s["b"]
 		var run := Vector2(b.x - a.x, b.z - a.z)

@@ -103,8 +103,9 @@ extends Node
 ## has no trails. The host owns every wall (scripts/modes/light_trails.gd): from each living
 ## player's place as it knows it (its own body; a joiner's newest position), with a ray down
 ## to the level for whether they are on the ground, it lays their segments and sends each to
-## every joiner, _trail (owner, life, from, to), whose screen draws it and ages it on its own
-## clock; and every physics step it judges every living, unprotected player's body against
+## every joiner, _trail (owner, life, from, to, age 0), whose screen draws it and ages it on
+## its own clock (a joiner arriving while walls stand is sent each with its age, so both
+## screens end it together); and every physics step it judges every living, unprotected body against
 ## every wall. A touch is a kill credited to the wall's owner (killing yourself on your own
 ## older wall counts no kill): the usual death message, with the cause "light trail" in
 ## place of a weapon, so the feed reads "light trail sent by ...". A death or a respawn
@@ -1256,6 +1257,7 @@ func _on_peer_connected(id: int) -> void:
 	_spawn_avatar(id)
 	_send_roster()
 	_send_sigstop(id)
+	_send_walls(id)
 	changed.emit()
 
 
@@ -2129,7 +2131,7 @@ func _tick_trails(delta: float) -> void:
 			continue
 		for peer in players:
 			if peer != 1 and connected.has(peer):
-				_trail.rpc_id(peer, id, lives.get(id, 0), laid[0], laid[1])
+				_trail.rpc_id(peer, id, lives.get(id, 0), laid[0], laid[1], 0.0)
 	for id in players:
 		var at := _body_of(id)
 		if not combat.alive(id) or combat.protected(id) or not at.is_finite():
@@ -2171,6 +2173,20 @@ func _ground_under(at: Vector3) -> Vector3:
 	return arena.to_local(hit["position"])
 
 
+## Every wall standing now, each with its age, to `peer`, a joiner just arrived: it plays
+## among the same walls as everyone, and they end on its screen when they end here.
+func _send_walls(peer: int) -> void:
+	if state != State.HOSTING or not multiplayer.get_peers().has(peer):
+		return
+	var trails := trails_in_arena()
+	if trails == null:
+		return
+	for id in trails.owners():
+		if players.has(id):
+			for wall in trails.walls_of(id):
+				_trail.rpc_id(peer, id, lives.get(id, 0), wall[0], wall[1], wall[2])
+
+
 func _send_rules() -> void:
 	var connected := multiplayer.get_peers()
 	for id in players:
@@ -2190,10 +2206,12 @@ func _rules(light_trails: bool) -> void:
 
 
 ## A wall segment the host laid for player `id` in its life `life`, from `a` to `b` in arena
-## space.
+## space, `age` seconds ago (0 as it lays it).
 @rpc("authority", "call_remote", "reliable")
-func _trail(id: int, life: int, a: Vector3, b: Vector3) -> void:
+func _trail(id: int, life: int, a: Vector3, b: Vector3, age: float) -> void:
 	if state != State.JOINED or not players.has(id) or life != lives.get(id, -1) or dead.get(id, false):
+		return
+	if not is_finite(age) or age < 0.0 or age >= trail_tuning_in_use().lifetime_s:
 		return
 	if not a.is_finite() or not b.is_finite() or a.length() > WORLD_LAST or b.length() > WORLD_LAST:
 		return
@@ -2203,7 +2221,7 @@ func _trail(id: int, life: int, a: Vector3, b: Vector3) -> void:
 	if trails == null:
 		return
 	trails.paint(id, Palette.trail_color(players[id]["slot"]))
-	trails.add(id, a, b)
+	trails.add(id, a, b, age)
 
 
 func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
