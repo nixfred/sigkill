@@ -400,6 +400,13 @@ func _match_checks() -> void:
 	c_me = _row(cl, "Daemon-2")
 	var split := float(c_host[3]) + float(c_me[3]) if c_host.size() == 9 and c_me.size() == 9 else 0.0
 	_check("acceptance: %%CPU is each one's share of the damage dealt this round (the host's 25 against the joiner's 26: %s and %s), summing to 100; the joiner still first, by K before %%CPU" % [c_host[3] if c_host.size() == 9 else "?", c_me[3] if c_me.size() == 9 else "?"], absf(split - 100.0) < 0.15 and c_host[3] == "49.0" and c_me[3] == "51.0" and _index(cl, "Daemon-2") == 0 and int(c_me[4]) == ceili(hs.combat.health_of(cid)), "\n" + "\n".join(cl))
+	var stale: Dictionary = cs.top_numbers().duplicate(true)
+	stale["rows"][999] = {"pid": 102, "kills": 0, "deaths": 0, "dealt": 500.0, "alive_s": 1.0}
+	var gone_rows: Array = ctop.call("_match_rows", stale)
+	var gone_sum := 0.0
+	for r in gone_rows:
+		gone_sum += r["cpu"]
+	_check("a host's word still naming a player who has left (between its leaving and the next word) neither adds a row nor takes a share: the shares still sum to 100", gone_rows.size() == 2 and absf(gone_sum - 100.0) < 0.01, "%d rows, %.2f" % [gone_rows.size(), gone_sum])
 	# Root: USER root on both screens, root's red on the other's.
 	hs.combat.states[cid]["sudo"].charges = 1
 	hs.combat.set("_sudo_changed", {cid: true})

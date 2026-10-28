@@ -259,7 +259,7 @@ func _refresh() -> void:
 
 func _match_rows(numbers: Dictionary) -> Array:
 	var known: Dictionary = numbers.get("rows", {})
-	var shares := _shares(_dealt_of(known))
+	var shares := _shares(_dealt_of(known, session.players))  # a player gone since: not in the share
 	var out := []
 	for id in session.players:
 		var n: Dictionary = known.get(id, {})
@@ -349,10 +349,12 @@ func _take_round_base() -> void:
 	_base_source = source
 
 
-func _dealt_of(known: Dictionary) -> Dictionary:
+## Each process's damage dealt in `known`; with `only`, just the ones in it.
+func _dealt_of(known: Dictionary, only: Dictionary = {}) -> Dictionary:
 	var out := {}
 	for id in known:
-		out[id] = known[id]["dealt"]
+		if only.is_empty() or only.has(id):
+			out[id] = known[id]["dealt"]
 	return out
 
 
