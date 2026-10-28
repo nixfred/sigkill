@@ -10,8 +10,10 @@ extends Node3D
 ## lock (lock_s; root builds it root_lock_speed times as fast) marks the target, up to
 ## max_marks at once (root_max_marks while root). A mark stays while its target is in sight
 ## (inside the sight cone of the crosshair, nothing of the level in between) and in range, or
-## out of either for no longer than lock_grace_s; it drops at once when its target derezzes,
-## and every mark drops when the weapon is put away, at a death and at a respawn. Root ending
+## out of either for no longer than lock_grace_s; it drops at once when its target derezzes or
+## goes away (an avatar freed when its player leaves the match), and every mark drops when the
+## weapon is put away, at a death and at a respawn. A target is held untyped and checked
+## valid before any typed use: Godot refuses a freed object to a typed variable or argument. Root ending
 ## with more marks than a user holds drops the newest. A shot spends every mark.
 ##
 ## Targets are this player's enemies, as code-rain vision has them: alone, the living dummies of
@@ -31,6 +33,7 @@ const LOCK_EPS := 0.000001
 ## Why a mark dropped.
 const SIGHT := "sight"
 const DEREZZ := "derezz"
+const GONE := "gone"
 const PUT_AWAY := "put_away"
 const ROOT_OVER := "root_over"
 
@@ -61,8 +64,10 @@ func step(delta: float, weapon: WeaponDefScript, eye: Vector3, forward: Vector3,
 	_def = weapon
 	var ahead := forward.normalized()
 	for m in marks.duplicate():
-		var target: Node3D = m["target"]
-		if not alive(target):
+		var target = m["target"]
+		if not is_instance_valid(target):
+			_drop(m, GONE)
+		elif not alive(target):
 			_drop(m, DEREZZ)
 		elif _seen(target, eye, ahead, _def.sight_cone_degrees):
 			m["lost_s"] = 0.0
@@ -132,20 +137,21 @@ func clear(why: String = PUT_AWAY) -> void:
 
 
 ## Where `target`'s middle is now (world space): a dummy's above its feet, an avatar's where its
-## body is.
+## body is. `target` must be valid.
 static func point_of(target: Node3D) -> Vector3:
 	return target.global_position + (Vector3.UP * DUMMY_MIDDLE_M if target.is_in_group(TARGET_GROUP) else Vector3.ZERO)
 
 
-## A dart's mark: where `target`'s middle is while it lives, a non-finite vector once it is gone.
-static func mark_point(target: Node3D) -> Vector3:
+## A dart's mark: where `target`'s middle is while it lives, a non-finite vector once it is gone
+## (derezzed, or freed: untyped, so a freed target is no error).
+static func mark_point(target) -> Vector3:
 	return point_of(target) if alive(target) else Vector3.INF
 
 
 ## True while `target` may be marked or stay marked: a living dummy, or a shown avatar not
-## derezzed.
-static func alive(target: Node3D) -> bool:
-	if target == null or not is_instance_valid(target) or not target.is_inside_tree():
+## derezzed. Untyped: a freed target is simply not alive.
+static func alive(target) -> bool:
+	if not is_instance_valid(target) or not (target is Node3D) or not target.is_inside_tree():
 		return false
 	if target.is_in_group(TARGET_GROUP):
 		return not target.has_method("is_alive") or target.call("is_alive")

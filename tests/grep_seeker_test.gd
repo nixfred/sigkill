@@ -473,9 +473,25 @@ func _arena_checks() -> void:
 	await _frames(2)
 	_check("when root ends, the marks past user's three drop (the newest two)", lock.count() == 3 and lock.drops.get(GrepLock.ROOT_OVER, 0) == 2 and lock.marks[0]["target"] == dummies[0] and lock.marks[2]["target"] == dummies[2], "%d" % lock.count())
 	lock.clear()
+	# A target freed while marked, as an avatar is when its player leaves a match: the mark goes
+	# ("gone"), with no script error; a dart whose mark is freed in flight flies straight on.
+	_aim(p, _middle(extra[0]))
+	var freed_marked := await _lock_frames(p, lock, extra[0], 60)
+	extra[0].free()
+	await _frames(2)
+	await process_frame
+	var gone_ok: bool = freed_marked > 0 and lock.count() == 0 and lock.drops.get(GrepLock.GONE, 0) == 1 and marks_hud.count_text() == "grep -c: 0" and marks_hud.brackets().is_empty()
+	_aim(p, _middle(extra[1]))
+	await _lock_frames(p, lock, extra[1], 60)
+	var track := {"freed": false, "dirs": []}
+	var freed_shot := await _fire_tracked(main, p, _free_mid_flight.bind(extra[1], track))
+	var dirs: Array = track["dirs"]
+	var straight_on: bool = dirs.size() >= 2 and dirs.all(func(d): return d.angle_to(dirs[0]) < 0.000001)
+	_check("a marked target freed (as an avatar is when its player leaves) drops its mark as \"gone\" with no script error, the brackets and the count with it; a dart whose mark is freed in flight flies straight on from there (%d frames unturned) to a wall or its range" % dirs.size(), gone_ok and track["freed"] and straight_on and freed_shot.get("spawned", 0) == 1 and freed_shot.get("landed", -1) == 0 and [SeekerVolley.WALL, SeekerVolley.RANGE].has(freed_shot.get("ends", [[0, 0, 0, ""]])[0][3]), "%s %s %d %s" % [gone_ok, track["freed"], dirs.size(), freed_shot])
 	await _frames(2)
 	for d in extra:
-		d.queue_free()
+		if is_instance_valid(d):
+			d.queue_free()
 	_drop(arena)
 	await _frames(3)
 	var orphans_after := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
@@ -559,6 +575,19 @@ func _break_hard(v: Node, main: Node, a: Node3D) -> void:
 	if (v.positions()[0] as Vector3).distance_to(_middle(a)) < 3.0:
 		a.global_position += main.global_transform.basis * Vector3(0.0, 0.0, 6.0)
 		a.set_meta("broke", true)
+
+
+## A frame callback for a dart in flight at `d`: once it is 6 m short, `d` is freed outright;
+## after that, the dart's direction every frame goes into `track`.
+func _free_mid_flight(v: Node, d, track: Dictionary) -> void:
+	if v.flights().is_empty():
+		return
+	if not track["freed"]:
+		if is_instance_valid(d) and (v.positions()[0] as Vector3).distance_to(_middle(d)) < 6.0:
+			d.free()
+			track["freed"] = true
+		return
+	track["dirs"].append(v.flights()[0][1])
 
 
 ## Fires the drawn weapon once and waits for its volley to be done: what it recorded. The

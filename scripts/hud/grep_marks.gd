@@ -82,7 +82,8 @@ func _refresh() -> void:
 	queue_redraw()
 
 
-func _add(camera: Camera3D, target: Node3D, half: float, marked: bool) -> void:
+## `target` untyped: a mark's target may have been freed since (an avatar whose player left).
+func _add(camera: Camera3D, target, half: float, marked: bool) -> void:
 	if not GrepLock.alive(target):
 		return
 	var at := GrepLock.point_of(target)
