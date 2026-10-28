@@ -63,7 +63,10 @@ var _locked_goal := 0.0
 var _unstable := 0.0
 var _poll := 0.0
 var _seed := 0.0
-var _sent := {}
+## What the shaders were last told of the flash, the lock and the glitch (the clock goes every frame).
+var _sent_hit := -1.0
+var _sent_locked := -1.0
+var _sent_unstable := -1.0
 
 static var _shell_material: ShaderMaterial
 static var _core_material: ShaderMaterial
@@ -191,14 +194,23 @@ func _marked() -> bool:
 	return false
 
 
-## The instance uniforms on every drawn part: the clock every frame, the rest when they change.
+## The instance uniforms on every drawn part: the clock every frame, the rest when they change (or
+## all of them when `all`). Nothing is made here: it runs every frame.
 func _send(all: bool) -> void:
-	var values := {"clock": _clock, "hit": _hit, "locked": _locked, "unstable": _unstable}
+	var hit := all or _hit != _sent_hit
+	var locked := all or _locked != _sent_locked
+	var unstable := all or _unstable != _sent_unstable
 	for node in _drawn:
-		for key in values:
-			if all or key == "clock" or _sent.get(key, -1.0) != values[key]:
-				node.set_instance_shader_parameter(key, values[key])
-	_sent = values
+		node.set_instance_shader_parameter("clock", _clock)
+		if hit:
+			node.set_instance_shader_parameter("hit", _hit)
+		if locked:
+			node.set_instance_shader_parameter("locked", _locked)
+		if unstable:
+			node.set_instance_shader_parameter("unstable", _unstable)
+	_sent_hit = _hit
+	_sent_locked = _locked
+	_sent_unstable = _unstable
 
 
 # --- Building. ---
