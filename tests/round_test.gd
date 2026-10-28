@@ -391,7 +391,7 @@ func _settings_checks() -> void:
 	_check("roast is off by default: no settings file, or one that never set it", not Settings.roast_on(path) and Settings.save("claude", true, path) and not Settings.roast_on(path))
 	var saved := Settings.save_roast(true, path)
 	var text := FileAccess.get_file_as_string(path)
-	_check("B's choice is saved next to the opt-in answer, which it keeps", saved and Settings.roast_on(path) and Settings.answer_for("claude", path) == Settings.Answer.ALLOWED and text.contains("roast_announcer=on") and text.contains("ai_consent=yes"), text.c_escape())
+	_check("B's choice is saved next to the opt-in answer, which it keeps", saved and Settings.roast_on(path) and Settings.answer_for("claude", path) == Settings.Answer.ALLOWED and text.contains("roast_announcer=\"on\"") and text.contains("ai_consent=\"yes\""), text.c_escape())
 	Settings.save("claude", false, path)
 	_check("saving the opt-in answer keeps the roast switch", Settings.roast_on(path) and Settings.answer_for("claude", path) == Settings.Answer.DECLINED)
 	var link := Link.new()
@@ -467,7 +467,7 @@ func _round_checks() -> void:
 	_check("Ctrl+B does nothing", not link.roast_on())
 	await _key(KEY_B, 0x62)
 	var saved := FileAccess.get_file_as_string(_tmp.path_join("round.cfg"))
-	_check("B turns the roast announcer on, shows it, and saves it next to the opt-in answer", link.roast_on() and round.round_text().contains("B roast: on") and saved.contains("roast_announcer=on") and saved.contains("ai_consent=yes"), saved.c_escape())
+	_check("B turns the roast announcer on, shows it, and saves it next to the opt-in answer", link.roast_on() and round.round_text().contains("B roast: on") and saved.contains("roast_announcer=\"on\"") and saved.contains("ai_consent=\"yes\""), saved.c_escape())
 	stub.answer = ROAST_ANSWER
 	await _to_break(round)
 	_check("with roast on, the round end asks for a roast of the play: the roast task, still one call", stub.ask_calls == 2 and link.calls == 2 and stub.last_preamble == Request.PREAMBLE + " " + Request.TASKS["roast"], str(stub.ask_calls))

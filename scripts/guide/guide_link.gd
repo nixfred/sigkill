@@ -16,8 +16,9 @@ extends RefCounted
 ## no agent is launched and no model server is contacted. Only a detector and an adapter
 ## factory a test hands in are used.
 ##
-## Demo-data mode (--demo): a fake agent "claude" and fake GPU numbers; no detector, no
-## settings file, no adapter, no process, no network. Owners show their own canned answers.
+## Demo-data mode (--demo, or the real-machine data privacy answer set to off, C16b): a fake
+## agent "claude" and fake GPU numbers; no detector, no adapter, no process, no network, and
+## the settings file is read only for that one answer. Owners show their own canned answers.
 ##
 ## The AI is called only with the player's yes for that source (scripts/boot/
 ## guide_settings.gd keeps it in user://settings.cfg), and the guide tuning's ai_enabled
@@ -172,7 +173,7 @@ func start() -> void:
 	if _state != State.STARTING:
 		return
 	var args := OS.get_cmdline_user_args()
-	demo = demo or args.has("--demo")
+	demo = demo or args.has("--demo") or not Settings.real_data_on(settings_path)
 	var headless := DisplayServer.get_name() == "headless"
 	_guarded = headless or args.has("--no-ai")
 	skip_reason = ("headless run" if headless else "--no-ai") if _guarded else "the detector gave no answer"
