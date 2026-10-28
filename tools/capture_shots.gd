@@ -3,11 +3,10 @@ extends SceneTree
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
-## the pillars; a3, the arena: a wide overview from above, the skyline and the void from just outside
-## the south wall, then in play the west corridor, the lair's front, and one wider view, daemons ahead
-## and a weapon in hand. After
-## each still it prints what the GPU drew for it (draw calls, primitives, objects). A tool, never
-## part of the game.
+## the pillars; a3, the arena: a wide overview from above, the skyline and the void from off its
+## north-east corner, then in play the west corridor, the lair's front, and one wider view, daemons
+## ahead and a weapon in hand. After each still it prints what the GPU drew for it (draw calls,
+## primitives, objects, and the same for shadows). A tool, never part of the game.
 ##
 ## It draws, so it never runs headless, and it never runs on a real desktop: run it from a clean
 ## copy on a private virtual display, sound off, with user data in a temporary folder, as
@@ -45,8 +44,9 @@ const A2_LOCK_AT := Vector3(8.0, 0.95, 4.2)
 const A2_DEREZZ_FRAMES := 7
 const A2_LOCK_FRAMES := 75
 const DUMMY_MIDDLE := Vector3(0.0, 0.9, 0.0)
-## a3: the overview's camera (free, high over the south-west corner) and what it looks at, its field
-## of view; then each view in play: where the player stands and the point it looks at (arena space).
+## a3: the overview's camera (free, high over the south-west corner) and what it looks at, and the
+## free cameras' field of view; then each view in play: where the player stands and the point it
+## looks at (arena space).
 const A3_OVERVIEW_AT := Vector3(-36.0, 26.0, 38.0)
 const A3_OVERVIEW_LOOK := Vector3(0.0, 0.0, -3.0)
 const A3_OVERVIEW_FOV := 60.0

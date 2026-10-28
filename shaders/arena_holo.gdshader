@@ -6,7 +6,7 @@
 // Defaults only mirror scripts/palette.gd so the material previews in the editor; palette.gd sets
 // every value at runtime and is the single source.
 shader_type spatial;
-render_mode unshaded, cull_disabled;
+render_mode unshaded;
 
 uniform vec4 holo_color : source_color = vec4(0.49, 1.0, 0.812, 1.0);
 uniform float energy : hint_range(0.0, 32.0) = 3.5;
