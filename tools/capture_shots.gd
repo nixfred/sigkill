@@ -1,9 +1,13 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, or a2):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2 or a3):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
-## the pillars. A tool, never part of the game.
+## the pillars; a3, the arena: a wide overview from above, the skyline and the void from just outside
+## the south wall, then in play the west corridor, the lair's front, and one wider view, daemons ahead
+## and a weapon in hand. After
+## each still it prints what the GPU drew for it (draw calls, primitives, objects). A tool, never
+## part of the game.
 ##
 ## It draws, so it never runs headless, and it never runs on a real desktop: run it from a clean
 ## copy on a private virtual display, sound off, with user data in a temporary folder, as
@@ -41,6 +45,16 @@ const A2_LOCK_AT := Vector3(8.0, 0.95, 4.2)
 const A2_DEREZZ_FRAMES := 7
 const A2_LOCK_FRAMES := 75
 const DUMMY_MIDDLE := Vector3(0.0, 0.9, 0.0)
+## a3: the overview's camera (free, high over the south-west corner) and what it looks at, its field
+## of view; then each view in play: where the player stands and the point it looks at (arena space).
+const A3_OVERVIEW_AT := Vector3(-36.0, 26.0, 38.0)
+const A3_OVERVIEW_LOOK := Vector3(0.0, 0.0, -3.0)
+const A3_OVERVIEW_FOV := 60.0
+## The skyline's camera (free, off the north-east corner, over the plinth's edge, looking along the
+## north wall's outside to the towers beyond) and its look.
+const A3_SKYLINE_AT := Vector3(31.0, 10.0, -29.0)
+const A3_SKYLINE_LOOK := Vector3(-60.0, 2.0, -95.0)
+const A3_VIEWS := [["corridor", Vector3(-17.5, 0.95, 18.0), Vector3(-17.5, 1.6, -6.0)], ["slab", Vector3(3.5, 0.95, -1.0), Vector3(-1.5, 2.0, -8.0)], ["gameplay", Vector3(-2.0, 0.95, 18.5), Vector3(-10.5, 1.6, 7.0)]]
 
 var _main: Node
 var _player: Node
@@ -74,6 +88,11 @@ func _run() -> void:
 	await _frames(90)  # shaders compiled, the code rain running
 	if _set == "a2":
 		await _a2()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "a3":
+		await _a3()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -159,6 +178,39 @@ func _a2() -> void:
 	await _save("a2-gameplay")
 
 
+## a3: the arena from above and the void beyond its wall (free cameras), then each view in play, the
+## last with the cannon drawn and a shot just leaving.
+func _a3() -> void:
+	await _free_view("a3-overview", A3_OVERVIEW_AT, A3_OVERVIEW_LOOK)
+	await _free_view("a3-skyline", A3_SKYLINE_AT, A3_SKYLINE_LOOK)
+	for view in A3_VIEWS:
+		await _stand(view[1], _main.to_global(view[2]))
+		if view[0] == "gameplay":
+			_player.drive_input(Vector2.ZERO, false, false, true)
+			await physics_frame
+			await _frames(FIRE_FRAMES)
+		await _save("a3-" + view[0])
+
+
+## A still from a free camera at `at` looking at `look` (arena space), the player and the HUD hidden.
+func _free_view(name: String, at: Vector3, look: Vector3) -> void:
+	var hud: CanvasLayer = _main.get_node("Hud")
+	var cam := Camera3D.new()
+	cam.fov = A3_OVERVIEW_FOV
+	_main.add_child(cam)
+	cam.global_position = _main.to_global(at)
+	cam.look_at(_main.to_global(look), Vector3.UP)
+	cam.current = true
+	hud.visible = false
+	_player.visible = false
+	await _frames(30)
+	await _save(name)
+	cam.current = false
+	cam.queue_free()
+	hud.visible = true
+	_player.visible = true
+
+
 ## Stands the player at `at` (arena space) looking at `target` (world space), settled.
 func _stand(at: Vector3, target: Vector3) -> void:
 	_player.respawn_at(_main.to_global(at))
@@ -181,3 +233,8 @@ func _save(name: String) -> void:
 	var image := root.get_texture().get_image()
 	image.save_png(OUT.path_join(name + ".png"))
 	_shots += 1
+	var drawn := []
+	for kind in [Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_TYPE_SHADOW]:
+		for info in [Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME, Viewport.RENDER_INFO_OBJECTS_IN_FRAME]:
+			drawn.append(root.get_render_info(kind, info))
+	print("capture: %s drew %d draw calls, %d primitives, %d objects; shadows %d draw calls, %d primitives, %d objects" % ([name] + drawn))

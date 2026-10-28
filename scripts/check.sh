@@ -6,12 +6,12 @@
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
 # headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence,
-# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel and enemy art tests (tests/movement_test.gd,
+# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art and arena art tests (tests/movement_test.gd,
 # tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
 # Ollama for model loading) on 127.0.0.1. No real agent or model server is ever run or
 # reached. The settings test keeps its settings files in a temporary folder; no headless run
@@ -128,6 +128,7 @@ run_godot "rm -rf cannon test" --fixed-fps 60 --script res://tests/rm_rf_cannon_
 run_godot "cron mines test" --fixed-fps 60 --script res://tests/cron_mines_test.gd
 run_godot "viewmodel test" --fixed-fps 60 --script res://tests/viewmodel_test.gd
 run_godot "enemy art test" --fixed-fps 60 --script res://tests/enemy_art_test.gd
+run_godot "arena art test" --fixed-fps 60 --script res://tests/arena_art_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2
