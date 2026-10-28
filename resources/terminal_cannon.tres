@@ -20,6 +20,7 @@ recoil_yaw_degrees = 0.6
 recoil_max_pitch_degrees = 8.0
 recoil_max_yaw_degrees = 3.0
 recoil_recovery = 10.0
+shake_m = 0.004
 beam_radius = 0.012
 beam_sides = 6
 beam_energy = 3.0

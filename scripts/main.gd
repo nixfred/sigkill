@@ -1,11 +1,14 @@
 extends Node3D
 ## Root of the prototype level. Wires targets and the player to the HUD (its round HUD
 ## counts each round from their signals), and handles "respawn all targets" (reloads the
-## scene).
+## scene). Settings (C16b): puts the engine's into effect when it loads and on every change
+## (scripts/settings/settings_apply.gd), and the quality preset into the arena: bloom (the
+## environment's glow), shadows (the sun's; the room light never casts any) and the code rain.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
 const NetSession = preload("res://scripts/net/net_session.gd")
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
 var _remaining := 0
 var _total := 0
@@ -21,10 +24,13 @@ var launch_args: PackedStringArray = OS.get_cmdline_user_args()
 
 func _enter_tree() -> void:
 	Controls.ensure()
+	SettingsApply.apply_all(GameSettings.current(), get_tree())
 
 
 func _ready() -> void:
 	_apply_palette_to_environment()
+	GameSettings.current().changed.connect(_on_setting_changed)
+	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
 	_total = dummies.size()
 	_remaining = _total
@@ -62,6 +68,32 @@ func _apply_palette_to_environment() -> void:
 	env.background_color = Palette.VOID
 	env.ambient_light_color = Palette.TEAL
 	env.fog_light_color = Palette.VOID
+
+
+## The quality preset in the arena: bloom, shadows and the code rain on or off.
+func apply_quality() -> void:
+	var q := GameSettings.current().quality()
+	var world_env := find_child("WorldEnvironment", true, false) as WorldEnvironment
+	if world_env != null and world_env.environment != null:
+		world_env.environment.glow_enabled = q["bloom"]
+	var sun := get_node_or_null("Sun") as Light3D
+	if sun != null:
+		sun.shadow_enabled = q["shadows"]
+	var rain := get_node_or_null("Arena/CodeRain")
+	if rain != null and rain.has_method("set_enabled"):
+		rain.set_enabled(q["code_rain"])
+
+
+func _on_setting_changed(section: String, key: String) -> void:
+	var s := GameSettings.current()
+	if section == "" or section == "audio":
+		SettingsApply.apply_audio(s)
+	if section == "" or section == "video":
+		SettingsApply.apply_display(s, get_tree())
+		if section == "" or key == "quality":
+			apply_quality()
+	if section == "" or section == GameSettings.BINDS:
+		Controls.apply_binds(s.binds())
 
 
 func _unhandled_input(event: InputEvent) -> void:

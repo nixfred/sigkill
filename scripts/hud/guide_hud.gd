@@ -194,7 +194,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			_answer_consent(key.keycode == KEY_Y)
 		elif key.keycode == KEY_ESCAPE:
-			_consent_prompt = false  # not handled: Esc still frees the mouse as usual
+			_esc_taken()  # the question's own: the mouse is freed, the Esc menu stays shut
+			_consent_prompt = false
 			_notice("AI stays off.", _t.off_color)
 		return
 	if _load_ui == "prompt":
@@ -205,9 +206,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			_answer_load(false)
 		elif key.keycode == KEY_ESCAPE:
-			_answer_load(false)  # not handled: Esc still frees the mouse as usual
+			_esc_taken()
+			_answer_load(false)
 		return
 	if _load_ui == "loading" and key.keycode == KEY_ESCAPE:
+		_esc_taken()
 		_stop_waiting()
 		return
 	if demo and _load_ui == "" and key.keycode == KEY_L:
@@ -220,6 +223,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_ai", false, true):
 		get_viewport().set_input_as_handled()
 		toggle_ai()
+
+
+## Esc that answered a question here is this HUD's (C16b): the mouse is freed as before,
+## and the Esc menu does not open behind it.
+func _esc_taken() -> void:
+	get_viewport().set_input_as_handled()
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _notification(what: int) -> void:

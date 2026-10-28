@@ -13,6 +13,11 @@ extends Control
 ## rendezvous also sees its room code and invite link; with none (the game's NullRendezvous
 ## today) a code typed after K is answered "Online rooms aren't live yet. Use LAN join
 ## (address)." and nothing is sent anywhere.
+##
+## Settings (C16b): H hosts on the settings' default port (the tuning's when left alone),
+## and with net stats on a line under the combat line shows the round trip, packet loss and
+## send rate while online. Esc that closes the panel is the panel's: it frees the mouse
+## itself and the Esc menu does not open behind it.
 
 const Session = preload("res://scripts/net/net_session.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -40,6 +45,7 @@ const NET_HOSTING := "net: hosting :%d   players %d/%d"
 const NET_NOTICE := "   %s"
 const NET_JOINED := "net: joined   players %d/%d"
 const NET_CONNECTING := "net: connecting"
+const STATS_LINE := "net stats: rtt %d ms   loss %.1f%%   sync %d/s   peers %d"
 const SPINNER := ["|", "/", "-", "\\"]
 const SPINNER_S := 0.09
 const PANEL_WIDTH := 560
@@ -68,6 +74,7 @@ var _spin_s := 0.0
 var _spin_at := 0
 
 var _line: Label
+var _stats: Label
 var _panel: PanelContainer
 var _title: Label
 var _body: Label
@@ -127,9 +134,12 @@ func _input(event: InputEvent) -> void:
 			if s.is_online():
 				s.leave()
 		KEY_ESCAPE:
+			# The panel's own: the mouse is freed here, and the Esc menu stays shut.
+			get_viewport().set_input_as_handled()
 			if s.is_connecting():
 				s.leave()
-			_open = false  # not handled: Esc still frees the mouse as usual
+			_free_mouse()
+			_open = false
 			_refresh()
 
 
@@ -153,6 +163,19 @@ func _exit_tree() -> void:
 func open() -> void:
 	_open = true
 	_refresh()
+
+
+## The panel down (the Esc menu opening). The address box, if open, stays as it is.
+func close() -> void:
+	if _typing:
+		return
+	_open = false
+	_refresh()
+
+
+## The net stats line, or "" while it is not shown.
+func stats_text() -> String:
+	return _stats.text if _stats.visible else ""
 
 
 ## M: the panel up or down.
@@ -261,6 +284,11 @@ func _focused() -> bool:
 	return get_window().has_focus()
 
 
+func _free_mouse() -> void:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
 func _block_player(on: bool) -> void:
 	if player != null and is_instance_valid(player) and "input_blocked" in player:
 		player.input_blocked = on
@@ -274,8 +302,13 @@ func _refresh() -> void:
 		round_hud.hold_summary = _open or _typing
 	if s == null:
 		_line.text = NET_OFF
+		_stats.visible = false
 		_panel.visible = false
 		return
+	var net_stats: Dictionary = s.peer_stats() if GameSettings.current().value("multiplayer", "net_stats") else {}
+	_stats.visible = not net_stats.is_empty()
+	if _stats.visible:
+		_stats.text = STATS_LINE % [net_stats["rtt_ms"], net_stats["loss_percent"], s.tuning_in_use().sync_rate_hz, net_stats["peers"]]
 	var count: int = s.players.size()
 	var cap: int = s.tuning_in_use().max_players
 	match s.state:
@@ -315,10 +348,10 @@ func _refresh() -> void:
 		Session.State.FAILED:
 			_body.text = s.error
 			color = Palette.HOSTILE_AMBER
-			_keys.text = OFF_KEYS % s.tuning_in_use().port
+			_keys.text = OFF_KEYS % s.default_port()
 		_:
 			_body.text = OFF_LINE
-			_keys.text = OFF_KEYS % s.tuning_in_use().port
+			_keys.text = OFF_KEYS % s.default_port()
 	_body.add_theme_color_override("font_color", color)
 
 
@@ -336,6 +369,9 @@ func _room_text(s: Node) -> String:
 func _build() -> void:
 	_line = _label(self, 14, Palette.MINT)
 	_line.position = Vector2(18.0, 68.0)
+	_stats = _label(self, 13, Palette.TEAL)
+	_stats.position = Vector2(18.0, 116.0)
+	_stats.visible = false
 	_panel = PanelContainer.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()

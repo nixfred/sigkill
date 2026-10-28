@@ -44,6 +44,16 @@ extends Resource
 ## Camera height above the body centre while sliding, in metres.
 @export var slide_head_height: float = 0.15
 
+@export_group("Crouch and aim")
+## Camera height above the body centre while crouched (C16b, X), in metres.
+@export var crouch_head_height: float = 0.35
+## Top ground speed while crouched, in m/s. Never above walk_speed.
+@export var crouch_speed: float = 3.5
+## Aiming down the sights (right mouse) narrows the field of view to this share of it.
+@export var ads_fov_scale: float = 0.7
+## Right-stick look speed at full tilt, in degrees a second, before the settings' multiplier.
+@export var gamepad_look_degrees: float = 150.0
+
 @export_group("Camera")
 ## Camera height above the body centre when standing, in metres.
 @export var stand_head_height: float = 0.7
@@ -90,7 +100,8 @@ const NON_NEGATIVE := [
 	"walk_speed", "ground_accel", "ground_friction", "gravity_scale", "jump_velocity",
 	"air_control", "air_drag", "slide_min_speed", "slide_boost", "slide_max_speed",
 	"slide_friction", "slide_end_speed", "slide_max_duration", "slide_cooldown",
-	"slide_jump_max_speed", "slide_head_height", "stand_head_height", "head_height_smoothing",
+	"slide_jump_max_speed", "slide_head_height", "crouch_head_height", "crouch_speed",
+	"ads_fov_scale", "gamepad_look_degrees", "stand_head_height", "head_height_smoothing",
 	"mouse_sensitivity", "pitch_limit_degrees", "base_fov", "fov_speed_kick", "fov_full_speed",
 	"fov_slide_kick", "fov_max_kick", "fov_smoothing", "bob_frequency", "bob_vertical",
 	"bob_lateral", "bob_lateral_ratio", "bob_smoothing",
@@ -113,6 +124,8 @@ func problems() -> PackedStringArray:
 		out.append("pitch_limit_degrees must be below 90")
 	if base_fov <= 1.0 or base_fov + fov_max_kick >= 179.0:
 		out.append("base_fov plus fov_max_kick must stay between 1 and 179 degrees")
+	if ads_fov_scale < 0.2 or ads_fov_scale > 1.0:
+		out.append("ads_fov_scale must be between 0.2 and 1")
 	if not is_finite(fall_respawn_height):
 		out.append("fall_respawn_height must be a finite number")
 	return out

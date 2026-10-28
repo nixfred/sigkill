@@ -26,6 +26,11 @@ const VIOLET_HI := Color(0.847058824, 0.749019608, 1.0)  # #d8bfff SIGTERM beam 
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
 const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI]}
+# Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
+const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
+const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff
+const CROSSHAIR_CYAN := Color(0.301960784, 0.882352941, 1.0)  # #4de1ff
+const CROSSHAIR := {"mint": MINT, "white": FLASH, "yellow": CROSSHAIR_YELLOW, "magenta": CROSSHAIR_MAGENTA, "cyan": CROSSHAIR_CYAN}
 
 # Look tunables. Lengths are in metres, energies multiply the emission colour.
 const EDGE_WIDTH := 0.04

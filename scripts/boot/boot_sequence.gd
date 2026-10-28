@@ -25,9 +25,14 @@ extends Control
 ## saved. A headless run with nothing handed in, such as the check.sh smoke run, goes
 ## straight to the arena.
 ##
-## Demo-data mode (user argument --demo, e.g. `godot --path . -- --demo`): fake data
-## everywhere, agent "claude", fake GPU numbers, a canned answer and latency. No detector,
-## no settings file, no process, no network. The mode for screenshots and trailers.
+## Demo-data mode (user argument --demo, e.g. `godot --path . -- --demo`, or real-machine
+## data turned off in the settings' Privacy section, C16b): fake data everywhere, agent
+## "claude", fake GPU numbers, a canned answer and latency. No detector, no process, no
+## network. The mode for screenshots and trailers.
+##
+## Settings (C16b): the boot screen puts the saved window mode, vsync, frame cap, volumes
+## and key binds into effect first (scripts/settings/settings_apply.gd; never the window
+## in a headless run). Esc and Enter still skip it.
 ##
 ## On screen: fixed lines, an agent name from the detector's known list, numbers, short
 ## lowercase error words, and a line from HANDSHAKE_LINES. Never a path, host name, user
@@ -43,6 +48,7 @@ const Found = preload("res://scripts/ai/ai_source_result.gd")
 const Registry = preload("res://scripts/ai/guide_registry.gd")
 const Request = preload("res://scripts/ai/guide_request.gd")
 const Link = preload("res://scripts/guide/guide_link.gd")
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
 const ARENA_SCENE := "res://scenes/main.tscn"
 const DEFAULT_TUNING_PATH := "res://resources/boot.tres"
@@ -121,6 +127,7 @@ var _pause_ms := 0.0
 
 
 func _ready() -> void:
+	SettingsApply.apply_all(GameSettings.current(), get_tree())
 	_t = usable_tuning(tuning)
 	_link = Link.new()
 	_link.detector = detector

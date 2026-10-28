@@ -1,6 +1,9 @@
 extends CanvasLayer
 ## Minimal terminal-style HUD, built in code. Every control ignores the mouse,
-## so clicks always reach the player.
+## so clicks always reach the player, except the Esc menu while it is open (C16b,
+## scripts/hud/pause_menu.gd). The menu is the root's last child, so it sees unhandled
+## input before every other part of the HUD and before the player. Over everything sits
+## the colorblind-safe palette filter, shown while that setting is on.
 
 const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
@@ -10,8 +13,12 @@ const RoundHud = preload("res://scripts/round/round_hud.gd")
 const NetHud = preload("res://scripts/net/net_hud.gd")
 const CombatHud = preload("res://scripts/net/combat_hud.gd")
 const WeaponHud = preload("res://scripts/hud/weapon_hud.gd")
+const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
+const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
+## Above the HUD and the menu, so the filter recolours all of it.
+const FILTER_LAYER := 100
 
-const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc mouse   T ask AI   O AI on/off   M net"
+const HINT := "WASD move   Mouse look   Space jump   LMB fire   R respawn   Esc menu   T ask AI   O AI on/off   M net"
 
 var _status: Label
 var _engage: Label
@@ -22,6 +29,8 @@ var _round: RoundHud
 var _net: NetHud
 var _combat: CombatHud
 var _weapons: WeaponHud
+var _menu: PauseMenu
+var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
 
@@ -53,7 +62,7 @@ func _ready() -> void:
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 14)
 
 	_engage = _make_label(root, 28)
-	_engage.text = "[ click to engage ]\n\nEsc releases the mouse"
+	_engage.text = "[ click to engage ]\n\nEsc: menu and settings"
 	_engage.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_engage.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_engage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -82,13 +91,35 @@ func _ready() -> void:
 	_weapons.name = "WeaponHud"
 	root.add_child(_weapons)
 
+	# Last, so it takes unhandled input first while it is open.
+	_menu = PauseMenu.new()
+	_menu.name = "PauseMenu"
+	_menu.guide = _guide
+	_menu.round_hud = _round
+	_menu.net_hud = _net
+	root.add_child(_menu)
+
+	_filter = CanvasLayer.new()
+	_filter.name = "ColorblindFilter"
+	_filter.layer = FILTER_LAYER
+	var cover := ColorRect.new()
+	cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var paint := ShaderMaterial.new()
+	paint.shader = ColorblindShader
+	cover.material = paint
+	_filter.add_child(cover)
+	cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_filter)
+	GameSettings.current().changed.connect(_on_setting_changed)
+	_apply_filter()
+
 
 func _process(_delta: float) -> void:
 	# The hit marker takes the drawn weapon's sizes and timing.
 	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
 		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open()
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -107,12 +138,16 @@ func set_player(player: Node) -> void:
 	_guide.player = player
 	_round.set_player(player)
 	_net.player = player
+	_menu.player = player
+	if player.has_signal("menu_requested"):
+		player.menu_requested.connect(open_menu)
 
 
 ## The session beside the arena, for the multiplayer panel and the combat HUD.
 func set_net_session(session: Node) -> void:
 	_net.session = session
 	_combat.set_session(session)
+	_menu.session = session
 
 
 func combat_hud() -> CombatHud:
@@ -130,6 +165,30 @@ func confirm_hit() -> void:
 
 func net_hud() -> NetHud:
 	return _net
+
+
+func pause_menu() -> PauseMenu:
+	return _menu
+
+
+## Esc reached the player with nothing else open: the menu comes up.
+func open_menu() -> void:
+	if not is_typing():
+		_menu.open()
+
+
+## True while the colorblind-safe palette filter is drawn.
+func colorblind_filter_on() -> bool:
+	return _filter.visible
+
+
+func _on_setting_changed(section: String, _key: String) -> void:
+	if section == "hud" or section == "":
+		_apply_filter()
+
+
+func _apply_filter() -> void:
+	_filter.visible = GameSettings.current().value("hud", "colorblind")
 
 
 ## The dummies a round counts downs of, and brings back when the next round starts.

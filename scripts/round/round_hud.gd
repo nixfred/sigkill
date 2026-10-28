@@ -23,11 +23,16 @@ extends Control
 ## B turns the roast announcer on or off: off by default, saved next to the AI opt-in in
 ## user://settings.cfg (demo data keeps it in memory). Plain key only; ignored while the
 ## ask box or the AI question is open. Esc and every other key work as before.
+##
+## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
+## its words are the subtitles, shown while the subtitles setting is on (the default).
 
 const TuningScript = preload("res://scripts/round/announcer_tuning.gd")
 const Stats = preload("res://scripts/round/round_stats.gd")
 const Announcer = preload("res://scripts/round/round_announcer.gd")
 const Palette = preload("res://scripts/palette.gd")
+const Sfx = preload("res://scripts/sfx_synth.gd")
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/announcer.tres"
 const SPINNER := ["|", "/", "-", "\\"]
@@ -78,6 +83,7 @@ var _who: Label
 var _line: Label
 var _tip_who: Label
 var _tip: Label
+var _chime: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -276,7 +282,19 @@ func _callout(word: String) -> void:
 		"misses":
 			last_callout = MISSES_LINE % stats.misses_in_a_row
 	_callout_left_s = _t.callout_seconds
+	_ring()
 	_refresh()
+
+
+## The callout's chime, on the Announcer bus.
+func _ring() -> void:
+	if _chime != null:
+		_chime.play()
+
+
+## True while the subtitles setting shows the announcer's words.
+func subtitles_on() -> bool:
+	return GameSettings.current().value("hud", "subtitles")
 
 
 ## The round line, for tests.
@@ -317,7 +335,7 @@ func _refresh() -> void:
 	else:
 		_round_line.text = "ROUND %d OVER   B roast: %s%s" % [stats.round_number, roast, note]
 	_callout_label.text = last_callout
-	_callout_label.visible = phase == Phase.ROUND and _callout_left_s > 0.0
+	_callout_label.visible = phase == Phase.ROUND and _callout_left_s > 0.0 and subtitles_on()
 	_panel.visible = phase == Phase.BREAK and not hold_summary
 	if not _panel.visible:
 		return
@@ -343,6 +361,11 @@ func _refresh() -> void:
 
 
 func _build() -> void:
+	SettingsApply.ensure_buses()
+	_chime = AudioStreamPlayer.new()
+	_chime.stream = Sfx.callout_chime()
+	_chime.bus = SettingsApply.ANNOUNCER
+	add_child(_chime)
 	_round_line = _label(self, _t.round_font_size, Palette.MINT)
 	_round_line.position = Vector2(18.0, 44.0)
 	_callout_label = _label(self, _t.callout_font_size, Palette.HOSTILE_AMBER)

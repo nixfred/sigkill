@@ -41,8 +41,12 @@ extends Resource
 @export var recoil_max_pitch_degrees: float = 8.0
 ## Cap on the stacked sideways kick, in degrees.
 @export var recoil_max_yaw_degrees: float = 3.0
-## Easing rate for the view settling back, per second.
+## Easing rate for the view settling back, per second. The shot jolt settles at it too.
 @export var recoil_recovery: float = 10.0
+## The screen shake of a shot (C16b): the picture jolts up to this far, in metres, and
+## settles at recoil_recovery. Visual only: the camera, and so the aim, never moves. The
+## settings' screen shake switch turns it off.
+@export var shake_m: float = 0.004
 
 @export_group("Beam")
 ## Beam thickness, in metres.
@@ -141,7 +145,7 @@ const NON_NEGATIVE := [
 	"fire_cooldown", "fire_range", "damage", "viewmodel_glow_energy", "viewmodel_kick_back",
 	"viewmodel_kick_pitch_degrees", "viewmodel_recovery", "recoil_pitch_degrees",
 	"recoil_yaw_degrees", "recoil_max_pitch_degrees", "recoil_max_yaw_degrees",
-	"recoil_recovery", "beam_radius", "beam_energy", "beam_lifetime", "beam_min_length",
+	"recoil_recovery", "shake_m", "beam_radius", "beam_energy", "beam_lifetime", "beam_min_length",
 	"muzzle_flash_radius", "muzzle_flash_energy", "muzzle_flash_lifetime",
 	"muzzle_light_energy", "muzzle_light_range", "impact_flash_radius", "impact_flash_grow",
 	"impact_flash_energy", "impact_flash_lifetime", "spark_lifetime", "spark_speed_min",

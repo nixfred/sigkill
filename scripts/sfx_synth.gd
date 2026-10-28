@@ -16,6 +16,12 @@ const CLACK_SECONDS := 0.04
 const CLACK_DECAY := 90.0
 const CLACK_NOISE := 0.45
 const CLACK_SECOND_PITCH := 1.35
+const CHIME_SECONDS := 0.16
+const CHIME_START_HZ := 880.0
+const CHIME_END_HZ := 1320.0
+const CHIME_DECAY := 16.0
+const CHIME_SECOND_RATIO := 1.5
+const CHIME_GAIN := 0.35
 
 
 ## Player volume in dB for a linear master volume from 0 to 1.
@@ -31,6 +37,11 @@ static func fire_zap(w: Weapon) -> AudioStreamWAV:
 ## Hit: two bright tones at once, very short, so a hit sounds different from a shot.
 static func hit_blip(w: Weapon) -> AudioStreamWAV:
 	return _render(w, w.hit_sfx_seconds, w.hit_hz, w.hit_hz, w.hit_decay, 0.0, w.hit_second_ratio, w.hit_gain)
+
+
+## The announcer's callout chime (C16b): a short rising two-tone, on the Announcer bus.
+static func callout_chime() -> AudioStreamWAV:
+	return _render(Weapon.new(), CHIME_SECONDS, CHIME_START_HZ, CHIME_END_HZ, CHIME_DECAY, 0.0, CHIME_SECOND_RATIO, CHIME_GAIN)
 
 
 ## Reload: a mechanical clack-clack at the weapon's reload pitch. WeaponDef only.

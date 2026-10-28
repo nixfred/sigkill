@@ -14,7 +14,13 @@ extends CharacterBody3D
 ##
 ## Mouse rules: the mouse is captured only after the player clicks into the window.
 ## Esc, or the window losing focus, releases it. The game never grabs the mouse on
-## its own and never steals focus.
+## its own and never steals focus. Esc also asks the HUD for the menu (C16b).
+##
+## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
+## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
+## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
+## camera jolt of a shot, which never moves the aim, and the head bob) and motion blur (the
+## view stretching wider at speed). Every default is the movement tuning as it shipped.
 
 const Palette = preload("res://scripts/palette.gd")
 const Controls = preload("res://scripts/controls.gd")
@@ -26,6 +32,7 @@ const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
 const Inventory = preload("res://scripts/weapons/inventory.gd")
 const DEFAULT_ARSENAL_PATH := "res://resources/arsenal.tres"
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 ## Added to the host's remaining reload or draw time when this side's has to wait for it:
 ## three physics frames at 60 Hz.
 const TIMING_MARGIN_S := 0.05
@@ -44,6 +51,8 @@ signal reload_started(weapon: String)
 signal jumped
 ## Emitted when a slide starts. Round stats count it.
 signal slid
+## Emitted on Esc when nothing else took the key: the HUD opens the menu (C16b).
+signal menu_requested
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -85,6 +94,8 @@ var _rng := RandomNumberGenerator.new()
 var _pellet_rng := RandomNumberGenerator.new()
 var _recoil := Vector2.ZERO  # pitch and yaw kick in radians, applied to the camera
 var _viewmodel_kick := 0.0
+var _shake := 0.0  # the camera's shot jolt in metres, visual only
+var _shake_rng := RandomNumberGenerator.new()
 var _fire_sfx: AudioStreamPlayer  # the drawn weapon's
 var _hit_sfx: AudioStreamPlayer
 var _reload_sfx: AudioStreamPlayer
@@ -100,6 +111,20 @@ var _bob_phase_v := 0.0
 var _bob_phase_h := 0.0
 var _bob_weight := 0.0
 var _fov_kick := 0.0
+var _crouching := false
+var _aiming := false
+var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
+
+# What the settings say (C16b), read when they change.
+var _settings: GameSettings
+var _invert_y := false
+var _mouse_scale := 1.0
+var _ads_scale := 0.7
+var _crouch_toggles := false
+var _aim_toggles := false
+var _fov_setting := 0
+var _shake_on := true
+var _speed_fx_on := true
 
 # Input for this physics frame: from the keyboard, or from a test through drive_input().
 var _move_input := Vector2.ZERO
@@ -130,7 +155,10 @@ func _ready() -> void:
 		_t = Tuning.new()
 	_spawn = global_transform
 	_head.position.y = _t.stand_head_height
-	_camera.fov = _t.base_fov
+	_settings = GameSettings.current()
+	_settings.changed.connect(_on_setting_changed)
+	_read_settings()
+	_camera.fov = standard_fov()
 
 	if not (arsenal is Arsenal):
 		arsenal = load(DEFAULT_ARSENAL_PATH)
@@ -145,6 +173,8 @@ func _ready() -> void:
 	inventory = Inventory.new(defs, _a.swap_s, _a.fiction_s)
 	_rng.randomize()
 	_pellet_rng.randomize()
+	_shake_rng.randomize()
+	SettingsApply.ensure_buses()
 	for def in inventory.defs:
 		_viewmodels.append(_build_viewmodel(def))
 		_sfx.append([_make_sfx_player(Sfx.fire_zap(def), def), _make_sfx_player(Sfx.hit_blip(def), def), _make_sfx_player(Sfx.reload_clack(def), def)])
@@ -162,6 +192,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("release_mouse"):
 		_release_mouse()
 		get_viewport().set_input_as_handled()
+		menu_requested.emit()
 		return
 
 	if not _captured():
@@ -190,14 +221,35 @@ func _unhandled_input(event: InputEvent) -> void:
 				break
 
 
-## Mouse look: yaw on the body, pitch on the head, clamped to the pitch limit. The recoil
-## on the camera is re-clamped straight away, so aim plus recoil never tips the view past
-## the limit, not even between physics ticks.
+## Mouse look: the tuning's sensitivity times the settings' multiplier (the aim one while
+## aiming down the sights).
 func _look(relative: Vector2) -> void:
+	var sensitivity := _t.mouse_sensitivity * _look_scale()
+	_turn(relative.x * sensitivity, relative.y * sensitivity)
+
+
+## Right-stick look for `delta` seconds: full tilt turns gamepad_look_degrees a second,
+## times the same multiplier as the mouse. Test hook too.
+func look_with_stick(stick: Vector2, delta: float) -> void:
+	var rate := deg_to_rad(_t.gamepad_look_degrees) * delta * _look_scale()
+	_turn(stick.x * rate, stick.y * rate)
+
+
+## Turns the view `right` radians to the right and `down` radians down (up with invert Y):
+## yaw on the body, pitch on the head, clamped to the pitch limit. The recoil on the camera
+## is re-clamped straight away, so aim plus recoil never tips the view past the limit, not
+## even between physics ticks.
+func _turn(right: float, down: float) -> void:
 	var pitch_limit := deg_to_rad(_t.pitch_limit_degrees)
-	rotate_y(-relative.x * _t.mouse_sensitivity)
-	_head.rotation.x = clampf(_head.rotation.x - relative.y * _t.mouse_sensitivity, -pitch_limit, pitch_limit)
+	if _invert_y:
+		down = -down
+	rotate_y(-right)
+	_head.rotation.x = clampf(_head.rotation.x - down, -pitch_limit, pitch_limit)
 	_apply_recoil()
+
+
+func _look_scale() -> float:
+	return _ads_scale if _aiming else _mouse_scale
 
 
 # --- Movement and camera. Every number below comes from the tuning resource. ---
@@ -205,6 +257,10 @@ func _look(relative: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	if not _scripted_input:
 		_read_player_input()
+	if not input_blocked and alive:
+		var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if not stick.is_zero_approx():
+			look_with_stick(stick, delta)
 	if not alive:
 		# Derezzed: neither the keyboard nor a test's scripted input moves the body.
 		_move_input = Vector2.ZERO
@@ -249,6 +305,25 @@ func is_sliding() -> bool:
 	return _sliding
 
 
+## True while crouched (X, held or toggled) and while aiming down the sights (right mouse).
+func is_crouching() -> bool:
+	return _crouching
+
+
+func is_aiming() -> bool:
+	return _aiming
+
+
+## The field of view at rest at the hip: the settings' own, or the tuning's.
+func standard_fov() -> float:
+	return float(_fov_setting) if _fov_setting > 0 else _t.base_fov
+
+
+## The camera's shot jolt right now, in metres: 0 with screen shake off.
+func shake_offset() -> Vector2:
+	return Vector2(_camera.h_offset, _camera.v_offset)
+
+
 ## Current speed along the ground plane, in m/s.
 func horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
@@ -265,10 +340,15 @@ func _read_player_input() -> void:
 		_slide_pressed = false
 		_fire_pressed = false
 		_fire_queued = false
+		# A held crouch or aim lets go; a toggled one stays as it was until the player is back.
+		_crouching = _crouching and _crouch_toggles and alive
+		_aiming = _aiming and _aim_toggles and alive
 		return
 	_move_input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	_jump_pressed = Input.is_action_just_pressed("jump")
 	_slide_pressed = Input.is_action_just_pressed("slide")
+	_crouching = (not _crouching if Input.is_action_just_pressed("crouch") else _crouching) if _crouch_toggles else Input.is_action_pressed("crouch")
+	_aiming = (not _aiming if Input.is_action_just_pressed("aim") else _aiming) if _aim_toggles else Input.is_action_pressed("aim")
 	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.
 	_fire_pressed = _fire_queued
 	_fire_queued = false
@@ -320,7 +400,8 @@ func _step_movement(delta: float) -> void:
 		if wish.is_zero_approx():
 			horizontal = horizontal.move_toward(Vector3.ZERO, _t.ground_friction * delta)
 		else:
-			horizontal = horizontal.move_toward(wish * _t.walk_speed, _t.ground_accel * delta)
+			var pace := minf(_t.crouch_speed, _t.walk_speed) if _crouching else _t.walk_speed
+			horizontal = horizontal.move_toward(wish * pace, _t.ground_accel * delta)
 		if _jump_pressed:
 			velocity.y = _t.jump_velocity
 			jumped.emit()
@@ -353,13 +434,13 @@ func _step_camera(delta: float) -> void:
 	var speed := horizontal_speed()
 	var grounded := is_on_floor()
 
-	# Camera height: lowered while sliding, eased both ways.
-	var head_target := _t.slide_head_height if _sliding else _t.stand_head_height
+	# Camera height: lowered while sliding and crouching, eased both ways.
+	var head_target := _t.slide_head_height if _sliding else (_t.crouch_head_height if _crouching else _t.stand_head_height)
 	_head.position.y = lerpf(_head.position.y, head_target, _smoothing(_t.head_height_smoothing, delta))
 
 	# Head bob: scales with ground speed, fades out in the air and while sliding.
 	var bob_target := 0.0
-	if _t.head_bob_enabled and grounded and not _sliding and _t.walk_speed > 0.0:
+	if _t.head_bob_enabled and _shake_on and grounded and not _sliding and _t.walk_speed > 0.0:
 		bob_target = clampf(speed / _t.walk_speed, 0.0, 1.0)
 	_bob_weight = lerpf(_bob_weight, bob_target, _smoothing(_t.bob_smoothing, delta))
 	var advance := TAU * _t.bob_frequency * bob_target * delta
@@ -376,9 +457,11 @@ func _step_camera(delta: float) -> void:
 		kick = _t.fov_speed_kick * clampf((speed - _t.walk_speed) / span, 0.0, 1.0)
 	if _sliding:
 		kick += _t.fov_slide_kick
-	kick = minf(kick, _t.fov_max_kick)
+	kick = minf(kick, _t.fov_max_kick) if _speed_fx_on else 0.0
 	_fov_kick = lerpf(_fov_kick, kick, _smoothing(_t.fov_smoothing, delta))
-	_camera.fov = _t.base_fov + _fov_kick
+	# Aiming down the sights narrows the view to ads_fov_scale of it, eased the same way.
+	_ads_blend = lerpf(_ads_blend, 1.0 if _aiming else 0.0, _smoothing(_t.fov_smoothing, delta))
+	_camera.fov = standard_fov() * lerpf(1.0, _t.ads_fov_scale, _ads_blend) + _fov_kick
 
 
 ## Share of the way to move toward a target this frame, for exponential easing at `rate`
@@ -401,6 +484,8 @@ func respawn_at(pos: Vector3) -> void:
 	_air_speed_cap = 0.0
 	_recoil = Vector2.ZERO
 	_fire_queued = false
+	_crouching = false
+	_aiming = false
 
 
 ## Alive or derezzed (C14). Derezzed: no input counts, the body stops where it is (a slide
@@ -421,6 +506,8 @@ func set_alive(on: bool) -> void:
 		velocity = Vector3(0.0, minf(velocity.y, 0.0), 0.0)
 		_sliding = false
 		_air_speed_cap = 0.0
+		_crouching = false
+		_aiming = false
 
 
 ## Where the eyes are, in world space, right now.
@@ -559,6 +646,10 @@ func _step_weapon(delta: float) -> void:
 	# physics rate. Mouse aim is never touched, so the view settles back on target.
 	_recoil = _recoil.lerp(Vector2.ZERO, _smoothing(_w.recoil_recovery, delta))
 	_viewmodel_kick = lerpf(_viewmodel_kick, 0.0, _smoothing(_w.viewmodel_recovery, delta))
+	# The shot jolt moves the picture, never the camera, so the ray below is unchanged.
+	_shake = lerpf(_shake, 0.0, _smoothing(_w.recoil_recovery, delta)) if _shake_on else 0.0
+	_camera.h_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
+	_camera.v_offset = _shake_rng.randf_range(-1.0, 1.0) * _shake
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
 	if _fire_pressed and alive:
@@ -603,6 +694,8 @@ func _fire() -> void:
 		CannonFx.spawn_beam(fx_root, _muzzle.global_position, end_point, _w)
 	CannonFx.spawn_muzzle_flash(_muzzle, _w)
 	_kick()
+	if _shake_on:
+		_shake = maxf(_shake, _w.shake_m)
 	_fire_sfx.play()
 	if hit_target:
 		hits_landed += 1
@@ -665,7 +758,23 @@ func _build_viewmodel(def: WeaponDefScript) -> MeshInstance3D:
 func _make_sfx_player(stream: AudioStream, def: WeaponDefScript) -> AudioStreamPlayer:
 	var sfx := AudioStreamPlayer.new()
 	sfx.stream = stream
+	sfx.bus = SettingsApply.EFFECTS
 	sfx.volume_db = Sfx.volume_db(def.master_volume)
 	sfx.max_polyphony = def.sfx_polyphony
 	add_child(sfx)
 	return sfx
+
+
+func _on_setting_changed(_section: String, _key: String) -> void:
+	_read_settings()
+
+
+func _read_settings() -> void:
+	_invert_y = _settings.value("controls", "invert_y")
+	_mouse_scale = _settings.value("controls", "mouse_sensitivity")
+	_ads_scale = _settings.value("controls", "ads_sensitivity")
+	_crouch_toggles = _settings.value("controls", "crouch_mode") == "toggle"
+	_aim_toggles = _settings.value("controls", "aim_mode") == "toggle"
+	_fov_setting = _settings.value("video", "fov")
+	_shake_on = _settings.value("hud", "screen_shake")
+	_speed_fx_on = _settings.value("hud", "motion_blur")

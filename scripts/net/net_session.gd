@@ -431,7 +431,7 @@ func _on_arena_exit() -> void:
 func host(port: int = -1) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
-	var p := _t.port if port < 0 else port
+	var p := default_port() if port < 0 else port
 	if p != 0 and not _port_free(p):
 		_fail("port %d is in use" % p)
 		return false
@@ -444,7 +444,7 @@ func host(port: int = -1) -> bool:
 	_enet = enet
 	multiplayer.multiplayer_peer = _enet
 	my_id = 1
-	players = {1: {"slot": 1, "name": assigned_name(_t.display_name, 1)}}
+	players = {1: {"slot": 1, "name": assigned_name(requested_name(), 1)}}
 	_seq = 0
 	fire_seq = 0
 	_clock = 0.0
@@ -522,7 +522,7 @@ func _apply_launch(parsed: Dictionary) -> void:
 func join(text: String) -> bool:
 	if state != State.OFF and state != State.FAILED:
 		return false
-	var parsed := parse_address(text, _t.port)
+	var parsed := parse_address(text, default_port())
 	if parsed.is_empty():
 		_fail(BAD_ADDRESS)
 		return false
@@ -578,6 +578,41 @@ func listen_port() -> int:
 	if state != State.HOSTING or _enet == null:
 		return 0
 	return _enet.host.get_local_port()
+
+
+## The port a host opens and a join with none goes to (C16b): the settings' default port,
+## or the tuning's while the player has left it alone.
+func default_port() -> int:
+	var chosen: int = GameSettings.current().value("multiplayer", "port")
+	return chosen if chosen != 0 else tuning_in_use().port
+
+
+## The name this player asks for (C16b): the settings' display name, or the tuning's. Read
+## by the host and never used: every player is Daemon-<slot> there (assigned_name).
+func requested_name() -> String:
+	var chosen: String = GameSettings.current().value("multiplayer", "display_name")
+	return chosen if Tuning.name_ok(chosen) else tuning_in_use().display_name
+
+
+## The net stats overlay's numbers (C16b): the worst round trip in milliseconds and packet
+## loss in percent over the connected peers, and how many there are; {} when not online.
+func peer_stats() -> Dictionary:
+	if _enet == null or not is_online():
+		return {}
+	var peers := multiplayer.get_peers()
+	var rtt := 0.0
+	var loss := 0.0
+	var counted := 0
+	for id in peers:
+		var peer := _enet.get_peer(id)
+		if peer == null:
+			continue
+		rtt = maxf(rtt, peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+		loss = maxf(loss, peer.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS) * 100.0 / ENetPacketPeer.PACKET_LOSS_SCALE)
+		counted += 1
+	if counted == 0:
+		return {}
+	return {"rtt_ms": roundi(rtt), "loss_percent": snappedf(loss, 0.1), "peers": counted}
 
 
 func my_name() -> String:
@@ -874,7 +909,7 @@ func _clear_players() -> void:
 
 func _on_authenticating(id: int) -> void:
 	if state == State.CONNECTING and id == 1:
-		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, _t.display_name))
+		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, requested_name()))
 
 
 func _on_auth(id: int, data: PackedByteArray) -> void:

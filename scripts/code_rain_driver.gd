@@ -11,6 +11,9 @@ extends Node
 ## the rest, continuously, in the shader. When more enemies are alive than the shader's
 ## array holds, the nearest ones to the viewer are the ones sampled.
 ##
+## The settings' quality preset (C16b) turns the rain off with set_enabled(false): every
+## material is told there are no enemies, so no rain is drawn, and the driver rests.
+##
 ## Cost: runs in _physics_process, so at the fixed physics rate. The lists of blocks and
 ## enemies are collected only when a block or target enters or leaves the tree, or a block
 ## rebuilds its material; that collection allocates and uploads once. Every other tick
@@ -50,6 +53,7 @@ var _next := PackedVector4Array()  # scratch for the coming tick, swapped in on 
 var _slot_count := 0
 var _dirty := true  # the set of blocks or targets changed: collect again next tick
 var _uploads := 0  # how many times the slots went to the materials, for tests
+var _enabled := true
 
 
 func _ready() -> void:
@@ -127,6 +131,18 @@ func invalidate() -> void:
 	_dirty = true
 
 
+## The rain on or off (the quality preset). Off uploads no enemies at once.
+func set_enabled(on: bool) -> void:
+	if on == _enabled:
+		return
+	_enabled = on
+	_upload()
+
+
+func is_enabled() -> bool:
+	return _enabled
+
+
 func _on_node_changed(node: Node) -> void:
 	if node.is_in_group(TARGET_GROUP) or node.is_in_group(SURFACE_GROUP):
 		_dirty = true
@@ -135,6 +151,8 @@ func _on_node_changed(node: Node) -> void:
 func _physics_process(delta: float) -> void:
 	if _dirty:
 		_collect()
+	if not _enabled:
+		return
 	# Weights: each target's rain climbs while it is alive and falls once it is not.
 	for i in _targets.size():
 		var want := 1.0 if _targets[i].call("is_alive") else 0.0
@@ -210,4 +228,4 @@ func _upload() -> void:
 	_uploads += 1
 	for mat in _materials:
 		mat.set_shader_parameter("enemies", _slots)
-		mat.set_shader_parameter("enemy_count", _slot_count)
+		mat.set_shader_parameter("enemy_count", _slot_count if _enabled else 0)
