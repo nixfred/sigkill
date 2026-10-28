@@ -18,6 +18,15 @@ extends SceneTree
 ## none left, the wrong types) are dropped and counted, a new life gives the bombs back, the
 ## host's live cap holds, and every node is freed. Nothing outside this process is touched:
 ## the fork bomb is fiction, nothing forks or runs.
+##
+## Every run throws the same chains. The game draws a new scatter seed for each throw; the
+## test pins the seed source before each case (_pin()). The outcomes checked do not hang on
+## the seed either: a player who must be hurt or killed is reached by the thrown bomb's own
+## blast, whose place no seed moves; the case that may kill the joiner runs after the one
+## that needs it alive; and the wall is wider than a chain can spread around. Nothing
+## waits a frame count for the network: the host must have heard the joiner's newest place
+## and look before it judges (_heard()), and each forged throw is waited for until the host
+## has counted it.
 
 const Session = preload("res://scripts/net/net_session.gd")
 const Combat = preload("res://scripts/net/combat.gd")
@@ -40,6 +49,13 @@ const STAND_Y := 0.95
 ## A clear line across the arena, from x -15 to the east wall at x 20.
 const LINE_Z := 15.0
 const SLOT := 3
+## Where the joiner stands beside the host for the host's own throws: 1.7 m off, out of the
+## bomb's path, and 2.3 m from where the thrown bomb itself goes off (2.6 m ahead of the
+## host), so that blast alone, whatever the seed, takes 13: it kills the joiner from 10, and
+## hurts it from 100 (the rest of the chain may kill it too; that case runs last).
+const BESIDE := Vector3(1.0, 0.0, 1.4)
+## Each case's scatter seed source, pinned.
+const SEEDS := {"drawn": 1901, "quick": 1902, "wall": 1903, "spam": 1904, "joiner": 1905, "own": 1906, "second": 1907, "spent": 1908, "host_spam": 1909}
 
 var _fails := 0
 var _checks := 0
@@ -198,6 +214,7 @@ func _solo_checks() -> void:
 	var gens := []
 	var callouts := []
 	p.fork_bomb_burst.connect(func(): callouts.append(round.callout_text()))
+	_pin(p.get("_bomb_rng"), SEEDS["drawn"])
 	await _fire(p)
 	var thrown_one: bool = inv.mags[SLOT] == 1 and _chains(main).size() == 1
 	var chain = _chains(main)[0] if thrown_one else null
@@ -212,6 +229,7 @@ func _solo_checks() -> void:
 	# The quick throw: G with the cannon drawn.
 	p.select_slot(0)
 	await _settle(p, 0.4)
+	_pin(p.get("_bomb_rng"), SEEDS["quick"])
 	var quick: bool = p.quick_throw()
 	await physics_frame
 	var after_quick: int = inv.mags[SLOT]
@@ -259,15 +277,19 @@ func _solo_checks() -> void:
 	_check("acceptance: a wall between the blasts and a daemon blocks every one of them: a full chain 2.6 m away on the wall's far side leaves it at full health", guard.is_alive() and guard.health() == 100.0, "%.1f" % guard.health())
 	wall.free()
 	# A throw against a wall: the bomb leaves on this side of it, and nothing goes off beyond.
+	# The wall runs 7 m each side of the throw (into the arena's own wall), wider than any
+	# chain spreads: three child generations of 0.5 s at 3.5 m/s are 5.5 m at most, so no
+	# blast gets past it but through it.
 	p.respawn_at(main.to_global(Vector3(-15.0, STAND_Y, LINE_Z)))
 	_aim(p, main.to_global(Vector3(20.0, STAND_Y + 0.65, LINE_Z)))
 	await _settle(p, 0.3)
 	var eye_x: float = main.to_local(p.eye_position()).x
-	var face := _wall(main, Vector3(eye_x + 0.3, 1.5, LINE_Z), Vector3(0.1, 3.0, 4.0))
+	var face := _wall(main, Vector3(eye_x + 0.3, 1.5, LINE_Z), Vector3(0.1, 3.0, 14.0))
 	await _frames(2)
 	inv.mags[SLOT] = 2
 	inv.cooldowns[SLOT] = 0.0
 	var blasts_at := []
+	_pin(p.get("_bomb_rng"), SEEDS["wall"])
 	var close: bool = p.quick_throw()
 	var against = _chains(main)[0] if not _chains(main).is_empty() else null
 	var start_x: float = main.to_local(against.get("_bombs")[0]["pos"]).x if against != null else INF
@@ -282,6 +304,7 @@ func _solo_checks() -> void:
 	var peak := 0
 	var most_blasts := 0
 	var chains_seen := {}
+	_pin(p.get("_bomb_rng"), SEEDS["spam"])
 	for i in 120:
 		inv.cooldowns[SLOT] = 0.0
 		if i < 40:
@@ -354,6 +377,7 @@ func _match_checks() -> void:
 	await _frames(10)
 	_aim(cp, client["main"].to_global(spot + Vector3(0.0, -0.3, 0.0)))
 	await _settle(cp, 0.3)
+	var heard := await _until(_heard.bind(hs, cid, client), 4000)
 	hs.combat.states[1]["health"] = 40.0
 	hs.call("_mirror_from_combat")
 	var throws_before: int = hs.get("_throws")
@@ -363,6 +387,7 @@ func _match_checks() -> void:
 	var client_blasts := []
 	var callouts := []
 	cp.fork_bomb_burst.connect(func(): callouts.append(true))
+	_pin(hs.get("_seeds"), SEEDS["joiner"])
 	var deaths := []
 	var host_hud = host["hud"].combat_hud()
 	var client_hud = client["hud"].combat_hud()
@@ -375,7 +400,7 @@ func _match_checks() -> void:
 	if both:
 		host_chain.blasted.connect(func(g, i, at): host_blasts.append([g, i, host["main"].to_local(at)]); host_scatter.merge(host_chain.scatters, true))
 		client_chain.blasted.connect(func(g, i, at): client_blasts.append([g, i, client["main"].to_local(at)]); client_scatter.merge(client_chain.scatters, true))
-	_check("acceptance: the joiner's throw is a request the host checks and runs: its chain on the host decides, the joiner's only draws, and the host counts the joiner's bomb spent", quick and both and host_chain.authoritative and not client_chain.authoritative and hs.combat.ammo_of(cid, "fork_bomb") == [1, 0] and client_chain.judge.is_null(), "%s %s %s" % [quick, both, hs.combat.ammo_of(cid, "fork_bomb")])
+	_check("acceptance: the joiner's throw is a request the host checks and runs: its chain on the host decides, the joiner's only draws, and the host counts the joiner's bomb spent", heard and quick and both and host_chain.authoritative and not client_chain.authoritative and hs.combat.ammo_of(cid, "fork_bomb") == [1, 0] and client_chain.judge.is_null(), "%s %s %s %s" % [heard, quick, both, hs.combat.ammo_of(cid, "fork_bomb")])
 	await _until(func(): return host_blasts.size() == 15 and client_blasts.size() == 15, 6000)
 	await _frames(10)
 	var same_places := host_blasts.size() == 15 and client_blasts.size() == 15
@@ -392,50 +417,57 @@ func _match_checks() -> void:
 	var feed_client: Array = client_death[0][3] if not client_death.is_empty() else []
 	_check("acceptance: the host judged the blasts: the host, at 40 health, died to them, killed by the joiner, and the kill feed names the fork bomb on both sides", host_death.size() == 1 and client_death.size() == 1 and host_death[0][2] == cid and not feed_host.is_empty() and feed_host[0] == "fork bomb sent by Daemon-2 to Daemon-1" and not feed_client.is_empty() and feed_client[0] == "fork bomb sent by Daemon-2 to Daemon-1", "%s | %s | %s" % [deaths.map(func(d): return d.slice(0, 3)), feed_host, feed_client])
 	_check("the first blast of the joiner's own throw is called out on the joiner's screen, once", callouts.size() == 1 and client["hud"].round_hud().last_callout == RoundHud.FORK_BOMB_LINE)
-	# No self-damage: the host throws at its own feet with the joiner beside it.
-	await _until(func(): return not hs.dead.get(1, false) and hs.protect_left.get(1, 0.0) <= 0.0, 8000)
+	# A new life gives the bombs back: the joiner, low and beside the host, dies to the host's
+	# bomb, its own first bomb still spent. First, so no other blast can have given it a new life.
+	await _until(func(): return not hs.dead.get(1, false) and hs.protect_left.get(1, 0.0) <= 0.0 and hs.protect_left.get(cid, 0.0) <= 0.0, 8000)
 	hp.respawn_at(host["main"].to_global(spot))
-	cp.respawn_at(client["main"].to_global(spot + Vector3(-1.6, 0.0, 0.0)))
+	cp.respawn_at(client["main"].to_global(spot + BESIDE))
 	await _frames(12)
 	_aim(hp, host["main"].to_global(spot + Vector3(1.0, -0.9, 0.0)))
 	await _settle(hp, 0.3)
-	var host_health: float = hs.combat.health_of(1)
-	var joiner_health: float = hs.combat.health_of(cid)
-	var mine_before: int = hs.get("_throws")
-	hp.quick_throw()
-	await _until(func(): return _held(hs, mine_before + 1) != null, 1000)
-	await _until(func(): return _held(hs, mine_before + 1) == null, 6000)
-	await _frames(10)
-	_check("acceptance: the thrower takes no damage from its own bombs: the host's chain at its feet leaves it at %d health, while the joiner beside it is hurt (%d -> %d)" % [hs.combat.health_of(1), joiner_health, hs.combat.health_of(cid)], host_health == 100.0 and hs.combat.health_of(1) == 100.0 and hs.combat.health_of(cid) < joiner_health)
-	# A new life gives the bombs back: the joiner, low, dies to the host's second bomb.
-	await _until(func(): return not hs.dead.get(cid, false), 6000)
-	cp.respawn_at(client["main"].to_global(spot + Vector3(-1.6, 0.0, 0.0)))
-	await _frames(10)
+	var placed := await _until(_heard.bind(hs, cid, client), 4000)
 	hs.combat.states[cid]["health"] = 10.0
-	await _settle(hp, 0.7)
+	_pin(hs.get("_seeds"), SEEDS["second"])
 	hp.quick_throw()
 	var down := await _until(func(): return hs.dead.get(cid, false) and cs.dead.get(cid, false), 6000)
 	var spent := [hs.combat.ammo_of(cid, "fork_bomb"), cp.inventory.mags[SLOT]]
 	var back := await _until(func(): return not hs.dead.get(cid, false) and not cs.dead.get(cid, false), 6000)
 	await _frames(4)
-	_check("acceptance: a new life gives the bombs back: the joiner killed with 1 bomb left is back with 2, in the host's count and its own", down and back and spent[0] == [1, 0] and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0] and cp.inventory.mags[SLOT] == 2, "%s -> %s %d" % [spent, hs.combat.ammo_of(cid, "fork_bomb"), cp.inventory.mags[SLOT]])
+	_check("acceptance: a new life gives the bombs back: the joiner killed with 1 bomb left is back with 2, in the host's count and its own", placed and down and back and spent[0] == [1, 0] and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0] and cp.inventory.mags[SLOT] == 2, "%s -> %s %d" % [spent, hs.combat.ammo_of(cid, "fork_bomb"), cp.inventory.mags[SLOT]])
+	# No self-damage: the host throws at its own feet with the joiner beside it.
+	await _until(func(): return _held(hs, hs.get("_throws")) == null and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
+	cp.respawn_at(client["main"].to_global(spot + BESIDE))
+	await _frames(12)
+	await _settle(hp, 0.7)
+	var beside := await _until(_heard.bind(hs, cid, client), 4000)
+	var host_health: float = hs.combat.health_of(1)
+	var joiner_health: float = hs.combat.health_of(cid)
+	var mine_before: int = hs.get("_throws")
+	_pin(hs.get("_seeds"), SEEDS["own"])
+	hp.quick_throw()
+	await _until(func(): return _held(hs, mine_before + 1) != null, 1000)
+	await _until(func(): return _held(hs, mine_before + 1) == null, 6000)
+	await _frames(10)
+	_check("acceptance: the thrower takes no damage from its own bombs: the host's chain at its feet leaves it at %d health, while the joiner beside it is hurt (%d -> %d)" % [hs.combat.health_of(1), joiner_health, hs.combat.health_of(cid)], beside and host_health == 100.0 and hs.combat.health_of(1) == 100.0 and hs.combat.health_of(cid) < joiner_health)
 	# Forged throws.
-	await _until(func(): return hs.protect_left.get(cid, 0.0) <= 0.0, 4000)
+	await _until(func(): return not hs.dead.get(cid, false) and not cs.dead.get(cid, false) and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
 	cp.respawn_at(client["main"].to_global(cspot))
 	_aim(cp, client["main"].to_global(Vector3(20.0, STAND_Y, LINE_Z)))
 	await _settle(cp, 0.5)
+	var aimed := await _until(_heard.bind(hs, cid, client), 4000)
 	var eye: Vector3 = client["main"].to_local(cp.eye_position())
 	var east := Vector3(1.0, 0.0, 0.0)
 	var life: int = cs.lives.get(cid, 0)
 	var drops: Dictionary = hs.combat.drops.duplicate()
 	var counted: int = hs.combat.dropped
 	var throws_now: int = hs.get("_throws")
-	await _forge(cs, [life, "fork_bomb", eye + Vector3(0.0, 0.0, 9.0), east])
-	await _forge(cs, [life, "fork_bomb", eye, Vector3(-1.0, 0.0, 0.0)])
-	await _forge(cs, ["one", "fork_bomb", eye, east])
-	await _forge(cs, [life, "sigterm", eye, east])
+	await _forge(hs, cs, [life, "fork_bomb", eye + Vector3(0.0, 0.0, 9.0), east])
+	await _forge(hs, cs, [life, "fork_bomb", eye, Vector3(-1.0, 0.0, 0.0)])
+	await _forge(hs, cs, ["one", "fork_bomb", eye, east])
+	await _forge(hs, cs, [life, "sigterm", eye, east])
 	var dropped_now: Dictionary = hs.combat.drops
-	_check("acceptance: forged throws are dropped by the host and counted: a far origin (\"origin\"), the wrong aim (\"aim\"), the wrong types and a weapon that is not thrown; no chain is run for any", dropped_now.get(Combat.DROP_ORIGIN, 0) == drops.get(Combat.DROP_ORIGIN, 0) + 1 and dropped_now.get(Combat.DROP_AIM, 0) == drops.get(Combat.DROP_AIM, 0) + 1 and dropped_now.get(Combat.DROP_WEAPON, 0) == drops.get(Combat.DROP_WEAPON, 0) + 1 and hs.combat.dropped == counted + 4 and hs.get("_throws") == throws_now and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0], "drops %s" % dropped_now)
+	_check("acceptance: forged throws are dropped by the host and counted: a far origin (\"origin\"), the wrong aim (\"aim\"), the wrong types and a weapon that is not thrown; no chain is run for any", aimed and dropped_now.get(Combat.DROP_ORIGIN, 0) == drops.get(Combat.DROP_ORIGIN, 0) + 1 and dropped_now.get(Combat.DROP_AIM, 0) == drops.get(Combat.DROP_AIM, 0) + 1 and dropped_now.get(Combat.DROP_WEAPON, 0) == drops.get(Combat.DROP_WEAPON, 0) + 1 and hs.combat.dropped == counted + 4 and hs.get("_throws") == throws_now and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0], "drops %s" % dropped_now)
+	_pin(hs.get("_seeds"), SEEDS["spent"])
 	cp.quick_throw()
 	await _settle(cp, 0.7)
 	cp.quick_throw()
@@ -443,15 +475,16 @@ func _match_checks() -> void:
 	await _settle(cp, 0.7)
 	var empty_before: int = hs.combat.drops.get(Combat.DROP_EMPTY, 0)
 	var throws_spent: int = hs.get("_throws")
-	await _forge(cs, [life, "fork_bomb", client["main"].to_local(cp.eye_position()), east])
+	await _forge(hs, cs, [life, "fork_bomb", client["main"].to_local(cp.eye_position()), east])
 	_check("acceptance: with no bombs left in the host's count, a forged throw is dropped and counted (\"empty\"), and no chain is run", hs.combat.drops.get(Combat.DROP_EMPTY, 0) == empty_before + 1 and hs.get("_throws") == throws_spent, "drops %s" % hs.combat.drops)
 	# The host's live cap: its own bombs and interval forced, a throw every frame.
-	await _until(func(): return _held(hs, throws_spent) == null and _held(hs, throws_spent - 1) == null, 6000)
+	await _until(func(): return _held(hs, throws_spent) == null and _held(hs, throws_spent - 1) == null and not hs.dead.get(1, false), 6000)
 	hp.respawn_at(host["main"].to_global(Vector3(5.0, STAND_Y, LINE_Z)))
 	_aim(hp, host["main"].to_global(Vector3(20.0, STAND_Y, LINE_Z)))
 	await _settle(hp, 0.3)
 	var peak := 0
 	var cap_drops: int = hs.combat.drops.get(Combat.DROP_LIVE, 0)
+	_pin(hs.get("_seeds"), SEEDS["host_spam"])
 	for i in 90:
 		hs.combat.states[1]["ammo"]["fork_bomb"]["mag"] = 9
 		hs.combat.states[1]["ammo"]["fork_bomb"]["last_fire"] = -INF
@@ -477,11 +510,33 @@ func _held(s: Session, id: int):
 	return held["chain"] if held != null and is_instance_valid(held["chain"]) else null
 
 
-## A throw straight onto the wire from the joiner, as the joiner's game counts what it sends.
-func _forge(cs: Session, args: Array) -> void:
+## A throw straight onto the wire from the joiner, as the joiner's game counts what it sends;
+## back once the host has dropped it or run it, never on a frame count.
+func _forge(hs: Session, cs: Session, args: Array) -> void:
+	var dropped: int = hs.combat.dropped
+	var throws: int = hs.get("_throws")
 	cs.set("_sent_actions", cs.get("_sent_actions") + 1)
 	cs.rpc_id(1, "_throw", args[0], args[1], args[2], args[3])
-	await _frames(6)
+	await _until(func(): return hs.combat.dropped != dropped or hs.get("_throws") != throws, 4000)
+	await _frames(2)
+
+
+## True once the host has heard the joiner's newest place and look as its game sends them:
+## the host judges a throw's origin and aim, and how far a blast reaches, by what it last
+## heard of the joiner.
+func _heard(hs: Session, cid: int, client: Dictionary) -> bool:
+	var avatar = hs.avatars.get(cid)
+	var cp: Node = client["player"]
+	if avatar == null or not is_instance_valid(avatar) or not avatar.visible:
+		return false
+	var here: Vector3 = client["main"].to_local(cp.global_position)
+	var look := (Basis(Vector3.UP, cp.rotation.y) * Basis(Vector3.RIGHT, cp.view_pitch()) * Vector3.FORWARD).normalized()
+	return avatar.latest_position().distance_to(here) < 0.05 and avatar.latest_view().angle_to(look) < deg_to_rad(1.0)
+
+
+## A scatter seed source pinned: every throw it draws for from here on is the same each run.
+func _pin(rng: RandomNumberGenerator, seed: int) -> void:
+	rng.seed = seed
 
 
 # --- Helpers. ---
