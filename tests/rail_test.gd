@@ -96,7 +96,7 @@ func _def_checks() -> void:
 	_check("the beam lingers about 0.6 s and is brighter and wider than the cannon's; its kill outdoes any health", r.beam_lifetime == 0.6 and r.beam_radius > _cannon.beam_radius and r.beam_energy > _cannon.beam_energy and r.damage >= CombatTuningScript.new().max_health * 10.0)
 	_check("the cannon and SIGTERM are as they were: no ult, no charge, no pierce, no pid in the feed", not _cannon.is_ult() and _cannon.charge_s == 0.0 and not _cannon.pierce and not _cannon.feed_pid and not _sigterm.is_ult() and _sigterm.charge_s == 0.0 and not _sigterm.pierce and _cannon.damage == 25.0 and _sigterm.pellet_count == 9)
 	var shipped = load("res://resources/arsenal.tres")
-	_check("the shipped arsenal carries it as weapon 3 (the fork bomb is weapon 4 since C19, the fork() shotgun weapon 5 since C24)", shipped.loadout.size() == 5 and shipped.loadout[2] == _rail and Arsenal.usable_loadout(shipped).size() == 5)
+	_check("the shipped arsenal carries it as weapon 3 (the fork bomb is weapon 4 since C19, the fork() shotgun weapon 5 since C24, the grep seeker weapon 6 since C25)", shipped.loadout.size() == 6 and shipped.loadout[2] == _rail and Arsenal.usable_loadout(shipped).size() == 6)
 	var cases := [
 		["pierce", true, "fire_mode", WeaponDefScript.FireMode.HITSCAN_PELLETS, "only a single shot pierces"],
 		["ult_meter", 3.0, "magazine_size", 4, "an ult has no magazine"],
@@ -157,7 +157,7 @@ func _source_checks() -> void:
 	var combat := _code("res://scripts/net/combat.gd")
 	_check("the host owns every meter: a rail shot is believed only with the shooter's meter full, and spent when believed", _body(combat, "validate").contains("def.is_ult() and s[\"meter\"] < def.ult_meter - METER_EPS") and _body(combat, "accept").contains("s[\"meter\"] = 0.0"))
 	_check("the host traces the pierce itself and stops it at the level", _body(session, "_handle_fire").contains("_rail_trace(shooter, origin, dir, def)") and _body(session, "_rail_trace").contains("if not target:\n\t\t\tend = result[\"position\"]\n\t\t\tbreak"))
-	_check("the shot request is the C16 intent: the rail adds no RPC of its own (the fifteen are C13 to C16's ten, C18's two for SIGSTOP and C19's three for the fork bomb; seventeen since C20's two for light trails, nineteen since C22's two for sudo, twenty since C23's top table, protocol 8)", session.count("@rpc(") == 20 and Session.PROTOCOL == 8 and not session.contains("func _rail(") and _body(session, "_fire").contains("_handle_fire("))
+	_check("the shot request is the C16 intent: the rail adds no RPC of its own (the fifteen are C13 to C16's ten, C18's two for SIGSTOP and C19's three for the fork bomb; seventeen since C20's two for light trails, nineteen since C22's two for sudo, twenty since C23's top table, protocol 8, 9 since C25's grep marks)", session.count("@rpc(") == 20 and Session.PROTOCOL == 9 and not session.contains("func _rail(") and _body(session, "_fire").contains("_handle_fire("))
 	var round := _code("res://scripts/round/round_hud.gd")
 	_check("'kill -9' is a game-logic callout: the rail-kill path never touches the link or the announcer", _body(round, "_on_rail_kill").contains("_callout(\"kill_9\", true)") and not _body(round, "_on_rail_kill").contains("link") and not _body(round, "_on_rail_kill").contains("announcer"))
 

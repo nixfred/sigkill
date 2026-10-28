@@ -160,7 +160,7 @@ func _source_checks() -> void:
 	_check("acceptance: fiction only: the new code calls no fork(), no OS call at all (no command, no process, no /proc), opens nothing and sends nothing itself", found.is_empty() and parts.length() > 2000, ", ".join(found))
 	var fire := _body(session, "_handle_fire")
 	var bomb := _body(session, "_bomb")
-	_check("acceptance: no new message, protocol 8: the shot is the usual intent; the host checks it as any shot, draws the seed with its own generator, runs the volley that judges and tells every joiner the seed in the fork bomb's seed message; damage goes out as the usual shot and death messages", Session.PROTOCOL == 8 and session.count("@rpc(") == 20 and fire.find("combat.accept(") < fire.find("if def.is_fork():") and fire.contains("var shot_seed := _seeds.randi()") and fire.contains("_spawn_volley(_throws, shooter, weapon, shot_seed, origin, dir, true)") and fire.contains("_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)") and bomb.contains("_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)") and _body(session, "_judge_pellet").contains("if state != State.HOSTING or combat == null") and _body(session, "_judge_pellet").contains("_broadcast_shot(") and _body(session, "_judge_pellet").contains("_broadcast_death("))
+	_check("acceptance: no new message, protocol 8 (9 since C25's grep marks, which reuse the seed message): the shot is the usual intent; the host checks it as any shot, draws the seed with its own generator, runs the volley that judges and tells every joiner the seed in the fork bomb's seed message; damage goes out as the usual shot and death messages", Session.PROTOCOL == 9 and session.count("@rpc(") == 20 and fire.find("combat.accept(") < fire.find("if def.is_fork():") and fire.contains("var shot_seed := _seeds.randi()") and fire.contains("_spawn_volley(_throws, shooter, weapon, shot_seed, origin, dir, true)") and fire.contains("_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)") and bomb.contains("_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)") and _body(session, "_judge_pellet").contains("if state != State.HOSTING or combat == null") and _body(session, "_judge_pellet").contains("_broadcast_shot(") and _body(session, "_judge_pellet").contains("_broadcast_death("))
 	_check("a client never decides damage: a joiner's volley never judges a player (at most its own dummies, as every weapon's local shot does), and only the host's volley calls _judge_pellet", _body(session, "_spawn_volley").contains("if deciding:\n\t\tjudge = _judge_pellet.bind(shooter, weapon, origin)") and _body(session, "_spawn_volley").contains("judge = _player.fork_hit.bind(def)") and session.count("_judge_pellet.bind(") == 1 and not _body(player, "fork_hit").contains("session"))
 
 
@@ -270,7 +270,7 @@ func _arena_checks() -> void:
 	var inv = p.get("inventory")
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 5 (after the cannon, SIGTERM, the rail and the fork bomb); the player holds five", shipped.loadout.size() == 5 and shipped.loadout[SLOT] == _w and inv.slot_count() == 5 and inv.defs[SLOT].id == "fork_shotgun", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 5 (after the cannon, SIGTERM, the rail and the fork bomb); the player holds five (six since C25's grep)", shipped.loadout.size() == 6 and shipped.loadout[SLOT] == _w and inv.slot_count() == 6 and inv.defs[SLOT].id == "fork_shotgun", str(inv.defs.map(func(d): return d.id)))
 	# Key 5, the wheel, Q.
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_5
@@ -293,7 +293,7 @@ func _arena_checks() -> void:
 	await physics_frame
 	p.swap_to_last()
 	var last: int = inv.current
-	_check("acceptance: key 5 draws it; the weapon cycle reaches it after the fork bomb and wraps from it to the cannon and back; Q returns to it", by_key == SLOT and next == SLOT and wrapped == 0 and back == SLOT and last == SLOT, "%d %d %d %d %d" % [by_key, next, wrapped, back, last])
+	_check("acceptance: key 5 draws it; the weapon cycle reaches it after the fork bomb and goes on from it (to grep, slot 6 since C25) and back; Q returns to it", by_key == SLOT and next == SLOT and wrapped == 5 and back == SLOT and last == SLOT, "%d %d %d %d %d" % [by_key, next, wrapped, back, last])
 	await _settle(p, 0.5)
 	var dummy: Node = main.get_node("Arena/Targets/DummyA")
 	var calls := []

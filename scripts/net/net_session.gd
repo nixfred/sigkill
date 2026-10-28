@@ -143,11 +143,26 @@ extends Node
 ## (that word always reaches a joiner before any shot judged after it); a joiner's volley never
 ## judges a player. No new message: protocol 8 still.
 ##
+## grep (C25): a grep shot is the usual intent (_fire), which carries its claims too: the player
+## ids of the marks the shooter's lock holds (scripts/weapons/grep_lock.gd), at most MARKS_LAST
+## and untyped and type-checked like the rest. The host believes the shot by the usual checks,
+## then each claim by its own (_accept_marks: a living player other than the shooter, within
+## the weapon's lock range plus its tolerance of the shot's origin, within its sight cone plus
+## its tolerance of the shot's aim, nothing of the level between, no more than the shooter's
+## marks as user or root allow) and drops the rest, counted. It runs the darts in its own world
+## from the origin, the aim, a seed of its own generator and the believed marks
+## (scripts/weapons/seeker_volley.gd), judging each that meets a player as a fork() pellet is
+## (_judge_pellet, root's harder hits included), and sends every joiner the seed and the
+## believed marks in the seed message, _bomb, which now carries them. A joiner's darts home on
+## the marks as its screen shows them and never judge a player. Two messages gained a field, so
+## protocol 9: a peer still on 8 gets the version-mismatch refusal.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
-## player's sudo charges and root time, a fork() shot's seed, and the top table's numbers (game PIDs, kills,
+## player's sudo charges and root time, a fork() shot's seed, a grep shot's seed and its claimed and
+## believed marks (player ids), and the top table's numbers (game PIDs, kills,
 ## deaths, damage dealt, time alive, the match's uptime and load). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
@@ -173,6 +188,7 @@ const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
+const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -188,6 +204,8 @@ const LIGHT_TRAILS_FLAG := "--light-trails"
 const GROUND_MASK := 1
 ## What a fork bomb's blast does not see through: the level.
 const BLAST_SIGHT_MASK := 1
+## What a claimed grep mark's sight does not see through: the level.
+const MARK_SIGHT_MASK := 1
 const CannonFx = preload("res://scripts/cannon_fx.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/net.tres"
@@ -202,7 +220,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 8
+const PROTOCOL := 9
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -379,6 +397,8 @@ var _chains := {}
 ## The fork() volleys this arena runs or draws (C24), shot id -> volley; their ids share the
 ## throws' count.
 var _volleys := {}
+## Host: grep claims it did not believe (C25).
+var marks_refused := 0
 ## During a match: the weapons and ammo of the player whose arena went away (an R reload),
 ## handed to the next player that attaches.
 var _kept_inventory: RefCounted = null
@@ -641,6 +661,9 @@ func attach(arena: Node, player: Node) -> void:
 	var vision = player.get("vision")
 	if vision != null:
 		vision.session = self  # code-rain vision reads which bodies are enemies; it sends nothing (C21)
+	var lock = player.get("grep")
+	if lock != null:
+		lock.session = self  # grep's marks are the other players' avatars in a match (C25)
 	var sudo = player.get("sudo")
 	if sudo != null and sudo.has_signal("intent"):
 		sudo.session = self
@@ -1695,7 +1718,8 @@ func _apply_ammo(count: Dictionary) -> void:
 
 ## This player fired (scripts/player.gd): the intent goes to the host, which, when this is
 ## the host, is the same validation every other shot gets. Only the aim goes: the host
-## draws a pellet weapon's pellets itself.
+## draws a pellet weapon's pellets itself. A grep shot's claims go with it (C25): the player
+## ids of its marks.
 func _on_fire_intent(origin: Vector3, direction: Vector3, weapon: String) -> void:
 	if not is_online() or _arena == null or not is_instance_valid(_arena):
 		return
@@ -1705,29 +1729,33 @@ func _on_fire_intent(origin: Vector3, direction: Vector3, weapon: String) -> voi
 	var local_origin: Vector3 = _arena.to_local(origin)
 	var local_dir: Vector3 = (_arena.global_transform.basis.inverse() * direction).normalized()
 	var life: int = lives.get(my_id, 0)
+	var marks := PackedInt32Array()
+	if _weapons.has(weapon) and _weapons[weapon].is_seeker() and _player != null and is_instance_valid(_player) and _player.has_method("grep_claims"):
+		marks = _player.grep_claims()
 	if state == State.HOSTING:
-		_handle_fire(1, fire_seq, life, weapon, local_origin, local_dir)
+		_handle_fire(1, fire_seq, life, weapon, local_origin, local_dir, marks)
 	elif multiplayer.get_peers().has(1):
 		_sent_actions += 1
-		_fire.rpc_id(1, fire_seq, life, weapon, local_origin, local_dir)
+		_fire.rpc_id(1, fire_seq, life, weapon, local_origin, local_dir, marks)
 
 
 ## A joiner's intent to fire, to the host. Untyped on purpose: a packet of the wrong types
-## is dropped and counted here, never an engine error.
+## is dropped and counted here, never an engine error. `marks`: a grep shot's claims (C25),
+## at most MARKS_LAST player ids, empty for every other shot.
 @rpc("any_peer", "call_remote", "reliable")
-func _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:
+func _fire(seq: Variant, life: Variant, weapon: Variant, origin: Variant, dir: Variant, marks: Variant = PackedInt32Array()) -> void:
 	if state != State.HOSTING or combat == null:
 		return
-	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3:
+	if typeof(seq) != TYPE_INT or typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3 or typeof(marks) != TYPE_PACKED_INT32_ARRAY or marks.size() > WeaponDefScript.MARKS_LAST:
 		combat.validate(0, 0, 0, "", Vector3.ZERO, Vector3.ZERO, Vector3.INF, 0, _clock)  # counted: no such shot
 	else:
-		_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir)
+		_handle_fire(multiplayer.get_remote_sender_id(), seq, life, weapon.left(WEAPON_ID_LAST + 1), origin, dir, marks)
 	_ack_actions(multiplayer.get_remote_sender_id())
 
 
 ## The one authority path: validate, draw the pellets, raycast each in the host's world,
-## apply, tell everyone.
-func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vector3, dir: Vector3) -> void:
+## apply, tell everyone. `marks`: a grep shot's claims (C25).
+func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vector3, dir: Vector3, marks: PackedInt32Array = PackedInt32Array()) -> void:
 	if state != State.HOSTING or combat == null:
 		return
 	if not players.has(shooter):
@@ -1753,6 +1781,16 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		var shot_seed := _seeds.randi()
 		_spawn_volley(_throws, shooter, weapon, shot_seed, origin, dir, true)
 		_tell_seed(_throws, shooter, weapon, shot_seed, origin, dir)
+		_flush_sudo()
+		return
+	if def.is_seeker():
+		# grep (C25): the claims the host believes, then the darts as a volley the host runs and
+		# judges; every joiner draws the same one from its seed and the believed marks.
+		var believed := _accept_marks(shooter, origin, dir, def, marks)
+		_throws += 1
+		var dart_seed := _seeds.randi()
+		_spawn_volley(_throws, shooter, weapon, dart_seed, origin, dir, true, believed)
+		_tell_seed(_throws, shooter, weapon, dart_seed, origin, dir, believed)
 		_flush_sudo()
 		return
 	# Every pellet's damage after its falloff, added up per player it struck; the rail's one
@@ -1849,25 +1887,32 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 	_tell_seed(_throws, id, weapon, seed, origin, dir)
 
 
-## A seeded spawn the host believed, to every joiner: a fork bomb's throw, or a fork() shot
-## (C24).
-func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3) -> void:
+## A seeded spawn the host believed, to every joiner: a fork bomb's throw, a fork() shot
+## (C24), or a grep shot with the marks it believed (C25).
+func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks := PackedInt32Array()) -> void:
 	var connected := multiplayer.get_peers()
 	for peer in players:
 		if peer != 1 and connected.has(peer):
-			_bomb.rpc_id(peer, throw_id, thrower, weapon, seed, origin, dir)
+			_bomb.rpc_id(peer, throw_id, thrower, weapon, seed, origin, dir, marks)
 
 
-## A throw or a fork() shot the host believed, to every joiner: its seed, so its screen
-## draws the same chain, or the same pellets (C24).
+## A throw, a fork() shot or a grep shot the host believed, to every joiner: its seed, so its
+## screen draws the same chain, the same pellets (C24) or the same darts on the same marks
+## (C25: `marks` the player ids the host believed, empty for the others).
 @rpc("authority", "call_remote", "reliable")
-func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3) -> void:
-	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_fork()):
+func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks: PackedInt32Array) -> void:
+	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley()):
 		return
 	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
+	# A believed mark of a player who has left since flies its dart straight (_mark_point), so
+	# the darts stay as many as the host's and fan the same.
+	if marks.size() > WeaponDefScript.MARKS_LAST or (not marks.is_empty() and not _weapons[weapon].is_seeker()):
+		return
 	if _weapons[weapon].is_fork():
 		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false)
+	elif _weapons[weapon].is_seeker():
+		_spawn_volley(throw_id, thrower, weapon, seed, origin, dir, false, marks)
 	else:
 		_spawn_chain(throw_id, thrower, weapon, seed, origin, dir, false)
 
@@ -1970,8 +2015,9 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 ## `shot_seed`. It forks once more while `shooter` is root: on the host by its own count, on a
 ## joiner by the host's last word, which always arrives before any shot judged after it.
 ## `deciding` (the host's): judges every pellet that meets a player. This player's own shot is
-## handed to it (its callout, its shot count, its own dummies).
-func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
+## handed to it (its callout, its shot count, its own dummies). A grep shot's darts (C25) go the
+## same way, one homing on each of `marks` (player ids) as this side sees it, or one straight.
+func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, origin: Vector3, dir: Vector3, deciding: bool, marks := PackedInt32Array()) -> void:
 	var def: WeaponDefScript = _weapons[weapon]
 	var root: bool = combat.root(shooter) if deciding and combat != null else root_left.get(shooter, 0.0) > 0.0
 	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
@@ -1981,7 +2027,14 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 		judge = _judge_pellet.bind(shooter, weapon, origin)
 	elif mine:
 		judge = _player.fork_hit.bind(def)  # this machine's own dummies, never a player
-	var volley := ForkVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, def.forks_for(root), deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
+	var volley: Node3D
+	if def.is_seeker():
+		var points := []
+		for id in marks:
+			points.append(_mark_point.bind(id))
+		volley = SeekerVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, points, deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
+	else:
+		volley = ForkVolley.spawn(_arena, def, _arena.to_global(origin), along, shot_seed, def.forks_for(root), deciding, def.hit_mask | PLAYER_LAYER_MASK, _pellets_past.bind(shooter), judge)
 	_volleys[shot_id] = volley
 	volley.finished.connect(_on_volley_finished.bind(shot_id))
 	if mine:
@@ -1990,6 +2043,48 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 
 func _on_volley_finished(_landed: int, shot_id: int) -> void:
 	_volleys.erase(shot_id)
+
+
+## The host's check of a grep shot's claimed marks (C25), the shot itself already believed from
+## `origin` along `dir` (arena space): each claim is believed when it names a living player
+## other than the shooter not named before, within the weapon's lock range plus its tolerance of
+## the origin, within its sight cone plus its tolerance of the aim, with nothing of the level
+## between, and the shooter's marks (as user or as root) are not yet all believed. The rest are
+## dropped and counted (marks_refused). The believed player ids, in the order claimed.
+func _accept_marks(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript, marks: PackedInt32Array) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var cap := def.marks_for(combat.root(shooter))
+	var from: Vector3 = _arena.to_global(origin)
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	for id in marks:
+		var at := Vector3.INF
+		if id != shooter and not out.has(id) and out.size() < cap and combat.has_player(id) and combat.alive(id):
+			at = _mark_point(id)
+		var ok := at.is_finite()
+		if ok:
+			var to := at - from
+			ok = to.length() <= def.lock_range_m + def.claim_tolerance_m and rad_to_deg(along.angle_to(to)) <= def.sight_cone_degrees + def.claim_tolerance_degrees
+		if ok:
+			ok = space.intersect_ray(PhysicsRayQueryParameters3D.create(from, at, MARK_SIGHT_MASK)).is_empty()
+		if ok:
+			out.append(id)
+		else:
+			marks_refused += 1
+	return out
+
+
+## Where player `id`'s middle is now as this side shows it (world space): this player's own
+## body, or that player's avatar; a non-finite vector while it is down or not shown (C25: where
+## a grep dart flies, and where the host checks a claim against).
+func _mark_point(id: int) -> Vector3:
+	if id == my_id:
+		var here: bool = _player != null and is_instance_valid(_player) and not dead.get(my_id, false)
+		return _player.global_position if here else Vector3.INF
+	var avatar = avatars.get(id)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.visible or avatar.dead:
+		return Vector3.INF
+	return avatar.global_position
 
 
 ## What fork() pellets pass through, asked every physics frame (C24): the shooter's own body
@@ -2012,7 +2107,8 @@ func _pellets_past(shooter: int) -> Array[RID]:
 ## `collider` at `at` (world space) flying along `dir`: a living player other than the
 ## shooter takes the pellet's damage for its generation (root's harder hit, C22), told to
 ## everyone as a shot of fork() and, for a kill, a death by it; a dummy of this arena stops it,
-## and only the host's own pellets hurt the host's dummies. True when it dealt damage.
+## and only the host's own pellets hurt the host's dummies. True when it dealt damage. A grep
+## dart (C25) is judged the same, always generation 0: the weapon's damage.
 func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shooter: int, weapon: String, origin: Vector3) -> bool:
 	if state != State.HOSTING or combat == null or not is_instance_valid(collider) or _arena == null or not is_instance_valid(_arena):
 		return false
@@ -2271,7 +2367,7 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 		if mine and hits[i] != my_id:
 			# Root's harder hit fills it no faster (C22): the share at user's strength, as the host's.
 			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health / _root_scale(shooter), false))
-	if shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_fork():
+	if shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_volley():
 		for end in ends:
 			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
 	if hits.is_empty():

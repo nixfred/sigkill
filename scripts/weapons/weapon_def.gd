@@ -36,17 +36,31 @@ extends "res://scripts/weapon_tuning.gd"
 ## fire_range. The fan and the forks come from the aim and a seed alone (fork_spread(),
 ## fork_pair()), so every screen draws the same pellets. The fork group is empty (0) for every
 ## other weapon.
+##
+## grep darts (C25, resources/grep_seeker.tres): fire_mode SEEKER marks before it fires. While
+## it is drawn and the aim is held (or toggled), the target nearest the crosshair inside
+## lock_cone_degrees, within lock_range_m and with nothing of the level in between, builds a
+## lock over lock_s; a full lock marks it, up to max_marks at once (root_max_marks while C22's
+## root is on, and the lock builds root_lock_speed times as fast). A mark stays while its target
+## is in sight (inside sight_cone_degrees of the crosshair, nothing of the level in between) and
+## within lock_range_m, or out of it for no longer than lock_grace_s. A shot fires one dart per
+## mark, fanned over spread_degrees each side (seek_spread()), or one straight along the aim
+## with no mark; each flies at dart_speed, turns toward its mark at most dart_turn_degrees a
+## second, stops at the first wall or body and vanishes at fire_range. damage is one dart's.
+## In a match the host believes a claimed mark within lock_range_m plus claim_tolerance_m and
+## sight_cone_degrees plus claim_tolerance_degrees of the shot's aim, in sight. The Seek group
+## is empty (0) for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
-## (fork()). Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS]
+## (fork()), seeker darts since C25 (grep). Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -79,6 +93,21 @@ const PELLET_RADIUS_LAST_M := 0.2
 const PELLET_TRAIL_LAST_M := 3.0
 const FORK_FLASH_RADIUS_LAST_M := 0.5
 const FORK_FLASH_LAST_S := 0.5
+## grep darts (C25): the bounds of their numbers. A shot never fires more than MARKS_LAST darts.
+const MARKS_LAST := 8
+const LOCK_CONE_LAST := 30.0
+const SIGHT_CONE_LAST := 90.0
+const LOCK_RANGE_LAST_M := 200.0
+const LOCK_FIRST_S := 0.05
+const LOCK_LAST_S := 5.0
+const GRACE_LAST_S := 5.0
+const ROOT_LOCK_SPEED_LAST := 10.0
+const CLAIM_TOLERANCE_LAST := 15.0
+const CLAIM_TOLERANCE_LAST_M := 5.0
+const DART_SPEED_FIRST := 5.0
+const DART_SPEED_LAST := 400.0
+const DART_TURN_LAST := 1440.0
+const BRACKET_LAST_PX := 200.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -172,6 +201,36 @@ const FORK_FLASH_LAST_S := 0.5
 @export var fork_flash_radius_m: float = 0.0
 @export var fork_flash_s: float = 0.0
 
+@export_group("Seek")
+## grep darts (C25): the lock. Degrees off the crosshair a lock builds within, metres it
+## reaches, and seconds a full lock takes.
+@export var lock_cone_degrees: float = 0.0
+@export var lock_range_m: float = 0.0
+@export var lock_s: float = 0.0
+## Seconds a mark lasts while its target is out of sight or out of range.
+@export var lock_grace_s: float = 0.0
+## Degrees off the crosshair a marked target counts as in sight (its line of sight takes the
+## level into account too).
+@export var sight_cone_degrees: float = 0.0
+## Marks held at once: as user, and while C22's root is on; and how many times as fast a lock
+## builds as root.
+@export var max_marks: int = 0
+@export var root_max_marks: int = 0
+@export var root_lock_speed: float = 0.0
+## In a match: how far past lock_range_m, and how many degrees past sight_cone_degrees, the host
+## still believes a claimed mark (what one side's view and the other's may differ by).
+@export var claim_tolerance_m: float = 0.0
+@export var claim_tolerance_degrees: float = 0.0
+## The darts: metres a second, the most degrees a second one turns toward its mark, and the
+## look (a glowing head and a thin trail).
+@export var dart_speed: float = 0.0
+@export var dart_turn_degrees: float = 0.0
+@export var dart_radius_m: float = 0.0
+@export var dart_trail_m: float = 0.0
+## The lock brackets on screen, half their side in pixels: as a lock starts, and once marked.
+@export var bracket_open_px: float = 0.0
+@export var bracket_marked_px: float = 0.0
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -189,7 +248,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets and projectile" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets and seeker" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -199,6 +258,8 @@ func problems() -> PackedStringArray:
 			out.append("a thrown weapon throws one at a time from a magazine: 1 pellet, a magazine, no pierce, charge or ult")
 	elif fire_mode == FireMode.FORK_PELLETS:
 		out.append_array(_fork_problems())
+	elif fire_mode == FireMode.SEEKER:
+		out.append_array(_seek_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -207,10 +268,12 @@ func problems() -> PackedStringArray:
 		out.append("pellets must number 2 to %d" % PELLETS_LAST)
 	if not is_finite(spread_degrees) or spread_degrees < 0.0 or spread_degrees > SPREAD_LAST:
 		out.append("spread_degrees must be between 0 and %s" % SPREAD_LAST)
-	elif (fire_mode == FireMode.HITSCAN_PELLETS or fire_mode == FireMode.FORK_PELLETS) and spread_degrees <= 0.0:
+	elif (fire_mode == FireMode.HITSCAN_PELLETS or fire_mode == FireMode.FORK_PELLETS or fire_mode == FireMode.SEEKER) and spread_degrees <= 0.0:
 		out.append("pellets need a spread above 0")
 	if fire_mode != FireMode.FORK_PELLETS and (pellet_speed != 0.0 or fork_distance_m != 0.0 or fork_generations != 0 or root_fork_generations != 0):
 		out.append("only fork() pellets (fire_mode fork pellets) fill the fork group")
+	if fire_mode != FireMode.SEEKER and (dart_speed != 0.0 or lock_s != 0.0 or max_marks != 0 or root_max_marks != 0 or lock_range_m != 0.0):
+		out.append("only grep darts (fire_mode seeker) fill the seek group")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -272,6 +335,46 @@ func is_thrown() -> bool:
 ## True for fork() pellets (C24): projectiles that fork mid-flight.
 func is_fork() -> bool:
 	return fire_mode == FireMode.FORK_PELLETS
+
+
+## True for grep's seeker darts (C25): it marks targets, then its darts home on them.
+func is_seeker() -> bool:
+	return fire_mode == FireMode.SEEKER
+
+
+## True for a weapon whose shot flies as a volley of projectiles the host runs and every
+## screen draws from a seed: fork() (C24) and grep (C25).
+func is_volley() -> bool:
+	return is_fork() or is_seeker()
+
+
+## Marks held at once: as user, or with `root` (C22's overcharge) the tuning's root number.
+func marks_for(root: bool) -> int:
+	return root_max_marks if root else max_marks
+
+
+## How fast a lock builds: 1 as user, root_lock_speed with `root`.
+func lock_speed(root: bool) -> float:
+	return root_lock_speed if root else 1.0
+
+
+## The first direction of each of a grep shot's `count` darts along `aim_in`, drawn from
+## `shot_seed` alone: one dart flies straight along the aim; more are fanned in the plane of the
+## aim and its level right-hand side, one in each equal slice of spread_degrees each side, at a
+## place in its slice the seed picks.
+func seek_spread(aim_in: Vector3, shot_seed: int, count: int) -> PackedVector3Array:
+	var aim := aim_in.normalized()
+	if count <= 1:
+		return PackedVector3Array([aim])
+	var axis := fork_axis(aim)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = shot_seed
+	var out := PackedVector3Array()
+	var width := deg_to_rad(spread_degrees) * 2.0
+	var slice := width / count
+	for i in count:
+		out.append(aim.rotated(axis, -width * 0.5 + slice * (i + rng.randf())).normalized())
+	return out
 
 
 ## Forks each pellet line makes: as user, or with `root` (C22's overcharge) one generation more
@@ -346,6 +449,39 @@ func _fork_problems() -> PackedStringArray:
 		var v: float = pair[1]
 		if not is_finite(v) or v <= 0.0 or v > pair[2]:
 			out.append("%s must be above 0 and at most %s" % [pair[0], pair[2]])
+	return out
+
+
+func _seek_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("grep fires darts, one a mark: pellet_count stays 1")
+	if projectile != null or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("grep fires from a magazine: no projectile tuning, pierce, charge or ult")
+	if not is_finite(falloff_floor) or falloff_floor != 1.0:
+		out.append("grep's darts keep their damage: falloff_floor stays 1")
+	if max_marks < 1 or root_max_marks < max_marks or root_max_marks > MARKS_LAST:
+		out.append("max_marks must be at least 1 and root_max_marks between it and %d" % MARKS_LAST)
+	var bounds := [
+		["lock_cone_degrees", lock_cone_degrees, 0.0, LOCK_CONE_LAST], ["sight_cone_degrees", sight_cone_degrees, lock_cone_degrees, SIGHT_CONE_LAST],
+		["lock_range_m", lock_range_m, 0.0, LOCK_RANGE_LAST_M], ["lock_grace_s", lock_grace_s, 0.0, GRACE_LAST_S],
+		["claim_tolerance_m", claim_tolerance_m, 0.0, CLAIM_TOLERANCE_LAST_M], ["claim_tolerance_degrees", claim_tolerance_degrees, 0.0, CLAIM_TOLERANCE_LAST],
+		["dart_turn_degrees", dart_turn_degrees, 0.0, DART_TURN_LAST], ["dart_radius_m", dart_radius_m, 0.0, PELLET_RADIUS_LAST_M],
+		["dart_trail_m", dart_trail_m, 0.0, PELLET_TRAIL_LAST_M], ["bracket_marked_px", bracket_marked_px, 0.0, BRACKET_LAST_PX],
+		["bracket_open_px", bracket_open_px, bracket_marked_px, BRACKET_LAST_PX],
+	]
+	for b in bounds:
+		var v: float = b[1]
+		if not is_finite(v) or v <= b[2] or v > b[3]:
+			out.append("%s must be above %s and at most %s" % [b[0], b[2], b[3]])
+	if not is_finite(lock_s) or lock_s < LOCK_FIRST_S or lock_s > LOCK_LAST_S:
+		out.append("lock_s must be between %s and %s" % [LOCK_FIRST_S, LOCK_LAST_S])
+	if not is_finite(root_lock_speed) or root_lock_speed < 1.0 or root_lock_speed > ROOT_LOCK_SPEED_LAST:
+		out.append("root_lock_speed must be between 1 and %s" % ROOT_LOCK_SPEED_LAST)
+	if not is_finite(dart_speed) or dart_speed < DART_SPEED_FIRST or dart_speed > DART_SPEED_LAST:
+		out.append("dart_speed must be between %s and %s" % [DART_SPEED_FIRST, DART_SPEED_LAST])
+	if is_finite(lock_range_m) and is_finite(fire_range) and fire_range < lock_range_m:
+		out.append("fire_range, the darts' reach, must be at least lock_range_m")
 	return out
 
 

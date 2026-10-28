@@ -5,7 +5,8 @@ extends CanvasLayer
 ## input before every other part of the HUD and before the player. Over everything sits
 ## the colorblind-safe palette filter, shown while that setting is on. The top table (C23,
 ## scripts/hud/spectate_top.gd) sits over the rest while it is up, and gives way to the
-## round's summary, the menu, the multiplayer panel and a text box.
+## round's summary, the menu, the multiplayer panel and a text box. grep's marks (C25,
+## scripts/hud/grep_marks.gd) draw round their targets, over the crosshair, while it is in hand.
 
 const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
@@ -16,6 +17,7 @@ const NetHud = preload("res://scripts/net/net_hud.gd")
 const CombatHud = preload("res://scripts/net/combat_hud.gd")
 const WeaponHud = preload("res://scripts/hud/weapon_hud.gd")
 const SudoBadge = preload("res://scripts/hud/sudo_badge.gd")
+const GrepMarks = preload("res://scripts/hud/grep_marks.gd")
 const SpectateTop = preload("res://scripts/hud/spectate_top.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
@@ -34,6 +36,7 @@ var _net: NetHud
 var _combat: CombatHud
 var _weapons: WeaponHud
 var _sudo: SudoBadge
+var _grep: GrepMarks
 var _top: SpectateTop
 var _menu: PauseMenu
 var _filter: CanvasLayer
@@ -57,6 +60,10 @@ func _ready() -> void:
 	_hit_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_hit_marker)
 	_hit_marker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	_grep = GrepMarks.new()
+	_grep.name = "GrepMarks"
+	root.add_child(_grep)
 
 	_status = _make_label(root, 20)
 	_status.text = "> daemons down: 0/0"
@@ -153,6 +160,7 @@ func set_player(player: Node) -> void:
 	_player = player
 	_weapons.player = player
 	_sudo.player = player
+	_grep.player = player
 	_top.player = player
 	_guide.player = player
 	_round.set_player(player)
@@ -181,6 +189,11 @@ func weapon_hud() -> WeaponHud:
 ## Root vs user's prompt badge (C22).
 func sudo_badge() -> SudoBadge:
 	return _sudo
+
+
+## grep's brackets and count (C25).
+func grep_marks() -> GrepMarks:
+	return _grep
 
 
 ## The top table (C23).

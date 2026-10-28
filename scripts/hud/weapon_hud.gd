@@ -29,7 +29,10 @@ extends Control
 ##
 ## fork() (C24) is slot 5: one space between slots, not two ("[1 cannon] 2 3 4(2) 5"), so
 ## five slots take no more room than four did and the strip stays clear of the panels centred
-## at 960x540.
+## at 960x540. grep (C25) is slot 6 ("[1 cannon] 2 3 4(2) 5 6"); its marks and their count,
+## "grep -c: N", are under the crosshair (scripts/hud/grep_marks.gd), not on the strip, so the
+## strip keeps its five lines. The slot line is a point smaller than the ammo line (SLOT_FONT):
+## at the full size six slots with SIGTERM drawn reached 3 px under the guide panel at 960x540.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -63,6 +66,8 @@ const VISION_ON_LINE := "%s VISION [%s%s]"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
+## The slot line's size: a point under FONT, so six slots stay clear of the guide panel.
+const SLOT_FONT := 13
 const SMALL_FONT := 12
 const MARGIN := 18
 ## Room kept below the strip for the hint line.
@@ -252,7 +257,7 @@ func _slot_label() -> Label:
 	var label := Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_override("font", Palette.mono_font())
-	label.add_theme_font_size_override("font_size", FONT)
+	label.add_theme_font_size_override("font_size", SLOT_FONT)
 	label.add_theme_color_override("font_color", Palette.MINT)
 	label.add_theme_color_override("font_outline_color", Palette.VOID)
 	label.add_theme_constant_override("outline_size", 4)

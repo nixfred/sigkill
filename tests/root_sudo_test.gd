@@ -170,7 +170,7 @@ func _source_checks() -> void:
 			found.append(word)
 	_check("fiction only: the sudo code runs, calls, reads and opens nothing real (no OS call at all: no command, no environment, no user name), and sends nothing itself; \"user\" is a fixed word", found.is_empty() and FileAccess.get_file_as_string("res://scripts/hud/sudo_badge.gd").contains('const PASSWORD := "[sudo] password for user: ********"'), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("the wire: protocol 7 (8 since C23's top table); the ask an untyped, type-checked any-peer RPC; each player's sudo state an authority RPC from the host; 19 RPCs in all (20 since C23)", Session.PROTOCOL == 8 and session.count("@rpc(") == 20 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _sudo(life: Variant) -> void:') and _body(session, "_sudo").contains("typeof(life) != TYPE_INT") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _sudo_state(id: int, life: int, charges: int, left: float) -> void:'))
+	_check("the wire: protocol 7 (8 since C23's top table, 9 since C25's grep marks); the ask an untyped, type-checked any-peer RPC; each player's sudo state an authority RPC from the host; 19 RPCs in all (20 since C23)", Session.PROTOCOL == 9 and session.count("@rpc(") == 20 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _sudo(life: Variant) -> void:') and _body(session, "_sudo").contains("typeof(life) != TYPE_INT") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _sudo_state(id: int, life: int, charges: int, left: float) -> void:'))
 	var fire := _body(session, "_handle_fire")
 	var blast := _body(session, "_judge_blast")
 	_check("acceptance: only the host applies root's harder hits: in _handle_fire and _judge_blast (and _judge_pellet for fork()'s pellets since C24), after their hosting checks; a joiner's shot and death messages only take the host's numbers", fire.find("if state != State.HOSTING or combat == null") < fire.find("combat.damage_scale(shooter)") and blast.find("if state != State.HOSTING or combat == null") < blast.find("combat.damage_scale(thrower)") and _body(session, "_judge_pellet").find("if state != State.HOSTING or combat == null") < _body(session, "_judge_pellet").find("combat.damage_scale(shooter)") and session.count("combat.damage_scale(") == 4 and not _body(session, "_apply_shot").contains("damage_scale") and not _body(session, "_shot").contains("scale"))
@@ -329,7 +329,7 @@ func _match_checks() -> void:
 	var os: Session = old["session"]
 	os.join("127.0.0.1:%d" % host["session"].listen_port())
 	var refused := await _until(func(): return os.state == Session.State.FAILED, 6000)
-	_check("acceptance: protocol 7 (8 since C23): a joiner still on the protocol before is refused with the clear version line", Session.PROTOCOL == 8 and refused and os.error == "version mismatch: host 8, you 7", os.error)
+	_check("acceptance: protocol 7 (8 since C23, 9 since C25): a joiner still on the protocol before is refused with the clear version line", Session.PROTOCOL == 9 and refused and os.error == "version mismatch: host 9, you 7", os.error)
 	_drop(old)
 	await _frames(2)
 	var client := _branch("Client", CLIENT_OFFSET)

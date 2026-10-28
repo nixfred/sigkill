@@ -109,7 +109,7 @@ func _tuning_checks() -> void:
 	_check("one blast's damage: 22 at the centre, 6.6 at the edge, none past it; never 100", is_equal_approx(t.damage_at(0.0), 22.0) and is_equal_approx(t.damage_at(4.0), 6.6) and t.damage_at(4.01) == 0.0 and t.damage_at(-1.0) == 0.0 and t.damage < 100.0)
 	var w = _w
 	var shipped = load("res://resources/arsenal.tres")
-	_check("the weapon is a WeaponDef in slot 4 of the arsenal: \"fork bomb\", thrown, 2 bombs and none in reserve, a 0.6 s throw interval, its own fork light skin, the kill feed's \"fork bomb\", the chain's resource as its projectile (five slots since C24's fork() shotgun)", w is WeaponDefScript and w.problems().is_empty() and w.id == "fork_bomb" and w.short_name == "fork bomb" and w.is_thrown() and w.magazine_size == 2 and w.reserve_ammo == 0 and w.fire_cooldown == 0.6 and w.light_skin == "fork" and w.kill_word == "fork bomb" and w.projectile == t and shipped.loadout.size() == 5 and shipped.loadout[SLOT] == w, str(w.problems()) if w is WeaponDefScript else "")
+	_check("the weapon is a WeaponDef in slot 4 of the arsenal: \"fork bomb\", thrown, 2 bombs and none in reserve, a 0.6 s throw interval, its own fork light skin, the kill feed's \"fork bomb\", the chain's resource as its projectile (five slots since C24's fork() shotgun, six since C25's grep)", w is WeaponDefScript and w.problems().is_empty() and w.id == "fork_bomb" and w.short_name == "fork bomb" and w.is_thrown() and w.magazine_size == 2 and w.reserve_ammo == 0 and w.fire_cooldown == 0.6 and w.light_skin == "fork" and w.kill_word == "fork bomb" and w.projectile == t and shipped.loadout.size() == 6 and shipped.loadout[SLOT] == w, str(w.problems()) if w is WeaponDefScript else "")
 	var cases := [
 		["generations", 5, "generations"], ["generations", 0, "generations"], ["fuse_s", 0.0, "fuse_s"], ["child_fuse_s", 20.0, "child_fuse_s"],
 		["radius_m", 0.0, "radius_m"], ["damage", -1.0, "damage"], ["live_cap", 0, "live_cap"], ["ring_shrink", 2.0, "ring_shrink"],
@@ -150,7 +150,7 @@ func _source_checks() -> void:
 	_check("the fork bomb is fiction: its chain runs, forks, reads and signals nothing real", real.is_empty(), ", ".join(real))
 	_check("fifteen blasts at most per throw, whatever the tuning says; the last generation only goes off", chain.contains("if blasts >= Tuning.BLASTS_LAST:") and _body(chain, "_blast").contains("gen + 1 < Tuning.GENERATIONS_LAST") and ForkBombTuningScript.BLASTS_LAST == 15)
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("the wire: protocol 5 then (6 since C20's light trails, 7 since C22's sudo, 8 since C23's top table); the throw is an untyped, type-checked any-peer request; the seed and each blast are authority RPCs from the host", Session.PROTOCOL == 8 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _throw(life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:') and _body(session, "_throw").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _bomb(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _blast('))
+	_check("the wire: protocol 5 then (6 since C20's light trails, 7 since C22's sudo, 8 since C23's top table, 9 since C25's grep marks); the throw is an untyped, type-checked any-peer request; the seed and each blast are authority RPCs from the host", Session.PROTOCOL == 9 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _throw(life: Variant, weapon: Variant, origin: Variant, dir: Variant) -> void:') and _body(session, "_throw").contains("typeof(life) != TYPE_INT or typeof(weapon) != TYPE_STRING or typeof(origin) != TYPE_VECTOR3 or typeof(dir) != TYPE_VECTOR3") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _bomb(') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _blast('))
 	_check("only the host ever judges a blast: its chains decide and are judged by _judge_blast, which only runs hosting; a joiner's chain draws, with no judge", _body(session, "_handle_throw").contains("_spawn_chain(_throws, id, weapon, seed, origin, dir, true)") and _body(session, "_bomb").contains("_spawn_chain(throw_id, thrower, weapon, seed, origin, dir, false)") and _body(session, "_spawn_chain").contains("var judge := _judge_blast.bind(thrower, weapon) if deciding else Callable()") and _body(session, "_judge_blast").contains("if state != State.HOSTING or combat == null") and _body(session, "_judge_blast").contains("if id == thrower or not combat.alive(id):"))
 	var combat := _code("res://scripts/net/combat.gd")
 	_check("the host believes a throw only with a bomb left, the interval kept, under the live cap, from near the eye and along the aim; a shot intent naming the fork bomb is refused", _body(combat, "throw").contains("if a[\"mag\"] <= 0 and not root_now:\n\t\treturn _drop(DROP_EMPTY)") and _body(combat, "throw").contains("return _drop(DROP_LIVE)") and _body(combat, "throw").contains("return _drop(DROP_ORIGIN)") and _body(combat, "throw").contains("return _drop(DROP_AIM)") and _body(combat, "validate").contains("weapons[weapon].is_thrown()"))
@@ -206,7 +206,7 @@ func _solo_checks() -> void:
 	p.respawn_at(main.to_global(Vector3(-15.0, STAND_Y, LINE_Z)))
 	_aim(p, main.to_global(Vector3(0.0, STAND_Y + 0.6, LINE_Z)))
 	await _settle(p, 0.3)
-	_check("solo: the fork bomb is slot 4 with its 2 bombs, and the strip shows them while the cannon is drawn (fork() in slot 5 and one space between slots since C24)", inv.slot_count() == 5 and inv.thrown_slot() == SLOT and inv.mags[SLOT] == 2 and wh.slots_text() == "[1 cannon] 2 3 4(2) 5", wh.slots_text())
+	_check("solo: the fork bomb is slot 4 with its 2 bombs, and the strip shows them while the cannon is drawn (fork() in slot 5 and one space between slots since C24, grep in slot 6 since C25)", inv.slot_count() == 6 and inv.thrown_slot() == SLOT and inv.mags[SLOT] == 2 and wh.slots_text() == "[1 cannon] 2 3 4(2) 5 6", wh.slots_text())
 	# A throw, drawn: fire.
 	p.select_slot(SLOT)
 	await _settle(p, 0.4)
@@ -241,7 +241,7 @@ func _solo_checks() -> void:
 	await _settle(p, 1.8)  # past the draw's fiction line
 	await _fire(p)
 	await _settle(p, 0.1)
-	_check("acceptance: G throws one without drawing it (the cannon stays in hand, 0 left, the strip shows \"4(0)\"); with none left neither G nor fire throws anything", quick and after_quick == 0 and inv.current == SLOT and strip_empty == "[1 cannon] 2 3 4(0) 5" and not none_left and _chains(main).is_empty() and wh.state_text() == "out of ammo", "%s %d %s %s" % [quick, after_quick, strip_empty, wh.state_text()])
+	_check("acceptance: G throws one without drawing it (the cannon stays in hand, 0 left, the strip shows \"4(0)\"); with none left neither G nor fire throws anything", quick and after_quick == 0 and inv.current == SLOT and strip_empty == "[1 cannon] 2 3 4(0) 5 6" and not none_left and _chains(main).is_empty() and wh.state_text() == "out of ammo", "%s %d %s %s" % [quick, after_quick, strip_empty, wh.state_text()])
 	round.call("_next_round")
 	var at_round: int = inv.mags[SLOT]
 	inv.mags[SLOT] = 0
@@ -368,7 +368,7 @@ func _match_checks() -> void:
 	var cid: int = cs.my_id
 	await _until(func(): return hs.avatars.has(cid) and cs.avatars.has(1) and hs.combat.has_player(cid) and cs.get("_weapons_synced"), 6000)
 	await _until(func(): return hs.protect_left.get(1, 0.0) <= 0.0 and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
-	_check("a host and a joiner over ENet on 127.0.0.1, protocol 8 (5 at C19), both with the fork bomb's 2 bombs, the host counting the joiner's", joined and Session.PROTOCOL == 8 and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0] and cp.inventory.mags[SLOT] == 2)
+	_check("a host and a joiner over ENet on 127.0.0.1, protocol 9 (5 at C19), both with the fork bomb's 2 bombs, the host counting the joiner's", joined and Session.PROTOCOL == 9 and hs.combat.ammo_of(cid, "fork_bomb") == [2, 0] and cp.inventory.mags[SLOT] == 2)
 	# The joiner throws at the host, 3 m off on the clear line; the host is low, so it dies.
 	var spot := Vector3(-8.0, STAND_Y, LINE_Z)
 	var cspot := Vector3(-11.0, STAND_Y, LINE_Z)

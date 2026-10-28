@@ -144,7 +144,7 @@ func _source_checks() -> void:
 	var tick := _body(session, "_tick_trails")
 	var host_only := tick.find("if state != State.HOSTING or combat == null:\n\t\treturn")
 	_check("only the host lays and judges walls: in _tick_trails both come after its hosting check, nowhere else; a joiner's _trail only adds the host's segment", host_only > 0 and tick.find("trails.advance(") > host_only and tick.find("trails.touching(") > host_only and session.count("trails.advance(") == 1 and session.count("trails.touching(") == 1 and _body(session, "_trail").contains("trails.add(id, a, b, age)") and not _body(session, "_trail").contains("damage_player"))
-	_check("the wire: protocol 6 (7 since C22's sudo, 8 since C23's top table), the rule and the segments authority RPCs from the host; a trail death is the usual death message with the cause \"light_trail\"; the relay's own protocol is untouched (wire 2)", Session.PROTOCOL == 8 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _rules(light_trails: bool) -> void:') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _trail(id: int, life: int, a: Vector3, b: Vector3, age: float) -> void:') and _body(session, "_death").contains("weapon == LIGHT_TRAIL") and tick.contains("_broadcast_death(id, wall_owner, push, LIGHT_TRAIL)") and RelayWire.WIRE == 2)
+	_check("the wire: protocol 6 (7 since C22's sudo, 8 since C23's top table, 9 since C25's grep marks), the rule and the segments authority RPCs from the host; a trail death is the usual death message with the cause \"light_trail\"; the relay's own protocol is untouched (wire 2)", Session.PROTOCOL == 9 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _rules(light_trails: bool) -> void:') and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _trail(id: int, life: int, a: Vector3, b: Vector3, age: float) -> void:') and _body(session, "_death").contains("weapon == LIGHT_TRAIL") and tick.contains("_broadcast_death(id, wall_owner, push, LIGHT_TRAIL)") and RelayWire.WIRE == 2)
 
 
 # --- The walls' own rules, on one node. ---
@@ -242,7 +242,7 @@ func _match_checks() -> void:
 	await _frames(10)
 	await _walk_both(hp, cp, 90)
 	await _frames(10)
-	_check("a host and a joiner over ENet on 127.0.0.1, protocol 8, and light-trail mode off by default: both walk 3 m and more, and no wall is laid on either screen", joined and Session.PROTOCOL == 8 and not hs.light_trails_on() and not cs.light_trails_on() and LightTrails.find(hm) == null and LightTrails.find(cm) == null)
+	_check("a host and a joiner over ENet on 127.0.0.1, protocol 9, and light-trail mode off by default: both walk 3 m and more, and no wall is laid on either screen", joined and Session.PROTOCOL == 9 and not hs.light_trails_on() and not cs.light_trails_on() and LightTrails.find(hm) == null and LightTrails.find(cm) == null)
 	# The host turns it on in its settings; the joiner plays by the host's word.
 	GameSettings.current().set_value("multiplayer", "light_trails", true)
 	var told := await _until(func(): return cs.light_trails_on(), 4000)

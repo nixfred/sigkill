@@ -28,9 +28,11 @@ const ICE_HI := Color(0.917647059, 0.992156863, 1.0)  # #eafdff SIGKILL rail bea
 const FORK := Color(1.0, 0.301960784, 1.0)  # #ff4dff fork bomb body and bomblets (C19)
 const FORK_HI := Color(1.0, 0.8, 1.0)  # #ffccff fork bomb blast rings
 const YELLOW_HI := Color(1.0, 0.960784314, 0.760784314)  # #fff5c2 fork() pellet trails and fork flashes (C24)
+const COBALT := Color(0.301960784, 0.490196078, 1.0)  # #4d7dff grep body, lock brackets and "match" tags (C25)
+const COBALT_HI := Color(0.780392157, 0.839215686, 1.0)  # #c7d6ff grep dart trails and its "grep -c" line
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

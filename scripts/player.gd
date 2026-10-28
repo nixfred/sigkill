@@ -52,6 +52,15 @@ extends CharacterBody3D
 ## the ult meter is what the hit would have been at user's strength: root fills it no faster.
 ## In a match the host applies all of it to players; this side only shows it.
 ##
+## grep (C25), slot 6: the seeker. While it is in hand and the aim is held (or toggled), the
+## node scripts/weapons/grep_lock.gd makes under the player builds a lock on the target nearest
+## the crosshair in its narrow cone and marks it (up to 3, 5 as root, whose locks build twice as
+## fast); each completed mark is the round's "grep" callout. A shot spends every mark: one dart
+## per mark homes on it (scripts/weapons/seeker_volley.gd), or one flies straight with none.
+## Alone the darts run here against this arena's daemons; in a match only the intent goes,
+## with the marks' player ids as its claims, and the host decides which it believes. Putting
+## grep away, a death and a respawn drop every mark.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -74,6 +83,8 @@ const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
 const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
+const GrepLock = preload("res://scripts/weapons/grep_lock.gd")
+const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -110,6 +121,8 @@ signal throw_intent(origin: Vector3, direction: Vector3, weapon: String)
 signal fork_bomb_burst
 ## A shot of this player's fork() forked for the first time (C24): the round HUD's callout.
 signal fork_split
+## grep marked a target (C25): the round HUD's "grep" callout.
+signal grep_marked
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -154,6 +167,10 @@ var sigstop: Sigstop
 var vision: CodeRainVision
 ## Root vs user and sudo overcharge (C22): the node under this player that runs it.
 var sudo: SudoOvercharge
+## grep's marks (C25): the node under this player that keeps them.
+var grep: GrepLock
+## The marks' player ids a grep shot claims, set only while its intent is being emitted.
+var _claims := PackedInt32Array()
 ## Whether the viewmodels show root's red right now.
 var _root_look := false
 
@@ -276,6 +293,10 @@ func _ready() -> void:
 	sudo.name = "SudoOvercharge"
 	sudo.tuning = sudo_tuning
 	add_child(sudo)
+	grep = GrepLock.new()
+	grep.name = "GrepLock"
+	add_child(grep)
+	grep.marked.connect(func(_target: Node3D): grep_marked.emit())
 
 
 func _notification(what: int) -> void:
@@ -601,6 +622,8 @@ func respawn_at(pos: Vector3) -> void:
 		vision.end_now()  # a respawn turns code-rain vision off, its meter as it was (C21)
 	if sudo != null and sudo.state != null:
 		sudo.end_root()  # and ends root (C22)
+	if grep != null:
+		grep.clear()  # and drops grep's marks (C25)
 	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
@@ -627,6 +650,8 @@ func set_alive(on: bool) -> void:
 		vision.on_death()  # code-rain vision off, its meter as it was (C21)
 	if not on and sudo != null and sudo.state != null:
 		sudo.on_death()  # root over, the streak and any unused sudo charge gone (C22)
+	if not on and grep != null:
+		grep.clear()  # every grep mark gone (C25)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -788,6 +813,7 @@ func _step_weapon(delta: float) -> void:
 	# The ray is cast from the camera exactly as the player sees it, clamp included.
 	_apply_recoil()
 	_step_root()
+	_step_grep(delta)
 	if _charge_left > 0.0:
 		_step_charge(delta)
 	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
@@ -905,6 +931,9 @@ func _fire() -> void:
 	if _w.is_fork():
 		_fire_fork()
 		return
+	if _w.is_seeker():
+		_fire_grep()
+		return
 	shots_fired += 1
 	var origin := _camera.global_position
 	var forward := -_camera.global_transform.basis.z
@@ -1009,11 +1038,12 @@ func _fire_fork() -> void:
 	take_volley(volley)
 
 
-## A volley of this player's own fork() shot, alone or drawn from the host's word in a match:
-## its first fork is the "fork()" callout, and when it is done the shot counts as fired, and
-## as a hit, with the weapon's own hit sound, when a pellet of it landed here.
+## A volley of this player's own fork() or grep shot, alone or drawn from the host's word in a
+## match: a fork()'s first fork is the "fork()" callout, and when it is done the shot counts as
+## fired, and as a hit, with the weapon's own hit sound, when a pellet or dart of it landed here.
 func take_volley(volley: Node) -> void:
-	volley.forked.connect(_on_volley_forked)
+	if volley.has_signal("forked"):
+		volley.forked.connect(_on_volley_forked)
 	volley.finished.connect(_on_volley_finished.bind(inventory.slot_of(volley.def.id)))
 
 
@@ -1030,10 +1060,10 @@ func _on_volley_finished(landed: int, slot: int) -> void:
 	shot_fired.emit(landed > 0)
 
 
-## A fork() pellet of generation `gen` met `collider` at `at` (C24): on a daemon of this arena
-## it lands with the weapon's damage for its generation (root's harder hit alone, C22), and
-## fills the ult meter as the other weapons do. True when it landed. Never a player: in a match
-## the host judges those.
+## A fork() pellet of generation `gen` (C24), or a grep dart (C25, always generation 0), met
+## `collider` at `at`: on a daemon of this arena it lands with the weapon's damage for its
+## generation (root's harder hit alone, C22), and fills the ult meter as the other weapons do.
+## True when it landed. Never a player: in a match the host judges those.
 func fork_hit(collider: Object, gen: int, at: Vector3, dir: Vector3, def: WeaponDefScript) -> bool:
 	if not is_instance_valid(collider) or not collider.has_method("hit"):
 		return false
@@ -1043,6 +1073,52 @@ func fork_hit(collider: Object, gen: int, at: Vector3, dir: Vector3, def: Weapon
 	if landed:
 		_meter_from(collider, before, base)
 	return landed
+
+
+## A shot of grep (C25): the muzzle flash, the kick and the sound here at once, and every mark
+## spent. Alone a volley of darts runs here from the eyes along the aim, one homing on each mark
+## (or one straight with none), its seed this player's own, judging this arena's dummies
+## (fork_hit); in a match only the intent goes, its claims the marks' player ids
+## (grep_claims()), and the host runs the shot: every screen, this one too, draws the darts the
+## host believed.
+func _fire_grep() -> void:
+	shots_fired += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	if _shake_on:
+		_shake = maxf(_shake, _w.shake_m)
+	_fire_sfx.play()
+	var held: Array = grep.spend()
+	_claims = PackedInt32Array()
+	for m in held:
+		_claims.append(m["id"])
+	fire_intent.emit(origin, forward, _w.id)
+	_claims = PackedInt32Array()
+	if match_meter:
+		return
+	var points := []
+	for m in held:
+		points.append(GrepLock.mark_point.bind(m["target"]))
+	var volley := SeekerVolley.spawn(_fx_root(), _w, origin, forward, _pellet_rng.randi(), points, true, _w.hit_mask, _not_me, fork_hit.bind(_w))
+	take_volley(volley)
+
+
+## The marks' player ids the grep shot being sent claims (C25): the session reads them while
+## the intent is emitted. Empty at any other moment.
+func grep_claims() -> PackedInt32Array:
+	return _claims
+
+
+## grep's lock for this physics step (C25): with grep in hand and drawn, its marks are kept and
+## a lock builds while the aim is held (or toggled) and nothing blocks the input.
+func _step_grep(delta: float) -> void:
+	if grep == null or not _w.is_seeker() or not alive:
+		return
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	var aiming := _aiming and not input_blocked and not inventory.is_swapping()
+	grep.step(delta, _w, _camera.global_position, -_camera.global_transform.basis.z, aiming, root)
 
 
 ## What this player's own pellets pass through: its own body.
@@ -1185,6 +1261,8 @@ func refill_bombs() -> void:
 
 ## Puts the drawn weapon in view, with its muzzle and its sounds.
 func _show_weapon() -> void:
+	if grep != null:
+		grep.clear()  # putting grep away, or drawing it again, drops its marks (C25)
 	_w = inventory.def()
 	_muzzle.position = _w.muzzle_offset
 	for i in _viewmodels.size():
