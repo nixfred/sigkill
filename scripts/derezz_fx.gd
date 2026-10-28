@@ -12,6 +12,11 @@ extends MultiMeshInstance3D
 ## settles and barely slides stops dead, so a settled derezz casts no more rays. Each voxel shrinks and fades along the fade curve, and the effect frees itself
 ## once its last voxel is gone. Colours come from palette.gd: a share
 ## of the voxels glow hostile red, the rest are obsidian. Cosmetic only.
+##
+## Since A2 each voxel is drawn with glowing Tron edges round a dimmer face and breaks up cell by
+## cell as it fades (shaders/derezz_voxel.gdshader), and the death opens with a flash: a column of
+## light up through the body and a ring along the ground, gone in FLASH_S, children of the effect so
+## they go with it. The motion, the counts, the sizes, the colours and the timing are as they were.
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -35,6 +40,12 @@ const PROBE_DEPTH := 60.0
 const REST_SPEED := 0.3
 ## A settled voxel sliding slower than this stops dead, in m/s.
 const REST_SLIDE := 0.05
+## The death's flash (A2): how long it lasts, in seconds; the column's radius and how much taller
+## than the body it stands; how far the ground ring grows, as many times the body's radius.
+const FLASH_S := 0.35
+const COLUMN_RADIUS := 0.1
+const COLUMN_STRETCH := 1.6
+const RING_REACH := 3.0
 ## A voxel this far above a surface's top, in metres, is airborne rather than sliding on it.
 const AIRBORNE_MARGIN := 0.001
 ## Surfaces whose normal points at least this far up count as tops a voxel can land on.
@@ -42,6 +53,9 @@ const TOP_NORMAL_Y := 0.7
 
 static var _meshes: Dictionary = {}
 static var _materials: Dictionary = {}
+static var _column_mesh: CylinderMesh
+static var _ring_mesh: TorusMesh
+static var _flash_material: StandardMaterial3D
 
 var _d: Derezz
 var _pos := PackedVector3Array()
@@ -59,6 +73,9 @@ var _lifetime := 0.0
 var _accumulator := 0.0
 var _steps := 0
 var _probes := 0  # ground rays cast so far, for tests
+var _column: MeshInstance3D
+var _ring: MeshInstance3D
+var _radius := 0.0
 
 ## Test hook: the instance whose transform and colour, as last handed to the MultiMesh,
 ## are kept in captured_transform and captured_color. -1 keeps nothing. Under --headless
@@ -121,6 +138,8 @@ func start(base: Vector3, radius: float, height: float, shot_dir: Vector3, d: De
 	_apply()
 	if count == 0:
 		queue_free()
+		return
+	_start_flash(radius, height)
 
 
 ## Number of voxels in this derezz.
@@ -148,8 +167,64 @@ func _physics_process(delta: float) -> void:
 	for i in _pos.size():
 		_fade[i] = 1.0 - pow(clampf(_age / _life[i], 0.0, 1.0), _d.fade_power)
 	_apply()
+	_step_flash()
 	if _age >= _lifetime:
 		queue_free()
+
+
+## The death's flash (A2): a column of light up through the body, as tall as COLUMN_STRETCH of it,
+## and a ring on the ground at its foot. Children of this effect, so they go with it.
+func _start_flash(radius: float, height: float) -> void:
+	_radius = radius
+	if _column_mesh == null:
+		_column_mesh = CylinderMesh.new()
+		_column_mesh.top_radius = 1.0
+		_column_mesh.bottom_radius = 1.0
+		_column_mesh.height = 1.0
+		_column_mesh.radial_segments = 6
+		_column_mesh.rings = 1
+		_ring_mesh = TorusMesh.new()
+		_ring_mesh.inner_radius = 0.9
+		_ring_mesh.outer_radius = 1.0
+		_ring_mesh.rings = 24
+		_ring_mesh.ring_segments = 4
+		_flash_material = Palette.unlit_glow(Palette.HOSTILE_RED, Palette.DEREZZ_FLASH_ENERGY)
+		_flash_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_column = _flash_node("Column", _column_mesh, Vector3(0.0, height * COLUMN_STRETCH * HALF, 0.0))
+	_column.scale = Vector3(COLUMN_RADIUS, height * COLUMN_STRETCH, COLUMN_RADIUS)
+	_ring = _flash_node("Ring", _ring_mesh, Vector3(0.0, 0.02, 0.0))
+	_ring.scale = Vector3.ONE * radius
+	_step_flash()
+
+
+func _flash_node(node_name: String, mesh: Mesh, at: Vector3) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = node_name
+	node.mesh = mesh
+	node.material_override = _flash_material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.position = at
+	add_child(node)
+	return node
+
+
+## The flash at this age: the column thinning, the ring spreading, both fading out by FLASH_S.
+func _step_flash() -> void:
+	if _column == null:
+		return
+	var t := clampf(_age / FLASH_S, 0.0, 1.0)
+	_column.visible = t < 1.0
+	_ring.visible = t < 1.0
+	_column.scale.x = COLUMN_RADIUS * (1.0 - t) + 0.0001
+	_column.scale.z = _column.scale.x
+	_column.transparency = t
+	_ring.scale = Vector3.ONE * _radius * (1.0 + (RING_REACH - 1.0) * t)
+	_ring.transparency = t
+
+
+## Whether the death's flash still shows (A2).
+func flashing() -> bool:
+	return _column != null and _column.visible
 
 
 func _simulate(step: float) -> void:
@@ -269,9 +344,7 @@ static func _voxel_mesh(size: float) -> BoxMesh:
 	return _meshes[size]
 
 
-static func _voxel_material(energy: float) -> StandardMaterial3D:
+static func _voxel_material(energy: float) -> ShaderMaterial:
 	if not _materials.has(energy):
-		var mat := Palette.unlit_glow(Palette.FLASH, energy)
-		mat.vertex_color_use_as_albedo = true
-		_materials[energy] = mat
+		_materials[energy] = Palette.derezz_voxel_material(energy)
 	return _materials[energy]

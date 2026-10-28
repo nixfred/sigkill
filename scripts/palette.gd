@@ -104,6 +104,13 @@ const DAEMON_CORE_FLASH_ENERGY := 10.0
 const DAEMON_GLYPH_ENERGY := 3.0
 const DAEMON_GLYPH_FLICKER := 4.0
 const DAEMON_GLYPH_FLASH_ENERGY := 6.0
+# Derezz look (A2): the voxels' edge (a share of a face), the face's share of the glow, the edge's
+# boost, the cells a face breaks into; the death's flash (a column and a ground ring) and its glow.
+const DEREZZ_EDGE_WIDTH := 0.14
+const DEREZZ_FACE_SHARE := 0.45
+const DEREZZ_EDGE_BOOST := 1.8
+const DEREZZ_CELLS := 3.0
+const DEREZZ_FLASH_ENERGY := 5.0
 
 # Shader names under res://shaders/.
 const NEON_EDGE_SHADER := "neon_edge"
@@ -112,6 +119,7 @@ const VIEWMODEL_SHADER := "viewmodel_metal"
 const DAEMON_SHELL_SHADER := "daemon_shell"
 const DAEMON_CORE_SHADER := "daemon_core"
 const DAEMON_GLYPH_SHADER := "daemon_glyphs"
+const DEREZZ_VOXEL_SHADER := "derezz_voxel"
 
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
@@ -258,6 +266,19 @@ static func daemon_glyph_material() -> ShaderMaterial:
 	mat.set_shader_parameter("energy", DAEMON_GLYPH_ENERGY)
 	mat.set_shader_parameter("flicker_rate", DAEMON_GLYPH_FLICKER)
 	mat.set_shader_parameter("flash_energy", DAEMON_GLYPH_FLASH_ENERGY)
+	return mat
+
+
+## A derezz's voxels (A2): glowing edges round a dimmer face in each voxel's colour, breaking up
+## cell by cell as it fades; `energy` the derezz tuning's glow.
+static func derezz_voxel_material(energy: float) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DEREZZ_VOXEL_SHADER)
+	mat.set_shader_parameter("energy", energy)
+	mat.set_shader_parameter("edge_width", DEREZZ_EDGE_WIDTH)
+	mat.set_shader_parameter("face_share", DEREZZ_FACE_SHARE)
+	mat.set_shader_parameter("edge_boost", DEREZZ_EDGE_BOOST)
+	mat.set_shader_parameter("cells", DEREZZ_CELLS)
 	return mat
 
 
