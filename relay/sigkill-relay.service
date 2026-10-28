@@ -1,0 +1,48 @@
+# Example systemd unit for the SIGKILL relay on a plain Linux server (docs/RELAY.md).
+# NOT installed or enabled anywhere by the project. To use it on a server of your own: copy
+# the SIGKILL project to /opt/sigkill and a Godot 4.7 binary to /usr/local/bin/godot (both
+# placeholders: change them to suit), copy this file to /etc/systemd/system/, open the UDP
+# control port and the data port range in the firewall, then systemctl enable --now it.
+
+[Unit]
+Description=SIGKILL relay: room codes and game relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/sigkill/relay/run_relay.sh
+Environment=SIGKILL_GODOT=/usr/local/bin/godot
+Environment=SIGKILL_RELAY_BIND=*
+Environment=SIGKILL_RELAY_PORT=9010
+Environment=SIGKILL_RELAY_DATA_PORTS=40000-40999
+Environment=SIGKILL_RELAY_ROOMS=64
+Environment=SIGKILL_RELAY_ROOM_PLAYERS=4
+Environment=SIGKILL_RELAY_ROOMS_PER_IP=2
+Environment=SIGKILL_RELAY_ROOM_TTL_S=600
+Environment=SIGKILL_RELAY_IDLE_S=60
+Environment=SIGKILL_RELAY_STATS_S=300
+# Godot's data and cache folders in a tmpfs that is wiped when the service stops: nothing is
+# ever written to disk.
+RuntimeDirectory=sigkill-relay
+Environment=XDG_DATA_HOME=%t/sigkill-relay
+Environment=XDG_CACHE_HOME=%t/sigkill-relay
+Environment=XDG_CONFIG_HOME=%t/sigkill-relay
+Environment=HOME=%t/sigkill-relay
+# No user of its own needed, and as little of the system as it can run with.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
