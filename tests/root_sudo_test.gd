@@ -14,7 +14,8 @@ extends SceneTree
 ## while root a real dummy takes 1.5 times the cannon's hit, SIGTERM and the fork bomb spend
 ## nothing (an empty magazine still fires), the ult meter fills no faster, and the weapons
 ## glow red; after it, all as before; a death drops the charge and ends root, a respawn ends
-## root. Then a host and joiners over ENet on 127.0.0.1: a protocol 6 joiner is refused with
+## root. Then a host and joiners over ENet on 127.0.0.1: a joiner on the protocol before (6 at
+## C22, 7 since C23's top table) is refused with
 ## the version line; the joiner's forged ask with no charge is refused and counted; three real
 ## kills of the host credit the joiner a charge on both screens; its Z starts root on the
 ## host's word, both screens show it, and the host's judging makes its shot 1.5 times harder;
@@ -169,7 +170,7 @@ func _source_checks() -> void:
 			found.append(word)
 	_check("fiction only: the sudo code runs, calls, reads and opens nothing real (no OS call at all: no command, no environment, no user name), and sends nothing itself; \"user\" is a fixed word", found.is_empty() and FileAccess.get_file_as_string("res://scripts/hud/sudo_badge.gd").contains('const PASSWORD := "[sudo] password for user: ********"'), ", ".join(found))
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("the wire: protocol 7; the ask an untyped, type-checked any-peer RPC; each player's sudo state an authority RPC from the host; 19 RPCs in all", Session.PROTOCOL == 7 and session.count("@rpc(") == 19 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _sudo(life: Variant) -> void:') and _body(session, "_sudo").contains("typeof(life) != TYPE_INT") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _sudo_state(id: int, life: int, charges: int, left: float) -> void:'))
+	_check("the wire: protocol 7 (8 since C23's top table); the ask an untyped, type-checked any-peer RPC; each player's sudo state an authority RPC from the host; 19 RPCs in all (20 since C23)", Session.PROTOCOL == 8 and session.count("@rpc(") == 20 and session.contains('@rpc("any_peer", "call_remote", "reliable")\nfunc _sudo(life: Variant) -> void:') and _body(session, "_sudo").contains("typeof(life) != TYPE_INT") and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _sudo_state(id: int, life: int, charges: int, left: float) -> void:'))
 	var fire := _body(session, "_handle_fire")
 	var blast := _body(session, "_judge_blast")
 	_check("acceptance: only the host applies root's harder hits: in _handle_fire and _judge_blast, after their hosting checks; a joiner's shot and death messages only take the host's numbers", fire.find("if state != State.HOSTING or combat == null") < fire.find("combat.damage_scale(shooter)") and blast.find("if state != State.HOSTING or combat == null") < blast.find("combat.damage_scale(thrower)") and session.count("combat.damage_scale(") == 3 and not _body(session, "_apply_shot").contains("damage_scale") and not _body(session, "_shot").contains("scale"))
@@ -324,11 +325,11 @@ func _match_checks() -> void:
 	host["session"].host(0)
 	await _frames(2)
 	# A joiner of the last protocol is refused with the clear version line.
-	var old := _branch("Old", OLD_OFFSET, 6)
+	var old := _branch("Old", OLD_OFFSET, 7)
 	var os: Session = old["session"]
 	os.join("127.0.0.1:%d" % host["session"].listen_port())
 	var refused := await _until(func(): return os.state == Session.State.FAILED, 6000)
-	_check("acceptance: protocol 7: a joiner still on protocol 6 is refused with the clear version line", Session.PROTOCOL == 7 and refused and os.error == "version mismatch: host 7, you 6", os.error)
+	_check("acceptance: protocol 7 (8 since C23): a joiner still on the protocol before is refused with the clear version line", Session.PROTOCOL == 8 and refused and os.error == "version mismatch: host 8, you 7", os.error)
 	_drop(old)
 	await _frames(2)
 	var client := _branch("Client", CLIENT_OFFSET)

@@ -123,13 +123,23 @@ extends Node
 ## the host judges after it, so every screen shows who is root (the badge and the red glow)
 ## and each player its own charge. A joiner never applies the harder hits itself. Protocol 7.
 ##
+## Spectate as top (C23): the top table a dead player watches (scripts/hud/spectate_top.gd)
+## shows health, deaths, root and names from what every player already gets; its other
+## numbers are history a player who joined late never received, so the host sends them: once
+## every refresh_s (a second, never faster: resources/spectate_top.tres), to every joiner,
+## _top (the match's seconds of play, its kills in the three load windows, and per player its
+## game PID by join order, kills, deaths, damage dealt and time alive this life), all from the
+## host's own record (scripts/net/combat.gd). A joiner shows them as sent, and shows "-" for
+## any it has not been sent yet; it never makes one up. Protocol 8.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
-## player's sudo charges and root time. Nothing about the AI
-## guide, the settings, paths, processes or the machine. Nothing real is signalled, killed
-## or run.
+## player's sudo charges and root time, and the top table's numbers (game PIDs, kills,
+## deaths, damage dealt, time alive, the match's uptime and load). Nothing about the AI
+## guide, the settings, paths, processes or the machine; a game PID is game data, never a
+## real one. Nothing real is signalled, killed or run.
 
 const Tuning = preload("res://scripts/net/net_tuning.gd")
 const RemotePlayer = preload("res://scripts/net/remote_player.gd")
@@ -155,6 +165,8 @@ const LightTrails = preload("res://scripts/modes/light_trails.gd")
 const LightTrailTuning = preload("res://scripts/modes/light_trail_tuning.gd")
 const Palette = preload("res://scripts/palette.gd")
 const TRAIL_TUNING_PATH := "res://resources/light_trail.tres"
+const TopTuning = preload("res://scripts/hud/spectate_top_tuning.gd")
+const TOP_TUNING_PATH := "res://resources/spectate_top.tres"
 ## The cause a light-trail death carries where a shot's weapon id goes, and the feed's word.
 const LIGHT_TRAIL := "light_trail"
 const LIGHT_TRAIL_WORD := "light trail"
@@ -178,7 +190,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 7
+const PROTOCOL := 8
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -381,6 +393,17 @@ var root_left := {}
 var _my_charges := 0
 ## Joiner: the verdict the host sent, kept until the disconnect it causes is reported.
 var _refusal := ""
+## SpectateTopTuning; null for resources/spectate_top.tres. Set before the node enters the tree.
+var top_tuning: Resource = null
+## Host: the top table messages sent (one per joiner each time). Joiner: those taken.
+var tops_sent := 0
+var tops_received := 0
+var _top_t: TopTuning
+## Host: seconds until every joiner is sent the top table's numbers again.
+var _top_left := 0.0
+## Joiner: the host's last top table numbers ({uptime, load, rows: id -> {pid, kills, deaths,
+## dealt, alive_s}}), or {} before the first.
+var _top_word := {}
 
 
 ## The session beside `scene` (its parent's child named NetSession), made if there is none.
@@ -415,6 +438,7 @@ func _ready() -> void:
 	tuning_in_use()
 	combat_tuning_in_use()
 	trail_tuning_in_use()
+	top_tuning_in_use()
 	room_tuning_in_use()
 	rendezvous_in_use()
 	if not _launch_pending.is_empty():
@@ -456,6 +480,12 @@ func tuning_in_use() -> Tuning:
 	if _t == null:
 		_t = usable_tuning(tuning)
 	return _t
+
+
+func top_tuning_in_use() -> TopTuning:
+	if _top_t == null:
+		_top_t = usable_top_tuning(top_tuning)
+	return _top_t
 
 
 func trail_tuning_in_use() -> LightTrailTuning:
@@ -528,6 +558,19 @@ static func usable_room_tuning(candidate: Resource) -> RoomTuningScript:
 	if shipped is RoomTuningScript and shipped.problems().is_empty():
 		return shipped
 	return RoomTuningScript.new()
+
+
+static func usable_top_tuning(candidate: Resource) -> TopTuning:
+	if candidate is TopTuning:
+		var issues: PackedStringArray = candidate.problems()
+		if issues.is_empty():
+			return candidate
+		for issue in issues:
+			push_warning("spectate top tuning: " + issue + "; using the shipped tuning instead")
+	var shipped = load(TOP_TUNING_PATH)
+	if shipped is TopTuning and shipped.problems().is_empty():
+		return shipped
+	return TopTuning.new()
 
 
 static func usable_trail_tuning(candidate: Resource) -> LightTrailTuning:
@@ -655,6 +698,7 @@ func host(port: int = -1) -> bool:
 	_clock = 0.0
 	combat = Combat.new(_ct, _weapon_list, _swap_s)
 	combat.add_player(1)
+	_top_left = top_tuning_in_use().refresh_s
 	_reset_player_weapons()
 	_mirror_from_combat()
 	error = ""
@@ -891,6 +935,7 @@ func _physics_process(delta: float) -> void:
 			_mirror_from_combat()
 			_tick_protection(delta)
 			_flush_sudo()  # kills, deaths, respawns and root's end this tick, told at once (C22)
+			_tick_top(delta)
 		State.JOINED:
 			_tick_send(delta)
 			_tick_trails(delta)
@@ -1205,6 +1250,7 @@ func _clear_players() -> void:
 	LightTrails.drop(_arena)  # the match is over: every wall goes with it
 	root_left = {}
 	_my_charges = 0
+	_top_word = {}
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
 	combat_changed.emit()
@@ -2221,6 +2267,90 @@ func _root_scale(id: int) -> float:
 		if sudo != null and sudo.state != null:
 			return sudo.damage_scale()
 	return 1.0
+
+
+# --- Spectate as top (C23). ---
+
+## The top table's numbers of this match as this side knows them: hosting, the host's own
+## record now; joined, the host's last word ({} before the first); otherwise {}. {uptime,
+## load (the kills in each load window), rows: id -> {pid, kills, deaths, dealt, alive_s}}.
+func top_numbers() -> Dictionary:
+	if state == State.JOINED:
+		return _top_word
+	if state != State.HOSTING or combat == null:
+		return {}
+	var t := top_tuning_in_use()
+	var rows := {}
+	for id in players:
+		var r = combat.record.rows.get(id)
+		if r != null:
+			rows[id] = {"pid": t.pid_base + r["order"], "kills": r["kills"], "deaths": r["deaths"], "dealt": r["dealt"], "alive_s": r["alive_s"]}
+	return {"uptime": combat.record.uptime, "load": combat.record.load_counts(t.windows()), "rows": rows}
+
+
+## Whether this side knows `id`'s SIGSTOP is on, for the top table's T: the host knows every
+## player's; a joiner only its own, from the host's word to it.
+func stopped_known(id: int) -> bool:
+	if state == State.HOSTING and combat != null:
+		return combat.sigstop_on(id)
+	if state == State.JOINED and id == my_id and _player_ready():
+		var stop = _player.get("sigstop")
+		return stop != null and stop.is_on()
+	return false
+
+
+## Host: every refresh_s of its clock, the top table's numbers to every joiner.
+func _tick_top(delta: float) -> void:
+	_top_left -= delta
+	if _top_left > 0.0:
+		return
+	var t := top_tuning_in_use()
+	_top_left = maxf(_top_left + t.refresh_s, 0.0)
+	if _top_left <= 0.0:
+		_top_left = t.refresh_s
+	var numbers := top_numbers()
+	var ids := PackedInt32Array()
+	var pids := PackedInt32Array()
+	var kills := PackedInt32Array()
+	var deaths := PackedInt32Array()
+	var dealt := PackedFloat32Array()
+	var alive := PackedFloat32Array()
+	for id in numbers["rows"]:
+		var row: Dictionary = numbers["rows"][id]
+		ids.append(id)
+		pids.append(row["pid"])
+		kills.append(row["kills"])
+		deaths.append(row["deaths"])
+		dealt.append(row["dealt"])
+		alive.append(row["alive_s"])
+	var connected := multiplayer.get_peers()
+	for peer in players:
+		if peer != 1 and connected.has(peer):
+			_top.rpc_id(peer, numbers["uptime"], numbers["load"], ids, pids, kills, deaths, dealt, alive)
+			tops_sent += 1
+
+
+## The top table's numbers from the host: the match's seconds of play, its kills in each load
+## window, and per player its game PID, kills, deaths, damage dealt and time alive this life.
+## A malformed one is dropped whole; a player not in the roster is left out.
+@rpc("authority", "call_remote", "reliable")
+func _top(uptime: float, load: PackedInt32Array, ids: PackedInt32Array, pids: PackedInt32Array, kills: PackedInt32Array, deaths: PackedInt32Array, dealt: PackedFloat32Array, alive: PackedFloat32Array) -> void:
+	var n := ids.size()
+	if state != State.JOINED or not is_finite(uptime) or uptime < 0.0 or load.size() != 3 or n > _t.max_players:
+		return
+	if pids.size() != n or kills.size() != n or deaths.size() != n or dealt.size() != n or alive.size() != n:
+		return
+	for count in load:
+		if count < 0:
+			return
+	var rows := {}
+	for i in n:
+		if pids[i] < 0 or pids[i] > TopTuning.PID_LAST or kills[i] < 0 or deaths[i] < 0 or not is_finite(dealt[i]) or dealt[i] < 0.0 or not is_finite(alive[i]) or alive[i] < 0.0:
+			return
+		if players.has(ids[i]):
+			rows[ids[i]] = {"pid": pids[i], "kills": kills[i], "deaths": deaths[i], "dealt": dealt[i], "alive_s": alive[i]}
+	_top_word = {"uptime": uptime, "load": load, "rows": rows}
+	tops_received += 1
 
 
 # --- Light-trail mode (C20). ---

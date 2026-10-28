@@ -16,6 +16,7 @@ extends RefCounted
 ## bind that another action or a fixed key already uses is shown as a conflict. SIGSTOP
 ## bullet time (C18): F starts it and F again ends it (SIGCONT), rebindable like the rest.
 ## The fork bomb (C19): G throws one without drawing it, rebindable as "Fork bomb".
+## Spectate as top (C23): Tab, held, shows the top table, rebindable as "top".
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -34,6 +35,7 @@ const REBINDABLE := [
 	["reset_arena", "respawn"], ["ask_ai", "ask your AI"], ["toggle_ai", "AI on/off"],
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
 	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
+	["show_top", "top"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -86,6 +88,7 @@ static func ensure() -> void:
 	_key("throw_bomb", [KEY_G])
 	_key("code_rain_vision", [KEY_V])
 	_key("sudo_overcharge", [KEY_Z])
+	_key("show_top", [KEY_TAB])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

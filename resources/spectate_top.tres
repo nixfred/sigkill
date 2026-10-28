@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="SpectateTopTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/hud/spectate_top_tuning.gd" id="1_top"]
+
+[resource]
+script = ExtResource("1_top")
+refresh_s = 1.0
+load_short_s = 10.0
+load_mid_s = 30.0
+load_long_s = 60.0
+max_rows = 8
+pid_base = 100

@@ -24,6 +24,8 @@ const FEED_FONT := 13
 ## Room below the feed for the hint line and the weapon strip (C16).
 const FEED_BOTTOM_GAP := 104
 const FLASH_ALPHA := 0.28
+## The death banner's place: this far down the screen, unless the top table is up above it.
+const BANNER_ANCHOR := 0.38
 const BORDER_WIDTH := 3
 
 ## The session whose results to show; set through set_session.
@@ -99,6 +101,24 @@ func _process(delta: float) -> void:
 
 func flash_left() -> float:
 	return _flash_left
+
+
+## Spectate as top (C23): with the top table up, the death banner sits `top` pixels from the
+## screen's top, just below it; a negative `top` puts it back in its own place.
+func place_banner(top: float) -> void:
+	var anchor := 0.0 if top >= 0.0 else BANNER_ANCHOR
+	var offset := top if top >= 0.0 else 0.0
+	if _banner.anchor_top == anchor and _banner.offset_top == offset:
+		return
+	_banner.set_anchor(SIDE_TOP, anchor, false, false)
+	_banner.set_anchor(SIDE_BOTTOM, anchor, false, false)
+	_banner.offset_top = offset
+	_banner.offset_bottom = offset
+
+
+## The death banner's rectangle on the screen.
+func banner_rect() -> Rect2:
+	return _banner.get_global_rect()
 
 
 func line_text() -> String:
@@ -208,8 +228,8 @@ func _build() -> void:
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.anchor_left = 0.0
 	_banner.anchor_right = 1.0
-	_banner.anchor_top = 0.38
-	_banner.anchor_bottom = 0.38
+	_banner.anchor_top = BANNER_ANCHOR
+	_banner.anchor_bottom = BANNER_ANCHOR
 	_banner.offset_left = 0.0
 	_banner.offset_right = 0.0
 	_banner.visible = false

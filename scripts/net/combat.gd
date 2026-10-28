@@ -57,6 +57,12 @@ extends RefCounted
 ## damage_scale() times harder where the session judges them, and its shots and throws spend
 ## nothing: an empty magazine does not stop them. Every change of a player's sudo state is
 ## noted (take_sudo_changed()) for the session to tell everyone.
+##
+## Spectate as top (C23): the host also keeps the match's record for the top table
+## (scripts/hud/top_ledger.gd): each player's join order, kills, deaths, the damage it dealt
+## (health actually taken off another player, here where every hit lands) and its time alive
+## this life, the match's seconds of play and when each kill fell. The session sends it to
+## every player once a second.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -66,6 +72,7 @@ const SIGSTOP_TUNING_PATH := "res://resources/sigstop.tres"
 const SudoState = preload("res://scripts/abilities/sudo_state.gd")
 const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const SUDO_TUNING_PATH := "res://resources/sudo_overcharge.tres"
+const TopLedger = preload("res://scripts/hud/top_ledger.gd")
 
 const DIR_TOLERANCE := 0.01
 const SEQ_JUMP_LAST := 10000
@@ -115,6 +122,8 @@ var states := {}
 ## Shots dropped, in all and by reason.
 var dropped := 0
 var drops := {}
+## The match's record for the top table (C23), on the host's clock.
+var record := TopLedger.new()
 
 
 ## `weapon_defs`: the arsenal's usable WeaponDefs in slot order; `swap_seconds`: its swap time;
@@ -131,6 +140,7 @@ func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3,
 
 func add_player(id: int) -> void:
 	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning)}
+	record.join(id)
 
 
 ## The ult of the loadout (C17), or null when it has none.
@@ -300,6 +310,7 @@ func ammo_of(id: int, weapon: String) -> Array:
 
 func remove_player(id: int) -> void:
 	states.erase(id)
+	record.leave(id)
 
 
 func has_player(id: int) -> bool:
@@ -318,8 +329,10 @@ func protected(id: int) -> bool:
 	return states.has(id) and states[id]["protect_left"] > 0.0
 
 
-## Moves death and protection timers on. Returns the ids whose respawn is due now.
+## Moves death and protection timers, and the top table's record, on. Returns the ids
+## whose respawn is due now.
 func tick(delta: float) -> Array:
+	record.tick(delta)
 	var due := []
 	for id in states:
 		var s: Dictionary = states[id]
@@ -482,7 +495,9 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 	var s: Dictionary = states[victim]
 	if s["dead"] or s["protect_left"] > 0.0:
 		return {}
+	var before: float = s["health"]
 	s["health"] = maxf(s["health"] - amount, 0.0)
+	record.hit(killer, victim, before - s["health"])  # dealt: what it actually took (C23)
 	var killed: bool = s["health"] <= 0.0
 	if killed:
 		s["dead"] = true
@@ -496,6 +511,7 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 			states[killer]["kills"] += 1
 			if states[killer]["sudo"].kill():
 				_sudo_changed[killer] = true  # a sudo charge earned
+		record.kill(killer, victim)
 	return {"health": s["health"], "killed": killed}
 
 
@@ -521,6 +537,7 @@ func respawn(id: int) -> void:
 	s["meter"] = 0.0
 	s["sudo"].die()  # every life starts as user (C22)
 	_sudo_changed[id] = true
+	record.respawn(id)  # its time alive starts again (C23)
 
 
 func _drop(reason: String) -> String:

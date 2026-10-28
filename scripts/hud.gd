@@ -3,7 +3,9 @@ extends CanvasLayer
 ## so clicks always reach the player, except the Esc menu while it is open (C16b,
 ## scripts/hud/pause_menu.gd). The menu is the root's last child, so it sees unhandled
 ## input before every other part of the HUD and before the player. Over everything sits
-## the colorblind-safe palette filter, shown while that setting is on.
+## the colorblind-safe palette filter, shown while that setting is on. The top table (C23,
+## scripts/hud/spectate_top.gd) sits over the rest while it is up, and gives way to the
+## round's summary, the menu, the multiplayer panel and a text box.
 
 const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
@@ -14,6 +16,7 @@ const NetHud = preload("res://scripts/net/net_hud.gd")
 const CombatHud = preload("res://scripts/net/combat_hud.gd")
 const WeaponHud = preload("res://scripts/hud/weapon_hud.gd")
 const SudoBadge = preload("res://scripts/hud/sudo_badge.gd")
+const SpectateTop = preload("res://scripts/hud/spectate_top.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
@@ -31,6 +34,7 @@ var _net: NetHud
 var _combat: CombatHud
 var _weapons: WeaponHud
 var _sudo: SudoBadge
+var _top: SpectateTop
 var _menu: PauseMenu
 var _filter: CanvasLayer
 var _player: Node = null
@@ -97,6 +101,13 @@ func _ready() -> void:
 	_sudo.name = "SudoBadge"
 	root.add_child(_sudo)
 
+	_top = SpectateTop.new()
+	_top.name = "SpectateTop"
+	_top.round_hud = _round
+	_top.combat_hud = _combat
+	_top.hud = self
+	root.add_child(_top)
+
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
 	_menu.name = "PauseMenu"
@@ -125,7 +136,7 @@ func _process(_delta: float) -> void:
 	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
 		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open()
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -142,6 +153,7 @@ func set_player(player: Node) -> void:
 	_player = player
 	_weapons.player = player
 	_sudo.player = player
+	_top.player = player
 	_guide.player = player
 	_round.set_player(player)
 	_net.player = player
@@ -155,6 +167,7 @@ func set_net_session(session: Node) -> void:
 	_net.session = session
 	_combat.set_session(session)
 	_menu.session = session
+	_top.session = session
 
 
 func combat_hud() -> CombatHud:
@@ -168,6 +181,17 @@ func weapon_hud() -> WeaponHud:
 ## Root vs user's prompt badge (C22).
 func sudo_badge() -> SudoBadge:
 	return _sudo
+
+
+## The top table (C23).
+func spectate_top() -> SpectateTop:
+	return _top
+
+
+## True while something else has the screen and the top table stays hidden: the round's
+## break summary, the menu, the multiplayer panel or a text box.
+func top_held_back() -> bool:
+	return _round.showing_summary() or _menu.is_open() or _net.is_open() or is_typing()
 
 
 ## The host confirmed a hit by this player: the C6 hit marker, nothing else.
@@ -206,6 +230,7 @@ func _apply_filter() -> void:
 ## The dummies a round counts downs of, and brings back when the next round starts.
 func set_round_targets(targets: Array) -> void:
 	_round.set_targets(targets)
+	_top.set_targets(targets)  # alone, the top table's daemons (C23)
 
 
 func round_hud() -> RoundHud:
