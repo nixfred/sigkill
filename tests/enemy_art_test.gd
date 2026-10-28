@@ -40,6 +40,16 @@ const ROOT_TEXT := "[node name=\"TargetDummy\" type=\"StaticBody3D\" groups=[\"t
 const PLACES := ["[node name=\"DummyA\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(0, 0, -15)\n", "[node name=\"DummyB\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(-17.5, 0, 5)\n", "[node name=\"DummyC\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(12, 0, 5)\n", "[node name=\"DummyD\" parent=\"Targets\" instance=ExtResource(\"2_dummy\")]\nposition = Vector3(-8, 1, 12)\n"]
 const EPS := 0.0005
 
+## A type with an empty core layer and an empty turning layer (self-review pass 2): it must build and
+## turn with no error.
+class EmptyLayers extends DaemonArt:
+	func _build() -> void:
+		layer(0.0)
+		var turning := layer(0.3)
+		layer(0.5)
+		shell_spike(turning, Vector3(0.0, -0.5, 0.0), Vector3(0.0, 0.5, 0.0), 0.1, 4)
+
+
 var _fails := 0
 var _checks := 0
 var _tmp := ""
@@ -217,6 +227,12 @@ func _type_checks() -> void:
 	var glitching: bool = is_equal_approx(shell.get_instance_shader_parameter("unstable"), 0.7)
 	rogue.set_unstable(0.0)
 	_check("a hit's flash and the rematerialise glitch reach the shaders: the flash at once, gone after %.2f s" % DaemonArt.FLASH_S, flashed and faded and glitching)
+	var sparse := EmptyLayers.new()
+	sparse.setup(null)
+	world.add_child(sparse)
+	for i in 30:
+		await process_frame
+	_check("a type with an empty core layer and an empty turning layer builds, draws and turns (an error here fails the gate)", sparse.core_node() == null and sparse.triangles() == 24 and sparse.draw_calls() == 2)
 
 
 ## The bases of a daemon's turning layers' meshes and of its glyphs, in order.

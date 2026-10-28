@@ -51,7 +51,7 @@ var hover_hz := 0.45
 
 var _kit: ShapeKit
 ## Per layer: its shell and core buckets, its turns a second, the axis it turns about (its own Y)
-## and its tilt, and once built its node.
+## and its tilt, and once built its holder node and its mesh node (null for a layer with no shapes).
 var _layers: Array[Dictionary] = []
 var _glyphs: MultiMeshInstance3D
 var _drawn: Array[GeometryInstance3D] = []
@@ -135,7 +135,7 @@ func clock() -> float:
 
 ## The core's mesh node, for the checks.
 func core_node() -> MeshInstance3D:
-	return _layers[0]["node"].get_child(0) as MeshInstance3D if not _layers.is_empty() else null
+	return _layers[0]["mesh"] if not _layers.is_empty() else null
 
 
 func glyphs() -> MultiMeshInstance3D:
@@ -175,9 +175,9 @@ func _process(delta: float) -> void:
 		_locked_goal = 1.0 if _marked() else 0.0
 	_locked = move_toward(_locked, _locked_goal, LOCK_EASE * delta)
 	for layer in _layers:
-		var node: Node3D = layer["node"]
-		if layer["turns"] != 0.0:
-			node.get_child(0).rotate_object_local(Vector3.UP, TAU * layer["turns"] * delta)
+		var mesh: MeshInstance3D = layer["mesh"]
+		if mesh != null and layer["turns"] != 0.0:
+			mesh.rotate_object_local(Vector3.UP, TAU * layer["turns"] * delta)
 	if _glyphs != null:
 		_glyphs.rotate_object_local(Vector3.UP, TAU * glyph_turns * delta)
 	position.y = sin(TAU * hover_hz * _clock + _seed * TAU) * hover_m
@@ -228,7 +228,7 @@ func _build() -> void:
 ## A new layer turning `turns` times a second about its own Y, tilted by `tilt` (degrees about X, Y
 ## and Z). Returns its index for the shapes. Layer 0 is the core's.
 func layer(turns: float, tilt: Vector3 = Vector3.ZERO) -> int:
-	_layers.append({"shell": _kit.bucket(Vector3.ZERO, true), "core": _kit.bucket(), "turns": turns, "tilt": tilt, "node": null})
+	_layers.append({"shell": _kit.bucket(Vector3.ZERO, true), "core": _kit.bucket(), "turns": turns, "tilt": tilt, "node": null, "mesh": null})
 	return _layers.size() - 1
 
 
@@ -282,6 +282,7 @@ func _commit() -> void:
 		# The core is light, not a solid: only the obsidian throws a shadow.
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if _kit.count(info["shell"]) > 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		holder.add_child(node)
+		info["mesh"] = node
 		_drawn.append(node)
 		node.set_instance_shader_parameter("core_color", core_color)
 		node.set_instance_shader_parameter("gutter", gutter)
