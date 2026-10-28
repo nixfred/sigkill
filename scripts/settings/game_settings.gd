@@ -91,8 +91,8 @@ const SCHEMA := {
 const CUSTOM := "custom"
 ## What each quality preset sets (A4; bloom, shadows and code rain since C16b): bloom (the
 ## environment's glow), the sun's shadows, the code rain, screen-space ambient occlusion and
-## reflections, the full skyline (off: its tower ring alone, no drifting slabs, ring, giant
-## towers or lit windows), and how many particles an effect may show. Low is the cheap one:
+## reflections, the full skyline (off: its towers alone, without the orbital ring and the
+## drifting slabs), and how many particles an effect may show. Low is the cheap one:
 ## none of the screen-space passes, no glow, the plain skyline, a quarter of the particles.
 ## Medium is the 4050-class target: glow, the rain and the full skyline, no shadows, SSAO or
 ## SSR, a half share of the particles. Every value here is a key in the video section.

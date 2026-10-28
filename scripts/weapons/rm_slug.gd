@@ -164,6 +164,7 @@ func draw_from(point: Vector3) -> void:
 	_drawn_on = true
 	_place()
 
+
 ## True while the slug is still in the air (or, on a joiner's screen, holding for the word).
 func flying() -> bool:
 	return not _done

@@ -147,7 +147,7 @@ func blast(point: Vector3, color: Color, reach_m: float) -> void:
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
 ## no follower is free (the pool is the cap) or trails are off at this level.
 func follow(target: Node3D, color: Color, heavy: bool = false) -> bool:
-	if not trails_on() or target == null:
+	if not trails_on() or target == null or not target.is_inside_tree():
 		return false
 	for i in _followers.size():
 		if (_heavy[i] == 1) != heavy or _busy[i] == 1 or _free_at[i] > _clock:
@@ -224,9 +224,12 @@ func _fire(kind: Kind, xf: Transform3D, color: Color, more: float) -> void:
 
 # --- The muzzle bursts. ---
 
-## A weapon's family, from its fire mode (and a charge: the rail).
+## A weapon's family, from its fire mode (and a charge: the rail); a weapon resource with neither
+## (a plain WeaponTuning) is the cannon's pulse.
 static func family_of(def: Resource) -> Family:
-	match int(def.get("fire_mode")):
+	var mode = def.get("fire_mode")
+	var charge = def.get("charge_s")
+	match int(mode) if mode is int else 0:
 		1, 4:
 			return Family.SCATTER
 		2, 7:
@@ -235,7 +238,7 @@ static func family_of(def: Resource) -> Family:
 			return Family.SEEKER
 		6:
 			return Family.HEAVY
-	return Family.RAIL if float(def.get("charge_s")) > 0.0 else Family.PULSE
+	return Family.RAIL if (charge is float or charge is int) and charge > 0.0 else Family.PULSE
 
 
 ## A muzzle burst for weapon `def` in `color`, made once with its model: in the model's own space,
