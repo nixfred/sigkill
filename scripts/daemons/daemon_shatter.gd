@@ -40,14 +40,18 @@ var _shape: Array[Basis] = []
 var _custom := PackedColorArray()
 var _ground := 0.0
 var _age := 0.0
+## Steps the daemons' shared shader clock (the burst may outlast every daemon still drawn).
+var _ticker := Callable()
 
 
 ## Starts the burst of `parts` (each a shape, a look, its world transform and its custom data),
 ## drawn with `meshes` and `materials` (the daemons' own, by shape and by look), on the ground at
 ## world height `ground.y`, from the middle `center`, the shot's level way `shot` pushing them,
-## its dice the daemon's `seed`; `uniforms` the daemon's instance uniforms. Call it once, in the tree.
-func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[ShaderMaterial], ground: Vector3, center: Vector3, shot: Vector3, seed: float, uniforms: Dictionary) -> void:
+## its dice the daemon's `seed`; `uniforms` the daemon's instance uniforms; `ticker` steps the
+## daemons' shared shader clock by a delta. Call it once, in the tree.
+func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[ShaderMaterial], ground: Vector3, center: Vector3, shot: Vector3, seed: float, uniforms: Dictionary, ticker: Callable = Callable()) -> void:
 	add_to_group(GROUP)
+	_ticker = ticker
 	name = "Shatter"
 	# Placed in the world, whatever it hangs under (a derezz, which it goes with).
 	top_level = true
@@ -121,6 +125,8 @@ func age() -> float:
 
 
 func _physics_process(delta: float) -> void:
+	if _ticker.is_valid():
+		_ticker.call(delta)
 	_age += delta
 	if _age >= LIFE_S:
 		queue_free()

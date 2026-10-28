@@ -223,7 +223,7 @@ func shatter(into: Node, shot: Vector3 = Vector3.ZERO) -> Node3D:
 		if look == Look.TRAIL or not shown(id) or (id >= _spray_first and id < _spray_first + SPRAY):
 			continue
 		parts.append({"shape": _set_shape[_part_set[id]], "look": look, "xf": global_transform * _xf[id], "custom": _custom[id]})
-	burst.start(parts, _meshes, _materials, global_transform * Vector3(0.0, GROUND_Y, 0.0), global_transform * Vector3.ZERO, shot, _seed, {"core_color": core_color, "edge_color": edge_color, "seed": _seed, "gutter": gutter})
+	burst.start(parts, _meshes, _materials, global_transform * Vector3(0.0, GROUND_Y, 0.0), global_transform * Vector3.ZERO, shot, _seed, {"core_color": core_color, "edge_color": edge_color, "seed": _seed, "gutter": gutter}, Callable(DaemonArt, &"_step_shader_clock"))
 	return burst
 
 
@@ -352,7 +352,7 @@ func _process(delta: float) -> void:
 	_send(false)
 
 
-## Steps the shared shader clock once a frame, whichever daemon draws first.
+## Steps the shared shader clock once a frame, whichever daemon (or death's burst) draws first.
 static func _step_shader_clock(delta: float) -> void:
 	var frame := Engine.get_process_frames()
 	if frame == _shader_clock_frame:
