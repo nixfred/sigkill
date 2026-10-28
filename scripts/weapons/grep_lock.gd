@@ -37,6 +37,10 @@ const GONE := "gone"
 const PUT_AWAY := "put_away"
 const ROOT_OVER := "root_over"
 
+## Every grep lock joins this group: a daemon's art asks it whether it marks that daemon (A2), to
+## sweep a cobalt band down it. Visual only.
+const GROUP := &"grep_lock"
+
 ## A target was marked.
 signal marked(target: Node3D)
 ## A mark dropped, and why (one of the reasons above), not counting a shot spending it.
@@ -55,6 +59,10 @@ var built_s := 0.0
 var drops := {}
 
 var _def: WeaponDefScript
+
+
+func _ready() -> void:
+	add_to_group(GROUP)
 
 
 ## One physics step of `delta` seconds with `weapon` (grep) in hand: the eyes at `eye`, the

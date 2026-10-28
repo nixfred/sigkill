@@ -1,6 +1,9 @@
 extends StaticBody3D
-## Target dummy: a hexagonal prism standing in for a rogue process. It takes hits, and when
-## it dies it derezzes, then rematerialises at its spot with full health.
+## Target dummy: a daemon standing in for a rogue process. It takes hits, and when it dies it
+## derezzes, then rematerialises at its spot with full health. Its hit volume is a hexagonal
+## prism (the Shape, and the Body's hex mesh, which is its size and centre for everything that
+## measures it); since A2 what is seen of it is its art (scripts/daemons/), built under the Body
+## and drawn instead of the hex, so it hides and grows back with it. The art is visual only.
 ## States: ALIVE, DEREZZING (collision off, hidden, not hittable), RESPAWNING (growing
 ## back, still not hittable), then ALIVE again. Only an ALIVE dummy can be hit, so it dies
 ## exactly once per life. It never moves or attacks. The tag text is invented flavour only;
@@ -26,13 +29,15 @@ const MIN_BODY_SCALE := 0.001
 @export var max_health: float = 1.0
 ## Derezz and respawn tuning. Leave empty to use resources/derezz.tres.
 @export var derezz: Resource
+## How the daemon looks (A2): a script extending scripts/daemons/daemon_art.gd. Visual only.
+@export var art: Script = preload("res://scripts/daemons/rogue_daemon.gd")
 
 var state: State = State.ALIVE
 
 var _health := 1.0
 var _state_time := 0.0
-var _material: ShaderMaterial
 var _hex: CylinderMesh
+var _art: DaemonArt
 var _d: Derezz
 
 @onready var _body: MeshInstance3D = $Body
@@ -43,8 +48,11 @@ var _d: Derezz
 func _ready() -> void:
 	_health = max_health
 	_hex = _body.mesh as CylinderMesh
-	_material = Palette.hostile_material(_hex.top_radius, _hex.height)
-	_body.material_override = _material
+	# The hex is the volume, drawn by no camera; the art under it is what is seen (A2).
+	_body.layers = 0
+	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_art = DaemonArt.make(art, self)
+	_body.add_child(_art)
 
 	_tag.text = tag_text
 	_tag.font = Palette.mono_font()
@@ -118,6 +126,7 @@ func _physics_process(delta: float) -> void:
 		if _d.rematerialise_seconds > 0.0:
 			grown = clampf(_state_time / _d.rematerialise_seconds, 0.0, 1.0)
 		_body.scale = Vector3.ONE * maxf(grown, MIN_BODY_SCALE)
+		_art.set_unstable(1.0 - grown)  # it glitches as it comes back (A2)
 		if grown >= 1.0:
 			_finish_respawn()
 
@@ -153,14 +162,14 @@ func _begin_rematerialise() -> void:
 	_state_time = 0.0
 	_body.scale = Vector3.ONE * MIN_BODY_SCALE
 	_body.visible = true
-	_material.set_shader_parameter("edge_color", Palette.HOSTILE_RED)
-	_material.set_shader_parameter("edge_energy", Palette.HOSTILE_ENERGY)
+	_art.set_unstable(1.0)
 
 
 func _finish_respawn() -> void:
 	state = State.ALIVE
 	_health = max_health
 	_body.scale = Vector3.ONE
+	_art.set_unstable(0.0)
 	_tag.visible = true
 	_shape.set_deferred("disabled", false)
 	set_physics_process(false)
@@ -177,9 +186,11 @@ func reset_for_round() -> void:
 	_health = max_health
 
 
+## A hit that did not kill: the art flares (A2).
 func _pulse() -> void:
-	_material.set_shader_parameter("edge_color", Palette.HOSTILE_AMBER)
-	_material.set_shader_parameter("edge_energy", 8.0)
-	var tween := create_tween()
-	tween.tween_property(_material, "shader_parameter/edge_energy", Palette.HOSTILE_ENERGY, 0.12)
-	tween.parallel().tween_property(_material, "shader_parameter/edge_color", Palette.HOSTILE_RED, 0.12)
+	_art.flash()
+
+
+## The daemon's art (A2), for the checks.
+func art_node() -> DaemonArt:
+	return _art

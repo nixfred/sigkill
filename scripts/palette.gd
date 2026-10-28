@@ -39,6 +39,10 @@ const ROSE_HI := Color(1.0, 0.760784314, 0.88627451)  # #ffc2e2 a cron mine's br
 const GUNMETAL := Color(0.047058824, 0.062745098, 0.078431373)  # #0c1014 viewmodel body
 const GUNMETAL_LIGHT := Color(0.109803922, 0.137254902, 0.164705882)  # #1c232a viewmodel plates and shrouds
 const POLYMER := Color(0.023529412, 0.027450980, 0.031372549)  # #060708 viewmodel grips and bands
+# Daemons (A2): black obsidian glass, a hostile red rim and scanlines, a cyan split in a glitch,
+# cores in the type's own hostile colour, red glyphs.
+const OBSIDIAN := Color(0.011764706, 0.015686275, 0.019607843)  # #030405 daemon shells
+const GLITCH_SPLIT := Color(0.301960784, 0.882352941, 1.0)  # #4de1ff the blue side of a daemon's glitch split
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
 const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI]}
@@ -74,11 +78,40 @@ const VIEWMODEL_CELL_M := 0.045
 const VIEWMODEL_HEX_CELL_M := 0.022
 const VIEWMODEL_LINE_M := 0.0016
 const POLYMER_ROUGHNESS := 0.85
+# Daemon look (A2): the shells' true edges (glow and width in pixels), rim, scanlines (per metre, width as a share, climb in m/s), flash
+# and lock; the glitch (ticks a second, the share of ticks that glitch, bands per metre, how far a
+# band jumps and splits, in metres); the core's energy, breath and flash; the glyphs' energy,
+# flicker and flash.
+const DAEMON_EDGE_ENERGY := 2.4
+const DAEMON_EDGE_PX := 1.3
+const DAEMON_RIM_ENERGY := 0.5
+const DAEMON_RIM_POWER := 5.0
+const DAEMON_SCAN_ENERGY := 0.3
+const DAEMON_SCAN_PER_M := 12.0
+const DAEMON_SCAN_WIDTH := 0.05
+const DAEMON_SCAN_SPEED := 0.35
+const DAEMON_FLASH_ENERGY := 6.0
+const DAEMON_LOCK_ENERGY := 3.0
+const DAEMON_GLITCH_RATE := 9.0
+const DAEMON_GLITCH_SHARE := 0.05
+const DAEMON_GLITCH_BANDS_PER_M := 7.0
+const DAEMON_JITTER_M := 0.018
+const DAEMON_SPLIT_M := 0.012
+const DAEMON_CORE_ENERGY := 4.0
+const DAEMON_CORE_BREATH := 0.18
+const DAEMON_CORE_BREATH_HZ := 0.6
+const DAEMON_CORE_FLASH_ENERGY := 10.0
+const DAEMON_GLYPH_ENERGY := 3.0
+const DAEMON_GLYPH_FLICKER := 4.0
+const DAEMON_GLYPH_FLASH_ENERGY := 6.0
 
 # Shader names under res://shaders/.
 const NEON_EDGE_SHADER := "neon_edge"
 const CODE_RAIN_SHADER := "code_rain"
 const VIEWMODEL_SHADER := "viewmodel_metal"
+const DAEMON_SHELL_SHADER := "daemon_shell"
+const DAEMON_CORE_SHADER := "daemon_core"
+const DAEMON_GLYPH_SHADER := "daemon_glyphs"
 
 static var _shaders: Dictionary = {}
 static var _floor_material_cache: ShaderMaterial
@@ -174,6 +207,57 @@ static func viewmodel_hot(color: Color, energy: float) -> StandardMaterial3D:
 	mat.emission_enabled = true
 	mat.emission = color
 	mat.emission_energy_multiplier = energy
+	return mat
+
+
+## The obsidian of every daemon (A2): one material for all of them; each daemon's clock, flash,
+## lock and glitch are instance uniforms.
+static func daemon_shell_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DAEMON_SHELL_SHADER)
+	mat.set_shader_parameter("obsidian", OBSIDIAN)
+	mat.set_shader_parameter("edge", HOSTILE_RED)
+	mat.set_shader_parameter("flash_color", HOSTILE_AMBER)
+	mat.set_shader_parameter("lock_color", COBALT)
+	mat.set_shader_parameter("split_color", GLITCH_SPLIT)
+	mat.set_shader_parameter("edge_energy", DAEMON_EDGE_ENERGY)
+	mat.set_shader_parameter("edge_px", DAEMON_EDGE_PX)
+	mat.set_shader_parameter("rim_energy", DAEMON_RIM_ENERGY)
+	mat.set_shader_parameter("rim_power", DAEMON_RIM_POWER)
+	mat.set_shader_parameter("scan_energy", DAEMON_SCAN_ENERGY)
+	mat.set_shader_parameter("scan_per_m", DAEMON_SCAN_PER_M)
+	mat.set_shader_parameter("scan_width", DAEMON_SCAN_WIDTH)
+	mat.set_shader_parameter("scan_speed", DAEMON_SCAN_SPEED)
+	mat.set_shader_parameter("flash_energy", DAEMON_FLASH_ENERGY)
+	mat.set_shader_parameter("lock_energy", DAEMON_LOCK_ENERGY)
+	mat.set_shader_parameter("glitch_rate", DAEMON_GLITCH_RATE)
+	mat.set_shader_parameter("glitch_share", DAEMON_GLITCH_SHARE)
+	mat.set_shader_parameter("glitch_bands_per_m", DAEMON_GLITCH_BANDS_PER_M)
+	mat.set_shader_parameter("jitter_m", DAEMON_JITTER_M)
+	mat.set_shader_parameter("split_m", DAEMON_SPLIT_M)
+	return mat
+
+
+## Every daemon's core (A2): one material; the colour is each daemon's own instance uniform.
+static func daemon_core_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DAEMON_CORE_SHADER)
+	mat.set_shader_parameter("energy", DAEMON_CORE_ENERGY)
+	mat.set_shader_parameter("breath", DAEMON_CORE_BREATH)
+	mat.set_shader_parameter("breath_hz", DAEMON_CORE_BREATH_HZ)
+	mat.set_shader_parameter("flash_energy", DAEMON_CORE_FLASH_ENERGY)
+	mat.set_shader_parameter("flash_color", FLASH)
+	return mat
+
+
+## Every daemon's floating glyphs (A2): one material, hostile red.
+static func daemon_glyph_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DAEMON_GLYPH_SHADER)
+	mat.set_shader_parameter("glyph_color", HOSTILE_RED)
+	mat.set_shader_parameter("energy", DAEMON_GLYPH_ENERGY)
+	mat.set_shader_parameter("flicker_rate", DAEMON_GLYPH_FLICKER)
+	mat.set_shader_parameter("flash_energy", DAEMON_GLYPH_FLASH_ENERGY)
 	return mat
 
 
