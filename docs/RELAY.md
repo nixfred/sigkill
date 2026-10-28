@@ -4,10 +4,25 @@ Room codes and invite links (PRD 5.1, chunk C15): a tiny rendezvous that turns a
 code into a host's address, NAT punch-through so most players connect directly, and a
 fallback relay for the rest.
 
-**Status: design only.** The game's client side is built (C15) and tested against an
-in-process fake on 127.0.0.1. The game's only real rendezvous is `NullRendezvous`, which is
-never live and sends nothing. No service exists, no account has been made, nothing has been
-paid for.
+**Status: built and tested on 127.0.0.1 only (C16c). Nothing is deployed.** The relay
+(`relay/relay_server.gd`, run by `relay/relay_main.gd`) is the rendezvous and the fallback
+relay in one small UDP service, and the game has a real client for it
+(`scripts/net/udp_rendezvous.gd`). The game uses it only when a player sets a relay URL in
+Settings, Multiplayer; the default is empty, and with it the game's rendezvous is
+`NullRendezvous`, which is never live and sends nothing. No server runs it, no account has
+been made, nothing has been paid for: hosting waits for Fred.
+
+**The choice: every match through the relay.** C15 planned a rendezvous that hands a joiner
+the host's address, then punch-through, with the relay as a fallback. C16c builds the
+rendezvous and the relay, and sends every room-code match through the relay:
+
+- it works behind any NAT, where a direct connection between two homes mostly would not;
+- neither player ever learns the other's address (no reply carries one);
+- punch-through cannot be proven on one machine's 127.0.0.1, and docs/RELAY.md always said
+  it had to be proven on two real networks first. It stays a later option that would cut
+  relay traffic, not a requirement.
+
+LAN and tailnet join by address are unchanged and never touch the relay.
 
 ## The three parts
 
@@ -17,9 +32,9 @@ paid for.
 | Punch-through | Tells each side the other's public address so both can open a path through their NATs at the same moment | A few probe datagrams per match |
 | Fallback relay | Forwards the game's own ENet datagrams between two players who cannot reach each other directly | The whole match, for those players only |
 
-The rendezvous is the only part the client side talks to today, and only through the
-`RendezvousClient` interface (`scripts/net/rendezvous_client.gd`). Punch-through and the relay
-are later chunks, after hosting is decided.
+The rendezvous and the relay are built (C16c), in one process; punch-through is not. The
+session talks to the rendezvous only through the `RendezvousClient` interface
+(`scripts/net/rendezvous_client.gd`), and to the relay only with the game's own ENet socket.
 
 ## What crosses the wire
 
@@ -27,62 +42,77 @@ To the rendezvous, ever:
 
 - the room code (6 characters),
 - the game's protocol version,
-- from a host, its game port.
+- from a host, its game port,
+- the cookie the relay handed this source (spoofing defence, below),
+- to close a code, the room's host token.
 
-The host's address is the one the rendezvous sees the request come from; the game never
-sends one. Never a user or host name, a path, anything about the AI guide, player names,
-positions or any other player data. The session enforces this by calling only
+Then, to the room's own relay ports, from the game's ENet socket: a 12-byte probe holding the
+room's token for that side, and the game's own ENet datagrams. The relay forwards those
+untouched and never decodes them. Never a user or host name, a path, anything about the AI
+guide, player names (the display name in Settings is a label on the player's own screen and
+never leaves it), or anything about the machine. The session calls only
 `register(code, protocol, port)`, `resolve(code, protocol)` and `close(code, protocol, port)`,
-and the room test checks every request the fake receives.
+and the relay test reads every request the game makes.
 
-From the rendezvous, to a joiner: the address and game port it holds for the code, the
-seconds the code has left, or an error word (`unknown`, `expired`, `version`, `taken`,
-`busy`). The joiner then connects with the C13 path (ENet, the C13 handshake, the C14
-combat), exactly as if the address had been typed.
+From the relay to a host: the room's join port, its host token and one host-facing port per
+joiner slot. To a joiner: the join port, the join token and the seconds the code has left. Or
+an error word (`unknown`, `expired`, `version`, `taken`, `busy`). No reply ever holds an
+address: the joiner connects to the relay itself with the C13 path (ENet, the C13 handshake,
+the C14 combat).
 
-Until hosting is decided, the game follows a room code only to this machine, a private LAN
-or a tailnet (`local_address()` in `scripts/net/net_session.gd`: IPv4 loopback, 10/8,
-172.16/12, 192.168/16, the 100.64/10 shared range, link-local; IPv6 loopback, fc00::/7,
-fe80::/10). A rendezvous that names any other address gets "that room is outside your LAN or
-tailnet; online rooms aren't live yet" and no connection is made. Internet play means lifting
-that rule on purpose, together with the hosting decision.
+A room code leads only to the relay the player set: the game connects to that relay's own
+address and never to an address a reply names. Without a relay, the C15 rule stands: a room
+code only to this machine, a private LAN or a tailnet (`local_address()` in
+`scripts/net/net_session.gd`).
 
-### Wire format (as the test fake speaks it)
+### Wire format, version 2 (`scripts/net/relay_wire.gd`, shared by the game and the relay)
 
-Request, 14 bytes, fixed: `"SR"`, wire version `1`, op (`1` register, `2` resolve, `3` close),
-the code in ASCII (6 bytes), the protocol version (u16), the game port (u16, `0` when
-resolving). There is no room in it for anything else.
+Request, exactly 64 bytes: `"SR"`, wire version `2`, op (`1` register, `2` resolve, `3` close),
+the code in ASCII (6 bytes), the protocol version (u16), the game port (u16), the cookie
+(8 bytes, zero until the relay hands one out), the host token (8 bytes, close only), then
+zeros.
 
-Reply: `"SR"`, `1`, status (`0` ok, `1` unknown, `2` expired, `3` version, `4` taken, `5` busy),
-the code (echoed, so a late reply is never mistaken for another), the host's protocol
-(u16), the port (u16), seconds left (u32), then the address as the rendezvous saw it
-(u8 length, ASCII).
+Reply, 27 to 57 bytes: `"SR"`, `2`, status (`0` ok, `1` unknown, `2` expired, `3` version,
+`4` taken, `5` busy, `6` cookie), the code (echoed, so a late reply is never taken for
+another), the host's protocol (u16), the room's join port (u16), seconds left (u32), a token
+(8 bytes: the cookie, the host token or the join token), then the host-facing ports (u8
+count, u16 each, up to 15).
 
-Before a real service exists, two changes are required: requests are padded to at least
-the size of the largest reply, so a spoofed request can never make the service send more
-bytes than it received (no amplification); and the service adds a cookie round trip (as
-below) before it believes a source address.
+Probe, 12 bytes, to a room's relay port from the game's ENet socket: `"SP"`, `2`, kind (`1`
+host, `2` join), the token for that side.
+
+The two changes C15 required before a real service are in: a request (64 bytes) is never
+shorter than the longest reply (57), so the relay never sends more bytes than it received;
+and a source's first request is answered only with a cookie, an HMAC of its address, port and
+a 30-second window under a secret drawn at start, which it must send back before the relay
+acts on anything it asks. Wire version 1 is the C15 test fake's and is unchanged.
 
 ## Message flow
 
 ```mermaid
 sequenceDiagram
     participant H as Host (game)
-    participant R as Rendezvous
+    participant R as Relay
     participant J as Joiner (game)
     H->>H: draw code from Crypto random bytes (checksum last)
-    H->>R: register(code, protocol, game port)
-    R-->>H: ok, seconds left (or taken: host draws another, up to 5)
+    H->>R: register(code, protocol, port)
+    R-->>H: cookie (first request from this source)
+    H->>R: register(code, protocol, port, cookie)
+    R-->>H: ok: join port, host token, a port per joiner slot (or taken: draw another, up to 5)
+    H->>R: probe(host token) to each slot port, from its ENet socket, every 5 s
     Note over H: shows "Room code ABC23P" and sigkill://join/ABC23P
     J->>J: code typed or --join link: checksum checked locally, typos never sent
-    J->>R: resolve(code, protocol)
-    R-->>J: host address and port (or unknown / expired / version / busy)
-    J->>H: C13 ENet connect, handshake, play
-    Note over H,J: later chunks: punch-through, then the relay if direct fails
-    H->>R: close(code) when hosting stops or a fresh code is drawn
+    J->>R: resolve(code, protocol, cookie)
+    R-->>J: ok: join port, join token (or unknown / expired / version / busy)
+    J->>R: probe(join token) to the join port, from its ENet socket
+    J->>R: C13 ENet connect, handshake, play, to the join port
+    R->>H: the same datagrams, from that joiner's slot port
+    H->>R: replies to the slot port
+    R->>J: the same datagrams, from the join port
+    H->>R: close(code, host token) when hosting stops or a fresh code is drawn
 ```
 
-### Punch-through (later chunk)
+### Punch-through (not built)
 
 Godot 4.7's `ENetConnection.socket_send(destination_address, destination_port, packet)` sends
 a raw datagram from the very socket ENet listens on, which opens the NAT mapping the other
@@ -98,14 +128,19 @@ player's packets need. The plan:
 4. If no connection is up after a timeout, the pair falls back to the relay.
 
 This has to be proven on two real networks before anything is built on it; symmetric NATs
-and some carrier NATs defeat it, which is what the relay is for.
+and some carrier NATs defeat it, which is what the relay is for. With every match through
+the relay (C16c), punch-through would only save relay traffic.
 
-### Fallback relay (later chunk)
+### The relay (built, C16c)
 
-The relay gives each player of a room a port of its own and forwards ENet datagrams between
-the two registered players of that room and nobody else. It never decodes them. ENet's
-packets stay end-to-end; DTLS (`dtls_server_setup` and `dtls_client_setup` are in Godot 4.7's
-`ENetConnection`) can encrypt them past the relay later.
+Each room gets a join port, which every joiner's ENet connects to, and one host-facing port
+per joiner slot, which the host's ENet sees as that joiner. A side is let in only by a probe
+with its own token, sent from the game's own ENet socket (Godot 4.7's
+`ENetConnection.socket_send`), which also opens that player's NAT for the relay's replies. The
+relay forwards ENet datagrams between a slot's joiner and the host and nobody else, and never
+decodes them. ENet's packets stay end to end; DTLS (`dtls_server_setup` and
+`dtls_client_setup` are in Godot 4.7's `ENetConnection`) can encrypt them past the relay
+later.
 
 ## Code lifecycle and expiry
 
@@ -121,46 +156,65 @@ packets stay end-to-end; DTLS (`dtls_server_setup` and `dtls_client_setup` are i
   `RoomTuning.code_ttl_s` (600 s). The host shows the time left, then releases the code and
   draws a fresh one, so an old invite stops working.
 - **Single room.** One code points to one room, and a room has one live code at a time. A
-  code is released when the host stops hosting or draws a fresh one; only the address and
-  port that registered it may release it.
+  code is released when the host stops hosting or draws a fresh one; only the room's host
+  token, which only the registering host got, releases it. A match already running through
+  the room's ports goes on after its code is released, until it goes idle.
 - **Expired codes** answer `expired` (not `unknown`) for a short while so a late joiner learns
   to ask for a new one, then they are forgotten.
 
-## Rate limits and abuse
+## Rate limits and abuse (built, C16c)
 
-Proposed limits, to be tuned from measurements once a service exists:
+Every limit is a setting (below), proven to trip by `tests/relay_test.gd`:
 
-- **Per source address:** a few registrations a minute, a few dozen resolutions a minute, and
-  a ceiling on live rooms. Over the limit: `busy`, never an error with details.
-- **Guessing codes:** with about 28.6 million codes, a small number of live rooms and the
-  resolution limit, a guesser finds a room rarely. Codes with a bad checksum are counted
-  as abuse signals, since the game never sends one.
-- **Spoofed sources (UDP):** replies go only to the source address of the request; a cookie
-  round trip (the service answers a first request with a short-lived token the client must
-  echo) before a source counts as real; requests padded so the service never amplifies.
-- **The relay** forwards only between the two registered players of a room, caps bandwidth
-  per room, drops rooms idle for a minute, and never carries anything to any other address.
+- **Per source address, once believed:** 6 registrations and 30 resolutions a minute, and 2
+  live rooms at once. Over the limit: `busy`, never an error with details. At most 4096
+  sources are tracked at once; past that, new ones get `busy`. A source is tracked only after
+  its cookie round trip: the cookie is stateless, so a flood of first requests from spoofed
+  addresses leaves no state and can't fill that table. Cookie replies are capped at 3000 a
+  minute in all, which bounds what such a flood can make the relay send.
+- **Rooms:** 64 at once, of 4 players each (3 joiner slots); a code lives 10 minutes, then
+  answers `expired` for 2 minutes and is forgotten; a room whose code is gone and whose ports
+  carried nothing for 60 seconds is closed, and so is any idle joiner slot.
+- **Payloads:** a control request is exactly 64 bytes or it is dropped; a relayed datagram is
+  at most 1400 bytes; a room forwards at most 400 datagrams a second.
+- **Bad packets:** a wrong size, magic, wire version, op or code, a code with a bad checksum
+  (the game never sends one), a datagram from a source that never probed, a probe with the
+  wrong token or kind, a joiner past the room's slots: each dropped and counted.
+- **Guessing codes:** with about 28.6 million codes, a few live rooms and 30 resolutions a
+  minute per address, a guesser finds a room rarely; a room's join token comes only with a
+  resolution.
+- **Spoofed sources (UDP):** replies go only to the source of the request; nothing is acted on
+  before the cookie round trip; a reply is never longer than its request. A close has no
+  reply at all, and needs the host token.
 
 ## What is logged
 
-Nothing personal. Aggregate counters only: requests per minute, live rooms, relayed bytes,
-limits hit. Source addresses and the code-to-address table live in memory only, for the
-code's life and the rate-limit window, and are never written to disk or a log. No user or
-host names exist anywhere in the service, because the game never sends any.
+Nothing personal. The relay prints a start line (its control port and limits) and, every
+`stats_s` seconds and when it stops, one line of aggregate counters: rooms, requests,
+registrations, resolutions, closes, cookies, peak rooms, relayed packets and bytes, and each
+kind of drop and refusal. Never an address, a room code or a token: the relay test checks its
+whole output for anything shaped like an IP address. Addresses live in memory only: a
+joiner's while its path carries traffic (60 s idle), a host's while its room holds its ports,
+a registering host's while its code lives (the per-address room cap), a source's for its
+one-minute rate window. Nothing is written to disk: Godot's own log file holds only that same
+output, and the systemd example keeps it in a tmpfs wiped at stop. No user or host names exist
+anywhere in the service, because the game never sends any.
 
 ## Privacy
 
-- A joiner learns the host's public address, exactly as with LAN join by address today. The
-  relay, once it exists, can hide each player's address from the other.
-- An address is personal data in some places. The service keeps it in memory only, for at
-  most the code's life (10 minutes) or the match it relays.
+- Through the relay neither player learns the other's address: each sees only the relay's.
+  (LAN join by address is unchanged: the joiner typed the host's address.)
+- An address is personal data in some places. The relay keeps it in memory only, for at most
+  the code's life (10 minutes) or the match it relays, and never logs it.
+- No accounts and no analytics: the relay has no notion of a player beyond an address and a
+  token, for as long as a match needs them.
 - Nothing about the AI guide, the player's machine or their files ever goes near any of this.
 
 ## Failure modes
 
 | What fails | What the player sees | What still works |
 |---|---|---|
-| No rendezvous configured (today) | "Online rooms aren't live yet. Use LAN join (address)." | LAN and tailnet join by address |
+| No relay set (the default) | "Online rooms aren't live yet. Use LAN join (address)." | LAN and tailnet join by address |
 | Rendezvous down or unreachable | "couldn't reach the room service" after the request timeout (4 s) | LAN and tailnet join |
 | Rendezvous over its limits | "the room service is busy: try again in a moment" | The same |
 | Code mistyped | "room code K7R2MZ has a typo: check each character", nothing sent | Typing it again |
@@ -169,16 +223,83 @@ host names exist anywhere in the service, because the game never sends any.
 | Host on another version | "version mismatch: host X, you Y", before any connection | Updating |
 | Host stops hosting | Its code is released; joiners in the room see "host left" (C13) | Hosting again |
 | Every code drawn is taken | The host keeps hosting; "no room code (every code drawn was taken): LAN join by address still works" | LAN join |
-| Punch-through fails | (later) the relay takes over | |
-| Relay down | (later) "couldn't reach host" (C13) | LAN join |
+| Relay full (rooms or ports) | "the room service is busy: try again in a moment" | LAN join |
+| A room's slots all taken | The extra joiner's connect times out: "couldn't reach host" | The host's next code |
+| Relay down mid-match | ENet's peer timeout: "host left" (C13) | LAN join |
 | Reply lost (UDP) | The request timeout; nothing is left in flight | Trying again |
+
+## Running it
+
+The relay is a few GDScript files run by a headless Godot 4.7: the same engine and the same
+wire-format file as the game, so the two always agree. It needs a Godot 4.7 binary and a copy
+of this project, nothing else (no packages, no database, no disk).
+
+### Locally, for a test
+
+```bash
+relay/run_relay.sh                       # 127.0.0.1:9010 only, until stopped
+relay/run_relay.sh --port 9100 --stats-s 30
+```
+
+Then in the game: Esc, Settings, Multiplayer, relay `udp://127.0.0.1:9010`. Host with M then
+H: the panel shows the room code and the `sigkill://join/` link; a second copy of the game
+with the same relay set joins with M then K. `tests/relay_test.gd` does exactly this headless.
+
+### On a plain Linux server
+
+1. Copy the SIGKILL project to the server (the relay loads only `relay/` and
+   `scripts/net/relay_wire.gd` and `scripts/net/room_code.gd`), and a Godot 4.7 Linux binary.
+2. Open UDP in the firewall: the control port (9010) and the data port range
+   (40000-40999 in the example: it must hold rooms x room players ports).
+3. Copy `relay/sigkill-relay.service` to `/etc/systemd/system/`, change its two placeholder
+   paths, then `systemctl enable --now sigkill-relay`. The unit runs as a throwaway dynamic
+   user with no home, a read-only system and Godot's folders in a tmpfs.
+4. Players set the relay in Settings, Multiplayer: `udp://<the server's name or address>:9010`.
+
+The unit and the script are examples: neither has been run on a real server, and nothing in
+the project installs or enables them.
+
+### Settings
+
+Every setting is an environment variable or a flag (a flag wins); a bad value stops the relay
+with exit 2 and the reason.
+
+| Variable | Flag | Default | What |
+|---|---|---|---|
+| `SIGKILL_RELAY_BIND` | `--bind` | `127.0.0.1` | Address to listen on; a server sets `*` (every interface) |
+| `SIGKILL_RELAY_PORT` | `--port` | 9010 | The UDP control port |
+| `SIGKILL_RELAY_DATA_PORTS` | `--data-ports` | `0` (the system picks) | The UDP range for rooms' ports, e.g. `40000-40999` |
+| `SIGKILL_RELAY_ROOMS` | `--rooms` | 64 | Rooms holding ports at once |
+| `SIGKILL_RELAY_ROOM_PLAYERS` | `--room-players` | 4 | Players per room, the host included |
+| `SIGKILL_RELAY_ROOMS_PER_IP` | `--rooms-per-ip` | 2 | Live rooms one address may register |
+| `SIGKILL_RELAY_ROOM_TTL_S` | `--room-ttl-s` | 600 | Life of a room code |
+| `SIGKILL_RELAY_EXPIRED_S` | `--expired-s` | 120 | How long an old code answers `expired` |
+| `SIGKILL_RELAY_IDLE_S` | `--idle-s` | 60 | An idle path or room is closed after this |
+| `SIGKILL_RELAY_REGISTER_PER_MIN` | `--register-per-min` | 6 | Registrations a minute per address |
+| `SIGKILL_RELAY_RESOLVE_PER_MIN` | `--resolve-per-min` | 30 | Resolutions a minute per address |
+| `SIGKILL_RELAY_HELLO_PER_MIN` | `--hello-per-min` | 3000 | Cookie replies a minute, in all |
+| `SIGKILL_RELAY_SOURCES` | `--sources` | 4096 | Source addresses tracked at once |
+| `SIGKILL_RELAY_PAYLOAD_CAP` | `--payload-cap` | 1400 | Largest relayed datagram, bytes |
+| `SIGKILL_RELAY_ROOM_PPS` | `--room-pps` | 400 | Datagrams a second one room may relay |
+| `SIGKILL_RELAY_TICK_HZ` | `--tick-hz` | 500 | Polls a second (2 ms of added latency at most) |
+| `SIGKILL_RELAY_STATS_S` | `--stats-s` | 300 | Seconds between counter lines; 0 for none |
+| | `--stop-file` | none | Stop cleanly (exit 0) once this file exists: for tests |
+
+`SIGKILL_GODOT` names the Godot binary for `relay/run_relay.sh` and `SIGKILL_RELAY_LOG` where
+Godot puts its log file (default: the runtime directory).
+
+Stopping: the service manager's SIGTERM ends the process at once, which loses nothing, since
+every bit of state is in memory by design.
 
 ## Hosting cost
 
 Three options. Every price below is quoted from the provider's public pricing page, read on
-2026-10-26, as written there. Relay traffic per match has not been measured yet: it has to be
-measured on a real two-machine match before any monthly figure can be estimated, so none is
-given here.
+2026-10-26, as written there, and not re-read since. Relay traffic per match has still not
+been measured on a real network: the relay test's short match on 127.0.0.1 relayed a few
+dozen datagrams, which says nothing about a real one, so no monthly figure is given. With
+every room-code match through the relay (C16c), the relay's traffic is the whole of every
+such match, which makes the measurement matter more, not less. The relay runs as one plain
+process, so Option 1 or Option 2 can host all of it.
 
 ### Option 1: one small cloud server (Hetzner Cloud)
 
@@ -211,11 +332,12 @@ Runs all three parts; UDP needs a dedicated IPv4 address.
 - Sources: https://docs.fly.io/about/pricing and https://docs.fly.io/networking/udp-and-tcp
   (both read 2026-10-26).
 
-### Option 3: the rendezvous alone on Cloudflare Workers
+### Option 3: the rendezvous alone on Cloudflare Workers (does not fit what was built)
 
 Holds the code table over HTTPS (Workers and Durable Objects). Workers cannot relay raw UDP,
 so punch-through probes and the relay would need one of the options above; this option only
-covers the rendezvous.
+covers the rendezvous, and the rendezvous built in C16c speaks UDP, so it would need a
+rewrite to use this.
 
 - Workers Paid: "a minimum charge of $5 USD per month for an account"; requests "10 million
   included per month", "+$0.30 per additional million". Free plan: "100,000 per day"
