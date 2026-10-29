@@ -8,7 +8,7 @@
 # copy with no import cache is imported headless first. <work-dir> must exist and be empty: the
 # display's socket, Godot's user data, settings and caches all live in it, so nothing of the
 # player's own is read or written. [set] picks the stills (tools/capture_shots.gd): a1, the default,
-# a2, a3, a2b, a4, c27b, c28 or a5. This script deletes nothing; remove <work-dir> yourself.
+# a2, a3, a2b, a4, c27b, c28, a5 or i1. This script deletes nothing; remove <work-dir> yourself.
 #
 # Safety: Xvnc on display :97 (CAPTURE_DISPLAY to change it) with no TCP listener at all, its VNC
 # side on a unix socket only the owner can open, and a fresh random cookie in <work-dir> as its only
@@ -22,7 +22,7 @@ work=$(cd "${2:-}" 2>/dev/null && pwd) || { echo "usage: $0 <project-copy> <work
 [ -f "$copy/project.godot" ] || { echo "no project.godot in $copy" >&2; exit 2; }
 [ -z "$(ls -A "$work")" ] || { echo "$work is not empty" >&2; exit 2; }
 shot_set="${3:-a1}"
-[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28 or a5" >&2; exit 2; }
+[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28, a5 or i1" >&2; exit 2; }
 display="${CAPTURE_DISPLAY:-97}"
 # A lock file left by a crashed server names a PID that may be someone else's by now: refuse it.
 if [ -e "/tmp/.X11-unix/X$display" ] || [ -e "/tmp/.X$display-lock" ]; then

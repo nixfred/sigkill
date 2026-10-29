@@ -6,7 +6,8 @@ extends Node3D
 ## environment's glow), shadows (the sun's; the room light never casts any) and the code rain
 ## (C16b); SSAO, SSR, the full or plain skyline, the particle level, and the two screen post
 ## effects (A4). It makes the arena's particle pool and post layer once, when it loads, and
-## (C27b) the daemons' director and this player's life alone: the daemons fight back.
+## (C27b) the daemons' director and this player's life alone: the daemons fight back; and (I1) ICE's
+## director beside it, which builds the system's walls, nodes and hunter each round.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -43,6 +44,14 @@ func _ready() -> void:
 	director.player = _player
 	director.life = life
 	add_child(director)
+	# ICE (I1): the system's own defences, beside the daemons, built each round.
+	var ice := IceDirector.new()
+	ice.daemons = director
+	ice.player = _player
+	ice.life = life
+	ice.rounds = _hud.round_hud()
+	add_child(ice)
+	_hud.set_ice(ice)
 	_hud.set_solo_life(life)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
@@ -63,6 +72,7 @@ func _ready() -> void:
 	if session != null:
 		life.session = session
 		director.session = session
+		ice.session = session
 		session.attach(self, _player)
 		_hud.set_net_session(session)
 		# A room code or invite link on the command line (C15), once per run: the panel opens

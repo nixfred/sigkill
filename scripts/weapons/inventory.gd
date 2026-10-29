@@ -21,6 +21,9 @@ extends RefCounted
 ##
 ## Root's overcharge (C22): while free_ammo is set (the player sets it from its sudo state
 ## every physics frame) nothing spends a round or a bomb, and an empty magazine still fires.
+##
+## ICE's jam (I1): a white ICE node's field jams the weapon in hand for a few seconds (jam()): it
+## cannot fire or throw until its jam runs out, the others still draw and fire. A new life clears it.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
@@ -31,6 +34,7 @@ const BLOCK_COOLDOWN := "cooldown"
 const BLOCK_EMPTY := "empty"
 const BLOCK_DRY := "dry"
 const BLOCK_METER := "meter"
+const BLOCK_JAMMED := "jammed"
 ## A meter this close below full counts as full: sums of float shares (a joiner adds a hit
 ## and its kill bonus in two steps where the host adds them in one) must never leave it a
 ## hair short.
@@ -59,6 +63,8 @@ var fiction_s := 1.6
 var meter := 0.0
 ## Root (C22): shots and throws spend nothing and an empty magazine does not block them.
 var free_ammo := false
+## ICE's jam on each slot (I1): seconds left, 0 for none.
+var jams: Array[float] = []
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -69,6 +75,7 @@ func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float
 		mags.append(def.magazine_size)
 		reserves.append(def.reserve_ammo)
 		cooldowns.append(0.0)
+		jams.append(0.0)
 
 
 func slot_count() -> int:
@@ -121,11 +128,14 @@ func thrown_slot() -> int:
 
 
 ## A quick throw from slot `slot` (a thrown weapon), drawn or not: "" when one is spent (its
-## interval set), otherwise why not: "empty" with none left, "cooldown" inside its interval.
-## Nothing else blocks it: no draw or reload of the weapon in hand.
+## interval set), otherwise why not: "empty" with none left, "cooldown" inside its interval,
+## "jammed" while an ICE field's jam holds it (I1). Nothing else blocks it: no draw or reload of the
+## weapon in hand.
 func try_throw(slot: int) -> String:
 	if slot < 0 or slot >= defs.size() or not defs[slot].is_thrown():
 		return BLOCK_EMPTY
+	if jams[slot] > 0.0:
+		return BLOCK_JAMMED
 	if cooldowns[slot] > 0.0:
 		return BLOCK_COOLDOWN
 	if mags[slot] <= 0 and not free_ammo:
@@ -253,6 +263,8 @@ func try_fire() -> String:
 func fire_block() -> String:
 	if swap_left > 0.0:
 		return BLOCK_SWAP
+	if jams[current] > 0.0:
+		return BLOCK_JAMMED
 	if reload_left > 0.0 or block_left > 0.0:
 		return BLOCK_RELOAD
 	if cooldowns[current] > 0.0:
@@ -272,6 +284,8 @@ func tick(delta: float) -> void:
 	swap_left = maxf(swap_left - delta, 0.0)
 	block_left = maxf(block_left - delta, 0.0)
 	fiction_left = maxf(fiction_left - delta, 0.0)
+	for i in jams.size():
+		jams[i] = maxf(jams[i] - delta, 0.0)
 	if reload_left > 0.0:
 		reload_left -= delta
 		if reload_left <= 0.0:
@@ -283,6 +297,18 @@ func tick(delta: float) -> void:
 				reserves[current] -= take
 
 
+## Slot `slot` jammed for `seconds` by an ICE field (I1); a longer jam already on it stays.
+func jam(slot: int, seconds: float) -> void:
+	if slot >= 0 and slot < jams.size() and is_finite(seconds):
+		jams[slot] = maxf(jams[slot], seconds)
+
+
+## Every jam cleared.
+func clear_jams() -> void:
+	for i in jams.size():
+		jams[i] = 0.0
+
+
 ## Every magazine and reserve full again, nothing in progress, the ult meter empty: a fresh
 ## life.
 func refill() -> void:
@@ -291,6 +317,7 @@ func refill() -> void:
 		mags[i] = defs[i].magazine_size
 		reserves[i] = defs[i].reserve_ammo
 		cooldowns[i] = 0.0
+		jams[i] = 0.0
 	swap_left = 0.0
 	reload_left = 0.0
 	block_left = 0.0

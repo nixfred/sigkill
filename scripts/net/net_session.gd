@@ -271,6 +271,9 @@ const LIGHT_TRAIL_WORD := "light trail"
 ## A daemon's death (C27b): its cause is this and the daemon's index ("daemon:2"); the feed's
 ## second line for it.
 const DAEMON_CAUSE := "daemon:"
+## A death by hunter ICE's lance (I1), and the name it goes by in the feed.
+const ICE_CAUSE := "ice:hunter"
+const ICE_NAME := "hunter ICE"
 const DAEMON_WORD := "derezzed by a daemon"
 ## The most daemons, and bolts, the state word may carry.
 const DAEMONS_LAST := 64
@@ -298,7 +301,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 11
+const PROTOCOL := 12
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -513,6 +516,11 @@ var _trails_rule := false
 ## dummies) until the host says they fight, and the difficulty. The host's own is its settings.
 var host_practice := true
 var host_difficulty := "normal"
+## The host's ICE setting (I1), as this joiner last heard it: on unless the host turned it off.
+var host_ice := true
+## Hosting, the wait to the next ICE word; joined, ICE words taken (for the checks).
+var _ice_wait_s := 0.0
+var ice_words := 0
 ## The rule the host last told its joiners, and the wait to its next daemon word.
 var _told_rule := []
 var _daemon_wait_s := 0.0
@@ -1056,6 +1064,7 @@ func _physics_process(delta: float) -> void:
 			_tick_send(delta)
 			_tick_trails(delta)
 			_tick_daemons(delta)
+			_tick_ice(delta)
 			for id in combat.tick_sigstop(delta):
 				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
 			combat.tick_sudo(delta)  # root running out on the host's clock (C22)
@@ -1391,6 +1400,8 @@ func _clear_players() -> void:
 	LightTrails.drop(_arena)  # the match is over: every wall goes with it
 	host_practice = true  # the next match's daemons are the old dummies until its host says (C27b)
 	host_difficulty = "normal"
+	host_ice = true
+	_ice_wait_s = 0.0
 	_told_rule = []
 	_daemon_wait_s = 0.0
 	root_left = {}
@@ -1875,6 +1886,10 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		return
 	if combat.validate(shooter, seq, life, weapon, origin, dir, eye, lives.get(shooter, 0), _clock) != "":
 		return
+	var ice := IceDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	if shooter != my_id and ice != null and ice.jammed(shooter, weapon):
+		combat.drop_after(Combat.DROP_JAM)  # an ICE field jammed this weapon in its hand (I1)
+		return
 	var def: WeaponDefScript = combat.weapons[weapon]
 	# Within the tolerance is not enough: a claimed origin the host's view of the eye
 	# cannot see (behind cover it stands against) is a shot through that cover.
@@ -1951,7 +1966,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 			struck[victim] = def.damage
 		if at_daemons:
 			for pair in line["daemons"]:
-				_hit_daemon(pair[0], shooter, def.damage_at(from_world.distance_to(pair[1])) * scale, pair[1], (_arena.global_transform.basis * dir).normalized())
+				_hit_daemon(pair[0], shooter, def.damage_at(from_world.distance_to(pair[1])) * scale, pair[1], (_arena.global_transform.basis * dir).normalized(), weapon)
 	else:
 		# While the host says the shooter's SIGSTOP is on, every pellet flies straight (C18).
 		var steady := combat.sigstop_on(shooter)
@@ -1962,7 +1977,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 			if ray["hit"] != 0:
 				struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
 			elif at_daemons and ray["daemon"] != null:
-				_hit_daemon(ray["daemon"], shooter, def.damage_at(ray["distance"]) * scale, _arena.to_global(ray["end"]), (_arena.global_transform.basis * pellet).normalized())
+				_hit_daemon(ray["daemon"], shooter, def.damage_at(ray["distance"]) * scale, _arena.to_global(ray["end"]), (_arena.global_transform.basis * pellet).normalized(), weapon)
 	var hits := PackedInt32Array()
 	var healths := PackedFloat32Array()
 	var killed := PackedInt32Array()
@@ -2177,7 +2192,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 			killed.append(id)
 		combat.add_meter(thrower, minf(base, before) / _ct.max_health, outcome["killed"])
 	_blast_mines(thrower, at, tuning.radius_m)  # a blast reaching another player's mine removes it (C27)
-	_blast_daemons(at, thrower, func(dist: float) -> float: return tuning.damage_at(dist))  # and the daemons while they fight (C27b)
+	_blast_daemons(at, thrower, func(dist: float) -> float: return tuning.damage_at(dist), weapon)  # and the daemons while they fight (C27b)
 	if hits.is_empty():
 		return
 	var local: Vector3 = _arena.to_local(at)
@@ -2449,7 +2464,7 @@ func _judge_slug_blast(at: Vector3, shooter: int, weapon: String, root: bool) ->
 		if id != shooter:
 			combat.add_meter(shooter, minf(base, before) / _ct.max_health, outcome["killed"])
 	_blast_mines(shooter, at, def.blast_radius_for(root))  # and another player's mines in reach (C27)
-	_blast_daemons(at, shooter, func(dist: float) -> float: return def.blast_damage_at(dist, root))  # and the daemons while they fight (C27b)
+	_blast_daemons(at, shooter, func(dist: float) -> float: return def.blast_damage_at(dist, root), weapon)  # and the daemons while they fight (C27b)
 	if hits.is_empty():
 		return 0
 	var local: Vector3 = _arena.to_local(at)
@@ -2540,7 +2555,7 @@ func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shoote
 	var def: WeaponDefScript = _weapons[weapon]
 	if victim == 0:
 		if shooter != my_id and daemons_fight() and _is_daemon(collider):
-			return _hit_daemon(collider, shooter, def.fork_damage(gen) * combat.damage_scale(shooter), at, dir)  # a joiner's pellet on the host's daemon (C27b)
+			return _hit_daemon(collider, shooter, def.fork_damage(gen) * combat.damage_scale(shooter), at, dir, weapon)  # a joiner's pellet on the host's daemon (C27b)
 		return shooter == my_id and _player_ready() and _player.fork_hit(collider, gen, at, dir, def)
 	var base := def.fork_damage(gen)
 	var before := combat.health_of(victim)
@@ -3090,18 +3105,20 @@ func _send_rules() -> void:
 	_told_rule = daemon_rule()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_rules.rpc_id(id, _trails_rule, _told_rule[0], _told_rule[1])
+			_rules.rpc_id(id, _trails_rule, _told_rule[0], _told_rule[1], _told_rule[2])
 
 
 ## The match's rules, from the host: light-trail mode on or off (C20), and the daemons' (C27b):
-## practice (the old never-attack dummies) or fighting, at which difficulty.
+## practice (the old never-attack dummies) or fighting, at which difficulty; and whether ICE is on
+## (I1; never in practice).
 @rpc("authority", "call_remote", "reliable")
-func _rules(light_trails: bool, practice: bool, difficulty: String) -> void:
+func _rules(light_trails: bool, practice: bool, difficulty: String, ice: bool) -> void:
 	if state != State.JOINED or not DaemonAiTuning.DIFFICULTIES.has(difficulty):
 		return
-	var news := practice != host_practice or difficulty != host_difficulty
+	var news := practice != host_practice or difficulty != host_difficulty or ice != host_ice
 	host_practice = practice
 	host_difficulty = difficulty
+	host_ice = ice
 	if light_trails != _trails_rule:
 		_trails_rule = light_trails
 		if not light_trails:
@@ -3137,10 +3154,10 @@ func daemons_fight() -> bool:
 	return state == State.HOSTING and GameSettings.current().value("gameplay", "practice") != true
 
 
-## The host's daemon rule now, from its settings: [practice, difficulty].
+## The host's daemon rule now, from its settings: [practice, difficulty, ICE on] (ICE since I1).
 func daemon_rule() -> Array:
 	var s := GameSettings.current()
-	return [s.value("gameplay", "practice") == true, String(s.value("gameplay", "difficulty"))]
+	return [s.value("gameplay", "practice") == true, String(s.value("gameplay", "difficulty")), s.value("gameplay", "ice") == true]
 
 
 func is_hosting() -> bool:
@@ -3292,8 +3309,8 @@ func _daemon_struck(index: int, killed: bool) -> void:
 
 ## A joiner's hit on the host's daemon `dummy` (C27b): landed as another player's (its kill not
 ## the host's), the shooter told. True when it landed.
-func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3) -> bool:
-	var landed: bool = dummy.hit_by_other(damage, point, way, shooter) == true
+func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3, source: String = "") -> bool:
+	var landed: bool = dummy.hit_by_other(damage, point, way, shooter, source) == true
 	if landed:
 		_tell_struck(shooter, dummy, not dummy.is_alive())
 	return landed
@@ -3312,7 +3329,8 @@ func daemon_hurt(victim: int, amount: float, dummy: Node3D, way: Vector3) -> boo
 	_broadcast_daemon_hit(victim, outcome["health"], index)
 	if outcome["killed"]:
 		var local_way: Vector3 = (_arena.global_transform.basis.inverse() * way).normalized() if not way.is_zero_approx() else Vector3.FORWARD
-		_broadcast_death(victim, victim, local_way, DAEMON_CAUSE + str(maxi(index, 0)))
+		var cause := ICE_CAUSE if dummy.is_in_group(IceDirector.PIECES) else DAEMON_CAUSE + str(maxi(index, 0))
+		_broadcast_death(victim, victim, local_way, cause)
 	_mirror_from_combat()
 	_flush_sudo()
 	return true
@@ -3369,6 +3387,8 @@ static func daemon_of(cause: String) -> int:
 
 ## The name a daemon death's cause shows: the daemon's tag on this screen's copy of the arena.
 func _daemon_name(cause: String) -> String:
+	if cause == ICE_CAUSE:
+		return ICE_NAME
 	var index := daemon_of(cause)
 	var director := DaemonDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
 	if director != null and index >= 0 and index < director.brains().size():
@@ -3376,15 +3396,16 @@ func _daemon_name(cause: String) -> String:
 	return "daemon"
 
 
-## True for one of this arena's daemons (C27b): a target dummy, never a player's avatar.
+## True for one of this arena's daemons (C27b): a target dummy, never a player's avatar; or (I1) a
+## piece of ICE, judged here the same way.
 func _is_daemon(collider: Object) -> bool:
-	return is_instance_valid(collider) and collider is Node and (collider as Node).is_in_group(DaemonDirector.TARGET_GROUP) and collider.has_method("hit") and not collider.has_meta(PLAYER_ID_META)
+	return is_instance_valid(collider) and collider is Node and ((collider as Node).is_in_group(DaemonDirector.TARGET_GROUP) or (collider as Node).is_in_group(IceDirector.PIECES)) and collider.has_method("hit") and not collider.has_meta(PLAYER_ID_META)
 
 
 ## Every daemon of this arena a blast at `at` (world space) reaches while they fight (C27b), for
 ## any shooter's blast: `base_at` gives the damage for a distance, at `shooter`'s strength, with
 ## nothing of the level between the blast and the daemon's middle. How many it hurt.
-func _blast_daemons(at: Vector3, shooter: int, base_at: Callable) -> int:
+func _blast_daemons(at: Vector3, shooter: int, base_at: Callable, weapon: String = "") -> int:
 	if not daemons_fight() or _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
 		return 0
 	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
@@ -3401,9 +3422,79 @@ func _blast_daemons(at: Vector3, shooter: int, base_at: Callable) -> int:
 		var amount: float = base * combat.damage_scale(shooter)
 		var way: Vector3 = (middle - at).normalized()
 		# The host's own blast lands as its own; another player's as theirs (its kill told to them).
-		if (dummy.hit(amount, middle, way) == true) if shooter == 1 else _hit_daemon(dummy, shooter, amount, middle, way):
+		if (dummy.hit(amount, middle, way, weapon) == true) if shooter == 1 else _hit_daemon(dummy, shooter, amount, middle, way, weapon):
 			hurt += 1
+	var ice := IceDirector.of(_arena)
+	if ice != null:
+		hurt += ice.blast(at, base_at, combat.damage_scale(shooter), weapon, space)  # and ICE (I1)
 	return hurt
+
+
+# --- ICE (I1). ---
+
+## Every physics step hosting: while ICE is on and anyone has joined, the ICE director's word to every
+## joiner at the sync rate.
+func _tick_ice(delta: float) -> void:
+	var ice := IceDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	if ice == null or not ice.decides() or players.size() < 2:
+		_ice_wait_s = 0.0
+		return
+	_ice_wait_s -= delta
+	if _ice_wait_s > 0.0:
+		return
+	_ice_wait_s += 1.0 / _t.sync_rate_hz
+	var w: Dictionary = ice.word()
+	var connected := multiplayer.get_peers()
+	for id in players:
+		if id != 1 and connected.has(id):
+			_ice.rpc_id(id, w["round"], w["seeds"], w["healths"], w["words"], w["times"], w["hunter"], w["weapon"], w["percent"])
+
+
+## The host's ICE, at the sync rate (I1): the round; every piece's seed, health, word and seconds into
+## it (the two walls, the two nodes, the hunter, in the director's order); the hunter's place, yaw,
+## aim (arena space) and reach; the adaptation's weapon and percent. A joiner's ICE plays it.
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _ice(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, hunter: PackedFloat32Array, weapon: String, percent: int) -> void:
+	if state != State.JOINED or host_practice or not host_ice or _arena == null or not is_instance_valid(_arena):
+		return
+	var n := IceDirector.PIECE_COUNT
+	if round < 1 or round > IceTuning.ROUND_LAST or seeds.size() != n or healths.size() != n or words.size() != n or times.size() != n or hunter.size() != 8:
+		return
+	if percent < 0 or percent > 100 or weapon.length() > WEAPON_ID_LAST or (weapon != "" and not _weapons.has(weapon)):
+		return
+	for i in n:
+		if seeds[i] < 0 or not is_finite(healths[i]) or healths[i] < 0.0 or healths[i] > 100000.0 or not is_finite(times[i]) or times[i] < 0.0 or times[i] > DAEMON_TIME_LAST:
+			return
+	for v in hunter:
+		if not is_finite(v) or absf(v) > WORLD_LAST:
+			return
+	var ice := IceDirector.of(_arena)
+	if ice == null:
+		return
+	ice_words += 1
+	ice.take_word(round, seeds, healths, words, times, hunter, weapon, percent)
+
+
+## Hosting: a field of this arena's ICE reached joiner `id`: its `kind` (IceDirector.Effect) for
+## `seconds`, a jam on `weapon` (its drawn one, as the host counts it).
+func ice_effect(id: int, kind: int, seconds: float, weapon: String) -> void:
+	if state != State.HOSTING or id == 1 or not multiplayer.get_peers().has(id):
+		return
+	_ice_effect.rpc_id(id, kind, seconds, weapon)
+
+
+## An ICE field reached this player, from the host: its effect here.
+@rpc("authority", "call_remote", "reliable")
+func _ice_effect(kind: int, seconds: float, weapon: String) -> void:
+	if state != State.JOINED or host_practice or not host_ice or _arena == null or not is_instance_valid(_arena):
+		return
+	if (kind != IceDirector.Effect.JAM and kind != IceDirector.Effect.HUD) or not is_finite(seconds) or seconds <= 0.0 or seconds > 60.0:
+		return
+	if weapon.length() > WEAPON_ID_LAST or (weapon != "" and not _weapons.has(weapon)):
+		return
+	var ice := IceDirector.of(_arena)
+	if ice != null:
+		ice.take_effect(kind, seconds, weapon)
 
 
 func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
@@ -3417,7 +3508,7 @@ func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) ->
 ## A player went down, from the host, and to which weapon.
 @rpc("authority", "call_remote", "reliable")
 func _death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
-	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not (_weapons.has(weapon) or weapon == LIGHT_TRAIL or daemon_of(weapon) >= 0):
+	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not (_weapons.has(weapon) or weapon == LIGHT_TRAIL or daemon_of(weapon) >= 0 or weapon == ICE_CAUSE):
 		return
 	_apply_death(victim, killer, dir, weapon)
 
@@ -3429,8 +3520,8 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
 	last_kill_word[victim] = _feed_word(victim, weapon)
 	last_kill_self[victim] = _weapons[weapon].self_kill_word if killer == victim and _weapons.has(weapon) else ""
-	if daemon_of(weapon) >= 0:
-		last_killer_name[victim] = _daemon_name(weapon)  # derezzed by the daemon, named as this screen shows it (C27b)
+	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE:
+		last_killer_name[victim] = _daemon_name(weapon)  # derezzed by the daemon, named as this screen shows it (C27b); or by hunter ICE (I1)
 		last_kill_self[victim] = DAEMON_WORD
 	if killer == my_id and killer != victim and _weapons.has(weapon) and _player_ready():
 		if _weapons[weapon].is_ult():
@@ -3457,7 +3548,7 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 func _feed_word(victim: int, weapon: String) -> String:
 	if weapon == LIGHT_TRAIL:
 		return LIGHT_TRAIL_WORD
-	if daemon_of(weapon) >= 0:
+	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE:
 		return _daemon_name(weapon)
 	if not _weapons.has(weapon):
 		return ""

@@ -206,6 +206,16 @@ func line_text() -> String:
 	return _line.text if _line.visible else ""
 
 
+## The health line and the kill feed themselves (I1: an ICE field's HUD corruption scrambles the feed
+## and never the health line).
+func line_label() -> Label:
+	return _line
+
+
+func feed_box() -> Control:
+	return _feed
+
+
 func banner_text() -> String:
 	return _banner.text if _banner.visible else ""
 

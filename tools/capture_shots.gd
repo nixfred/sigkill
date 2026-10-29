@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28 or a5):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5 or i1):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -22,8 +22,10 @@ extends SceneTree
 ## alike (each creature's own art, standing, facing the camera, one row a type, the rows stacked);
 ## the three elites in their tells; and the runaway's core killed, its drones scattering; then it
 ## prints what daemons cost: each type's posing timed alone, and the GPU's time with nine drawn and
-## with them hidden. Every
-## other set plays in practice, the old dummies, as it was shot.
+## with them hidden; i1, ICE in play: the west corridor's wall mid-crack under the cannon's beam, the
+## jam node's tell with its dome, the HUD corrupted by the HUD node's field, the hunter mid-tell with
+## its adaptation on the HUD and in its shields, and a line-up of hunters and nodes from other seeds;
+## then it prints what ICE costs. Every other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -37,6 +39,7 @@ extends SceneTree
 
 const Link = preload("res://scripts/guide/guide_link.gd")
 const MainScene = preload("res://scenes/main.tscn")
+const Palette = preload("res://scripts/palette.gd")
 const OUT := "user://shots"
 ## Frames after a weapon is drawn before its still: the raise done and the fiction line gone.
 const SETTLE_FRAMES := 110
@@ -159,6 +162,24 @@ const A5_SCATTER_CAM := Vector3(-4.4, 2.6, 16.2)
 const A5_SCATTER_LOOK := Vector3(-8.0, 1.6, 12.0)
 const A5_SCATTER_FRAMES := 12
 const A5_COST_FRAMES := 120
+## i1: the corridor's wall's damage for its still (of its 600), where the player stands inside the
+## corridor and the point it looks at; where it stands for the jam node's tell (inside its trigger, out
+## of its dome) and for the HUD node's field (inside it); how far into a tell its still is; the
+## cannon damage the round has seen before the hunter's still (its adaptation) and where the player
+## stands for it, in the hunter's sight; the line-up's pieces (art, kind, place) and its camera.
+const I1_WALL_DAMAGE := 350.0
+const I1_WALL_AT := Vector3(-17.0, 0.95, 2.6)
+const I1_WALL_LOOK := Vector3(-17.6, 1.55, 8.0)
+const I1_JAM_AT := Vector3(-6.5, 0.95, 3.0)
+const I1_HUD_AT := Vector3(-13.6, 0.95, -2.2)
+const I1_TELL_SHARE := 0.62
+const I1_FIELD_CAM := Vector3(6.5, 4.2, 9.0)
+const I1_FIELD_LOOK := Vector3(-4.5, 1.2, -4.5)
+const I1_ADAPT_DAMAGE := 340.0
+const I1_HUNTER_AT := Vector3(6.1, 0.95, -0.5)
+const I1_LINEUP := [["hunter_art", "", Vector3(-5.2, 0.0, 9.0)], ["hunter_art", "", Vector3(0.0, 0.0, 9.0)], ["hunter_art", "", Vector3(5.2, 0.0, 9.0)], ["node_art", "jam", Vector3(-4.2, 0.0, 12.5)], ["node_art", "jam", Vector3(-1.4, 0.0, 12.5)], ["node_art", "hud", Vector3(1.4, 0.0, 12.5)], ["node_art", "hud", Vector3(4.2, 0.0, 12.5)]]
+const I1_LINEUP_CAM := Vector3(0.0, 3.4, 18.6)
+const I1_LINEUP_LOOK := Vector3(0.0, 1.2, 9.5)
 
 var _main: Node
 var _player: Node
@@ -200,6 +221,11 @@ func _run() -> void:
 		return
 	if _set == "a5":
 		await _a5()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "i1":
+		await _i1()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -687,6 +713,174 @@ func _a5_cost(lineup: Array[DaemonArt]) -> void:
 	for art in lineup:
 		art.visible = true
 	print("capture: a5 cost, the GPU's time a frame at 1920x1080 with the nine drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
+
+
+## I1, ICE in play (ICE on, practice off, the daemons parked under the floor): the west corridor's
+## wall mid-crack, sealing it, the cannon's beam striking it, from inside the corridor; the jam node
+## in its tell, its dome lit at the field's reach, from just outside it; the HUD corrupted by the HUD
+## node's field, the health line untouched; the hunter (round 2) mid-tell, its shields closed round
+## its nose and its trace on the player, after the round's cannon damage has adapted it (the HUD's
+## line and its shields tinted toward the cannon's teal), from the player's own view; and a line-up of
+## seven pieces from other seeds (three hunters, two of each node), no two alike. Then it prints what
+## ICE costs: each kind's posing timed alone, its triangles and draw calls, and the GPU's time with
+## the line-up drawn and hidden.
+func _i1() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	ice.start_round(1)
+	await _frames(10)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	# The corridor's wall mid-crack, the HUD node behind the player broken first (its field would
+	# scramble this still's HUD).
+	var wall := ice.wall("wall")
+	var hud_node := ice.node_of("hud")
+	hud_node.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	hud_node.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	for i in 3:
+		wall.hit(100.0, Vector3.INF, Vector3.ZERO, "terminal_cannon")
+	wall.hit(I1_WALL_DAMAGE - 300.0, Vector3.INF, Vector3.ZERO, "terminal_cannon")
+	_player.select_slot(0)
+	await _stand(I1_WALL_AT, _main.to_global(I1_WALL_LOOK))
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
+	await _frames(FIRE_FRAMES)
+	print("capture: the corridor's wall (seed %d) at %.0f%% damage, %d of %d panes out, its deepest crack %.2f" % [wall.build_seed, 100.0 - wall.health() / wall.max_health * 100.0, wall.art.panes_out(), wall.art.pane_count(), wall.art.deepest_crack()])
+	await _save("i1-white-ice")
+	await _frames(60)
+	# The jam node in its tell, its dome lit at the field's reach: seen from a free camera well outside
+	# it, the player standing inside the node's trigger range (out of the dome) to set it off.
+	var jam := ice.node_of("jam")
+	await _stand(I1_JAM_AT, jam.heart())
+	var field_cam := _free_camera(I1_FIELD_CAM, I1_FIELD_LOOK, A2B_FOV)
+	var waited := 0
+	while not (jam.state == IceNode.State.TELL and jam.state_t >= I1_TELL_SHARE * jam.tell_s()) and waited < 900:
+		await _frames(1)
+		waited += 1
+	print("capture: the jam node (seed %d) in its tell after %d frames, its dome at %.2f" % [jam.build_seed, waited, jam.dome_shown()])
+	await _save("i1-field")
+	_free_camera_done(field_cam)
+	_player.respawn_at(_main.to_global(C27B_PLAYER_AT))
+	await _frames(int((jam.tell_s() + 1.0) * 60.0))
+	# The HUD corrupted: a new round's HUD node, the player inside its field.
+	ice.start_round(1)
+	await _frames(5)
+	hud_node = ice.node_of("hud")
+	ice.node_of("jam").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("jam").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	await _stand(I1_HUD_AT, hud_node.heart())
+	waited = 0
+	while not ice.corrupting() and waited < 900:
+		await _frames(1)
+		waited += 1
+	await _frames(20)
+	var hud = _main.get_node("Hud")
+	print("capture: the HUD corrupted after %d frames, %d parts covered, the health line '%s'" % [waited, hud.ice_hud().drawn_rects().size(), hud.combat_hud().line_text()])
+	await _save("i1-corrupted")
+	_player.respawn_at(_main.to_global(C27B_PLAYER_AT))
+	await _frames(int((_main.get_node(IceDirector.NODE_NAME).tuning.hud_s + 0.5) * 60.0))
+	# The hunter, round 2 (the round HUD's own, so its line says so), adapted to the round's cannon
+	# damage, mid-tell at the player.
+	_main.get_node("Hud").round_hud()._start_round(2)
+	await _frames(5)
+	ice.node_of("jam").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("jam").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	for i in 4:
+		ice.note_damage("terminal_cannon", I1_ADAPT_DAMAGE / 4.0)  # each hit noted is capped at hit_cap
+	var hunter := ice.hunter
+	await _stand(I1_HUNTER_AT, hunter.global_position + Vector3.UP * ice.tuning.hunter_hover_m)
+	waited = 0
+	while not (hunter.brain.state == DaemonBrain.State.TELL and hunter.brain.state_t >= I1_TELL_SHARE * ice.tuning.hunter_tell_s) and waited < 1200:
+		await _frames(1)
+		waited += 1
+	print("capture: the hunter (seed %d, size %.2f, %d shields) mid-tell after %d frames, %.1f m from the player, adapted %s, its shields #%s" % [hunter.build_seed, hunter.art.size_scale, hunter.art.shield_count(), waited, hunter.global_position.distance_to(_player.global_position), hud.ice_hud().adapt_line(), hunter.shield_color.to_html(false)])
+	await _save("i1-hunter")
+	_player.respawn_at(_main.to_global(C27B_PLAYER_AT))
+	ice.start_round(1)
+	GameSettings.current().set_value("gameplay", "ice", false)
+	await _frames(10)
+	# The line-up: three hunters and two of each node from other seeds, standing, facing the camera.
+	var cam := _free_camera(I1_LINEUP_CAM, I1_LINEUP_LOOK, A2B_FOV)
+	var lineup: Array[DaemonArt] = []
+	for k in I1_LINEUP.size():
+		var piece: Array = I1_LINEUP[k]
+		var art := _ice_piece(piece[0], piece[2] + Vector3(0.0, 0.9, 0.0), 7000 + k * 7919, func(a): _i1_prepare(a, piece[1]))
+		art.get_parent().rotation.y = PI
+		lineup.append(art)
+	await _frames(70)
+	var built := PackedStringArray()
+	for art in lineup:
+		built.append("%s %d: %d parts" % [art.ai_kind, art.build_seed, art.part_count()])
+	print("capture: the line-up: " + "; ".join(built))
+	await _save("i1-lineup")
+	await _i1_cost(lineup)
+	_free_camera_done(cam)
+	for art in lineup:
+		art.get_parent().queue_free()
+
+
+func _i1_prepare(a: DaemonArt, kind: String) -> void:
+	if kind != "":
+		a.set("kind", kind)
+
+
+## What ICE costs, on this machine: each kind's art (a wall's, a node's, a hunter's) its triangles and
+## draw calls as built, and its posing timed alone, its whole _process, five rounds of
+## A5_COST_FRAMES frames: the quickest round and the median; then the GPU's time a frame with the
+## line-up drawn and hidden, three times each in turn, with what the GPU drew each way.
+func _i1_cost(lineup: Array[DaemonArt]) -> void:
+	var wall: DaemonArt = _ice_piece("barrier_art", Vector3(0.0, -40.0, 0.0), 4242, func(a): a.span = Vector2(4.8, 3.0))
+	var kinds: Array = [[wall], lineup.slice(3, 5), lineup.slice(0, 3)]
+	for group in kinds:
+		var rounds := PackedFloat32Array()
+		for round in 5:
+			var usec := 0
+			for i in A5_COST_FRAMES:
+				for art in group:
+					var t0 := Time.get_ticks_usec()
+					art._process(1.0 / 60.0)
+					usec += Time.get_ticks_usec() - t0
+				await _frames(1)
+			rounds.append(float(usec) / (A5_COST_FRAMES * group.size()))
+		rounds.sort()
+		var art: DaemonArt = group[0]
+		print("capture: i1 cost, %s: %d triangles, %d draw calls; posing %.1f us a piece a frame at the quickest, %.1f the median (rounds %s)" % [art.ai_kind, art.triangles(), art.draw_calls(), rounds[0], rounds[2], ", ".join(Array(rounds).map(func(x): return "%.1f" % x))])
+	wall.get_parent().queue_free()
+	var gpu := PackedStringArray()
+	var calls := PackedInt32Array([0, 0])
+	var prims := PackedInt32Array([0, 0])
+	for pass_ in 6:
+		var shown := pass_ % 2 == 0
+		for art in lineup:
+			art.visible = shown
+		await _frames(10)
+		var ms := await _gpu_ms(A5_COST_FRAMES)
+		gpu.append("%s %.3f" % ["drawn" if shown else "hidden", ms])
+		calls[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		prims[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
+	for art in lineup:
+		art.visible = true
+	print("capture: i1 cost, the GPU's time a frame at 1920x1080 with the line-up's seven drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
+
+
+## A piece of ICE's art alone at `at` (arena space, its centre 0.9 over the floor), from `seed`,
+## `prepare` setting it up before it builds.
+func _ice_piece(type: String, at: Vector3, seed: int, prepare: Callable) -> DaemonArt:
+	var holder := Node3D.new()
+	_main.add_child(holder)
+	holder.position = at
+	var art: DaemonArt = load("res://scripts/ice/%s.gd" % type).new()
+	prepare.call(art)
+	art.setup(null, seed)
+	holder.add_child(art)
+	return art
 
 
 ## Sends a ping: fire for one frame.

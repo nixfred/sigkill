@@ -48,6 +48,11 @@ func _process(_delta: float) -> void:
 	_refresh()
 
 
+## The badge itself (I1: an ICE field's HUD corruption scrambles it).
+func badge() -> Control:
+	return _row
+
+
 ## What the prompt says: "user$", "root#" or, just as root starts, the password line.
 func prompt_text() -> String:
 	return _prompt.text if _row.visible else ""

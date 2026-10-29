@@ -1,0 +1,178 @@
+class_name IcePiece
+extends StaticBody3D
+## One piece of ICE (I1): white ICE's walls and nodes, hunter ICE. The system's own defences, a game
+## object like a daemon and never anything real. A piece has health and a body shots can meet (on the
+## targets' layer, as a daemon's), and art built from a seed (scripts/ice/*_art.gd) that flashes and
+## sprays at a hit and bursts into its own parts in its colour when the piece breaks, over a derezz in
+## that colour.
+##
+## Every hit goes through its director (scripts/ice/ice_director.gd, take()): no one hit takes more
+## than the tuning's hit_cap off any piece (the rail's 1000 included), a hunter resists the weapon it
+## has adapted to, and the weapon's damage is noted for the round's adaptation. A hit carries its
+## source (the weapon's id, the damage type I2's ICEbreakers will add theirs to); an unknown source
+## lands as plain damage. Alone and hosting the director judges; on a joiner a piece is the host's
+## (it follows the host's word, take_word()) and a shot here lands nothing on it.
+##
+## A broken piece is gone for the round (a hunter comes back after its wait, a new one); the director
+## builds every piece again, from new seeds, when a round starts.
+
+const Palette = preload("res://scripts/palette.gd")
+const Derezz = preload("res://scripts/derezz_tuning.gd")
+const DerezzFx = preload("res://scripts/derezz_fx.gd")
+const DEREZZ_PATH := "res://resources/derezz.tres"
+## The physics layers: a piece's own body is on the targets' (shots meet it, nothing walks into it);
+## a wall's core is on the level's (it blocks movement, sight and bolts as the level does).
+const TARGET_LAYER := 4
+const LEVEL_LAYER := 1
+## The art's place over the body's origin (the floor): a daemon's art space has its ground 0.9 under.
+const ART_LIFT := 0.9
+
+## Emitted once, when the piece breaks.
+signal broke(piece: Node3D)
+
+## Its name in the director's layout ("gate", "wall", "jam", "hud", "hunter") and on its tag.
+var piece_name := ""
+var tag_text := "ICE"
+var max_health := 100.0
+## Its director, set before it enters the tree.
+var director: Node = null
+var art: IceArt
+var build_seed := 0
+## True once it has broken this round.
+var broken := false
+## The hits it took this life, for the checks.
+var hits := 0
+
+var _health := 100.0
+var _holder: Node3D
+var _shapes: Array[CollisionShape3D] = []
+
+
+## Builds the piece's art from `seed` under a holder at the art's place, `prepare` setting the art
+## up before it builds (a wall's span, a node's kind). Called by the type once, in _ready().
+func _make_art(script: Script, seed: int, prepare: Callable = Callable()) -> void:
+	build_seed = seed & DaemonArt.SEED_LAST
+	_holder = Node3D.new()
+	_holder.name = "Look"
+	_holder.position = Vector3(0.0, ART_LIFT, 0.0)
+	add_child(_holder)
+	art = script.new()
+	if prepare.is_valid():
+		prepare.call(art)
+	art.setup(self, build_seed)
+	_holder.add_child(art)
+
+
+## A collision shape on this body: `shape` at `at`.
+func _shape(shape: Shape3D, at: Vector3) -> CollisionShape3D:
+	var node := CollisionShape3D.new()
+	node.shape = shape
+	node.position = at
+	add_child(node)
+	_shapes.append(node)
+	return node
+
+
+func health() -> float:
+	return _health
+
+
+## True while it stands: not broken.
+func is_alive() -> bool:
+	return not broken
+
+
+func is_hittable() -> bool:
+	return not broken
+
+
+## Called by a shot through its ray, a pellet, a dart or a blast, as a daemon's hit(). True when it
+## landed: never once broken, never on a joiner (the host judges).
+func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
+	if broken or director == null or not director.decides():
+		return false
+	var taken: float = director.take(self, damage, source)
+	if taken <= 0.0:
+		return false
+	hits += 1
+	_health -= taken
+	if _health > 0.0:
+		_hurt(point, direction)
+		return true
+	_health = 0.0
+	_break(point, direction)
+	return true
+
+
+## Another player's hit, judged by the host: the same as hit().
+func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, _shooter: int = 0, source: String = "") -> bool:
+	return hit(damage, point, direction, source)
+
+
+## A hit that did not break it: the art's flash and spray, and the type's own reaction.
+func _hurt(point: Vector3, direction: Vector3) -> void:
+	art.react(point, direction)
+	_show_health()
+
+
+## The type shows its health on its art (a wall's cracks).
+func _show_health() -> void:
+	pass
+
+
+## It breaks: its collision off, its art bursting into its parts over a derezz in its colour.
+func _break(point: Vector3, direction: Vector3) -> void:
+	broken = true
+	for shape in _shapes:
+		shape.set_deferred("disabled", true)
+	_off_level()
+	var shot := Vector3(direction.x, 0.0, direction.z)
+	if shot.is_zero_approx() and point.is_finite():
+		shot = global_position - point
+		shot.y = 0.0
+	shot = shot.normalized()
+	var root := _fx_root()
+	var d := load(DEREZZ_PATH) as Derezz
+	var fx := DerezzFx.new()
+	root.add_child(fx)
+	fx.start(global_position, _derezz_radius(), _derezz_height(), shot, d if d != null and d.problems().is_empty() else Derezz.new(), build_seed, art.core_color)
+	art.shatter(fx, shot)
+	_holder.visible = false
+	broke.emit(self)
+
+
+## Where a blast at `at` (world space) meets it: its middle; a wall, the nearest point of its face.
+func blast_point(_at: Vector3) -> Vector3:
+	return global_position + Vector3.UP * (_derezz_height() * 0.5)
+
+
+## A wall's core leaves the level when it breaks.
+func _off_level() -> void:
+	pass
+
+
+func _derezz_radius() -> float:
+	return 0.6
+
+
+func _derezz_height() -> float:
+	return 1.8
+
+
+## The host's word for its health and whether it has broken (a joiner's copy).
+func take_health(health_now: float, is_broken: bool) -> void:
+	if broken:
+		return
+	if is_broken:
+		_health = 0.0
+		_break(Vector3.INF, Vector3.ZERO)
+		return
+	if health_now < _health - 0.001:
+		art.flash()
+	_health = clampf(health_now, 0.0, max_health)
+	_show_health()
+
+
+func _fx_root() -> Node:
+	var scene := get_tree().current_scene
+	return scene if scene != null else get_parent()

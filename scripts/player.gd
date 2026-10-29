@@ -832,6 +832,26 @@ func swap_to_last() -> bool:
 	return select_slot(inventory.last)
 
 
+## An ICE field's jam (I1): `weapon` (its id; "" the one in hand) cannot fire for `seconds`; the
+## others still draw and fire.
+func ice_jam(weapon: String, seconds: float) -> void:
+	var slot := inventory.current if weapon == "" else inventory.slot_of(weapon)
+	inventory.jam(slot, seconds)
+
+
+func clear_ice_jams() -> void:
+	inventory.clear_jams()
+
+
+## Every jammed slot now, slot -> seconds left (I1).
+func ice_jams() -> Dictionary:
+	var out := {}
+	for i in inventory.jams.size():
+		if inventory.jams[i] > 0.0:
+			out[i] = inventory.jams[i]
+	return out
+
+
 ## Reloads the drawn weapon: E. False when there is nothing to reload or it cannot now.
 func reload_weapon() -> bool:
 	if not alive or not inventory.reload():
@@ -1118,7 +1138,7 @@ func _fire() -> void:
 			if is_instance_valid(collider) and collider.has_method("hit"):
 				var before: float = collider.call("health") if collider.has_method("health") else 0.0
 				var base: float = _w.damage_at(origin.distance_to(end_point))
-				landed = collider.call("hit", base * _damage_scale(), end_point, dir) == true
+				landed = collider.call("hit", base * _damage_scale(), end_point, dir, _w.id) == true
 				if landed:
 					_meter_from(collider, before, base)
 			hit_target = hit_target or landed
@@ -1167,7 +1187,7 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 		var owner_node: Node = collider if dummy else collider.get_parent()
 		var head: bool = owner_node != null and owner_node.has_method("is_head_hit") and owner_node.call("is_head_hit", point)
 		if dummy:
-			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)) * _damage_scale(), point, dir) == true
+			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)) * _damage_scale(), point, dir, _w.id) == true
 			landed_any = landed_any or landed
 			if landed and collider.has_method("is_alive") and not collider.call("is_alive"):
 				rail_kill.emit(head)
@@ -1241,7 +1261,7 @@ func fork_hit(collider: Object, gen: int, at: Vector3, dir: Vector3, def: Weapon
 		return false
 	var before: float = collider.call("health") if collider.has_method("health") else 0.0
 	var base: float = def.fork_damage(gen)
-	var landed: bool = collider.call("hit", base * _damage_scale(), at, dir) == true
+	var landed: bool = collider.call("hit", base * _damage_scale(), at, dir, def.id) == true
 	if landed:
 		_meter_from(collider, before, base)
 	return landed
@@ -1427,9 +1447,12 @@ func _judge_slug(at: Vector3, def: WeaponDefScript, root: bool) -> int:
 		if not space.intersect_ray(sight).is_empty():
 			continue  # a wall between: the blast does not reach
 		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
-		if dummy.call("hit", base * _damage_scale(), middle, (middle - at).normalized()) == true:
+		if dummy.call("hit", base * _damage_scale(), middle, (middle - at).normalized(), def.id) == true:
 			hurt += 1
 			_meter_from(dummy, before, base)
+	var ice := IceDirector.of(self)
+	if ice != null:
+		hurt += ice.blast(at, func(dist: float) -> float: return def.blast_damage_at(dist, root), _damage_scale(), def.id, space)  # and ICE (I1)
 	return hurt
 
 
@@ -1537,11 +1560,14 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 		if not space.intersect_ray(sight).is_empty():
 			continue  # a wall between: the blast does not reach
 		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
-		if dummy.call("hit", amount, middle, (middle - at).normalized()) == true and not match_meter:
+		if dummy.call("hit", amount, middle, (middle - at).normalized(), def.id) == true and not match_meter:
 			var max_health = dummy.get("max_health")
 			if max_health is float and max_health > 0.0:
 				var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")
 				inventory.add_meter(meter_gain(clampf(minf(base, before), 0.0, before) / max_health, killed))  # at user's strength (C22)
+	var ice := IceDirector.of(self)
+	if ice != null:
+		ice.blast(at, func(dist: float) -> float: return tuning.damage_at(dist), _damage_scale(), def.id, space)  # and ICE (I1)
 
 
 ## How hard this player's weapons hit right now, alone: root's damage_scale, or 1 as user

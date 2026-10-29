@@ -155,13 +155,17 @@ func is_head_hit(point: Vector3) -> bool:
 
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,
 ## false if the dummy is derezzing or respawning. `point` is where the shot struck and
-## `direction` the way it travelled; both are optional.
+## `direction` the way it travelled; both are optional. `source` (I1) is the weapon's id, the hit's
+## damage type: ICE's director notes it for the hunter's adaptation (an empty one counts for none).
 ## On a joiner in a match where the daemons fight (C27b), the host's daemons follow its word and
 ## this machine's shots land nothing on them: false.
-func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> bool:
+func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
 	if state != State.ALIVE or _follows():
 		return false
 	_health -= damage
+	var ice := IceDirector.of(self)
+	if ice != null:
+		ice.note_damage(source, damage)  # the system learns which weapon hits it hardest (I1)
 	if _health > 0.0:
 		_pulse(point, direction)
 		var director := DaemonDirector.of(self)
@@ -174,10 +178,10 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 
 ## A hit another player's shot landed (C27b: the host judging a joiner's shot at its daemon): as
 ## hit(), but a kill is not this player's.
-func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, shooter: int = 0) -> bool:
+func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, shooter: int = 0, source: String = "") -> bool:
 	_credit = false
 	_killer = shooter
-	var landed := hit(damage, point, direction)
+	var landed := hit(damage, point, direction, source)
 	_credit = true
 	_killer = 0
 	return landed

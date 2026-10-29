@@ -6,7 +6,8 @@ extends CanvasLayer
 ## the colorblind-safe palette filter, shown while that setting is on. The top table (C23,
 ## scripts/hud/spectate_top.gd) sits over the rest while it is up, and gives way to the
 ## round's summary, the menu, the multiplayer panel and a text box. grep's marks (C25,
-## scripts/hud/grep_marks.gd) draw round their targets, over the crosshair, while it is in hand.
+## scripts/hud/grep_marks.gd) draw round their targets, over the crosshair, while it is in hand. ICE's
+## part (I1, scripts/hud/ice_hud.gd) sits over the rest, under the menu.
 
 const Palette = preload("res://scripts/palette.gd")
 const Crosshair = preload("res://scripts/crosshair.gd")
@@ -20,6 +21,7 @@ const SudoBadge = preload("res://scripts/hud/sudo_badge.gd")
 const GrepMarks = preload("res://scripts/hud/grep_marks.gd")
 const SpectateTop = preload("res://scripts/hud/spectate_top.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
+const IceHud = preload("res://scripts/hud/ice_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -39,6 +41,7 @@ var _sudo: SudoBadge
 var _grep: GrepMarks
 var _top: SpectateTop
 var _menu: PauseMenu
+var _ice: IceHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -115,6 +118,16 @@ func _ready() -> void:
 	_top.hud = self
 	root.add_child(_top)
 
+	# ICE (I1): the hunter's adaptation, the credit tag, a jam's notice and a field's corruption, over
+	# the rest of the HUD; the health line never covered.
+	_ice = IceHud.new()
+	_ice.name = "IceHud"
+	root.add_child(_ice)
+	var scrambled: Array[Control] = [_status, _round.round_label(), _weapons.strip(), _sudo.badge(), _combat.feed_box()]
+	_ice.scrambled = scrambled
+	_ice.health_line = _combat.line_label()
+	_ice.weapon_strip = _weapons.strip()
+
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
 	_menu.name = "PauseMenu"
@@ -166,6 +179,7 @@ func set_player(player: Node) -> void:
 	_round.set_player(player)
 	_net.player = player
 	_menu.player = player
+	_ice.player = player
 	if player.has_signal("menu_requested"):
 		player.menu_requested.connect(open_menu)
 
@@ -185,6 +199,15 @@ func set_net_session(session: Node) -> void:
 	_round.set_session(session)
 	_menu.session = session
 	_top.session = session
+
+
+## ICE's director beside the arena (I1), for its part of the HUD.
+func set_ice(ice: Node) -> void:
+	_ice.ice = ice
+
+
+func ice_hud() -> IceHud:
+	return _ice
 
 
 func combat_hud() -> CombatHud:

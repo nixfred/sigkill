@@ -95,6 +95,8 @@ const DROP_SIGSTOP := "sigstop"
 const DROP_AIM := "aim"
 const DROP_LIVE := "live_cap"
 const DROP_SUDO := "sudo"
+## A shot with a weapon an ICE field jammed in its hand (I1): the host refuses it until the jam clears.
+const DROP_JAM := "ice_jam"
 ## How far a throw's aim may stray from the view the host last had of the thrower, in degrees:
 ## the view lags by a send interval and the network's delay.
 const AIM_TOLERANCE_DEG := 45.0

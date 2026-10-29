@@ -78,6 +78,9 @@ const CRON_LINE := "cron"
 
 enum Phase { ROUND, BREAK }
 
+## A round started (I1: ICE builds its pieces again and forgets its adaptation): its number.
+signal round_started(number: int)
+
 # Set these before the node enters the tree.
 ## AnnouncerTuning; null for resources/announcer.tres.
 var tuning: Resource = null
@@ -277,6 +280,7 @@ func _start_round(number: int) -> void:
 	_spin_at = 0
 	_last_pos = Vector3.INF
 	_refresh()
+	round_started.emit(stats.round_number)
 
 
 func _end_round() -> void:
@@ -454,6 +458,11 @@ func summary_text() -> String:
 ## The label the AI's or SIGKILL's line is shown in.
 func line_label() -> Label:
 	return _line
+
+
+## The round's own line, top left ("ROUND 2   1:26 left ..."): I1's HUD corruption scrambles it.
+func round_label() -> Label:
+	return _round_line
 
 
 func _refresh() -> void:

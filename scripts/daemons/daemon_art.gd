@@ -102,16 +102,21 @@ const SEED_LAST := 0x7fffffff
 ## at the tip; BLADE a curved blade from its root (the origin) to its point (+Y 1), its spine to +Z,
 ## its edge to -Z, a unit thick (X) and a unit wide (Z); HEX a hex puck with bevelled faces,
 ## centred, a unit across and tall (+Y its axis); RING an eight-sided band round +Y, centred, a
-## unit across and tall: a seam or a joint's light.
-enum Shape { SHARD, GEM, CUBE, STREAK, PLATE, LIMB, BLADE, HEX, RING }
+## unit across and tall: a seam or a joint's light. Since I1 ICE's: FACET a crystal pane, a hexagon a
+## unit across its corners (X) and a unit deep (Z), a unit thick (Y), its back flat and its face (+Y)
+## cut into a ring of twelve facets round a low six-sided point; PRISM a double-terminated crystal, a
+## six-sided column a unit across from its base point (the origin) to its tip point (+Y 1); SHIELD a
+## facet's mesh again, its own set, so a hunter's shields take a colour of their own apart from its hull.
+enum Shape { SHARD, GEM, CUBE, STREAK, PLATE, LIMB, BLADE, HEX, RING, FACET, PRISM, SHIELD }
 ## A part's look: the edged obsidian (A2's shell: a voxel peeling off), the glowing core (seams,
-## joints and weak points since A5), a trail's added light, or the armour (A5).
-enum Look { SHELL, CORE, TRAIL, ARMOR }
+## joints and weak points since A5), a trail's added light, the armour (A5), or ICE's (I1): its
+## crystal (shaders/ice_crystal.gdshader) and its light (the core's shader, steady, never glitching).
+enum Look { SHELL, CORE, TRAIL, ARMOR, ICE, ICE_LIGHT }
 ## What a brain has the daemon doing (C27b): nothing (its own idle life), moving, its tell, its
 ## strike, recovering from it, scattering from a hit.
 enum Act { IDLE, MOVE, TELL, STRIKE, RECOVER, SCATTER }
-const SHAPE_NAMES := ["Shard", "Gem", "Cube", "Streak", "Plate", "Limb", "Blade", "Hex", "Ring"]
-const LOOK_NAMES := ["Shell", "Core", "Trail", "Armor"]
+const SHAPE_NAMES := ["Shard", "Gem", "Cube", "Streak", "Plate", "Limb", "Blade", "Hex", "Ring", "Facet", "Prism", "Shield"]
+const LOOK_NAMES := ["Shell", "Core", "Trail", "Armor", "Ice", "IceLight"]
 
 ## The core's colour, and the shell's edges: a type's own, from the palette.
 var core_color := Palette.HOSTILE_RED
@@ -652,7 +657,7 @@ func part(shape: Shape, look: Look, wire: float = 0.0, ghost: float = 0.0) -> in
 	_set_count[bin] += 1
 	_xf.append(HIDDEN)
 	var salt := fmod(id * 0.618034 + _seed, 1.0)
-	_custom.append(Color(salt, wire if look == Look.SHELL else (salt if look == Look.ARMOR else 1.0), 1.0, ghost))
+	_custom.append(Color(salt, wire if look == Look.SHELL else (salt if look == Look.ARMOR or look == Look.ICE else 1.0), 1.0, ghost))
 	return id
 
 
@@ -837,6 +842,8 @@ static func _statics() -> void:
 	_materials.append(Palette.daemon_core_material())
 	_materials.append(Palette.daemon_trail_material())
 	_materials.append(Palette.daemon_armor_material())
+	_materials.append(Palette.ice_crystal_material())
+	_materials.append(Palette.ice_light_material())
 	_glyph_material = Palette.daemon_glyph_material()
 	_glyph_mesh = QuadMesh.new()
 	_glyph_mesh.size = Vector2.ONE
@@ -862,6 +869,10 @@ static func _statics() -> void:
 				_hex(kit, bucket)
 			Shape.RING:
 				kit.tube(bucket, Vector3.ZERO, 0.4, 0.5, 1.0, 8, Vector3(90.0, 0.0, 0.0), 22.5)
+			Shape.FACET, Shape.SHIELD:
+				_facet(kit, bucket)
+			Shape.PRISM:
+				_prism(kit, bucket)
 		_mesh_triangles.append(kit.count(bucket) / 3)
 		_meshes.append(kit.commit(bucket))
 
@@ -1000,6 +1011,51 @@ static func _hex(kit: ShapeKit, bucket: int) -> void:
 	kit.polygon(bucket, bottom, Vector3.DOWN)
 
 
+## The facet (I1): an ICE crystal pane, a hexagon a unit across its corners along X (and a unit deep
+## along Z, its corners stretched to it), its back (-Y) flat at -0.5, its sides straight up to 0.12,
+## then a ring of twelve facets in to a smaller hexagon turned half a corner, then six to its point
+## at +0.5: a cut stone's crown, so each facet takes the light its own way.
+static func _facet(kit: ShapeKit, bucket: int) -> void:
+	var back := []
+	var rim := []
+	var crown := []
+	for i in 6:
+		var a := TAU * i / 6.0
+		var b := TAU * (i + 0.5) / 6.0
+		rim.append(Vector3(cos(a) * 0.5, 0.12, sin(a) * 0.5))
+		back.append(Vector3(cos(a) * 0.5, -0.5, sin(a) * 0.5))
+		crown.append(Vector3(cos(b) * 0.27, 0.36, sin(b) * 0.27))
+	var tip := Vector3(0.0, 0.5, 0.0)
+	for i in 6:
+		var j := (i + 1) % 6
+		var out := (rim[i] + rim[j]) as Vector3
+		out.y = 0.0
+		kit.polygon(bucket, [back[i], back[j], rim[j], rim[i]], out)
+		kit.polygon(bucket, [rim[i], rim[j], crown[i]], out + Vector3.UP * 0.9)
+		kit.polygon(bucket, [crown[i], rim[j], crown[j]], ((crown[i] + crown[j]) as Vector3) * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 1.1)
+		kit.polygon(bucket, [crown[i], crown[j], tip], ((crown[i] + crown[j]) as Vector3) * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 1.6)
+	kit.polygon(bucket, back, Vector3.DOWN)
+
+
+## The prism (I1): a double-terminated crystal, a six-sided column a unit across from a point at its
+## base (the origin) to a point at its tip (+Y 1): short pyramids at both ends, its sides between.
+static func _prism(kit: ShapeKit, bucket: int) -> void:
+	var low := []
+	var high := []
+	for i in 6:
+		var a := TAU * i / 6.0
+		var d := Vector3(cos(a), 0.0, sin(a)) * 0.5
+		low.append(d + Vector3(0.0, 0.16, 0.0))
+		high.append(d + Vector3(0.0, 0.84, 0.0))
+	for i in 6:
+		var j := (i + 1) % 6
+		var out := (low[i] + low[j]) as Vector3
+		out.y = 0.0
+		kit.polygon(bucket, [low[i], low[j], Vector3.ZERO], out + Vector3.DOWN * 0.5)
+		kit.polygon(bucket, [low[i], low[j], high[j], high[i]], out)
+		kit.polygon(bucket, [high[i], high[j], Vector3.UP], out + Vector3.UP * 0.5)
+
+
 ## The merge: a MultiMesh for each set, every part hidden until posed; the glyphs one MultiMesh.
 func _commit() -> void:
 	_statics()
@@ -1014,8 +1070,8 @@ func _commit() -> void:
 		node.name = LOOK_NAMES[_set_look[bin]] + SHAPE_NAMES[_set_shape[bin]]
 		node.multimesh = mm
 		node.material_override = _materials[_set_look[bin]]
-		# Light is not a solid: only the obsidian and the armour throw a shadow.
-		var solid := _set_look[bin] == Look.SHELL or _set_look[bin] == Look.ARMOR
+		# Light is not a solid: only the obsidian, the armour and ICE's crystal throw a shadow.
+		var solid := _set_look[bin] == Look.SHELL or _set_look[bin] == Look.ARMOR or _set_look[bin] == Look.ICE
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if solid else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(node)
 		_set_mm.append(mm)

@@ -139,6 +139,11 @@ func _process(_delta: float) -> void:
 	_refresh()
 
 
+## The strip itself (I1: an ICE field's HUD corruption scrambles it, and the jam's notice sits over it).
+func strip() -> Control:
+	return _stack
+
+
 func slots_text() -> String:
 	var parts := PackedStringArray()
 	for label in _slot_labels:

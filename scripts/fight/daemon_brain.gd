@@ -480,8 +480,7 @@ func follow(delta: float, d) -> void:
 		State.TELL:
 			art.drive(DaemonArt.Act.TELL, state_t / _tell_s(d))
 		State.STRIKE:
-			var strike_s: float = d.tuning.rogue_strike_s if kind == "rogue" else d.tuning.zombie_throw_s if kind == "zombie" else d.tuning.swarm_dive_s
-			art.drive(DaemonArt.Act.STRIKE, state_t / strike_s)
+			art.drive(DaemonArt.Act.STRIKE, state_t / _strike_s(d))
 		State.RECOVER:
 			art.drive(DaemonArt.Act.RECOVER, state_t / _recover_s(d))
 		State.SCATTER:
@@ -650,6 +649,12 @@ func _tell_s(d) -> float:
 		"zombie":
 			return t.zombie_tell_s
 	return t.swarm_tell_s
+
+
+## How long its strike lasts (I1: a function, so hunter ICE's brain gives its own).
+func _strike_s(d) -> float:
+	var t: DaemonAiTuning = d.tuning
+	return t.rogue_strike_s if kind == "rogue" else t.zombie_throw_s if kind == "zombie" else t.swarm_dive_s
 
 
 func _recover_s(d) -> float:

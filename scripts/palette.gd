@@ -54,6 +54,15 @@ const GLITCH_SPLIT := Color(1.0, 0.168627451, 0.839215686)  # #ff2bd6 the far si
 const CRIMSON := Color(1.0, 0.070588235, 0.188235294)  # #ff1230 rogue.d's seams, visor and stinger
 const HOT_MAGENTA := Color(1.0, 0.105882353, 0.643137255)  # #ff1ba4 the runaway's drones, core and trails
 const DAEMON_ARMOR := Color(0.050980392, 0.058823529, 0.074509804)  # #0d0f13 every daemon's armour
+# ICE (I1): the system defending itself, its own colours, read apart from the player's teal, the
+# rail's ice-white, ping's lime and every daemon's (OKLab distances in docs/DESIGN.md "I1 as built").
+# White ICE glacier blue (cooler and more azure than grep's cobalt, which the brief's #3d8bff sat on
+# top of), hunter ICE a deeper cobalt (bluer and darker than grep's), its HUD text a light tint of it;
+# every piece's body a near-black cold glass with a blue cast.
+const GLACIER := Color(0.094117647, 0.698039216, 1.0)  # #18b2ff white ICE: walls, nodes, their fields
+const HUNTER_COBALT := Color(0.117647059, 0.188235294, 1.0)  # #1e30ff hunter ICE's seams, core and lance
+const HUNTER_TEXT := Color(0.603921569, 0.650980392, 1.0)  # #9aa6ff the hunter's HUD line, legible on black
+const ICE_CRYSTAL := Color(0.031372549, 0.070588235, 0.121568627)  # #08121f every piece's body
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -163,6 +172,37 @@ const DAEMON_ARMOR_PART_SHARE := 0.004
 # of a core's (dimmer, so it stays its type's colour in the glow instead of burning white).
 const DAEMON_SEAM_FLICKER_HZ := 9.0
 const DAEMON_SEAM_GLOW := 0.6
+# ICE's look (I1): its glass (metal, roughness, specular, each facet's tone), the light inside its
+# facets (their share and how few of them hold most of it), its seams' line (fading far off to a share
+# of itself between two distances, so a piece never reads as a wire) and its cold rim, its
+# cracks (their glow, their cells across a part, their width), a hit's flash; its light (the seams'
+# and cores' colour, steadier than a daemon's: a slow breath, never a glitch); a node's field dome
+# (its rim, its lattice and how fine, its firing flash).
+const ICE_METALLIC := 0.2
+const ICE_ROUGHNESS := 0.12
+const ICE_SPECULAR := 0.8
+const ICE_TINT := 0.3
+const ICE_FACET_ENERGY := 0.1
+const ICE_FACET_POWER := 3.0
+const ICE_EDGE_ENERGY := 0.07
+const ICE_EDGE_PX := 1.0
+const ICE_EDGE_NEAR_M := 4.0
+const ICE_EDGE_FAR_M := 16.0
+const ICE_EDGE_FAR := 0.2
+const ICE_RIM_ENERGY := 0.12
+const ICE_RIM_POWER := 3.0
+const ICE_CRACK_ENERGY := 1.1
+const ICE_CRACK_CELLS := 3.0
+const ICE_CRACK_WIDTH := 0.035
+const ICE_FLASH_ENERGY := 2.0
+const ICE_LIGHT_ENERGY := 3.2
+const ICE_LIGHT_BREATH := 0.15
+const ICE_LIGHT_BREATH_HZ := 0.35
+const ICE_LIGHT_FLASH_ENERGY := 2.5
+const ICE_FIELD_RIM_ENERGY := 2.4
+const ICE_FIELD_LATTICE_ENERGY := 1.1
+const ICE_FIELD_CELLS := 26.0
+const ICE_FIELD_FLASH_ENERGY := 6.0
 # Derezz look (A2): the voxels' edge (a share of a face), the face's share of the glow, the edge's
 # boost, the cells a face breaks into; the death's flash (a column and a ground ring) and its glow.
 const DEREZZ_EDGE_WIDTH := 0.14
@@ -278,6 +318,8 @@ const DAEMON_GLYPH_SHADER := "daemon_glyphs"
 const DAEMON_SPLIT_SHADER := "daemon_split"
 const DAEMON_TRAIL_SHADER := "daemon_trail"
 const DAEMON_ARMOR_SHADER := "daemon_armor"
+const ICE_CRYSTAL_SHADER := "ice_crystal"
+const ICE_FIELD_SHADER := "ice_field"
 const DEREZZ_VOXEL_SHADER := "derezz_voxel"
 const ARENA_PANEL_SHADER := "arena_panel"
 const ARENA_LIGHT_SHADER := "arena_light"
@@ -469,6 +511,60 @@ static func daemon_armor_material() -> ShaderMaterial:
 	mat.set_shader_parameter("glitch_share", DAEMON_ARMOR_GLITCH_SHARE)
 	mat.set_shader_parameter("tear_share", DAEMON_ARMOR_TEAR_SHARE)
 	mat.set_shader_parameter("part_share", DAEMON_ARMOR_PART_SHARE)
+	return mat
+
+
+## Every piece of ICE's crystal body (I1): one material for all of them; each piece's colour
+## (edge_color: glacier, or a hunter's cobalt tinted toward what it adapted to) and flash are
+## instance uniforms, each part's tone, presence and crack its custom data. Still: no glitch.
+static func ice_crystal_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(ICE_CRYSTAL_SHADER)
+	mat.set_shader_parameter("crystal", ICE_CRYSTAL)
+	mat.set_shader_parameter("metallic_amount", ICE_METALLIC)
+	mat.set_shader_parameter("roughness_amount", ICE_ROUGHNESS)
+	mat.set_shader_parameter("specular_amount", ICE_SPECULAR)
+	mat.set_shader_parameter("tint", ICE_TINT)
+	mat.set_shader_parameter("facet_energy", ICE_FACET_ENERGY)
+	mat.set_shader_parameter("facet_power", ICE_FACET_POWER)
+	mat.set_shader_parameter("edge_energy", ICE_EDGE_ENERGY)
+	mat.set_shader_parameter("edge_px", ICE_EDGE_PX)
+	mat.set_shader_parameter("edge_near_m", ICE_EDGE_NEAR_M)
+	mat.set_shader_parameter("edge_far_m", ICE_EDGE_FAR_M)
+	mat.set_shader_parameter("edge_far", ICE_EDGE_FAR)
+	mat.set_shader_parameter("rim_energy", ICE_RIM_ENERGY)
+	mat.set_shader_parameter("rim_power", ICE_RIM_POWER)
+	mat.set_shader_parameter("crack_energy", ICE_CRACK_ENERGY)
+	mat.set_shader_parameter("crack_cells", ICE_CRACK_CELLS)
+	mat.set_shader_parameter("crack_width", ICE_CRACK_WIDTH)
+	mat.set_shader_parameter("flash_color", FLASH)
+	mat.set_shader_parameter("flash_energy", ICE_FLASH_ENERGY)
+	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	return mat
+
+
+## ICE's light (I1): its seams, joints and cores, the daemon core shader in the piece's colour, but
+## steady: a slower, shallower breath and no glitch at all (ICE is the system's own exact code).
+static func ice_light_material() -> ShaderMaterial:
+	var mat := daemon_core_material()
+	mat.set_shader_parameter("energy", ICE_LIGHT_ENERGY)
+	mat.set_shader_parameter("breath", ICE_LIGHT_BREATH)
+	mat.set_shader_parameter("breath_hz", ICE_LIGHT_BREATH_HZ)
+	mat.set_shader_parameter("flash_energy", ICE_LIGHT_FLASH_ENERGY)
+	for key in ["glitch_share", "tear_share", "part_share", "jitter_m", "tear_m", "part_jump_m"]:
+		mat.set_shader_parameter(key, 0.0)
+	return mat
+
+
+## A white ICE node's field dome (I1): one material for every node, its colour and its moment
+## (warning, firing flash, scramble) instance uniforms.
+static func ice_field_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(ICE_FIELD_SHADER)
+	mat.set_shader_parameter("rim_energy", ICE_FIELD_RIM_ENERGY)
+	mat.set_shader_parameter("lattice_energy", ICE_FIELD_LATTICE_ENERGY)
+	mat.set_shader_parameter("lattice_cells", ICE_FIELD_CELLS)
+	mat.set_shader_parameter("flash_energy", ICE_FIELD_FLASH_ENERGY)
 	return mat
 
 

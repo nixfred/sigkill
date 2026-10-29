@@ -208,7 +208,7 @@ func _source_checks() -> void:
 	var hosting := _body(session, "_physics_process")
 	var host_at := hosting.find("State.HOSTING:")
 	var join_at := hosting.find("State.JOINED:")
-	_check("the wire: protocol 8 (9 since C25's grep marks, 10 since C27b's daemons, 11 since A5's daemon seeds); one more RPC (20 in all then, 24 since C27b), _top, an authority RPC from the host; sent only from _tick_top, which only the hosting branch runs, to each joiner", Session.PROTOCOL == 11 and session.count("@rpc(") == 24 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _top(uptime: float, load: PackedInt32Array, ids: PackedInt32Array, pids: PackedInt32Array, kills: PackedInt32Array, deaths: PackedInt32Array, dealt: PackedFloat32Array, alive: PackedFloat32Array) -> void:') and session.count("_top.rpc_id(") == 1 and _body(session, "_tick_top").contains("_top.rpc_id(") and session.count("_tick_top(delta)") == 1 and hosting.find("_tick_top(delta)") > host_at and hosting.find("_tick_top(delta)") < join_at)
+	_check("the wire: protocol 8 (9 since C25's grep marks, 10 since C27b's daemons, 11 since A5's daemon seeds, 12 since I1's ICE); one more RPC (20 in all then, 24 since C27b, 26 since I1), _top, an authority RPC from the host; sent only from _tick_top, which only the hosting branch runs, to each joiner", Session.PROTOCOL == 12 and session.count("@rpc(") == 26 and session.contains('@rpc("authority", "call_remote", "reliable")\nfunc _top(uptime: float, load: PackedInt32Array, ids: PackedInt32Array, pids: PackedInt32Array, kills: PackedInt32Array, deaths: PackedInt32Array, dealt: PackedFloat32Array, alive: PackedFloat32Array) -> void:') and session.count("_top.rpc_id(") == 1 and _body(session, "_tick_top").contains("_top.rpc_id(") and session.count("_tick_top(delta)") == 1 and hosting.find("_tick_top(delta)") > host_at and hosting.find("_tick_top(delta)") < join_at)
 	var shown := _code("res://scripts/hud/spectate_top.gd")
 	_check("a client never makes up another player's numbers: in a match every row's health is the session's synced health and every other number the session's top_numbers() (the host's), \"-\" where there is none", _body(shown, "_match_rows").contains("session.health[id]") and _body(shown, "_match_rows").contains("n.get(\"kills\", -1)") and _body(shown, "_refresh").contains("session.top_numbers()") and not _body(shown, "_match_rows").contains("_solo"))
 
@@ -324,7 +324,7 @@ func _match_checks() -> void:
 	var os: Session = old["session"]
 	os.join("127.0.0.1:%d" % hs.listen_port())
 	var refused := await _until(func(): return os.state == Session.State.FAILED, 6000)
-	_check("acceptance: protocol 8 (9 since C25, 10 since C27b, 11 since A5): a joiner still on protocol 7 is refused with the clear version line", Session.PROTOCOL == 11 and refused and os.error == "version mismatch: host 11, you 7", os.error)
+	_check("acceptance: protocol 8 (9 since C25, 10 since C27b, 11 since A5, 12 since I1): a joiner still on protocol 7 is refused with the clear version line", Session.PROTOCOL == 12 and refused and os.error == "version mismatch: host 12, you 7", os.error)
 	_drop(old)
 	await _frames(2)
 	hs.set("_top_left", 1000.0)  # the host's first table held back, to see a joiner without one

@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="IceTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ice/ice_tuning.gd" id="1_ice"]
+
+[resource]
+script = ExtResource("1_ice")
+barrier_health = 600.0
+hit_cap = 100.0
+node_health = 150.0
+node_look_s = 0.2
+jam_trigger_m = 9.0
+jam_tell_s = 1.2
+jam_field_m = 7.0
+jam_s = 2.5
+jam_cooldown_s = 7.0
+hud_trigger_m = 10.0
+hud_tell_s = 1.4
+hud_field_m = 8.0
+hud_s = 4.0
+hud_cooldown_s = 9.0
+field_show_s = 0.6
+hunter_from_round = 2
+hunter_health = 300.0
+hunter_speed = 3.6
+hunter_keep_m = 9.0
+hunter_hover_m = 1.35
+hunter_aggro_m = 26.0
+hunter_lose_s = 6.0
+hunter_range_m = 16.0
+hunter_reach_m = 22.0
+hunter_tell_s = 1.3
+hunter_lock_s = 0.35
+hunter_lance_radius_m = 0.55
+hunter_damage = 24.0
+hunter_strike_s = 0.25
+hunter_recover_s = 0.7
+hunter_cooldown_s = 3.2
+hunter_respawn_s = 15.0
+adapt_max = 0.5
+adapt_full_damage = 500.0

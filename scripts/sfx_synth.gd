@@ -22,6 +22,9 @@ const CHIME_END_HZ := 1320.0
 const CHIME_DECAY := 16.0
 const CHIME_SECOND_RATIO := 1.5
 const CHIME_GAIN := 0.35
+const ICE_BURST_SECONDS := 0.35
+const ICE_BURST_DECAY := 11.0
+const ICE_BURST_NOISE := 0.35
 
 
 ## Player volume in dB for a linear master volume from 0 to 1.
@@ -58,6 +61,44 @@ static func reload_clack(w: Weapon) -> AudioStreamWAV:
 	stream.mix_rate = w.sfx_mix_rate
 	stream.stereo = false
 	stream.data = first.data + gap + second.data
+	return stream
+
+
+## ICE's tell (I1): a rising crystalline swell `seconds` long, the whole of the tell, sweeping from
+## `start_hz` to `end_hz` with a glassy fifth over it and a tremolo quickening as it climbs, louder all
+## the way and cut off at its peak, so the ear hears exactly when the tell ends.
+static func ice_charge(seconds: float, start_hz: float, end_hz: float, gain: float) -> AudioStreamWAV:
+	var rate := Weapon.new().sfx_mix_rate
+	var count := maxi(int(seconds * rate), 1)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var phase := 0.0
+	var phase2 := 0.0
+	var wobble := 0.0
+	for i in count:
+		var u := float(i) / count
+		var freq := start_hz * pow(end_hz / start_hz, u)
+		phase = fmod(phase + TAU * freq / rate, TAU)
+		phase2 = fmod(phase2 + TAU * freq * 1.5 / rate, TAU)
+		wobble = fmod(wobble + TAU * lerpf(5.0, 22.0, u) / rate, TAU)
+		var tone := sin(phase) * 0.65 + sin(phase2) * 0.35
+		var swell := u * u * (0.75 + 0.25 * sin(wobble))
+		var tail := minf((1.0 - u) * 200.0, 1.0)
+		data.encode_s16(i * 2, int(clampf(tone * swell * tail * gain, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## ICE firing (I1): a short glassy crack, bright tones over a burst of noise, at `hz`.
+static func ice_burst(hz: float, gain: float) -> AudioStreamWAV:
+	return _render(Weapon.new(), ICE_BURST_SECONDS, hz * 2.0, hz, ICE_BURST_DECAY, ICE_BURST_NOISE, 2.01, gain)
+
+
+static func _stream(data: PackedByteArray, rate: int) -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = rate
+	stream.stereo = false
+	stream.data = data
 	return stream
 
 

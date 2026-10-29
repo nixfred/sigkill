@@ -41,7 +41,7 @@ const REAL_DATA_DEMO := "this run: demo data"
 const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
 const RELAY_NOTE := "empty: no online rooms, no network call"
 const TRAILS_NOTE := "your match when you host; joiners get the host's"
-const PRACTICE_NOTE := "daemons don't attack; a match plays by its host's"
+const PRACTICE_NOTE := "practice: no attacks, no ICE; a match plays by its host's"
 const RELAY_HINT := "udp://host:9010"
 ## The graphics toggles (A4) in a grid under the preset, three to a row: [label, key].
 const GRAPHICS_TOGGLES := [["bloom", "bloom"], ["shadows", "shadows"], ["code rain", "code_rain"], ["SSAO", "ssao"], ["SSR", "ssr"], ["skyline", "skyline"], ["aberration", "chromatic_aberration"], ["CRT lines", "crt"]]
@@ -563,11 +563,12 @@ func _build_audio(col: VBoxContainer) -> void:
 		_slider(col, pair[0], "audio", pair[1], 0.0, 1.0, 0.05, func(v): return "%d%%" % roundi(v * 100.0))
 
 
-## The daemons fighting back (C27b): how hard, or not at all.
+## The daemons fighting back (C27b): how hard, or not at all; and ICE (I1) on or off, beside them.
 func _build_gameplay(col: VBoxContainer) -> void:
 	_label(col, "GAMEPLAY", HEAD_FONT, Palette.TEAL)
 	_option(col, "difficulty", "gameplay", "difficulty", ["easy", "normal", "hard"])
 	_check(col, "practice", "gameplay", "practice")
+	_check(col, "ICE", "gameplay", "ice")
 	_label(col, PRACTICE_NOTE, FONT - 2, Palette.TEAL)
 
 

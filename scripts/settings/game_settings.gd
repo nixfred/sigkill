@@ -19,8 +19,9 @@ extends RefCounted
 ## scanlines are taste, not cost: off by default and in no preset. A file from before A4
 ## holds the preset alone: each toggle it lacks takes that preset's value. Gameplay (C27b): the
 ## daemons fight back at the difficulty (easy, normal or hard; normal by default), unless
-## practice is on: then they are the old dummies that never attack. In a match both are the
-## host's rule, as light trails are. Key binds live in their
+## practice is on: then they are the old dummies that never attack. ICE (I1: the system's own
+## defences, walls, nodes and a hunter) is on unless its setting is off, and never in practice. In a
+## match all three are the host's rule, as light trails are. Key binds live in their
 ## own section, one per action the player changed (scripts/controls.gd says which actions
 ## and what a bind may be); an action left out has its default.
 ##
@@ -85,6 +86,7 @@ const SCHEMA := {
 	"gameplay": {
 		"difficulty": [TYPE_STRING, "normal", ["easy", "normal", "hard"]],
 		"practice": [TYPE_BOOL, false],
+		"ice": [TYPE_BOOL, true],
 	},
 	"multiplayer": {
 		"display_name": [TYPE_STRING, "", []],
