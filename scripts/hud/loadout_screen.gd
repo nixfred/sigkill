@@ -44,6 +44,8 @@ const BAR_CELLS := 10
 const MARGIN := 14
 const GAP := 14
 const EDGE := 8.0
+## How much of the arena and its HUD the screen hides behind it: nearly all.
+const SHADE_ALPHA := 0.96
 ## How bright a locked card is: there, but plainly not held.
 const LOCKED_ALPHA := 0.55
 
@@ -308,7 +310,7 @@ func _restyle() -> void:
 
 func _build() -> void:
 	var shade := ColorRect.new()
-	shade.color = Color(Palette.VOID, 0.9)
+	shade.color = Color(Palette.VOID, SHADE_ALPHA)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

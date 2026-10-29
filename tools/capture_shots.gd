@@ -328,14 +328,17 @@ const C32_ICE_DROP := Vector3(-2.6, 0.2, -3.4)
 ## how far apart, how much bigger than in the hand, how it is turned to the camera; the camera; the turntable's
 ## frames before a still (a three-quarter view); where the toast's shot is taken from and at.
 const C33_PROGRESS := {"kills_terminal_cannon": 82, "kills_sigterm": 27, "rail_heads": 4, "kills_fork_bomb": 9, "pings": 12, "discards": 3, "hups": 4, "freezes": 6, "shatters": 1, "grep_marks": 8}
-const C33_LINEUP := [["terminal_cannon", "tty1"], ["sigkill_rail", "blacklight"], ["rm_rf_cannon", "preserve_root"], ["sighup", "dial_tone"], ["fork_bomb", "exponential"], ["dev_null", "dev_random"], ["chmod_000", "chmod_755"], ["terminal_cannon", "dracula"]]
-const C33_LINEUP_Z := 7.6
-const C33_LINEUP_GAP := 1.45
-const C33_LINEUP_SCALE := 2.3
-const C33_LINEUP_TURN := -1.15
-const C33_CAM_AT := Vector3(0.0, 1.7, 12.9)
-const C33_CAM_LOOK := Vector3(0.0, 0.7, 7.6)
-const C33_TURN_FRAMES := 150
+const C33_LINEUP := [["terminal_cannon", "tty1"], ["sigkill_rail", "blacklight"], ["sigterm", "catppuccin"], ["rm_rf_cannon", "preserve_root"], ["sighup", "dial_tone"], ["fork_bomb", "exponential"]]
+## The line-up stands on an arc round the camera, this far from it, spread over this many radians; each model this
+## much bigger than in the hand, this high, turned this far past side-on toward the camera (its muzzle to the left).
+const C33_ARC_R := 5.0
+const C33_ARC_SPREAD := 1.35
+const C33_LINEUP_SCALE := 2.25
+const C33_LINEUP_LIFT := 0.6
+const C33_LINEUP_TURN := 0.65
+const C33_CAM_AT := Vector3(0.0, 1.45, 12.6)
+const C33_CAM_LOOK := Vector3(0.0, 0.45, 7.6)
+const C33_TURN_FRAMES := 50
 const C33_SHOT_FROM := Vector3(0.8, 0.95, 14.4)
 const C33_SHOT_AT := Vector3(0.0, 0.0, 8.8)
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
@@ -1943,7 +1946,7 @@ func _c33() -> void:
 	screen.select(12)
 	await _frames(20)
 	screen.preview(1)
-	await _frames(C33_TURN_FRAMES - 40)
+	await _frames(C33_TURN_FRAMES - 20)
 	print("capture: locked: %s" % " | ".join(screen.texts()).left(400))
 	await _save("c33-locked")
 	screen.preview(-1)
@@ -1988,7 +1991,8 @@ func _c33_progress(p: Progress) -> void:
 				p.held[Progress.key_of(def.id, item.skin if item is WeaponSkin else item.id)] = true
 
 
-## Each weapon of C33_LINEUP in its skin, scaled up on a plinth on the open floor, its skin's name under it.
+## Each weapon of C33_LINEUP in its skin, scaled up over a plinth on an arc round the camera, turned three-quarters
+## to it, a pool of its skin's light falling on it from above, its skin's name low in front of it.
 func _c33_lineup() -> Node3D:
 	var row := Node3D.new()
 	row.name = "SkinLineup"
@@ -2002,47 +2006,61 @@ func _c33_lineup() -> Node3D:
 		var kit := WeaponKit.of(def.id)
 		var index := kit.skin_index(C33_LINEUP[i][1])
 		var worn := Loadout.apply(def, index, false)
-		var at := Vector3((i - (n - 1) * 0.5) * C33_LINEUP_GAP, 0.0, C33_LINEUP_Z)
+		var body := Palette.skin_body(worn.light_skin)
+		var beam := Palette.skin_beam(worn.light_skin)
+		var a := lerpf(-C33_ARC_SPREAD * 0.5, C33_ARC_SPREAD * 0.5, float(i) / float(n - 1))
+		var at := Vector3(C33_CAM_AT.x + sin(a) * C33_ARC_R, 0.0, C33_CAM_AT.z - cos(a) * C33_ARC_R)
 		var spot := Node3D.new()
 		row.add_child(spot)
 		spot.global_position = _main.to_global(at)
+		spot.rotation.y = -a
 		var plinth := MeshInstance3D.new()
 		var disc := CylinderMesh.new()
 		disc.top_radius = 0.5
 		disc.bottom_radius = 0.54
-		disc.height = 0.06
-		disc.radial_segments = 40
+		disc.height = 0.08
+		disc.radial_segments = 48
 		plinth.mesh = disc
-		plinth.material_override = Palette.viewmodel_metal(Palette.GUNMETAL, Palette.skin_body(worn.light_skin), true, true)
-		plinth.position.y = 0.03
+		var matte := StandardMaterial3D.new()
+		matte.albedo_color = Palette.VOID
+		matte.metallic = 0.2
+		matte.roughness = 0.85
+		plinth.material_override = matte
+		plinth.position.y = 0.04
 		spot.add_child(plinth)
 		var ring := MeshInstance3D.new()
 		var torus := TorusMesh.new()
-		torus.inner_radius = 0.47
-		torus.outer_radius = 0.485
-		torus.rings = 48
+		torus.inner_radius = 0.51
+		torus.outer_radius = 0.523
+		torus.rings = 64
 		ring.mesh = torus
-		ring.material_override = Palette.unlit_glow(Palette.skin_body(worn.light_skin), 3.0)
-		ring.position.y = 0.065
+		ring.material_override = Palette.unlit_glow(body, 3.0)
+		ring.position.y = 0.08
 		spot.add_child(ring)
+		var pool := OmniLight3D.new()
+		pool.light_color = beam
+		pool.light_energy = 2.8
+		pool.omni_range = 1.9
+		pool.position = Vector3(0.0, 1.45, 0.3)
+		spot.add_child(pool)
 		var model := Viewmodel.make(worn)
 		model.visible = true
 		model.scale = Vector3.ONE * C33_LINEUP_SCALE
-		model.rotation.y = C33_LINEUP_TURN
-		model.position = Vector3(0.0, 0.62, 0.0)
-		model.set_look(Palette.skin_body(worn.light_skin), Palette.skin_beam(worn.light_skin), worn.viewmodel_glow_energy * 1.3)
+		model.rotation.y = PI * 0.5 + C33_LINEUP_TURN
+		model.position = Vector3(0.0, C33_LINEUP_LIFT, 0.0)
+		model.set_look(body, beam, worn.viewmodel_glow_energy * 1.6)
 		spot.add_child(model)
 		var tag := Label3D.new()
 		tag.text = "%s\n%s" % [kit.skins[index].display_name, def.short_name]
 		tag.font = Palette.mono_font()
-		tag.font_size = 44
-		tag.pixel_size = 0.004
-		tag.outline_size = 10
-		tag.modulate = Palette.skin_beam(worn.light_skin)
+		tag.font_size = 40
+		tag.pixel_size = 0.003
+		tag.outline_size = 12
+		tag.modulate = beam
 		tag.outline_modulate = Palette.VOID
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		tag.shaded = false
-		tag.position = Vector3(0.0, 1.45, 0.0)
+		tag.position = Vector3(0.0, 0.2, 1.55)
 		spot.add_child(tag)
 	return row
 

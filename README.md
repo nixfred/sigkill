@@ -1680,12 +1680,25 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 ## Screenshots
 
-Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31 and C32). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
+Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31, C32 and C33). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
 
 <p align="center">
   <img src="docs/media/a4-overview.png" alt="In-game overview from above after A4: the walled arena on its plinth, warm orange signs on the walls, the red swarm and the magenta-edged creatures glowing, gloss deck plates, dark megastructures with lit teal windows rising out of a teal haze all round"><br>
   <em>The arena from above, lit and finished (A4): warm signs against the teal, the daemons in hostile red and magenta.</em>
 </p>
+
+**Unlocks, mods and light skins (C33).** Every weapon's two Tron light skins and its mod, earned by playing and worn from Esc, Loadout. The progress in these stills is demo data.
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c33-loadout.png" alt="The loadout screen over the darkened arena: on the left the arsenal, 1 cannon 3/3 down to S4 SIGHUP 0/3, each name in its weapon's light; in the middle the terminal cannon's own model large on a black glass floor, turning over a dark plinth ringed in Dracula purple, its seams and trim purple, its muzzle glowing green; under it Terminal cannon, cannon: one line, one hit., skin Dracula, mod overclock; on the right the light skin cards stock teal, tty1 and Dracula (WEARING), each with two swatches, a name and a line of fiction, and the mod card overclock: + fire interval 0.16 > 0.13s, - damage 25 > 21, FITTED"><br><sub>The loadout screen: the cannon on its turntable in Dracula's purple and green, its overclock fitted.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c33-locked.png" alt="The loadout screen on SIGHUP: the telephone handset model turning over a plinth ringed in pale cyan, lit in dial tone's light while the pointer is over the dial tone card; the cards stock carrier (WEARING), dial tone and 300 baud each LOCKED  0 / 1 and 0 / 5 kills by a confused daemon's lash with an empty bar, and the mod card wideband: + reach 7 > 9 m, - wander 4 > 2.8s, LOCKED  4 / 6 daemons hung up [######....]"><br><sub>A locked skin under the pointer lights the model at once, and its card says how it is earned.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c33-skins.png" alt="Six weapons on the arena floor in an arc, each over a dark plinth ringed in its own light, its name under it: the cannon in tty1's phosphor green, the kill -9 rail in blacklight purple, SIGTERM in Catppuccin pink, the rm -rf cannon in --preserve-root white, the SIGHUP handset in dial tone cyan and the fork bomb in exponential chartreuse"><br><sub>Earned skins side by side: tty1, blacklight, Catppuccin, --preserve-root, dial tone, exponential.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c33-unlock.png" alt="In-game first-person view: SIGTERM held in its ^C cyan skin, a shot bursting on rogue.d in pink and white sparks, the zombie beside it; near the top a dark strip with pink corner brackets: UNLOCKED, Catppuccin in mauve, and a light skin for SIGTERM   Esc > Loadout to wear it"><br><sub>The toast the moment one is earned: "UNLOCKED: Catppuccin".</sub></td>
+  </tr>
+</table>
 
 **SIGHUP, the confusion grenade (C32).** Weapon 13, bank 2's fourth (Shift+4): throw it and the line hangs up; every daemon it reaches reloads its config and wanders confused.
 

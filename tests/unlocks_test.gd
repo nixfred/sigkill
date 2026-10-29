@@ -475,7 +475,7 @@ func _screen_checks() -> void:
 	await _frames(2)
 	var first := toast.text()
 	var waiting := toast.waiting()
-	var tr: Rect2 = Rect2(toast.position, UnlockToast.SIZE)
+	var tr: Rect2 = toast.screen_rect()
 	_check("acceptance: the toast: \"%s\" near the top the moment it is earned, whole on the 960x540 screen, the next one waiting its turn (%d)" % [first, waiting], first == "UNLOCKED: choke" and waiting == 2 and tr.position.x >= 0.0 and tr.end.x <= 960.0 and tr.position.y >= 0.0 and tr.end.y <= 540.0)
 	await _frames(int((UnlockToast.SHOW_S + 0.1) * 60.0))
 	var second := toast.text()

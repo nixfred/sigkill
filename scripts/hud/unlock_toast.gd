@@ -20,6 +20,8 @@ const SIZE := Vector2(460, 70)
 const TOP_PX := 92.0
 const BRACKET_PX := 14.0
 const SWEEP_S := 0.9
+## It grows with a window taller than 720 px, up to this much.
+const SCALE_LAST := 1.6
 
 var _queue: Array = []
 var _left := 0.0
@@ -56,6 +58,11 @@ func show_unlock(weapon: String, item: String, title: String) -> void:
 	_queue.append([weapon, item, title])
 	if _left <= 0.0:
 		_next()
+
+
+## Where it is on screen now, scaled (for the checks).
+func screen_rect() -> Rect2:
+	return Rect2(position, SIZE * scale)
 
 
 ## The toast's text now ("" while hidden), for the checks.
@@ -112,8 +119,10 @@ func _process(delta: float) -> void:
 
 func _place() -> void:
 	var screen := get_viewport_rect().size
+	var k := clampf(screen.y / 720.0, 1.0, SCALE_LAST)
+	scale = Vector2(k, k)
 	var drop := clampf(_age / IN_S, 0.0, 1.0)
-	position = Vector2((screen.x - SIZE.x) * 0.5, TOP_PX - DROP_PX * (1.0 - drop))
+	position = Vector2((screen.x - SIZE.x * k) * 0.5, (TOP_PX - DROP_PX * (1.0 - drop)) * k)
 	modulate.a = clampf(_left / OUT_S, 0.0, 1.0) * drop
 
 
