@@ -16,8 +16,9 @@ extends SceneTree
 ## works, nothing leaves home, tells or attacks). Then a host and a joiner over ENet on 127.0.0.1
 ## (the joiner's arena 1000 m off): the joiner's ping is judged by the host (its rogue caught mid-tell
 ## staggers, a second ping too soon is refused), the ring drawn on both screens, the outline only on
-## the joiner's; protocol 10, no new message. And the fiction rule for the ping code. Deterministic:
-## frames counted, only counts and outcomes printed.
+## the joiner's; protocol 10, no new message. And the fiction rule for the ping code, and nothing
+## made while a ring flies or an outline holds. Deterministic: frames counted, only counts and
+## outcomes printed.
 
 const Session = preload("res://scripts/net/net_session.gd")
 const NetTuningScript = preload("res://scripts/net/net_tuning.gd")
@@ -108,6 +109,14 @@ func _source_checks() -> void:
 	var wave := FileAccess.get_file_as_string("res://shaders/ping_wave.gdshader")
 	_check("acceptance: the outline shows through walls: its shader draws with no depth test, unlit and additive, from the daemon's own posed parts (their presence honoured)", reveal.contains("depth_test_disabled") and reveal.contains("blend_add") and reveal.contains("unshaded") and reveal.contains("INSTANCE_CUSTOM") and reveal.contains("instance uniform float reveal"))
 	_check("the ring never reads or warps the picture: no screen texture, no UV moved", not wave.contains("SCREEN") and not wave.contains("hint_screen_texture") and not wave.contains("UV =") and not reveal.contains("SCREEN"))
+	var pulse := _code(PING_CODE[0])
+	var lit := _code(PING_CODE[1])
+	var each := _body(pulse, "_physics_process") + _body(pulse, "_step") + _body(pulse, "_meet") + _body(lit, "_process") + _body(lit, "_step") + _body(lit, "light")
+	var made := PackedStringArray()
+	for word in [".new(", "instantiate(", "duplicate(", "Mesh(", "Material("]:
+		if each.contains(word):
+			made.append(word)
+	_check("acceptance: nothing is made while a ring flies or an outline holds: what runs each frame (the ring's step and meeting, the reveal's step and lighting) makes no node, mesh or material; the ring's meshes and materials are made once for every ping, and a daemon's outline once, the first time a ping meets it (PingReveal.of), then kept", made.is_empty() and each.length() > 1500 and pulse.contains("if _floor_mesh == null") and pulse.contains("if _floor_material == null") and lit.contains("if _material == null"), ", ".join(made))
 
 
 func _weapon_checks() -> void:
@@ -216,6 +225,22 @@ func _radius_checks() -> void:
 		lit_far = lit_far or (r != null and r.lit())
 	var r_in := PingReveal.find(inside.art_node())
 	_check("acceptance: nothing outside the radius is revealed: rogue.d %.1f m off is met when the ring reaches it (frame %d of 30) and outlined; a zombie %.1f m off, past the 18 m ring, is never met nor outlined" % [near, met_at, far], near < 18.0 and far > 18.5 and met_at >= 26 and met_at <= 31 and r_in != null and r_in.lit() and not met_far and not lit_far)
+	await _drop(main)
+	# A ping is no hit: rogue.d at home 17 m off along open floor, in plain sight but past its 16 m
+	# aggro range, is met and outlined, and not roused.
+	main = await _lab({}, Vector3(-17.0, 0.95, 15.0))
+	p = main.get_node("Player")
+	var director: DaemonDirector = main.get_node("DaemonDirector")
+	var watcher: Node3D = _dummy(main, "DummyA")
+	await _draw_ping(p)
+	_place(watcher, Vector3(0.0, 0.0, 15.0))
+	await _frames(20)  # it looks every 0.2 s, and does not spot a player 17 m off
+	var sees: bool = director.clear(watcher.global_position + Vector3.UP * _t.eye_height_m, director.prey_point(1))
+	var quiet: bool = watcher.brain.state == DaemonBrain.State.HOME and watcher.brain.prey == 0
+	await _ping(p)
+	await _frames(60)
+	var seen := PingReveal.find(watcher.art_node())
+	_check("a ping is no hit and rouses no one: rogue.d at home 17 m off, in plain sight but past its 16 m aggro range, is outlined and stays home, hunting no one (%s)" % DaemonBrain.STATE_NAMES[watcher.brain.state], sees and quiet and seen != null and seen.lit() and watcher.brain.state == DaemonBrain.State.HOME and watcher.brain.prey == 0)
 	await _drop(main)
 
 
@@ -605,6 +630,20 @@ func _cleanup() -> void:
 	await process_frame
 	OS.delay_msec(300)
 	await process_frame
+
+
+## The text of function `name` in `source`, up to the next function.
+func _body(source: String, name: String) -> String:
+	var at := source.find("\nfunc %s(" % name)
+	if at < 0:
+		at = source.find("\nstatic func %s(" % name)
+	if at < 0:
+		return ""
+	var end := source.find("\nfunc ", at + 1)
+	var end_static := source.find("\nstatic func ", at + 1)
+	if end_static > 0 and (end < 0 or end_static < end):
+		end = end_static
+	return source.substr(at, (end if end > 0 else source.length()) - at)
 
 
 ## A script's code without its comments or the text of its strings.

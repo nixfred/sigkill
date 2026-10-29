@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4 or c27b):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b or c28):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -14,8 +14,10 @@ extends SceneTree
 ## same view with both post effects on, and every weapon held at the spawn as a4-weapon-* stills.
 ## The a4 set uses nothing A4 made, so it shoots the same views from a copy from before A4. c27b,
 ## the daemons fighting back, in play: a rogue daemon mid-lunge, a zombie's bolt in flight, the
-## hit's red vignette and the death it ends in; every other set plays in practice, the old dummies,
-## as it was shot.
+## hit's red vignette and the death it ends in; c28, ping: its ring going out across the floor seen
+## from above and behind, daemons outlined through the west cover wall with their tags, and rogue.d
+## caught mid-tell by a ping, reeling; every other set plays in practice, the old dummies, as it was
+## shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -108,6 +110,21 @@ const C27B_BOLT_FRAMES := 40
 const C27B_DOWN_FRAMES := 14
 ## Under the floor: where a daemon a still does not use waits, out of every sight line.
 const C27B_PARKED := Vector3(0.0, -50.0, 0.0)
+## c28 (C28): the ring seen from a camera riding above and behind the player, when it has gone this
+## many frames out, with three daemons round it; the reveal from behind the west cover wall (3 m
+## high), two daemons beyond it, this long after the ping; the stagger this long after a ping caught
+## rogue.d's tell.
+const C28_PING_AT := Vector3(0.0, 0.95, 12.0)
+const C28_CHASE := Vector3(0.0, 6.5, 8.5)
+const C28_CHASE_LOOK := Vector3(0.0, 0.0, -4.0)
+const C28_RING_FRAMES := 14
+const C28_ROUND := [Vector3(-5.5, 0.0, 9.5), Vector3(4.5, 0.0, 6.0), Vector3(2.0, 1.0, 15.5)]
+const C28_WALL_AT := Vector3(-12.0, 0.95, -2.5)
+const C28_BEYOND := [Vector3(-13.2, 0.0, 4.8), Vector3(-10.4, 0.0, 6.6)]
+const C28_REVEAL_FRAMES := 36
+const C28_STAGGER_FRAMES := 26
+## Ping's slot (weapon 9).
+const C28_SLOT := 8
 
 var _main: Node
 var _player: Node
@@ -144,6 +161,11 @@ func _run() -> void:
 	await _frames(90)  # shaders compiled, the code rain running
 	if _set == "c27b":
 		await _c27b()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c28":
+		await _c28()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -392,6 +414,62 @@ func _c27b() -> void:
 	print("capture: the zombie's bolt after %d frames" % waited)
 	await _frames(C27B_BOLT_FRAMES)
 	await _save("c27b-bolt")
+
+
+## c28: ping. The ring from above and behind the player as it goes out across the floor, three
+## daemons round it (outlined as it meets them); from behind the west cover wall, rogue.d and a
+## zombie beyond it outlined through it with their tags; and rogue.d caught rearing by a ping, reeling
+## outlined. Every daemon a still does not use waits under the floor; the daemons fight back.
+func _c28() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	GameSettings.current().set_value("gameplay", "practice", false)
+	_player.select_slot(C28_SLOT)
+	await _stand(C28_PING_AT, _main.to_global(C28_PING_AT + Vector3(0.0, -0.4, -6.0)))
+	await _frames(90)  # past the fiction line drawing shows
+	var names := ["DummyA", "DummyC", "DummyD"]
+	for i in names.size():
+		_c27b_place(targets.get_node(names[i]), _main.to_global(C28_ROUND[i]))
+	var cam := _free_camera(C28_PING_AT + C28_CHASE, C28_PING_AT + C28_CHASE_LOOK, A3_OVERVIEW_FOV)
+	await _frames(20)
+	await _ping()
+	await _frames(C28_RING_FRAMES)
+	print("capture: the ring %.1f m out" % (_player.last_ping.radius() if is_instance_valid(_player.last_ping) else -1.0))
+	await _save("c28-ping")
+	_free_camera_done(cam)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _frames(roundi(_player.weapon_tuning().fire_cooldown * 60.0))  # the cooldown back
+	# Behind the west cover wall: two daemons beyond it, out of sight, outlined through it.
+	await _stand(C28_WALL_AT, _main.to_global(Vector3(-11.8, 1.2, 5.5)))
+	_c27b_place(targets.get_node("DummyA"), _main.to_global(C28_BEYOND[0]))
+	_c27b_place(targets.get_node("DummyC"), _main.to_global(C28_BEYOND[1]))
+	await _frames(20)
+	await _ping()
+	await _frames(C28_REVEAL_FRAMES)
+	await _save("c28-reveal")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _frames(roundi(_player.weapon_tuning().fire_cooldown * 60.0))
+	# rogue.d caught rearing, reeling.
+	var rogue: Node3D = targets.get_node("DummyA")
+	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ROGUE_AT + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	_c27b_place(rogue, _main.to_global(C27B_ROGUE_AT))
+	var waited := 0
+	while not (rogue.brain.state == DaemonBrain.State.TELL and rogue.brain.state_t >= 0.3):
+		await _frames(1)
+		waited += 1
+	await _ping()
+	await _frames(C28_STAGGER_FRAMES)
+	print("capture: rogue.d's tell after %d frames, staggered %d, reeling %.2f" % [waited, rogue.brain.staggers, rogue.art_node().staggered()])
+	await _save("c28-stagger")
+
+
+## Sends a ping: fire for one frame.
+func _ping() -> void:
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
 
 
 ## Daemon `dummy` put at `at` (world space), facing the player, at home there.

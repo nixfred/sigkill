@@ -6,8 +6,8 @@ extends Node
 ## match: its own and each joiner's avatar), where each is and whether it is alive, attackable
 ## (not spawn-protected) or frozen by SIGSTOP; it keeps the attacker cap (at most max_attackers
 ## daemons in a tell or a strike on one player at a time); it checks sight and walls against the
-## level; it throws the zombies' bolts from a fixed pool (scripts/fight/glitch_bolt.gd); and it
-## passes on a ping's ring meeting a daemon (C28) to its brain, which staggers when caught mid-tell; it
+## level; it throws the zombies' bolts from a fixed pool (scripts/fight/glitch_bolt.gd); it passes a
+## ping's ring meeting a daemon (C28) on to its brain, which staggers when caught mid-tell; and it
 ## lands every hit through the combat path, the difficulty's damage scale on it: alone through
 ## the player's own health (scripts/fight/solo_life.gd, which runs the match's combat rules),
 ## hosting through the session (scripts/net/net_session.gd), which judges it in the match's

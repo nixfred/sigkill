@@ -8,8 +8,9 @@
 // On the floor: the front a bright band a fixed width in metres whatever the radius, a fading wash
 // behind it with echo lines every echo_m metres sliding outward with it, and a dim edge circle where
 // the ring will stop. Additive and unlit; the level still hides it (depth tested), so the ring reads
-// where it is in the room. `strength` fades the whole pulse out at its end. Defaults only mirror
-// scripts/palette.gd, which sets the colours at runtime.
+// where it is in the room. The wall comes up over the ring's first wall_in_m metres, so the pinger is
+// not blinded as it leaves (the floor ring shows it going). `strength` fades the whole pulse out at
+// its end. Defaults only mirror scripts/palette.gd, which sets the colours at runtime.
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
@@ -24,6 +25,7 @@ uniform float echo_energy : hint_range(0.0, 8.0) = 0.9;
 uniform float edge_energy : hint_range(0.0, 4.0) = 0.6;
 uniform float wall_energy : hint_range(0.0, 16.0) = 2.6;
 uniform float wall_lines : hint_range(1.0, 40.0) = 9.0;
+uniform float wall_in_m : hint_range(0.1, 20.0) = 6.0;
 
 // The ring's radius now in metres, how far out it will go, and the pulse's strength (1 while it
 // grows, fading to 0 after).
@@ -43,7 +45,8 @@ void fragment() {
 		// A bright foot fading up, with lines climbing it.
 		float foot = pow(1.0 - up, 2.5);
 		float lines = smoothstep(0.7, 1.0, fract(up * wall_lines - radius_m * 0.6));
-		ALBEDO = (front_color.rgb * foot * wall_energy + color.rgb * lines * foot * 0.8 * wall_energy) * strength;
+		float risen = smoothstep(1.0, wall_in_m, radius_m);
+		ALBEDO = (front_color.rgb * foot * wall_energy + color.rgb * lines * foot * 0.8 * wall_energy) * strength * risen;
 	} else {
 		// Metres from the centre on the floor, from the square's own UV.
 		vec2 p = (UV * 2.0 - 1.0) * (reach_m + front_m);

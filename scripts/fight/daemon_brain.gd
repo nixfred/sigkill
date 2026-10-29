@@ -61,6 +61,8 @@ const FOLLOW_SNAP_M := 4.0
 const FOLLOW_RATE := 12.0
 ## The most events kept for the checks.
 const EVENTS_LAST := 256
+## A walker's stagger after a ping (C28) knocks it back over this share of it; then it holds still.
+const KNOCK_SHARE := 0.3
 
 var dummy: Node3D
 var art: DaemonArt
@@ -107,8 +109,6 @@ var word_frozen := false
 
 var _look := 0.0
 var _strike_dir := Vector3.FORWARD
-## A walker's stagger (C28) is knocked back over this share of it, then holds still.
-const KNOCK_SHARE := 0.3
 ## How far this strike's lunge carries the rogue: only what closes the gap, up to rogue_lunge_m.
 var _lunge := 0.0
 var _dive_from := Vector3.ZERO

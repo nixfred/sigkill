@@ -40,9 +40,10 @@ extends Control
 ## charging bar is the rail's alone.
 ##
 ## cron mines (C27) are slot 8; the slot line is a point smaller again (11), so eight slots stay
-## clear of the guide panel at 960x540 (a two-row strip waits for a ninth weapon). While cron is in
-## hand, the third line is the crontab: "crontab 2/3" (this player's jobs running and the limit),
-## or "crontab full: oldest out" for a moment after a placement removed the oldest.
+## clear of the guide panel at 960x540 (a two-row strip was to wait for a ninth weapon; C28 shrank the
+## line a point more instead). While cron is in hand, the third line is the crontab: "crontab 2/3"
+## (this player's jobs running and the limit), or "crontab full: oldest out" for a moment after a
+## placement removed the oldest.
 ##
 ## ping (C28) is slot 9, the last free one, still on the one slot line (the strip's redesign comes
 ## with C29): the slot line a point smaller again (10), so nine slots stay clear of the guide panel
