@@ -83,6 +83,19 @@ extends CharacterBody3D
 ## breaker director (scripts/ice/breaker_director.gd, `breakers`), which keeps them and decides. The
 ## player only says where it looks from and along (eye_position(), aim_direction()).
 ##
+## The second bank (C29): keys 1 to 9 draw slots 1 to 9; with the bank key held (Shift, rebindable as
+## "weapon bank 2") they draw slots 10 to 18; Q and the wheel reach every slot of both banks.
+##
+## chmod 000 (C29), slot 10 (Shift+1): fire held runs the freeze beam, a tick every fire_cooldown while
+## its coolant lasts (the inventory's tank). Each tick casts one ray along the aim to fire_range and gives
+## what it meets that many seconds of beam: alone and hosting this arena's daemons and ICE take it here
+## (their freeze meters, scripts/weapons/frost.gd); in a match the intent goes as for any shot, and the
+## host judges the players it meets (and a joiner's daemons and ICE). The beam is drawn continuously
+## (scripts/weapons/freeze_beam.gd); a freeze this beam made plays the weapon's hit sound. Never a shot:
+## no damage, no accuracy. In a match the host's word freezes this player too (take_frost()): its pace
+## falls as its meter fills, and frozen it cannot move, jump, slide, fire, throw, draw or reload, only
+## look round, until it thaws.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -119,6 +132,7 @@ const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 const CronMine = preload("res://scripts/weapons/cron_mine.gd")
 const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
+const FreezeBeamScript = preload("res://scripts/weapons/freeze_beam.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -282,6 +296,18 @@ var _placed := 0
 ## Pings this player sent (C28), and the last one's ring while it is out alone (for the checks).
 var pings_sent := 0
 var last_ping: Node = null
+## chmod 000 (C29): beam ticks run, freezes this player's beam made, what the last tick met (null for
+## none) and where it ended; this player's own freeze meter (the host's word in a match).
+var beam_ticks := 0
+var freezes_made := 0
+var beam_target: Node = null
+var beam_end := Vector3.INF
+var frost: Frost
+## A test's hold of fire (C29: the beam is held, not clicked).
+var hold_fire := false
+var _fire_held := false
+var _freeze_beam: Node3D
+var _beaming := 0.0
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
@@ -370,6 +396,9 @@ func _ready() -> void:
 	grep.name = "GrepLock"
 	add_child(grep)
 	grep.marked.connect(func(_target: Node3D): grep_marked.emit())
+	frost = Frost.new(Frost.Kind.PLAYER)
+	_freeze_beam = FreezeBeamScript.new()
+	add_child(_freeze_beam)
 
 
 func _notification(what: int) -> void:
@@ -409,6 +438,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_weapon(1)
 	elif event.is_action_pressed("weapon_prev"):
 		cycle_weapon(-1)
+	elif frozen_now() and (event.is_action_pressed("sigstop") or event.is_action_pressed("sudo_overcharge") or event.is_action_pressed("run_breaker") or event.is_action_pressed("cycle_breaker")):
+		pass  # read-only while chmod 000 holds it (C29): no ability runs
 	elif event.is_action_pressed("sigstop"):
 		sigstop.press()
 	elif event.is_action_pressed("code_rain_vision"):
@@ -426,7 +457,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):
-				select_slot(i)
+				# The bank key held, the same key draws bank 2's weapon (C29).
+				select_slot(i + (Arsenal.BANK_SLOTS if bank_held() else 0))
 				break
 
 
@@ -480,6 +512,16 @@ func _physics_process(frame_delta: float) -> void:
 		_jump_pressed = false
 		_slide_pressed = false
 		_fire_pressed = false
+	if frost != null:
+		frost.tick(delta)
+		if frost.frozen():
+			# Frozen by chmod 000 (C29): read-only, it looks round and nothing else.
+			_move_input = Vector2.ZERO
+			_jump_pressed = false
+			_slide_pressed = false
+			_fire_pressed = false
+			_fire_held = false
+			_throw_pressed = false
 	_step_movement(delta, delta / frame_delta if frame_delta > 0.0 else 1.0)
 	_step_camera(delta)
 	_step_weapon(delta)
@@ -555,6 +597,7 @@ func _read_player_input() -> void:
 		_fire_queued = false
 		_throw_pressed = false
 		_throw_queued = false
+		_fire_held = false
 		# A held crouch or aim lets go; a toggled one stays as it was until the player is back.
 		_crouching = _crouching and _crouch_toggles and alive
 		_aiming = _aiming and _aim_toggles and alive
@@ -562,6 +605,7 @@ func _read_player_input() -> void:
 	_move_input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	_jump_pressed = Input.is_action_just_pressed("jump")
 	_slide_pressed = Input.is_action_just_pressed("slide")
+	_fire_held = Input.is_action_pressed("fire")
 	_crouching = (not _crouching if Input.is_action_just_pressed("crouch") else _crouching) if _crouch_toggles else Input.is_action_pressed("crouch")
 	_aiming = (not _aiming if Input.is_action_just_pressed("aim") else _aiming) if _aim_toggles else Input.is_action_pressed("aim")
 	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.
@@ -655,10 +699,11 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 ## The share of its pace the player keeps right now: the rm -rf cannon's move_scale while it winds
 ## up and for move_slow_s after its shot (C26), else 1.
 func move_scale() -> float:
+	var chilled := frost.pace() if frost != null else 1.0  # chmod 000's chill, the host's word (C29)
 	var slug: bool = _charge_left > 0.0 and _charge_slot >= 0 and _charge_slot < inventory.defs.size() and inventory.defs[_charge_slot].is_slug()
 	if slug:
-		return inventory.defs[_charge_slot].move_factor()
-	return _slow_scale if _slow_left > 0.0 else 1.0
+		return inventory.defs[_charge_slot].move_factor() * chilled
+	return (_slow_scale if _slow_left > 0.0 else 1.0) * chilled
 
 
 func _end_slide() -> void:
@@ -754,6 +799,7 @@ func respawn_at(pos: Vector3) -> void:
 	if _charge_left > 0.0:
 		_end_charge()  # and a wind-up or charge stops with nothing spent (C26)
 	_slow_left = 0.0
+	_stop_beam()
 	global_position = pos
 	velocity = Vector3.ZERO
 	_sliding = false
@@ -784,6 +830,9 @@ func set_alive(on: bool) -> void:
 		grep.clear()  # every grep mark gone (C25)
 	if not on:
 		_slow_left = 0.0  # the rm -rf cannon's weight goes with the life (C26)
+		_stop_beam()  # the freeze beam lets go (C29)
+	if frost != null:
+		frost.clear()  # a death and a new life thaw this player (C29)
 	alive = on
 	if _viewmodel != null:
 		_viewmodel.visible = on
@@ -832,7 +881,7 @@ func weapon_tuning() -> Resource:
 ## Draws the weapon in `slot` (0 for slot 1): ready to fire after the swap time. False when
 ## it is already drawn, there is no such slot, or the player is derezzed.
 func select_slot(slot: int) -> bool:
-	if not alive or not inventory.select(slot):
+	if not alive or frozen_now() or not inventory.select(slot):
 		return false
 	_show_weapon()
 	weapon_drawn.emit(_w.id)
@@ -871,7 +920,7 @@ func ice_jams() -> Dictionary:
 
 ## Reloads the drawn weapon: E. False when there is nothing to reload or it cannot now.
 func reload_weapon() -> bool:
-	if not alive or not inventory.reload():
+	if not alive or frozen_now() or not inventory.reload():
 		return false
 	reload_started.emit(_w.id)
 	return true
@@ -975,7 +1024,7 @@ func _step_weapon(delta: float) -> void:
 	_crontab_note_left = maxf(_crontab_note_left - delta, 0.0)
 	if _charge_left > 0.0:
 		_step_charge(delta)
-	elif _fire_pressed and alive and not (_w.is_thrown() and _bombs_full(inventory.current)):
+	elif _wants_fire() and alive and not frozen_now() and not (_w.is_thrown() and _bombs_full(inventory.current)):
 		if _w.charge_s > 0.0:
 			if inventory.fire_block() == "":
 				# The shot goes off when the charge is done: the rail's charge, or the rm -rf
@@ -996,6 +1045,7 @@ func _step_weapon(delta: float) -> void:
 	_throw_pressed = false
 	if _w.is_ping():
 		_viewmodel.set_charge(ping_ready())  # the dish's rings relight as the cooldown comes back (C28)
+	_step_beam(delta)
 	_place_viewmodel(delta)
 
 
@@ -1132,6 +1182,9 @@ func _fire() -> void:
 		return
 	if _w.is_ping():
 		_fire_ping()
+		return
+	if _w.is_freeze():
+		_fire_freeze()
 		return
 	shots_fired += 1
 	var origin := _camera.global_position
@@ -1376,6 +1429,114 @@ func _fire_ping() -> void:
 	if match_meter:
 		return
 	last_ping = PingPulseScript.spawn(_fx_root(), _w, global_position, global_position.y - _half_height(), true, true)
+
+
+## True when fire asks for a shot this frame: a click, or for the freeze beam fire held (C29).
+func _wants_fire() -> bool:
+	return _fire_pressed or (_w.is_freeze() and (_fire_held or hold_fire))
+
+
+## One tick of chmod 000's beam (C29): one ray along the aim to its reach; what it meets takes the tick's
+## seconds of beam here (this arena's daemons and ICE, alone and hosting: their freeze meters; a joiner's
+## copies take nothing, the host judges), a freeze it made plays the weapon's hit sound; in a match the
+## intent goes too, for the host to judge the players it meets. The first tick of a beam flashes the
+## muzzle and starts its sound. Never a shot: no damage, no accuracy.
+func _fire_freeze() -> void:
+	beam_ticks += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	var hit := _beam_ray(origin, forward)
+	beam_target = hit["collider"]
+	beam_end = hit["end"]
+	if beam_target != null and beam_target.has_method("chill") and beam_target.call("chill", _w.fire_cooldown, beam_end, forward, _w.id) == true:
+		freezes_made += 1
+		_hit_sfx.play()
+	if _beaming <= 0.0:
+		CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+		_fire_sfx.play()
+	_beaming = maxf(_beaming, 0.01)
+	_kick()
+	fire_intent.emit(origin, forward, _w.id)
+
+
+## The freeze beam's ray from `origin` along `forward` (C29): {end, collider}, the collider null for none
+## (the beam ran its reach) and for the level's own pieces.
+func _beam_ray(origin: Vector3, forward: Vector3) -> Dictionary:
+	var far := origin + forward * _w.fire_range
+	var query := PhysicsRayQueryParameters3D.create(origin, far, _w.hit_mask)
+	query.exclude = _not_me()
+	var result := get_world_3d().direct_space_state.intersect_ray(query)
+	if result.is_empty():
+		return {"end": far, "collider": null}
+	var collider = result["collider"]
+	var target: bool = is_instance_valid(collider) and (collider.has_method("chill") or collider.has_method("hit") or collider.has_meta("player_id"))
+	return {"end": result["position"], "collider": collider if target else null}
+
+
+## The beam's look each frame (C29): while chmod 000 is drawn, fire is held and its coolant lets it run,
+## the beam stretches from the muzzle to where the aim meets something now, and the model's tumblers
+## spin up; else it lets go. The coolant lights the tank's cells.
+func _step_beam(delta: float) -> void:
+	if _freeze_beam == null:
+		return
+	# Only between ticks (its interval) or ready: never drawing, jammed by ICE, or venting.
+	var why := inventory.fire_block()
+	var running: bool = _w.is_freeze() and alive and not frozen_now() and _wants_fire() and (why == "" or why == Inventory.BLOCK_COOLDOWN)
+	if running:
+		var origin := _camera.global_position
+		var forward := -_camera.global_transform.basis.z
+		var hit := _beam_ray(origin, forward)
+		var struck: bool = hit["collider"] != null and hit["collider"].has_method("chill")
+		_freeze_beam.aim(muzzle_point(), hit["end"], struck)
+		_beaming = minf(_beaming + delta * 6.0, 1.0)
+	else:
+		if _beaming > 0.0:
+			_freeze_beam.stop()
+		_beaming = maxf(_beaming - delta * 3.0, 0.0)
+		if _beaming <= 0.0:
+			beam_target = null
+	if _w.is_freeze():
+		var tank = inventory.coolant(inventory.current)
+		_viewmodel.set_charge(tank.share() if tank != null else 0.0)
+		_viewmodel.set("beaming", _beaming)
+
+
+## Lets the freeze beam go at once (a death, a respawn).
+func _stop_beam() -> void:
+	if _freeze_beam != null:
+		_freeze_beam.stop()
+	_beaming = 0.0
+	beam_target = null
+
+
+## True while the freeze beam runs (C29), for the HUD and the checks.
+func beaming() -> bool:
+	return _beaming > 0.0 and _freeze_beam != null and _freeze_beam.on()
+
+
+## The beam's look (C29), for the checks.
+func freeze_beam() -> Node3D:
+	return _freeze_beam
+
+
+## True while the bank key is held (C29): 1 to 9 then draw bank 2's weapons.
+func bank_held() -> bool:
+	return Input.is_action_pressed("weapon_bank")
+
+
+## True while chmod 000 holds this player frozen (C29, the host's word in a match).
+func frozen_now() -> bool:
+	return frost != null and frost.frozen() and alive
+
+
+## The host's word on this player's freeze meter (C29): the bits Frost packs. A freeze lets the beam go.
+func take_frost(bits: int) -> void:
+	if frost == null:
+		return
+	if frost.take_bits(bits):
+		_stop_beam()
+		if _charge_left > 0.0:
+			_end_charge()
 
 
 ## How far ping's cooldown has come back (C28), 0 just sent to 1 ready: its dish's rings and the strip.

@@ -202,8 +202,13 @@ func _step_recover(_delta: float, d) -> void:
 		return
 	burst_left = 0
 	_release(d)
-	cooldown = ice.hunter_cooldown_s / d.aggression()
+	cooldown = _attack_wait(d)
 	_enter(State.HUNT)
+
+
+## Its lance's wait (a freeze, C29, waits it too).
+func _attack_wait(d) -> float:
+	return ice.hunter_cooldown_s / d.aggression()
 
 
 ## A decoy calls it (I2): hunting, at home or going home it hunts the decoy; in its tell it keeps the

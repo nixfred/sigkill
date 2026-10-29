@@ -158,6 +158,8 @@ var elite_size := 1.0
 ## life into being driven (0 to 1).
 var act: int = Act.IDLE
 var act_u := 0.0
+## chmod 000 (C29): true while its daemon is frozen: it holds its pose, nothing moves.
+var frozen := false
 var _drive := 0.0
 ## The daemon's motion since the last pose, as a map from the last pose's art space into this
 ## one's: what stays put in the world is carried back by it. Identity while nothing drives it.
@@ -520,6 +522,12 @@ func _process(delta: float) -> void:
 		return
 	# The game's own pace: delta is scaled with the engine's time, so SIGSTOP slows it all.
 	_step_shader_clock(delta)
+	if frozen:
+		# chmod 000 (C29): frozen still, every part where it was, nothing posed or turned; a hit's flash
+		# still shows.
+		_hit = maxf(_hit - delta / FLASH_S, 0.0)
+		_send(false)
+		return
 	_clock = fmod(_clock + delta, CLOCK_WRAP)
 	_hit = maxf(_hit - delta / FLASH_S, 0.0)
 	_poll -= delta

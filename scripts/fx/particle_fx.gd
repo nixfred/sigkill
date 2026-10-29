@@ -3,7 +3,9 @@ extends Node3D
 ## The game's GPU particles (A4): sparks off what a shot strikes, derezz bits off a daemon it hits,
 ## debris from a blast, sparks shed behind a projectile in flight, each weapon family's muzzle
 ## burst, and a ping's sonar ring (C28): a flat disc of streaks flying out level with the ring's
-## front. Cosmetic only: no collision, no ray, nothing outside the game.
+## front, and chmod 000's frost (C29): chips of frost thrown off a body as the freeze takes it, a few as it
+## thaws, a storm of them as a frozen daemon shatters. Cosmetic only: no collision, no ray, nothing
+## outside the game.
 ##
 ## Everything is made once. The arena (scripts/main.gd) makes this node, which holds a fixed pool of
 ## one-shot emitters for each kind of effect; an effect takes the next emitter of its kind round the
@@ -33,7 +35,7 @@ const MUZZLE_GROUP := &"particle_muzzle_burst"
 ## A beam that ends this short of its weapon's range met something; one that reaches it hit the sky.
 const BEAM_OPEN_M := 1.0
 
-enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING }
+enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING, FROST }
 ## Each pool: [emitters, particles each, lifetime in seconds, how far its particles may fly, metres].
 const POOLS := {
 	Kind.SPARK: [12, 24, 0.45, 4.0],
@@ -42,6 +44,7 @@ const POOLS := {
 	Kind.TRAIL: [12, 40, 0.4, 40.0],
 	Kind.HEAVY_TRAIL: [2, 64, 0.6, 40.0],
 	Kind.PING: [2, 96, 0.5, 64.0],
+	Kind.FROST: [2, 32, 0.9, 6.0],
 }
 ## The particle level: [the share of each effect's particles shown, trails on].
 const LEVELS := {"low": [0.25, false], "medium": [0.5, true], "high": [1.0, true]}
@@ -49,7 +52,7 @@ const LEVELS := {"low": [0.25, false], "medium": [0.5, true], "high": [1.0, true
 ## The muzzle bursts, one look per weapon family: the terminal cannon's pulse, the rail's ring, the
 ## shotguns' wide scatter, grep's tight seeker ring, the lobbed launchers' (fork bomb, cron) chunky
 ## embers and rm -rf's heavy blast of them.
-enum Family { PULSE, RAIL, SCATTER, SEEKER, LAUNCHER, HEAVY }
+enum Family { PULSE, RAIL, SCATTER, SEEKER, LAUNCHER, HEAVY, FROST }
 ## Particles a muzzle burst has room for; each family shows its own share of them.
 const MUZZLE_PARTICLES := 24
 ## Each family: [particles, lifetime s, emission ring radius m (0: a point), spread degrees, speed
@@ -61,6 +64,7 @@ const MUZZLE := {
 	Family.SEEKER: [14, 0.14, 0.035, 10.0, 2.0, 4.0, 0.8, 10.0, 0.0, false, 0.8],
 	Family.LAUNCHER: [14, 0.3, 0.0, 35.0, 1.5, 3.0, 0.0, 4.0, 3.0, true, 1.0],
 	Family.HEAVY: [24, 0.4, 0.0, 45.0, 2.0, 5.0, 0.0, 5.0, 2.0, true, 1.5],
+	Family.FROST: [16, 0.35, 0.03, 30.0, 0.4, 1.4, 0.6, 3.0, -0.6, true, 0.6],
 }
 
 ## How far over full brightness every particle draws, so the glow picks it up.
@@ -215,6 +219,16 @@ func ping(point: Vector3, color: Color, radius_m: float, seconds: float) -> void
 	_fire(Kind.PING, Transform3D(Basis.IDENTITY, point), color, 1.0)
 
 
+## Chips of frost off a body round `point` (C29), `radius_m` across, `share` of the pool's chips: all of
+## them as the freeze takes it, fewer as it thaws, all as a frozen daemon shatters.
+func frost(point: Vector3, radius_m: float, share_of: float) -> void:
+	var m := _process_material(Kind.FROST)
+	var r := clampf(radius_m, 0.2, 2.5)
+	if m.emission_sphere_radius != r:
+		m.emission_sphere_radius = r
+	_fire(Kind.FROST, Transform3D(Basis.IDENTITY, point), Palette.FROST_HI, share_of)
+
+
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
 ## no follower is free (the pool is the cap) or trails are off at this level.
 func follow(target: Node3D, color: Color, heavy: bool = false) -> bool:
@@ -315,6 +329,8 @@ static func family_of(def: Resource) -> Family:
 			return Family.HEAVY
 		8:
 			return Family.RAIL
+		9:
+			return Family.FROST
 	return Family.RAIL if (charge is float or charge is int) and charge > 0.0 else Family.PULSE
 
 
@@ -428,6 +444,27 @@ static func _process_material(kind: Kind) -> ParticleProcessMaterial:
 			m.lifetime_randomness = 0.0
 			m.scale_min = 1.2
 			m.scale_max = 2.2
+		Kind.FROST:
+			# Chips of frost: off the whole body, tumbling, a little lift and then down.
+			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+			m.emission_sphere_radius = 0.6
+			m.direction = Vector3.UP
+			m.spread = 140.0
+			m.initial_velocity_min = 1.0
+			m.initial_velocity_max = 3.5
+			m.radial_velocity_min = 1.0
+			m.radial_velocity_max = 2.5
+			m.gravity = Vector3.DOWN * 4.0
+			m.damping_min = 1.0
+			m.damping_max = 2.0
+			m.scale_min = 0.5
+			m.scale_max = 1.3
+			m.use_rotation_3d = true
+			m.rotation_3d_min = -Vector3.ONE * FULL_TURN
+			m.rotation_3d_max = Vector3.ONE * FULL_TURN
+			m.use_rotation_velocity_3d = true
+			m.rotation_velocity_3d_min = -Vector3.ONE * 360.0
+			m.rotation_velocity_3d_max = Vector3.ONE * 360.0
 		Kind.TRAIL, Kind.HEAVY_TRAIL:
 			var heavy := kind == Kind.HEAVY_TRAIL
 			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
@@ -503,7 +540,7 @@ static func materials() -> Array:
 
 static func _mesh_of(kind: Kind) -> Mesh:
 	match kind:
-		Kind.DEREZZ:
+		Kind.DEREZZ, Kind.FROST:
 			return _cube_mesh()
 		Kind.TRAIL, Kind.HEAVY_TRAIL:
 			return _ember_mesh()

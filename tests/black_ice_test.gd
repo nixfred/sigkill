@@ -3,7 +3,8 @@ extends SceneTree
 ##
 ##   godot --headless --path . --fixed-fps 60 --script res://tests/black_ice_test.gd
 ##
-## The sources: protocol 14, the host's ICE word carrying Black ICE's (no new message: 28 RPCs, 31 sends)
+## The sources: protocol 14, the host's ICE word carrying Black ICE's (no new message: 28 RPCs, 31 sends; 15 and 32 since
+## C29's chmod 000)
 ## and a new death cause (a flatline), the host judging the touch and holding a flatlined player down until its next round. The
 ## tuning: never round 1, a long tell, slower than a running player. The colour: Black ICE's cold slate
 ## reads apart (OKLab) from every bright colour of the palette. The art: the same seed builds the same one,
@@ -118,7 +119,7 @@ func _source_checks() -> void:
 	var tick := _body(session, "_tick_ice")
 	var word := _body(session, "_ice")
 	var flat := _body(session, "black_ice_flatline")
-	_check("acceptance: in a match the host decides Black ICE and sends its word inside ICE's own at the sync rate (one packet, so it never runs out of step; a joiner plays it), judges every touch (a flatline in the match's combat, told as a death by Black ICE) and holds a flatlined player down until its ICE starts the next round; protocol 14", Session.PROTOCOL == 14 and tick.contains("w[\"percent\"], bw[\"seed\"], bw[\"word\"])") and word.contains("_black_ok(black_seed, black)") and word.contains("ice.take_black_word(black_seed, black)") and session.count("@rpc(") == 28 and session.count(".rpc_id(") == 31 and flat.contains("combat.damage_player(id, id") and flat.contains("_broadcast_death(id, id, local_way, BLACK_CAUSE)") and _body(session, "_death").contains("weapon == BLACK_CAUSE") and _body(session, "_physics_process").contains("if _flat_round.has(id):\n\t\t\t\t\tcombat.defer_respawn(id, RESPAWN_RETRY_S)") and _body(session, "_tick_flatlined").contains("ice.round_number != _flat_round[id]"))
+	_check("acceptance: in a match the host decides Black ICE and sends its word inside ICE's own at the sync rate (one packet, so it never runs out of step; a joiner plays it), judges every touch (a flatline in the match's combat, told as a death by Black ICE) and holds a flatlined player down until its ICE starts the next round; protocol 14 (15 since C29's chmod 000, its 13th number Black ICE's slow; 32 sends)", Session.PROTOCOL == 15 and tick.contains("w[\"percent\"], bw[\"seed\"], bw[\"word\"])") and word.contains("_black_ok(black_seed, black)") and word.contains("ice.take_black_word(black_seed, black)") and session.count("@rpc(") == 28 and session.count(".rpc_id(") == 32 and flat.contains("combat.damage_player(id, id") and flat.contains("_broadcast_death(id, id, local_way, BLACK_CAUSE)") and _body(session, "_death").contains("weapon == BLACK_CAUSE") and _body(session, "_physics_process").contains("if _flat_round.has(id):\n\t\t\t\t\tcombat.defer_respawn(id, RESPAWN_RETRY_S)") and _body(session, "_tick_flatlined").contains("ice.round_number != _flat_round[id]"))
 	var problems := _kt.problems() if _kt != null else PackedStringArray(["no tuning"])
 	var bad := _kt.duplicate() as BlackIceTuning
 	bad.from_round = 1

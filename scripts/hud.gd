@@ -24,6 +24,7 @@ const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const IceHud = preload("res://scripts/hud/ice_hud.gd")
 const BreakerHud = preload("res://scripts/hud/breaker_hud.gd")
 const BlackIceHud = preload("res://scripts/hud/black_ice_hud.gd")
+const FreezeHud = preload("res://scripts/hud/freeze_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -46,6 +47,7 @@ var _menu: PauseMenu
 var _ice: IceHud
 var _breakers: BreakerHud
 var _black: BlackIceHud
+var _freeze: FreezeHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -145,6 +147,11 @@ func _ready() -> void:
 	_black.name = "BlackIceHud"
 	root.add_child(_black)
 
+	# chmod 000 (C29): what the freeze beam is doing, under the crosshair; this player's own frost.
+	_freeze = FreezeHud.new()
+	_freeze.name = "FreezeHud"
+	root.add_child(_freeze)
+
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
 	_menu.name = "PauseMenu"
@@ -197,6 +204,7 @@ func set_player(player: Node) -> void:
 	_net.player = player
 	_menu.player = player
 	_ice.player = player
+	_freeze.player = player
 	if player.has_signal("menu_requested"):
 		player.menu_requested.connect(open_menu)
 
@@ -245,6 +253,11 @@ func breaker_hud() -> BreakerHud:
 
 func black_ice_hud() -> BlackIceHud:
 	return _black
+
+
+## chmod 000's readout and this player's frost (C29).
+func freeze_hud() -> FreezeHud:
+	return _freeze
 
 
 func combat_hud() -> CombatHud:

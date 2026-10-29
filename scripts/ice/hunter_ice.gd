@@ -9,7 +9,8 @@ extends IcePiece
 ## One from the tuning's hunter_from_round on, at its post; killed, it is gone for hunter_respawn_s,
 ## then a new one (a new seed) comes from its post. Its body is a hit volume round its hovering
 ## hull, moved by its brain like a daemon's; nothing walks into it. A ping meeting it mid-tell
-## staggers it, as it does a daemon. On a joiner it plays the host's word.
+## staggers it, as it does a daemon; chmod 000 freezes it as it does a daemon (C29: its lance's tell called
+## off, nothing moved till it thaws). On a joiner it plays the host's word.
 
 const HunterArt = preload("res://scripts/ice/hunter_art.gd")
 
@@ -34,6 +35,7 @@ func _ready() -> void:
 	_shape(hull, Vector3(0.0, tuning.hunter_hover_m, 0.0))
 	brain = HunterBrain.new(self, art, tuning)
 	brain.take_home()
+	frost = Frost.new(Frost.Kind.ICE)  # chmod 000 freezes it (C29)
 	(art as HunterArt).lock_share = tuning.hunter_lock_s / tuning.hunter_tell_s
 
 
@@ -71,6 +73,11 @@ func tint_to(color: Color) -> void:
 		return
 	shield_color = color
 	art.tint(color, [DaemonArt.Shape.SHIELD], [DaemonArt.Shape.PRISM])
+
+
+## Its heart, at its hover: where a ping meets it and grep aims (C29).
+func aim_point() -> Vector3:
+	return global_position + Vector3.UP * tuning.hunter_hover_m
 
 
 func _derezz_radius() -> float:

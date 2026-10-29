@@ -15,6 +15,12 @@ extends StaticBody3D
 ##
 ## A broken piece is gone for the round (a hunter comes back after its wait, a new one); the director
 ## builds every piece again, from new seeds, when a round starts.
+##
+## chmod 000 (C29): the hunter and the nodes freeze like a daemon (their `frost`, ICE's slower meter and
+## shorter freeze): frozen, a hunter does nothing and a node's field is paused, a tell either was in
+## called off, and the next hit thaws it and lands the freeze tuning's frozen_hit_scale times harder
+## (after the hit cap, as exploit's bonus); ICE never shatters (the cap holds). Walls ignore the beam (no
+## frost: "read-only file system"), and Black ICE is only ever slowed (scripts/ice/black_ice.gd).
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -42,6 +48,10 @@ var build_seed := 0
 var broken := false
 ## The hits it took this life, for the checks.
 var hits := 0
+## Its freeze meter and freeze (C29): the hunter's and the nodes'; null for a wall (and Black ICE), which
+## the beam does not freeze.
+var frost: Frost = null
+var _frost_look: FrostLook
 
 var _health := 100.0
 var _holder: Node3D
@@ -102,7 +112,11 @@ func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector
 func _land(damage: float, point: Vector3, direction: Vector3, source: String, shooter: int) -> bool:
 	if broken or director == null or not director.decides():
 		return false
-	var taken: float = director.take(self, damage, source, director.exploit_scale(shooter, self, point, source))
+	var bonus: float = director.exploit_scale(shooter, self, point, source)
+	if frost != null and frost.thaw():
+		bonus *= frost.tuning.frozen_hit_scale  # frozen by chmod 000 (C29): thawed, and harder
+		art.frozen = false
+	var taken: float = director.take(self, damage, source, bonus)
 	if taken <= 0.0:
 		return false
 	hits += 1
@@ -113,6 +127,54 @@ func _land(damage: float, point: Vector3, direction: Vector3, source: String, sh
 	_health = 0.0
 	_break(point, direction)
 	return true
+
+
+## chmod 000's beam on it for `seconds` (C29): its freeze meter builds; true when that froze it just now.
+## Never once broken, never on a joiner (the host judges), never a wall (no frost).
+func chill(seconds: float, _point: Vector3 = Vector3.INF, _direction: Vector3 = Vector3.ZERO, _source: String = "") -> bool:
+	if frost == null or broken or director == null or not director.decides():
+		return false
+	var froze := frost.beam(seconds)
+	if froze:
+		art.frozen = true
+		_on_frozen()
+	_show_frost()
+	return froze
+
+
+## True while chmod 000 holds it frozen (C29).
+func chmod_frozen() -> bool:
+	return frost != null and frost.frozen() and not broken
+
+
+## Its freeze meter on by `delta` (the director steps it): a thaw lets its art move again.
+func tick_frost(delta: float) -> void:
+	if frost != null and frost.tick(delta):
+		art.frozen = false
+
+
+## The host's word on its freeze meter (a joiner's copy, C29).
+func follow_frost(bits: int) -> void:
+	if frost == null or broken:
+		return
+	frost.take_bits(bits)
+	art.frozen = frost.frozen()
+	_show_frost()
+
+
+## A freeze took it just now: the type's own (a node's tell is called off).
+func _on_frozen() -> void:
+	pass
+
+
+func _show_frost() -> void:
+	if _frost_look == null and frost != null and (frost.chill > 0.0 or frost.frozen()):
+		_frost_look = FrostLook.of(art, frost)
+
+
+## The frost on it now (C29), or null before the beam has met it.
+func frost_look() -> FrostLook:
+	return _frost_look
 
 
 ## A hit that did not break it: the art's flash and spray, and the type's own reaction.
@@ -129,6 +191,9 @@ func _show_health() -> void:
 ## It breaks: its collision off, its art bursting into its parts over a derezz in its colour.
 func _break(point: Vector3, direction: Vector3) -> void:
 	broken = true
+	if frost != null:
+		frost.clear()
+	art.frozen = false
 	for shape in _shapes:
 		shape.set_deferred("disabled", true)
 	_off_level()
@@ -145,6 +210,11 @@ func _break(point: Vector3, direction: Vector3) -> void:
 	art.shatter(fx, shot)
 	_holder.visible = false
 	broke.emit(self)
+
+
+## Where a ping's ring meets it and grep's dart aims (C29): its middle.
+func aim_point() -> Vector3:
+	return blast_point(global_position)
 
 
 ## Where a blast at `at` (world space) meets it: its middle; a wall, the nearest point of its face.

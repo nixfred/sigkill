@@ -13,6 +13,11 @@ extends Node3D
 ## (players collide with the world layer only), carrying the player's id for the host's
 ## raycast. die() plays the derezz effect (the dummies' own) and hides the avatar; revive()
 ## brings it back at the spawn. While protected, the body's edges glow mint instead of teal.
+##
+## chmod 000 (C29): the host's word on this player's freeze meter (take_frost()) shows as a frost crust
+## creeping up the body, whole and bright with "PERMISSION DENIED" over it while frozen
+## (scripts/fx/frost_look.gd); its freeze beam, when it runs one, is drawn from its body along its aim to
+## where the host's beam ticks end (beam_to(), scripts/weapons/freeze_beam.gd).
 
 const Palette = preload("res://scripts/palette.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
@@ -86,6 +91,10 @@ var _visor: MeshInstance3D
 var _tag: Label3D
 var _hit: StaticBody3D
 var _hit_shape: CollisionShape3D
+## Its freeze meter, the host's word (C29), its frost on screen and its beam once it has run one.
+var frost: Frost
+var _frost_look: FrostLook
+var _beam: Node3D
 
 
 func _ready() -> void:
@@ -139,7 +148,35 @@ func _ready() -> void:
 	_hit_shape.disabled = true  # nothing to hit until the player's first position is known
 	_hit.add_child(_hit_shape)
 	add_child(_hit)
+	frost = Frost.new(Frost.Kind.PLAYER)
+	# Its freeze beam made now, not at its first tick (its hiss is synthesised once, C29).
+	_beam = FreezeBeam.new()
+	add_child(_beam)
 	visible = false
+
+
+func _physics_process(delta: float) -> void:
+	if frost != null:
+		frost.tick(delta)  # between the host's words (C29)
+
+
+## The host's word on this player's freeze meter (C29): the bits Frost packs; its frost shown from the
+## first word with any.
+func take_frost(bits: int) -> void:
+	frost.take_bits(bits)
+	if _frost_look == null and (frost.chill > 0.0 or frost.frozen()):
+		_frost_look = FrostLook.of_body(self, frost, FEET)
+
+
+## The frost on it now (C29), or null before any.
+func frost_look() -> FrostLook:
+	return _frost_look
+
+
+## Its freeze beam from `from` to `to` (world space), one beam tick's worth (C29): drawn on this screen,
+## judging nothing.
+func beam_to(from: Vector3, to: Vector3, struck: bool) -> void:
+	_beam.aim(from, to, struck)
 
 
 ## A received position: `seq` orders them; an older one, or one too far ahead, is dropped.
@@ -224,6 +261,7 @@ func die(shot_dir: Vector3) -> void:
 	if dead:
 		return
 	dead = true
+	frost.clear()
 	_body.visible = false
 	_head.visible = false
 	_tag.visible = false
@@ -242,6 +280,7 @@ func hide_dead() -> void:
 	if dead:
 		return
 	dead = true
+	frost.clear()
 	_body.visible = false
 	_head.visible = false
 	_tag.visible = false

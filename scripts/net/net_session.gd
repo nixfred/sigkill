@@ -213,6 +213,19 @@ extends Node
 ## _daemons carries each one's seed too, so a joiner's copy is rebuilt from it and every screen draws
 ## the same creature (its size, its build, an elite's health). A changed message, so protocol 11.
 ##
+## chmod 000 (C29): a beam tick is an ordinary intent (_fire) of the freeze weapon, sent every tick
+## while fire is held. The host believes it by the usual checks (its rate is the tick) and its own: a
+## tank not venting (the host keeps every player's coolant) and a shooter not frozen (a frozen player's
+## shots and throws are dropped). It casts the tick's ray itself (_beam_freeze): a player it meets
+## takes the tick's seconds of beam in the host's combat (never a dead or spawn-protected one); a
+## joiner's beam on the host's daemons and ICE, while they fight, lands here, Black ICE only slowed.
+## Every screen draws the tick from the shot message, _shot, with no hits. The meters travel in words
+## already sent: a daemon's and a piece of ICE's in their state byte (_daemons, _ice: bits 3 to 6 beside
+## the state's three and SIGSTOP's), Black ICE's slow as its word's thirteenth number, and every
+## player's in the movement word, _remote_state, which gained a byte (the host's own included, and each
+## joiner's own sent back to it while it has any). Two messages changed and the loadout grew (weapon
+## 10), so protocol 15, no new message.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -223,7 +236,8 @@ extends Node
 ## deaths, damage dealt, time alive, the match's uptime and load), and the game's daemons
 ## (C27b: places, facing, states, health and life, bolts, hits by daemon index, the practice
 ## rule and the difficulty; A5: each one's build seed, a random number; game objects, never a real
-## process). Nothing about the AI
+## process), and chmod 000's freeze meters (C29: a level and a frozen bit per daemon, piece of ICE and
+## player, Black ICE's slow). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
 
@@ -305,7 +319,10 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 14
+const PROTOCOL := 15
+## An avatar's freeze beam starts this far ahead of its eye and this far below it (C29): its emitter.
+const BEAM_AHEAD_M := 0.45
+const BEAM_DROP_M := 0.2
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -416,6 +433,11 @@ var respawn_left := {}
 ## screen, from the death's cause); hosting, the ICE round it happened in.
 var _flat := {}
 var _flat_round := {}
+## chmod 000 (C29): hosting, each joiner's freeze meter as last told to it (its own word goes back to it
+## while there is any, and once more as it goes); beam ticks the host judged, and the freezes they made.
+var _frost_told := {}
+var beam_ticks_judged := 0
+var freezes_judged := 0
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
 var lives := {}
@@ -1096,6 +1118,7 @@ func _physics_process(delta: float) -> void:
 				else:
 					_do_respawn(id)
 			_mirror_from_combat()
+			_tick_frost()
 			_tick_protection(delta)
 			_flush_sudo()  # kills, deaths, respawns and root's end this tick, told at once (C22)
 			_tick_top(delta)
@@ -1647,9 +1670,10 @@ func _send_state() -> void:
 	var life: int = lives.get(my_id, 0)
 	var connected := multiplayer.get_peers()
 	if state == State.HOSTING:
+		var frost: int = combat.frost_bits(1) if combat != null else 0  # chmod 000's meter, the host's (C29)
 		for id in players:
 			if id != 1 and connected.has(id):
-				_remote_state.rpc_id(id, 1, life, _seq, pos, yaw, pitch, vel)
+				_remote_state.rpc_id(id, 1, life, _seq, pos, yaw, pitch, vel, frost)
 	elif connected.has(1):
 		_state.rpc_id(1, _seq, life, pos, yaw, pitch, vel)
 	sent += 1
@@ -1672,21 +1696,36 @@ func _state(seq: Variant, life: Variant, pos: Variant, yaw: Variant, pitch: Vari
 		return
 	received += 1
 	_apply_remote(from, seq, pos, yaw, pitch, vel)
+	var frost: int = combat.frost_bits(from) if combat != null else 0  # chmod 000's meter (C29)
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and id != from and connected.has(id):
-			_remote_state.rpc_id(id, from, life, seq, pos, yaw, pitch, vel)
+			_remote_state.rpc_id(id, from, life, seq, pos, yaw, pitch, vel, frost)
+	# The player its own meter (C29): back to it while there is any, and once more when it is gone.
+	if frost != 0 or _frost_told.get(from, 0) != 0:
+		_remote_state.rpc_id(from, from, life, seq, pos, yaw, pitch, vel, frost)
+	_frost_told[from] = frost
 
 
-## A player's movement, from the host.
+## A player's movement, from the host, with the host's word on its chmod 000 freeze meter (C29: the bits
+## Frost packs). The word on this player's own meter comes the same way: only the meter is taken.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _remote_state(id: int, life: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
-	if state != State.JOINED or id == my_id or not players.has(id) or not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
+func _remote_state(id: int, life: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3, frost: int) -> void:
+	if state != State.JOINED or not players.has(id) or (frost & ~Frost.BITS) != 0:
+		return
+	if id == my_id:
+		if _player_ready() and _player.has_method("take_frost") and life == lives.get(my_id, 0):
+			_player.take_frost(frost)
+		return
+	if not seq_sane(seq) or not sane(pos, yaw, pitch, vel):
 		return
 	if dead.get(id, false) or life != lives.get(id, 0):
 		return
 	received += 1
 	_apply_remote(id, seq, pos, yaw, pitch, vel)
+	var avatar = avatars.get(id)
+	if avatar != null and is_instance_valid(avatar) and avatar.has_method("take_frost"):
+		avatar.take_frost(frost)
 
 
 func _apply_remote(id: int, seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
@@ -1922,6 +1961,10 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
 	if breakers != null:
 		breakers.fired(shooter)  # a shot ends the shooter's cloak (I2)
+	if def.is_freeze():
+		_beam_freeze(shooter, origin, dir, def)
+		_flush_sudo()
+		return
 	if def.is_ping():
 		# ping (C28): the host sends the ring out from where it last heard the pinger and judges its
 		# own daemons with it (one caught mid-tell staggers); every joiner draws the same ring from
@@ -2024,6 +2067,37 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		_broadcast_death(victim, shooter, dir, weapon)
 	_mirror_from_combat()
 	_flush_sudo()
+
+
+## chmod 000's beam tick (C29), believed: the host's own ray from the shooter's origin along its aim to the
+## beam's reach. A player it meets takes the tick's seconds of beam in the match's combat (never a dead or
+## spawn-protected one); a joiner's beam on the host's daemons and ICE, while they fight, lands here as its
+## shots do (the host's own already landed on its arena), Black ICE only slowed. Every screen draws the
+## tick from the shot message: no damage, no hits, no feed. No new message.
+func _beam_freeze(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> void:
+	beam_ticks_judged += 1
+	var ray := _raycast(shooter, origin, dir, def)
+	if ray["hit"] != 0:
+		if combat.chill_player(ray["hit"], def.fire_cooldown):
+			freezes_judged += 1
+	elif shooter != 1 and daemons_fight() and ray["daemon"] != null and ray["daemon"].has_method("chill"):
+		var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+		if ray["daemon"].chill(def.fire_cooldown, _arena.to_global(ray["end"]), along, def.id) == true:
+			freezes_judged += 1
+	_broadcast_shot(shooter, def.id, origin, PackedVector3Array([ray["end"]]), PackedInt32Array(), PackedFloat32Array())
+
+
+## The host's word on every player's freeze meter (C29), on its own screen: its own player and every
+## avatar, from the match's combat each step.
+func _tick_frost() -> void:
+	if combat == null:
+		return
+	if _player_ready() and _player.has_method("take_frost"):
+		_player.take_frost(combat.frost_bits(1))
+	for id in avatars:
+		var avatar = avatars[id]
+		if avatar != null and is_instance_valid(avatar) and avatar.has_method("take_frost"):
+			avatar.take_frost(combat.frost_bits(id))
 
 
 ## This player threw a fork bomb (C19): the request goes to the host, which, when this is the
@@ -2824,6 +2898,9 @@ func _shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Arr
 
 
 func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
+	if _weapons.has(weapon) and _weapons[weapon].is_freeze():
+		_draw_beam_tick(shooter, origin, ends[0])  # chmod 000's beam tick (C29): drawn, nothing else
+		return
 	# This player's own ult meter, from the host's confirmed results of its other weapons.
 	var mine: bool = shooter == my_id and _weapons.has(weapon) and not _weapons[weapon].is_ult() and _player_ready()
 	for i in hits.size():
@@ -2841,6 +2918,21 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 	for hit in hits:
 		shot_confirmed.emit(shooter, hit, origin, ends[0])
 	combat_changed.emit()
+
+
+## Another player's chmod 000 beam tick (C29), on this screen: its avatar's beam from just ahead of its
+## eye to where the host's ray ended (arena space), held until the next tick. This player's own is drawn
+## by its player.
+func _draw_beam_tick(shooter: int, origin: Vector3, end: Vector3) -> void:
+	if shooter == my_id or _arena == null or not is_instance_valid(_arena):
+		return
+	var avatar = avatars.get(shooter)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.has_method("beam_to"):
+		return
+	var to: Vector3 = _arena.to_global(end)
+	var eye: Vector3 = _arena.to_global(origin)
+	var way := (to - eye).normalized() if to.distance_to(eye) > 0.01 else Vector3.FORWARD
+	avatar.beam_to(eye + way * BEAM_AHEAD_M + Vector3.DOWN * BEAM_DROP_M, to, false)
 
 
 # --- Root vs user and sudo overcharge (C22). ---
@@ -3230,7 +3322,8 @@ func _tick_daemons(delta: float) -> void:
 		var dummy: Node3D = brain.dummy
 		places.append(_arena.to_local(dummy.global_position))
 		yaws.append(dummy.global_rotation.y)
-		words.append(int(brain.state) | (0x80 if director.frozen(brain.prey) else 0))
+		var chmod: int = dummy.frost.bits() if dummy.get("frost") != null and dummy.is_alive() else 0  # chmod 000's meter (C29)
+		words.append(int(brain.state) | chmod | (0x80 if director.frozen(brain.prey) else 0))
 		times.append(minf(brain.state_t, DAEMON_TIME_LAST))
 		life_words.append(int(dummy.state))
 		healths.append(maxf(dummy.health(), 0.0))  # a killing hit leaves it below 0
@@ -3268,11 +3361,13 @@ func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: Packe
 			continue
 		if not is_finite(times[i]) or times[i] < 0.0 or times[i] > DAEMON_TIME_LAST or not is_finite(healths[i]) or healths[i] < 0.0:
 			continue
-		if (words[i] & 0x7f) > DaemonBrain.State.DOWN or life_words[i] > 2 or seeds[i] < 0:
+		if (words[i] & IceDirector.STATE_BITS) > DaemonBrain.State.DOWN or life_words[i] > 2 or seeds[i] < 0:
 			continue
 		brains[i].dummy.follow_seed(seeds[i])  # the host's build first (A5)
-		brains[i].take_word(at, yaws[i], words[i] & 0x7f, times[i], (words[i] & 0x80) != 0)
+		brains[i].take_word(at, yaws[i], words[i] & IceDirector.STATE_BITS, times[i], (words[i] & 0x80) != 0)
 		brains[i].dummy.follow_life(life_words[i], healths[i], killers[i] == my_id)
+		if brains[i].dummy.has_method("follow_frost"):
+			brains[i].dummy.follow_frost(words[i] & Frost.BITS)  # chmod 000's meter (C29)
 	var live := {}
 	for k in b:
 		var at := bolt_places[k]
@@ -3527,7 +3622,7 @@ func _black_ok(seed: int, word: PackedFloat32Array) -> bool:
 	for v in word:
 		if not is_finite(v) or absf(v) > WORLD_LAST:
 			return false
-	return word[0] >= 0.0 and word[0] <= BlackIce.Phase.GONE and word[2] >= 0.0 and word[2] <= BlackIceTuning.SEALS_LAST and word[1] >= 0.0 and word[8] >= 0.0 and word[10] >= 0.0 and word[11] >= 0.0
+	return word[0] >= 0.0 and word[0] <= BlackIce.Phase.GONE and word[2] >= 0.0 and word[2] <= BlackIceTuning.SEALS_LAST and word[1] >= 0.0 and word[8] >= 0.0 and word[10] >= 0.0 and word[11] >= 0.0 and word[12] >= 0.0 and word[12] <= FreezeTuning.BLACK_SLOW_LAST
 
 
 ## Hosting: Black ICE touched player `id` (I3, the host's ICE director's judgement): a flatline. All of its
@@ -3612,11 +3707,12 @@ func _breaker(life: Variant, kind: Variant, dir: Variant) -> void:
 
 
 ## The host's check of a joiner's breaker ask: a known, live player in this life, a kind that exists,
-## a way to aim; then the breakers' director runs it (or refuses it: none of that kind, too soon).
+## a way to aim, not frozen by chmod 000 (C29); then the breakers' director runs it (or refuses it: none
+## of that kind, too soon).
 func _handle_breaker(id: int, life: int, kind: int, dir: Vector3) -> void:
 	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
 	var eye := _eye_of(id) if players.has(id) else Vector3.INF
-	if breakers == null or not eye.is_finite() or life != lives.get(id, 0) or not combat.alive(id) or kind < 0 or kind >= Breakers.NAMES.size() or not dir.is_finite() or dir.length_squared() < 0.0001:
+	if breakers == null or not eye.is_finite() or life != lives.get(id, 0) or not combat.alive(id) or combat.frozen(id) or kind < 0 or kind >= Breakers.NAMES.size() or not dir.is_finite() or dir.length_squared() < 0.0001:
 		breaker_refused += 1
 		return
 	var aim: Vector3 = (_arena.global_transform.basis * dir).normalized()

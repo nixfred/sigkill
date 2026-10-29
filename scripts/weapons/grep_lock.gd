@@ -147,6 +147,8 @@ func clear(why: String = PUT_AWAY) -> void:
 ## Where `target`'s middle is now (world space): a dummy's above its feet, an avatar's where its
 ## body is. `target` must be valid.
 static func point_of(target: Node3D) -> Vector3:
+	if target is IcePiece:
+		return (target as IcePiece).aim_point()  # ICE (C29): its middle, the hunter's heart
 	return target.global_position + (Vector3.UP * DUMMY_MIDDLE_M if target.is_in_group(TARGET_GROUP) else Vector3.ZERO)
 
 
@@ -161,13 +163,15 @@ static func mark_point(target) -> Vector3:
 static func alive(target) -> bool:
 	if not is_instance_valid(target) or not (target is Node3D) or not target.is_inside_tree():
 		return false
+	if target is IcePiece:
+		return (target as IcePiece).is_alive()
 	if target.is_in_group(TARGET_GROUP):
 		return not target.has_method("is_alive") or target.call("is_alive")
 	return target.visible and not target.get("dead")
 
 
-## This player's enemies: alone, the living target dummies of its own arena; in a match, the
-## other players' living avatars.
+## This player's enemies: alone, the living target dummies of its own arena, and its hunter ICE and nodes
+## (C29); in a match, the other players' living avatars.
 func enemies() -> Array[Node3D]:
 	var out: Array[Node3D] = []
 	if session != null and is_instance_valid(session) and session.has_method("is_online") and session.is_online():
@@ -182,6 +186,13 @@ func enemies() -> Array[Node3D]:
 	for body in get_tree().get_nodes_in_group(TARGET_GROUP):
 		if body is Node3D and arena.is_ancestor_of(body) and alive(body):
 			out.append(body)
+	# ICE too (C29; I1's known issue): the hunter and the nodes may be marked; the walls stand still and
+	# Black ICE only flashes, so neither is.
+	var ice := IceDirector.of(arena)
+	if ice != null:
+		for piece in ice.pieces():
+			if (piece is HunterIce or piece is IceNode) and arena.is_ancestor_of(piece) and alive(piece):
+				out.append(piece)
 	return out
 
 

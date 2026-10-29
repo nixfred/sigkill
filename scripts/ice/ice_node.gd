@@ -19,6 +19,9 @@ extends IcePiece
 ##
 ## Alone and hosting it decides (step()); on a joiner it plays the host's word (take_word()): its
 ## state and how far into it, so its tell, its dome and its sound show on every screen.
+## chmod 000 (C29): frozen, its field is paused: a tell it was in, or the dome of one just fired, is
+## called off into its cooldown ("frozen" noted), and its clock and every timer are held until it thaws;
+## then it waits out the cooldown before it looks again, as a daemon waits its attack's own wait.
 
 const NodeArt = preload("res://scripts/ice/node_art.gd")
 const Sfx = preload("res://scripts/sfx_synth.gd")
@@ -68,6 +71,7 @@ func _ready() -> void:
 	_health = max_health
 	tag_text = "white ICE: " + kind
 	_make_art(NodeArt, spawn_seed, _prepare)
+	frost = Frost.new(Frost.Kind.ICE)  # chmod 000 freezes it (C29)
 	var body := CylinderShape3D.new()
 	body.radius = 0.55
 	body.height = 2.1
@@ -143,6 +147,9 @@ func heart() -> Vector3:
 func step(delta: float, d, ice) -> void:
 	if broken:
 		return
+	if chmod_frozen():
+		_show()
+		return  # paused by chmod 000 (C29): its clock and every timer held
 	_clock += delta
 	state_t += delta
 	match state:
@@ -200,6 +207,15 @@ func _reached(d) -> Array:
 	return out
 
 
+## A freeze took it (C29): a tell, or the dome of a field just fired, called off into its cooldown.
+func _on_frozen() -> void:
+	if state == State.TELL or state == State.FIELD:
+		if state == State.TELL:
+			_note("frozen")
+		_enter(State.COOLDOWN)
+		_show()
+
+
 # --- A joiner's copy: the host's word, played. ---
 
 ## The host's word: its state and how far into it.
@@ -220,7 +236,7 @@ func take_word(word: int, seconds: float) -> void:
 
 ## Steps a joiner's copy's clock between the host's words.
 func follow(delta: float) -> void:
-	if broken:
+	if broken or chmod_frozen():
 		return
 	_clock += delta
 	state_t += delta

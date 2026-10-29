@@ -132,7 +132,7 @@ func _arsenal_checks() -> void:
 	var shipped = load(ARSENAL_PATH)
 	# C17 adds the SIGKILL rail as slot 3 (tests/rail_test.gd covers it), C19 the fork bomb as
 	# slot 4 (tests/fork_bomb_test.gd).
-	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, the fork bomb in slot 4, the fork() shotgun in slot 5 (C24), the grep seeker in slot 6 (C25), the rm -rf cannon in slot 7 (C26), cron mines in slot 8 (C27), ping in slot 9 (C28), a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 9 and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.loadout[3].id == "fork_bomb" and shipped.loadout[4].id == "fork_shotgun" and shipped.loadout[5].id == "grep_seeker" and shipped.loadout[6].id == "rm_rf_cannon" and shipped.loadout[7].id == "cron_mines" and shipped.loadout[8].id == "ping_sonar" and shipped.swap_s == 0.3, str(shipped.problems()))
+	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, the fork bomb in slot 4, the fork() shotgun in slot 5 (C24), the grep seeker in slot 6 (C25), the rm -rf cannon in slot 7 (C26), cron mines in slot 8 (C27), ping in slot 9 (C28), chmod 000 in slot 10, bank 2's first (C29), a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 10 and shipped.loadout[9].id == "chmod_000" and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.loadout[3].id == "fork_bomb" and shipped.loadout[4].id == "fork_shotgun" and shipped.loadout[5].id == "grep_seeker" and shipped.loadout[6].id == "rm_rf_cannon" and shipped.loadout[7].id == "cron_mines" and shipped.loadout[8].id == "ping_sonar" and shipped.swap_s == 0.3, str(shipped.problems()))
 	var bad_sig: Resource = _sigterm.duplicate()
 	bad_sig.pellet_count = 0
 	var mixed := Arsenal.new()
@@ -148,12 +148,12 @@ func _arsenal_checks() -> void:
 	_check("nothing usable leaves the built-in cannon alone; an empty loadout is refused too", fallback.size() == 1 and fallback[0].id == "terminal_cannon" and fallback[0].problems().is_empty() and Arsenal.new().problems().size() >= 1)
 	var many := Arsenal.new()
 	var ten: Array[Resource] = []
-	for i in 10:
+	for i in 19:
 		var d: Resource = _cannon.duplicate()
 		d.id = "w%d" % i
 		ten.append(d)
 	many.loadout = ten
-	_check("at most nine slots: a tenth weapon is refused", Arsenal.usable_loadout(many).size() == 9 and ", ".join(many.problems()).contains("1 to 9"))
+	_check("at most nine slots: a tenth weapon is refused (until C29's second bank: at most eighteen, a nineteenth refused)", Arsenal.usable_loadout(many).size() == 18 and ", ".join(many.problems()).contains("1 to 18"))
 	var slow := Arsenal.new()
 	slow.swap_s = 0.0
 	slow.loadout = list
@@ -466,6 +466,9 @@ func _solo_checks() -> void:
 	var after_eighth: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_ninth: int = inv.current
+	# C29: ten slots, so the wheel reaches chmod 000 (slot 10, bank 2) before it wraps.
+	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
+	var after_tenth: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_wrap: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
@@ -474,7 +477,7 @@ func _solo_checks() -> void:
 	var after_up: int = inv.current
 	await _key(KEY_9)
 	var after_nine: int = inv.current
-	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slots 3, 4, 5, 6, 7, 8 and 9 and wraps, and 9 draws ping (no such slot before C28)", after_q == 0 and after_q2 == 1 and after_down == 2 and after_fourth == 3 and after_fifth == 4 and after_sixth == 5 and after_seventh == 6 and after_eighth == 7 and after_ninth == 8 and after_wrap == 0 and after_back == 8 and after_up == 7 and after_nine == 8, "%d %d %d %d %d %d %d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_fourth, after_fifth, after_sixth, after_seventh, after_eighth, after_ninth, after_wrap, after_back, after_up, after_nine])
+	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slots 3, 4, 5, 6, 7, 8 and 9 (and 10 since C29) and wraps, and 9 draws ping (no such slot before C28)", after_q == 0 and after_q2 == 1 and after_down == 2 and after_fourth == 3 and after_fifth == 4 and after_sixth == 5 and after_seventh == 6 and after_eighth == 7 and after_ninth == 8 and after_tenth == 9 and after_wrap == 0 and after_back == 9 and after_up == 8 and after_nine == 8, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_fourth, after_fifth, after_sixth, after_seventh, after_eighth, after_ninth, after_tenth, after_wrap, after_back, after_up, after_nine])
 	# The swap, timed to the frame: fire is held from the draw on, aimed at the open sky so
 	# no dummy is spent before the point-blank check.
 	await _settle(p, 0.5)
@@ -598,7 +601,7 @@ func _solo_checks() -> void:
 	twin.weapon = _sigterm
 	twin.position = Vector3(0.0, 40.0, -35.0)
 	main.add_child(twin)
-	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail, the fork bomb and, since C24, C25, C26, C27 and C28, the fork() shotgun, the grep seeker, the rm -rf cannon, cron mines and ping), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 8 and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail" and twin.inventory.defs[2].id == "fork_bomb" and twin.inventory.defs[3].id == "fork_shotgun" and twin.inventory.defs[4].id == "grep_seeker" and twin.inventory.defs[5].id == "rm_rf_cannon" and twin.inventory.defs[6].id == "cron_mines" and twin.inventory.defs[7].id == "ping_sonar", str(twin.inventory.defs.map(func(d): return d.id)))
+	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail, the fork bomb and, since C24, C25, C26, C27, C28 and C29, the fork() shotgun, the grep seeker, the rm -rf cannon, cron mines, ping and chmod 000), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 9 and twin.inventory.defs[8].id == "chmod_000" and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail" and twin.inventory.defs[2].id == "fork_bomb" and twin.inventory.defs[3].id == "fork_shotgun" and twin.inventory.defs[4].id == "grep_seeker" and twin.inventory.defs[5].id == "rm_rf_cannon" and twin.inventory.defs[6].id == "cron_mines" and twin.inventory.defs[7].id == "ping_sonar", str(twin.inventory.defs.map(func(d): return d.id)))
 	twin.queue_free()
 	await physics_frame
 	# R in solo play: a fresh arena, a fresh inventory.
@@ -1071,7 +1074,7 @@ func _layout_checks() -> void:
 			if not strip.is_ancestor_of(label) and label.get_parent() is Control and label.get_parent().name == "Root" and label.text.begins_with("WASD") and strip.get_global_rect().intersects(rect):
 				wrong.append("the hint under the strip")
 		var state: String = host["hud"].weapon_hud().state_text()
-		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything (the strip's fourth line SIGSTOP's, C18; four slots, C19; a fifth line, code-rain vision's meter, C21; five slots, C24; six slots, the slot line a point smaller, C25; seven slots, the slot line the small lines' size, C26; eight slots, a point under that, C27; nine slots, a point under that again, C28)" % [size.x, size.y], strip_labels == 13 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
+		_check("at %dx%d the weapon strip (reloading), four SIGTERM kills in the feed, the net panel and a long guide notice all sit inside the screen and nothing covers anything (the strip's fourth line SIGSTOP's, C18; four slots, C19; a fifth line, code-rain vision's meter, C21; five slots, C24; six slots, the slot line a point smaller, C25; seven slots, the slot line the small lines' size, C26; eight slots, a point under that, C27; nine slots, a point under that again, C28; bank 2's row over them, C29)" % [size.x, size.y], strip_labels == 14 and state.begins_with("reload [") and wrong.is_empty() and hud.feed_text().size() == 4 and hud.feed_text()[0] == "SIGTERM sent by Daemon-2 to Daemon-1", "%d shown, state %s; %s" % [shown, state, ", ".join(wrong)])
 		await _drop(host)
 	root.size = before
 

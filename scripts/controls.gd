@@ -21,6 +21,10 @@ extends RefCounted
 ## and "next breaker". The brief's H was not free: it is the multiplayer panel's own (with J, K and L,
 ## kept from every action since C13), so the run is on U, the nearest free key beside Y. Y was free: the
 ## guide's yes to a question counts only while that question is up, and the question takes it first.
+## The second bank (C29): 1 to 9 were all taken by C28's ping, so weapons 10 to 18 are drawn by the same
+## keys with the bank key held: Shift, which nothing else used (no action, no fixed key, not the settings'
+## defaults: SIGKILL has no sprint, it runs by default), rebindable as "weapon bank 2" to one key or mouse
+## button like the rest. Shift+1 draws weapon 10, chmod 000. Never a Ctrl or Alt chord.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -40,6 +44,7 @@ const REBINDABLE := [
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
 	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
 	["show_top", "top"], ["run_breaker", "run breaker"], ["cycle_breaker", "next breaker"],
+	["weapon_bank", "weapon bank 2"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -95,6 +100,7 @@ static func ensure() -> void:
 	_key("show_top", [KEY_TAB])
 	_key("run_breaker", [KEY_U])
 	_key("cycle_breaker", [KEY_Y])
+	_key("weapon_bank", [KEY_SHIFT])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

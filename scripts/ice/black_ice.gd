@@ -21,6 +21,11 @@ extends IcePiece
 ## (its burst, its sinking, the lights coming back) and is freed by its director. Alone and hosting its
 ## director decides everything here; on a joiner it plays the host's word (take_word()). Its body is a
 ## tall hit volume on the targets' layer (shots meet it, nothing walks into it). Fiction only.
+##
+## chmod 000 (C29) cannot freeze it: "Operation not permitted". The beam only slows it while it holds on
+## it, up to the freeze tuning's black_slow of its pace (never more than 40%), wearing off once the beam
+## leaves; it is never frozen, never hurt, its touch never stopped and its seals never touched (only the
+## exploit and brute combo breaks them). A faint frost creeps over it as it slows.
 
 const BlackIceArt = preload("res://scripts/ice/black_ice_art.gd")
 const Sfx = preload("res://scripts/sfx_synth.gd")
@@ -35,6 +40,9 @@ const DOWN_S := 2.5
 ## Its drone heard this near (its approach is heard as well as seen).
 const DRONE_UNIT_M := 6.0
 const DRONE_DB := -6.0
+## How much of it the frost covers at its full slow (C29), and its tag then.
+const SLOW_FROST := 0.6
+const SLOW_LINE := "chmod: Operation not permitted\nslowed -%d%%"
 
 var spawn_seed := 0
 var tuning: BlackIceTuning
@@ -51,6 +59,13 @@ var cracks := 0
 var flatlines := 0
 
 var _seen_flashes := 0
+## chmod 000's slow on it (C29): the share of its pace the beam takes now (0 to black_slow), how long it
+## holds before it wears off, the beam's seconds on it in all, and the frost it shows for it (never
+## frozen).
+var slow := 0.0
+var beamed_s := 0.0
+var _slow_hold := 0.0
+var _slow_frost: Frost
 var _arrive: AudioStreamPlayer
 var _drone: AudioStreamPlayer3D
 var _sounds := {}
@@ -160,9 +175,11 @@ func finished() -> bool:
 
 # --- Its life (deciding: its director steps it). ---
 
-## One step of `delta` seconds: its tell running out, a broken seal mending, its brain hunting.
+## One step of `delta` seconds: its tell running out, a broken seal mending, chmod 000's slow wearing
+## off, its brain hunting.
 func step(delta: float, d) -> void:
 	phase_t += delta
+	_wear_slow(delta)
 	match phase:
 		Phase.ARRIVE:
 			art.drive(DaemonArt.Act.TELL, phase_t / tuning.tell_s)
@@ -223,6 +240,55 @@ func _land(_damage: float, point: Vector3, direction: Vector3, source: String, s
 	return false
 
 
+## chmod 000's beam on it for `seconds` (C29): never a freeze ("Operation not permitted"), only a slow,
+## up to the freeze tuning's black_slow while the beam holds; nothing taken, nothing flashed, no seal and no
+## touch changed. Always false: it never freezes. Deciding only, and only while it is out.
+func chill(seconds: float, _point: Vector3 = Vector3.INF, _direction: Vector3 = Vector3.ZERO, _source: String = "") -> bool:
+	if broken or phase != Phase.OUT or director == null or not director.decides() or not is_finite(seconds) or seconds <= 0.0:
+		return false
+	var ft := Frost.shared()
+	slow = minf(slow + seconds * ft.black_slow / ft.black_slow_in_s, ft.black_slow)
+	_slow_hold = ft.chill_hold_s
+	beamed_s += seconds
+	_show_slow()
+	return false
+
+
+## Never frozen.
+func chmod_frozen() -> bool:
+	return false
+
+
+## The share of its pace it keeps now: chmod 000's slow off it (C29).
+func pace() -> float:
+	return 1.0 - slow
+
+
+## The slow wearing off once the beam has left it for its hold.
+func _wear_slow(delta: float) -> void:
+	if slow <= 0.0:
+		return
+	var ft := Frost.shared()
+	if _slow_hold > 0.0:
+		_slow_hold -= delta
+	else:
+		slow = maxf(slow - delta * ft.black_slow / ft.black_slow_out_s, 0.0)
+	_show_slow()
+
+
+## A faint frost over it while slowed, never frozen, and its tag: "Operation not permitted".
+func _show_slow() -> void:
+	if _slow_frost == null:
+		if slow <= 0.0:
+			return
+		_slow_frost = Frost.new(Frost.Kind.ICE)
+		_frost_look = FrostLook.of(art, _slow_frost)
+	var ft := Frost.shared()
+	_slow_frost.chill = clampf(slow / maxf(ft.black_slow, 0.0001), 0.0, 1.0) * SLOW_FROST
+	if _frost_look != null:
+		_frost_look.line = SLOW_LINE % roundi(slow * 100.0) if slow > 0.0 else ""
+
+
 ## A seal broken by the combo: thrown back along the charge, or, the last one, its end.
 func _crack(point: Vector3, direction: Vector3) -> void:
 	seals_left -= 1
@@ -278,7 +344,7 @@ func _derezz_height() -> float:
 
 ## The host's word: its phase and seconds into it, its seals, its brain's place (arena space), yaw,
 ## state and seconds into it, whether SIGSTOP holds it, and how many hits have flashed it.
-func take_word(next: int, seconds: float, seals_now: int, at: Vector3, yaw: float, state: int, state_seconds: float, frozen: bool, flashed: int) -> void:
+func take_word(next: int, seconds: float, seals_now: int, at: Vector3, yaw: float, state: int, state_seconds: float, frozen: bool, flashed: int, slowed: float = 0.0) -> void:
 	if next == Phase.DOWN and not broken:
 		_health = 0.0
 		_break(Vector3.INF, Vector3.ZERO)
@@ -298,6 +364,8 @@ func take_word(next: int, seconds: float, seals_now: int, at: Vector3, yaw: floa
 	if flashed > _seen_flashes:
 		art.flash()
 	_seen_flashes = flashed
+	slow = clampf(slowed, 0.0, FreezeTuning.BLACK_SLOW_LAST)  # chmod 000's slow, the host's (C29)
+	_show_slow()
 	brain.take_word(at, yaw, state, state_seconds, frozen)
 
 

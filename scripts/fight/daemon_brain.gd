@@ -42,6 +42,12 @@ extends RefCounted
 ## the prey instead of any player, at home, hunting or going home (never in the middle of an attack):
 ## it is known where it is without sight (it calls), and hunted and struck like a player.
 ##
+## chmod 000 (C29): while its dummy is frozen by the freeze ray (the dummy's chmod_frozen()) it does
+## nothing at all: no step, no turn, no attack, its clock and every timer held; a tell or a strike it was
+## in is called off (nothing more is thrown, its slot goes, "frozen" noted) and once it thaws it hunts
+## again after its attack's own wait, as a ping's stagger does. A bolt already thrown flies on. On a
+## joiner its copy plays the host's word, frozen with it.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -78,6 +84,8 @@ var state: State = State.HOME
 var state_t := 0.0
 ## Staggers since it was made: tells a ping called off (C28).
 var staggers := 0
+## Attacks a freeze called off since it was made (C29).
+var frozen_offs := 0
 ## The player hunted (0 none), the last place it saw it, and for how long it has not.
 var prey := 0
 var last_seen := Vector3.INF
@@ -156,6 +164,8 @@ func step(delta: float, d) -> void:
 	if state == State.DOWN:
 		state = State.HOME
 		state_t = 0.0
+	if _held_by_chmod(d):
+		return  # chmod 000: frozen, its clock and every timer held
 	if d.frozen(prey):
 		velocity = Vector3.ZERO
 		return  # SIGSTOP: frozen whole, its clock and every timer held
@@ -192,6 +202,8 @@ func rest(delta: float, d) -> void:
 		_down(d)
 		art.displays = true
 		return
+	if _held_by_chmod(d):
+		return  # frozen in practice too (C29): it stands where the beam caught it
 	if moved and has_home and _flat(dummy.global_position - home.origin).length() > HOME_M:
 		state = State.RETURN
 		_walk(home.origin, _speed(d), delta, d)
@@ -239,6 +251,27 @@ func pinged(from: Vector3, d) -> bool:
 	_note("stagger")
 	_enter(State.SCATTER)
 	return true
+
+
+## chmod 000 (C29): true while its dummy is frozen, stopped; a tell or a strike it was in called off.
+func _held_by_chmod(d) -> bool:
+	if dummy == null or not dummy.has_method("chmod_frozen") or not dummy.chmod_frozen():
+		return false
+	velocity = Vector3.ZERO
+	if state == State.TELL or state == State.STRIKE:
+		_release(d)
+		burst_left = 0
+		frozen_offs += 1
+		_note("frozen")
+		cooldown = maxf(cooldown, _attack_wait(d))
+		_enter(State.HUNT if d.prey_valid(prey) else State.RETURN)
+	return true
+
+
+## Seconds it waits after an attack before its next tell: its kind's own, shortened by the difficulty.
+func _attack_wait(d) -> float:
+	var t: DaemonAiTuning = d.tuning
+	return (t.swarm_cooldown_s if kind == "swarm" else t.rogue_cooldown_s if kind == "rogue" else t.zombie_cooldown_s) / d.aggression()
 
 
 func _step_home(delta: float, d) -> void:
@@ -380,7 +413,7 @@ func _step_recover(delta: float, d) -> void:
 			return
 	burst_left = 0
 	_release(d)
-	cooldown = (t.swarm_cooldown_s if kind == "swarm" else t.rogue_cooldown_s if kind == "rogue" else t.zombie_cooldown_s) / d.aggression()
+	cooldown = _attack_wait(d)
 	_enter(State.HUNT)
 
 

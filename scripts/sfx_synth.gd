@@ -115,6 +115,37 @@ const BREAKER_SOUNDS := {
 }
 
 
+## chmod 000's beam (C29): a cold hiss, a loop of HISS_S seconds: bright noise through a slowly sweeping
+## band with a thin high whine and a faint crackle of ice in it, steady so it can run as long as the beam.
+static func freeze_hiss() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(HISS_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED
+	var low := 0.0
+	var high := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var n := rng.randf_range(-1.0, 1.0)
+		low = lerpf(low, n, 0.35)
+		high = n - low
+		var sweep := 0.6 + 0.4 * sin(TAU * t / HISS_S * 2.0)
+		var whine := sin(TAU * 1800.0 * t) * 0.12 + sin(TAU * 2700.0 * t) * 0.06
+		var crackle := rng.randf_range(-1.0, 1.0) if rng.randf() < 0.004 else 0.0
+		data.encode_s16(i * 2, int(clampf((high * sweep * 0.7 + whine + crackle * 0.6) * HISS_GAIN, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+const HISS_S := 0.5
+const HISS_GAIN := 0.5
+
+
 ## The arena's hum (I3): a low, steady server-room drone, a loop of HUM_S seconds (every tone a whole
 ## number of cycles in it, so the loop has no seam): a mains hum and its octave and fifth, swelling slowly,
 ## with a breath of air. It plays under everything on the Music bus until Black ICE takes it away.

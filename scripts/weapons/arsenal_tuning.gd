@@ -9,12 +9,23 @@ extends Resource
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 
-const SLOTS_LAST := 9
+## Slots in a bank, and in all (two banks, C29).
+const BANK_SLOTS := 9
+const SLOTS_LAST := 18
 const SWAP_FIRST_S := 0.05
 const SWAP_LAST_S := 2.0
 const DROP_LAST_M := 1.0
 const TILT_LAST := 90.0
 const FICTION_LAST_S := 10.0
+## The bank (0 for bank 1) slot `slot` (0 for slot 1) is in, and its key in that bank (1 to 9).
+static func bank_of(slot: int) -> int:
+	return floori(slot / float(BANK_SLOTS))
+
+
+static func key_of(slot: int) -> int:
+	return slot % BANK_SLOTS + 1
+
+
 ## The bounds of the drawn weapon's motion (A1).
 const SWAY_LAG_LAST_S := 0.2
 const SWAY_CAP_LAST := 30.0
@@ -27,7 +38,8 @@ const FALL_CAP_LAST_M := 0.2
 const KICK_LIFT_LAST := 2.0
 
 @export_group("Loadout")
-## The weapons in slot order, slot 1 first: keys 1 to 9 pick them. Each is a WeaponDef.
+## The weapons in slot order, slot 1 first: keys 1 to 9 pick bank 1's, the bank key and 1 to 9 bank 2's
+## (slots 10 to 18, C29). Each is a WeaponDef.
 @export var loadout: Array[Resource] = []
 
 @export_group("Swap")
@@ -100,7 +112,7 @@ func problems() -> PackedStringArray:
 
 
 ## The weapons of `candidate` that pass their own checks, in slot order, at most one per
-## id and at most nine; refused ones are left out with a warning. Never empty: with nothing
+## id and at most eighteen (two banks, C29); refused ones are left out with a warning. Never empty: with nothing
 ## usable it is the built-in terminal cannon alone.
 static func usable_loadout(candidate: Resource) -> Array:
 	var out := []

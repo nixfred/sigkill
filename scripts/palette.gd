@@ -76,6 +76,17 @@ const BREAKER_TEXT := Color(0.760784314, 0.498039216, 1.0)  # #c27fff the breake
 const BLACK_ICE := Color(0.164705882, 0.431372549, 0.505882353)  # #2a6e81 Black ICE's seams, seals and core
 const BLACK_ICE_TEXT := Color(0.466666667, 0.741176471, 0.82745098)  # #77bdd3 its warning, its line, a flatline
 const BLACK_ICE_GLASS := Color(0.007843137, 0.011764706, 0.015686275)  # #020304 its body
+# chmod 000, the freeze ray (C29): a target stripped of its permissions, frozen in a frost opal of its
+# own, never ICE's blues nor the breakers' ultraviolet. The palette's blues and cyans are all taken (the
+# player's teal, the rail's ice, grep's cobalt, glacier, the hunter's cobalt, Black ICE's slate), so a
+# search of the whole colour cube for the farthest point (OKLab) from every bright colour above, among the
+# light enough to glow and not hostile red or Matrix green, found a dusty rose opal: 0.174 from cron's rose,
+# 0.175 from rm -rf's ember and 0.176 from Black ICE's slate (0.225 from glacier, 0.33 from the hunter's
+# cobalt, 0.28 from the ultraviolet). Its HUD text a light tint of it, legible on black (0.13 from the
+# nearest); its highlight, the beam's core and the frost's glints, a near-white tint of it.
+const FROST := Color(0.658823529, 0.470588235, 0.517647059)  # #a87884 chmod 000's body and light, the frost on what it froze
+const FROST_HI := Color(0.960784314, 0.815686275, 0.839215686)  # #f5d0d6 its beam's core and the frost's glints
+const FROST_TEXT := Color(0.882352941, 0.588235294, 0.635294118)  # #e196a2 its strip lines, its readout, "permission denied"
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -90,7 +101,7 @@ const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

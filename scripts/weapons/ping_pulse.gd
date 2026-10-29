@@ -136,7 +136,8 @@ func _step(delta: float) -> void:
 
 
 ## Every live daemon of this pulse's own arena whose middle the ring has reached, met once each; and
-## (I1) hunter ICE, staggered the same way when the ring catches it mid-tell.
+## (I1) hunter ICE, staggered the same way when the ring catches it mid-tell; and (C29) the hunter, the
+## nodes and Black ICE outlined as a daemon is.
 func _meet(r: float) -> void:
 	var scope := get_parent()
 	if scope == null:
@@ -158,17 +159,24 @@ func _meet(r: float) -> void:
 		if fx != null:
 			fx.blast(middle, Palette.LIME, MET_BURST_M)
 		met.emit(dummy)
-	# Hunter ICE (I1): a ping meeting it mid-tell staggers it as it does a daemon; ICE is not revealed.
+	# ICE (I1): a ping meeting the hunter mid-tell staggers it as it does a daemon; and since C29 the hunter,
+	# the nodes and Black ICE are outlined through the level as a daemon is (the walls stand in plain sight).
 	var ice := IceDirector.of(self)
-	var hunter: HunterIce = ice.hunter if ice != null and is_instance_valid(ice.hunter) else null
-	if hunter != null and hunter.is_alive() and not _met.has(hunter) and scope.is_ancestor_of(hunter):
-		var heart := hunter.global_position + Vector3.UP * hunter.tuning.hunter_hover_m
-		if center.distance_to(heart) <= r:
-			_met.append(hunter)
-			if deciding and ice.decides():
-				hunter.brain.pinged(center, ice.daemons)
-			if fx != null:
-				fx.blast(heart, Palette.LIME, MET_BURST_M)
+	if ice == null:
+		return
+	for piece in ice.pieces():
+		if not is_instance_valid(piece) or piece is IceBarrier or not piece.is_alive() or _met.has(piece) or not scope.is_ancestor_of(piece):
+			continue
+		var middle: Vector3 = piece.aim_point()
+		if center.distance_to(middle) > r:
+			continue
+		_met.append(piece)
+		if reveals and piece.art != null:
+			PingReveal.of(piece.art, piece.tag_text).light(weapon.reveal_s, weapon.reveal_fade_s)
+		if piece == ice.hunter and deciding and ice.decides():
+			piece.brain.pinged(center, ice.daemons)
+		if fx != null:
+			fx.blast(middle, Palette.LIME, MET_BURST_M)
 
 
 static func _floor_shape() -> PlaneMesh:

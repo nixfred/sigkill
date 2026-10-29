@@ -55,7 +55,10 @@ const BLACK_SPOTS := [Vector3(16.0, 0.0, -4.0), Vector3(-13.0, 0.0, -7.0), Vecto
 ## A flatline's cause, as the death line and the feed name it.
 const BLACK_NAME := "Black ICE"
 ## The host's word on Black ICE: how many numbers (black_word()).
-const BLACK_WORD := 12
+const BLACK_WORD := 13
+## A piece's word: its state in bits 0 to 2, chmod 000's freeze meter in bits 3 to 6 (Frost.BITS, C29),
+## SIGSTOP's hold in bit 7.
+const STATE_BITS := 0x07
 const ARSENAL_PATH := "res://resources/arsenal.tres"
 enum Mode { OFF, RUN, FOLLOW }
 ## A field's effect on a player: its weapon jammed, its HUD corrupted.
@@ -386,6 +389,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if rounds == null or not rounds.has_method("playing") or rounds.playing():
 		round_t += delta
+	for piece in [hunter] + nodes:
+		if piece != null and is_instance_valid(piece) and not piece.broken:
+			piece.tick_frost(delta)  # chmod 000's freeze meters (C29)
 	if mode == Mode.RUN:
 		_step_black(delta)
 		for n in nodes:
@@ -601,7 +607,7 @@ func black_word() -> Dictionary:
 		return {"seed": 0, "word": w}
 	var at := to_local(black.global_position)
 	var frozen: bool = daemons != null and daemons.frozen(black.brain.prey)
-	w = PackedFloat32Array([black.phase, minf(black.phase_t, 1000.0), black.seals_left, at.x, at.y, at.z, black.global_rotation.y, black.brain.state, minf(black.brain.state_t, 1000.0), 1.0 if frozen else 0.0, minf(black.flashes, 100000.0), clampf(black.mend_left, 0.0, 1000.0)])
+	w = PackedFloat32Array([black.phase, minf(black.phase_t, 1000.0), black.seals_left, at.x, at.y, at.z, black.global_rotation.y, black.brain.state, minf(black.brain.state_t, 1000.0), 1.0 if frozen else 0.0, minf(black.flashes, 100000.0), clampf(black.mend_left, 0.0, 1000.0), clampf(black.slow, 0.0, FreezeTuning.BLACK_SLOW_LAST)])
 	return {"seed": black.build_seed, "word": w}
 
 
@@ -621,7 +627,7 @@ func take_black_word(seed: int, w: PackedFloat32Array) -> void:
 			return
 		_make_black(seed, at, phase)
 		black.phase_t = w[1]
-	black.take_word(phase, w[1], int(w[2]), at, w[6], int(w[7]), w[8], w[9] > 0.5, int(w[10]))
+	black.take_word(phase, w[1], int(w[2]), at, w[6], int(w[7]), w[8], w[9] > 0.5, int(w[10]), w[12])
 	black.mend_left = w[11]
 
 
@@ -807,14 +813,15 @@ func word() -> Dictionary:
 	for n in nodes:
 		seeds.append(n.build_seed)
 		healths.append(n.health())
-		words.append(int(n.state))
+		words.append(int(n.state) | n.frost.bits())  # chmod 000's meter beside its state (C29)
 		times.append(minf(n.state_t, 1000.0))
 	var place := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0])
 	if hunter != null and is_instance_valid(hunter):
 		seeds.append(hunter.build_seed)
 		healths.append(hunter.health())
 		var frozen: bool = daemons != null and daemons.frozen(hunter.brain.prey)
-		words.append(int(hunter.brain.state) | (0x80 if frozen else 0))
+		var chmod := hunter.frost.bits() if not hunter.broken else 0  # chmod 000's meter (C29)
+		words.append(int(hunter.brain.state) | chmod | (0x80 if frozen else 0))
 		times.append(minf(hunter.brain.state_t, 1000.0))
 		var at := to_local(hunter.global_position)
 		var aim := (global_transform.basis.inverse() * hunter.brain.aim).normalized()
@@ -851,15 +858,17 @@ func take_word(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array,
 			nodes[j].queue_free()
 			nodes[j] = _make_node(j, seeds[k])
 		nodes[j].take_health(healths[k], healths[k] <= 0.0)
-		nodes[j].take_word(words[k], times[k])
+		nodes[j].take_word(words[k] & STATE_BITS, times[k])
+		nodes[j].follow_frost(words[k] & Frost.BITS)
 	var h := PIECE_COUNT - 1
 	if words[h] == NO_HUNTER:
 		_drop_hunter()
 	else:
 		if hunter == null or not is_instance_valid(hunter) or hunter.build_seed != seeds[h]:
 			_spawn_hunter(seeds[h])
-		var state := words[h] & 0x7f
+		var state := words[h] & STATE_BITS
 		hunter.brain.take_word(Vector3(place[0], place[1], place[2]), place[3], state, times[h], (words[h] & 0x80) != 0)
+		hunter.follow_frost(words[h] & Frost.BITS)
 		hunter.brain.take_aim((global_transform.basis * Vector3(place[4], place[5], place[6])).normalized())
 		hunter.reach_now = place[7]
 		hunter.take_health(healths[h], state == DaemonBrain.State.DOWN)

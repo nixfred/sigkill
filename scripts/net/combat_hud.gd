@@ -48,8 +48,10 @@ const FEED_SELF := "%s: %s"
 ## The second line of a cron mine's removal (C27): whose job it was.
 const FEED_JOB := "removed %s's job"
 const FEED_FONT := 13
-## Room below the feed for the hint line and the weapon strip (C16).
-const FEED_BOTTOM_GAP := 104
+## Room below the feed for the hint line and the weapon strip (C16); a row more for the strip's second
+## bank (C29: 104 before). At 960x540 the strip's top is 88 px over its bottom gap, so 112 clears it by
+## 2 px and keeps a full feed's top 3 px under the spectate table's last line.
+const FEED_BOTTOM_GAP := 112
 const FLASH_ALPHA := 0.28
 ## The vignette (C27b): its strength at a hit, under this share of health its low-health glow,
 ## and that glow's strength and pulse a second.

@@ -63,6 +63,14 @@ extends RefCounted
 ## (health actually taken off another player, here where every hit lands) and its time alive
 ## this life, the match's seconds of play and when each kill fell. The session sends it to
 ## every player once a second.
+##
+## chmod 000 (C29): the host owns every player's coolant (scripts/weapons/coolant.gd, a little more
+## lenient than the player's own by the fire-rate tolerance) and every player's freeze meter
+## (scripts/weapons/frost.gd). A beam tick is a shot of the freeze weapon: believed only from a tank that
+## is not venting (else dropped and counted "coolant"), it spends the tick's coolant (root spends none);
+## the session gives what it meets the tick's seconds of beam, a player through chill_player() (never a
+## dead or spawn-protected one). A frozen player's shots and throws are dropped ("frozen") until it
+## thaws. A death and a new life thaw it and refill its tank.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -97,6 +105,9 @@ const DROP_LIVE := "live_cap"
 const DROP_SUDO := "sudo"
 ## A shot with a weapon an ICE field jammed in its hand (I1): the host refuses it until the jam clears.
 const DROP_JAM := "ice_jam"
+## A freeze weapon's tick from a venting tank, and any shot or throw from a frozen player (C29).
+const DROP_COOLANT := "coolant"
+const DROP_FROZEN := "frozen"
 ## How far a throw's aim may stray from the view the host last had of the thrower, in degrees:
 ## the view lags by a send interval and the network's delay.
 const AIM_TOLERANCE_DEG := 45.0
@@ -141,8 +152,53 @@ func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3,
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning)}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning), "frost": Frost.new(Frost.Kind.PLAYER), "coolant": _new_coolant()}
 	record.join(id)
+
+
+## The loadout's freeze weapon (chmod 000, C29), or null when it has none.
+func freeze_def() -> WeaponDefScript:
+	for id in weapons:
+		if weapons[id].is_freeze():
+			return weapons[id]
+	return null
+
+
+## A full tank for a new player, by the freeze weapon's numbers and the fire-rate tolerance; null with no
+## freeze weapon.
+func _new_coolant() -> Coolant:
+	var def := freeze_def()
+	return Coolant.new(def.freeze_tuning(), tuning.fire_rate_tolerance) if def != null else null
+
+
+## chmod 000's beam on player `victim` for `seconds` (C29): its freeze meter builds, never on a dead or
+## spawn-protected player. True when that froze it just now.
+func chill_player(victim: int, seconds: float) -> bool:
+	if not states.has(victim):
+		return false
+	var s: Dictionary = states[victim]
+	if s["dead"] or s["protect_left"] > 0.0:
+		return false
+	return s["frost"].beam(seconds)
+
+
+## `id`'s freeze meter as the host counts it (C29): a Frost, or null for no such player.
+func frost_of(id: int) -> Frost:
+	return states[id]["frost"] if states.has(id) else null
+
+
+## `id`'s freeze meter in the word's bits (Frost.bits()), 0 for no such player.
+func frost_bits(id: int) -> int:
+	return states[id]["frost"].bits() if states.has(id) else 0
+
+
+func frozen(id: int) -> bool:
+	return states.has(id) and states[id]["frost"].frozen()
+
+
+## `id`'s coolant tank as the host counts it (C29), or null.
+func coolant_of(id: int) -> Coolant:
+	return states[id]["coolant"] if states.has(id) else null
 
 
 ## The ult of the loadout (C17), or null when it has none.
@@ -338,6 +394,9 @@ func tick(delta: float) -> Array:
 	var due := []
 	for id in states:
 		var s: Dictionary = states[id]
+		s["frost"].tick(delta)  # chmod 000's freeze meter and the coolant (C29)
+		if s["coolant"] != null:
+			s["coolant"].tick(delta)
 		if s["protect_left"] > 0.0:
 			s["protect_left"] = maxf(s["protect_left"] - delta, 0.0)
 		if s["dead"] and s["respawn_left"] > 0.0:
@@ -365,6 +424,8 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_SEQ)
 	if not weapons.has(weapon) or weapon != s["drawn"] or weapons[weapon].is_thrown():
 		return _drop(DROP_WEAPON)
+	if s["frost"].frozen():
+		return _drop(DROP_FROZEN)  # chmod 000 holds it read-only (C29)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
 		return _drop(DROP_SHAPE)
 	if now < s["ready_at"]:
@@ -379,6 +440,8 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_EMPTY)  # root fires from an empty magazine too (C22)
 	if def.is_ult() and s["meter"] < def.ult_meter - METER_EPS:
 		return _drop(DROP_METER)
+	if def.is_freeze() and s["coolant"] != null and not s["sudo"].is_root() and not s["coolant"].ready():
+		return _drop(DROP_COOLANT)  # a venting tank (C29)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
 	return ""
@@ -395,6 +458,8 @@ func throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3, ey
 		return why
 	if not weapons.has(weapon) or not weapons[weapon].is_thrown():
 		return _drop(DROP_WEAPON)
+	if states[id]["frost"].frozen():
+		return _drop(DROP_FROZEN)  # chmod 000 holds it read-only (C29)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
 		return _drop(DROP_SHAPE)
 	var def: WeaponDefScript = weapons[weapon]
@@ -430,6 +495,8 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 		a["mag"] = maxi(a["mag"] - 1, 0)  # root spends nothing (C22)
 	if weapons[weapon].is_ult():
 		s["meter"] = 0.0  # one full meter, one shot
+	if weapons[weapon].is_freeze() and s["coolant"] != null and not s["sudo"].is_root():
+		s["coolant"].spend(weapons[weapon].fire_cooldown)  # a beam tick's coolant (C29)
 	a["last_fire"] = now
 
 
@@ -508,6 +575,7 @@ func damage_player(victim: int, killer: int, amount: float) -> Dictionary:
 		s["meter"] = 0.0  # a death empties the ult meter
 		s["stop"].empty()  # and the SIGSTOP meter, ending it (C18)
 		s["sudo"].die()  # and root, the streak and any unused sudo charge (C22)
+		s["frost"].clear()  # and thaws it (C29)
 		_sudo_changed[victim] = true
 		if killer != victim:
 			states[killer]["kills"] += 1
@@ -538,6 +606,9 @@ func respawn(id: int) -> void:
 	s["ready_at"] = -INF
 	s["meter"] = 0.0
 	s["sudo"].die()  # every life starts as user (C22)
+	s["frost"].clear()  # thawed, its tank full (C29)
+	if s["coolant"] != null:
+		s["coolant"].refill()
 	_sudo_changed[id] = true
 	record.respawn(id)  # its time alive starts again (C23)
 

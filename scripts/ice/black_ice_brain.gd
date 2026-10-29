@@ -28,8 +28,13 @@ func _init(owner: Node3D, daemon_art: DaemonArt, tuning: BlackIceTuning) -> void
 	bt = tuning
 
 
+## Its pace: chmod 000's slow off it while the beam holds (C29), never a stop.
 func _speed(_d) -> float:
-	return bt.speed
+	return bt.speed * _pace()
+
+
+func _pace() -> float:
+	return dummy.pace() if dummy != null and dummy.has_method("pace") else 1.0
 
 
 func _scatter_s(_d) -> float:
@@ -118,7 +123,7 @@ func _step_home(delta: float, d) -> void:
 		return
 	art.drive(DaemonArt.Act.MOVE)
 	var toward: Vector3 = d.prey_point(drifting_to)
-	_walk(_hunt_goal(toward, delta, d), bt.drift_speed, delta, d)
+	_walk(_hunt_goal(toward, delta, d), bt.drift_speed * _pace(), delta, d)
 	_face(toward, delta, d)
 
 

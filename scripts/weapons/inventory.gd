@@ -24,8 +24,14 @@ extends RefCounted
 ##
 ## ICE's jam (I1): a white ICE node's field jams the weapon in hand for a few seconds (jam()): it
 ## cannot fire or throw until its jam runs out, the others still draw and fire. A new life clears it.
+##
+## chmod 000's coolant (C29): a freeze weapon has no magazine but a tank (scripts/weapons/coolant.gd):
+## each beam tick (each try_fire()) spends its fire interval's seconds of coolant, the tank refills on its
+## own after a rest, drawn or not, and a tank run dry vents ("coolant") until it has refilled to its share.
+## Root's free ammo spends none. A new life refills it.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const CoolantScript = preload("res://scripts/weapons/coolant.gd")
 
 ## Why try_fire() did not fire.
 const BLOCK_SWAP := "swap"
@@ -35,6 +41,8 @@ const BLOCK_EMPTY := "empty"
 const BLOCK_DRY := "dry"
 const BLOCK_METER := "meter"
 const BLOCK_JAMMED := "jammed"
+## A freeze weapon's tank is venting or dry (C29).
+const BLOCK_COOLANT := "coolant"
 ## A meter this close below full counts as full: sums of float shares (a joiner adds a hit
 ## and its kill bonus in two steps where the host adds them in one) must never leave it a
 ## hair short.
@@ -65,6 +73,8 @@ var meter := 0.0
 var free_ammo := false
 ## ICE's jam on each slot (I1): seconds left, 0 for none.
 var jams: Array[float] = []
+## Each slot's coolant tank (C29): a Coolant for a freeze weapon, null for every other.
+var coolants: Array = []
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -76,6 +86,7 @@ func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float
 		reserves.append(def.reserve_ammo)
 		cooldowns.append(0.0)
 		jams.append(0.0)
+		coolants.append(CoolantScript.new(def.freeze_tuning()) if def.is_freeze() else null)
 
 
 func slot_count() -> int:
@@ -254,6 +265,8 @@ func try_fire() -> String:
 		mags[current] -= 1
 	if d.is_ult():
 		meter = 0.0
+	if coolants[current] != null and not free_ammo:
+		coolants[current].spend(d.fire_cooldown)  # a beam tick's coolant (C29)
 	cooldowns[current] = d.fire_cooldown
 	return ""
 
@@ -274,6 +287,8 @@ func fire_block() -> String:
 		return BLOCK_EMPTY
 	if d.is_ult() and not meter_ready():
 		return BLOCK_METER
+	if coolants[current] != null and not free_ammo and not coolants[current].ready():
+		return BLOCK_COOLANT
 	return ""
 
 
@@ -286,6 +301,9 @@ func tick(delta: float) -> void:
 	fiction_left = maxf(fiction_left - delta, 0.0)
 	for i in jams.size():
 		jams[i] = maxf(jams[i] - delta, 0.0)
+	for tank in coolants:
+		if tank != null:
+			tank.tick(delta)
 	if reload_left > 0.0:
 		reload_left -= delta
 		if reload_left <= 0.0:
@@ -295,6 +313,19 @@ func tick(delta: float) -> void:
 			mags[current] += take
 			if reserves[current] != WeaponDefScript.INFINITE:
 				reserves[current] -= take
+
+
+## Slot `slot`'s coolant tank (C29), or null when its weapon has none.
+func coolant(slot: int) -> CoolantScript:
+	return coolants[slot] if slot >= 0 and slot < coolants.size() else null
+
+
+## The slot of the loadout's freeze weapon (chmod 000, C29), or -1 when it has none.
+func freeze_slot() -> int:
+	for i in defs.size():
+		if defs[i].is_freeze():
+			return i
+	return -1
 
 
 ## Slot `slot` jammed for `seconds` by an ICE field (I1); a longer jam already on it stays.
@@ -318,6 +349,8 @@ func refill() -> void:
 		reserves[i] = defs[i].reserve_ammo
 		cooldowns[i] = 0.0
 		jams[i] = 0.0
+		if coolants[i] != null:
+			coolants[i].refill()
 	swap_left = 0.0
 	reload_left = 0.0
 	block_left = 0.0

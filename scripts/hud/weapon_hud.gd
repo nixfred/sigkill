@@ -50,10 +50,22 @@ extends Control
 ## at 960x540. A cooldown, not ammo: drawn, its ammo line reads "ping  ready" or the seconds left
 ## ("ping  4.2s"), and the third line is the sonar coming back, "sonar [######....]" in its lime,
 ## "sonar ready: 18m" (its reach) once it is.
+##
+## The second bank (C29): keys 1 to 9 were all taken, so weapons 10 to 18 are bank 2, drawn with the
+## bank key held (Shift; rebindable). The strip has two slot rows in its own column: bank 1 on the
+## bottom row as before (slots_text(), "1 2 3 4(2) 5 6 7 8 9"), bank 2 over it, its keys led by the bank
+## key's name ("Shift+ [1 chmod]"), one label (bank2_text()). The active bank's row is lit and the other
+## dimmed: the drawn weapon's bank, or bank 2 while the bank key is held (1 to 9 then draw its weapons).
+## Both rows stay the slot line's 10 px, and the strip keeps the column it always had (the ICEbreakers'
+## readout is bottom left, over the sudo badge): at 960x540 it still clears the kill feed above it and
+## the guide panel beside it. chmod 000 (weapon 10) drawn: its ammo line is its coolant ("chmod  coolant
+## 72%", "chmod  VENTING"), its third line the tank ("coolant [#######...]" in its frost text colour, or
+## "venting [###.......]" in amber until it is back to its share).
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const Controls = preload("res://scripts/controls.gd")
+const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
 
 const SLOT := "%d"
 ## Between one slot and the next on the slot line.
@@ -86,6 +98,15 @@ const PING_READY := "%s  ready"
 const PING_WAIT := "%s  %.1fs"
 const SONAR_LINE := "sonar [%s%s]"
 const SONAR_READY := "sonar ready: %dm"
+## The second bank's row (C29): the bank key's name, then its slots.
+const BANK2_LEAD := "%s+ "
+## chmod 000's lines (C29): its coolant.
+const COOLANT_AMMO := "%s  coolant %d%%"
+const COOLANT_VENT_AMMO := "%s  VENTING"
+const COOLANT_LINE := "coolant [%s%s]"
+const VENT_LINE := "venting [%s%s]"
+## A bank's row while the other is active.
+const BANK_DIM := 0.5
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
@@ -103,6 +124,7 @@ var player: Node = null
 var _stack: VBoxContainer
 var _slot_row: HBoxContainer
 var _slot_labels: Array[Label] = []
+var _bank2: Label
 var _ammo: Label
 var _meter_text := ""
 var _meter_ready := false
@@ -123,6 +145,8 @@ func _ready() -> void:
 	_stack.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_stack.position.y -= BOTTOM_GAP
+	_bank2 = _label(SLOT_FONT, Palette.MINT)  # bank 2's row over bank 1's (C29)
+	_bank2.visible = false
 	_slot_row = HBoxContainer.new()
 	_slot_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_slot_row.alignment = BoxContainer.ALIGNMENT_END
@@ -142,6 +166,25 @@ func _process(_delta: float) -> void:
 ## The strip itself (I1: an ICE field's HUD corruption scrambles it, and the jam's notice sits over it).
 func strip() -> Control:
 	return _stack
+
+
+## Bank 2's row as shown ("Shift+ [1 chmod]"), or "" when the loadout has no second bank (C29).
+func bank2_text() -> String:
+	return _bank2.text if _bank2.visible else ""
+
+
+## The bank whose row is lit now (0 for bank 1), and how dim each row is (1 lit), for the checks.
+func active_bank() -> int:
+	return 1 if _bank2.visible and _bank2.modulate.a >= 1.0 else 0
+
+
+func bank_alpha(bank: int) -> float:
+	return _bank2.modulate.a if bank == 1 else _slot_row.modulate.a
+
+
+## The two slot rows (C29): bank 2's label and bank 1's row, for the layout checks.
+func bank_rows() -> Array[Control]:
+	return [_bank2, _slot_row]
 
 
 func slots_text() -> String:
@@ -195,11 +238,12 @@ func _refresh() -> void:
 	_stack.visible = inv != null and (player.get("alive") != false)
 	if not _stack.visible:
 		return
-	while _slot_labels.size() < inv.slot_count():
+	var bank1: int = mini(inv.slot_count(), Arsenal.BANK_SLOTS)
+	while _slot_labels.size() < bank1:
 		_slot_labels.append(_slot_label())
 	for i in _slot_labels.size():
 		var label: Label = _slot_labels[i]
-		label.visible = i < inv.slot_count()
+		label.visible = i < bank1
 		if not label.visible:
 			continue
 		var plain: String = (SLOT_THROWN % [i + 1, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % (i + 1)
@@ -207,6 +251,7 @@ func _refresh() -> void:
 		var ult: bool = inv.defs[i].is_ult()
 		label.add_theme_color_override("font_color", inv.defs[i].skin_beam() if ult and inv.meter_ready() else Palette.MINT)
 		label.modulate = Color(1, 1, 1, DIM if ult and not inv.meter_ready() else 1.0)
+	_refresh_banks(inv)
 	var ult_slot: int = inv.ult_slot()
 	_meter_text = ""
 	_meter_ready = ult_slot >= 0 and inv.meter_ready()
@@ -229,6 +274,9 @@ func _refresh() -> void:
 	elif def.is_ping():
 		var wait: float = inv.cooldowns[inv.current]
 		_ammo.text = (PING_WAIT % [def.short_name, wait]) if wait > 0.0 else (PING_READY % def.short_name)
+	elif def.is_freeze() and inv.coolant(inv.current) != null:
+		var tank = inv.coolant(inv.current)
+		_ammo.text = (COOLANT_VENT_AMMO % def.short_name) if tank.venting else (COOLANT_AMMO % [def.short_name, roundi(tank.share() * 100.0)])
 	elif not def.has_magazine():
 		_ammo.text = AMMO_ENDLESS % def.short_name
 	else:
@@ -252,6 +300,14 @@ func _refresh() -> void:
 	elif def.has_magazine() and mag <= 0:
 		_state.text = DRY_LINE if reserve == 0 else EMPTY_LINE
 		color = Palette.HOSTILE_AMBER
+	elif def.is_freeze() and inv.coolant(inv.current) != null:
+		# chmod 000 (C29): the tank, or its venting back to its share.
+		var tank = inv.coolant(inv.current)
+		var lit := clampi(roundi(tank.share() * BAR_CELLS), 0, BAR_CELLS)
+		_state.text = (VENT_LINE if tank.venting else COOLANT_LINE) % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
+		state_color = Palette.HOSTILE_AMBER if tank.venting else Palette.FROST_TEXT
+		if tank.venting:
+			color = Palette.HOSTILE_AMBER
 	elif def.is_ping() and player.has_method("ping_ready"):
 		# ping (C28): the sonar coming back, or ready with its reach.
 		var back: float = player.ping_ready()
@@ -272,6 +328,25 @@ func _refresh() -> void:
 	_state.add_theme_color_override("font_color", state_color)
 	_refresh_stop()
 	_refresh_vision()
+
+
+## The two slot rows (C29): bank 2's, its keys led by the bank key's name, the drawn one bracketed and
+## named; the active bank's row lit, the other dimmed.
+func _refresh_banks(inv) -> void:
+	_bank2.visible = inv.slot_count() > Arsenal.BANK_SLOTS
+	if not _bank2.visible:
+		_slot_row.modulate = Color(1, 1, 1, 1)
+		return
+	var parts := PackedStringArray()
+	for i in range(Arsenal.BANK_SLOTS, inv.slot_count()):
+		var key := Arsenal.key_of(i)
+		parts.append(SLOT_DRAWN % [key, inv.defs[i].short_name] if i == inv.current else SLOT % key)
+	var lead := Controls.bind_label(GameSettings.current().bind("weapon_bank"))
+	_bank2.text = (BANK2_LEAD % lead) + SLOT_GAP.join(parts)
+	var held: bool = player.has_method("bank_held") and player.bank_held()
+	var active := 1 if held else Arsenal.bank_of(inv.current)
+	_bank2.modulate = Color(1, 1, 1, 1.0 if active == 1 else BANK_DIM)
+	_slot_row.modulate = Color(1, 1, 1, 1.0 if active == 0 else BANK_DIM)
 
 
 func _refresh_stop() -> void:

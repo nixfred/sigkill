@@ -78,18 +78,27 @@ extends "res://scripts/weapon_tuning.gd"
 ## pinger's screen alone; one it meets in the middle of a tell has that attack called off and
 ## staggers (the stagger's length is the daemons' own number, resources/daemon_ai.tres). The Ping
 ## group is empty (0) for every other weapon.
+##
+## chmod 000 (C29, resources/chmod_000.tres): fire_mode FREEZE is a beam held down, not shots: while
+## fire is held and its coolant lasts, a beam tick goes every fire_cooldown along the aim to the first
+## thing it meets within fire_range, and builds that target's freeze meter by the tick's seconds; a full
+## meter freezes it (scripts/weapons/frost.gd). No damage (damage 0) and no magazine: its ammo is the
+## coolant (scripts/weapons/coolant.gd), and every number of the freeze is the FreezeTuning it names in
+## freeze (inside the same .tres). The Freeze slot is empty for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
+const FreezeTuningScript = preload("res://scripts/weapons/freeze_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING, FREEZE }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
 ## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf), mines since C27 (cron),
-## the sonar ring since C28 (ping). Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE, FireMode.PING]
+## the sonar ring since C28 (ping), the freeze beam since C29 (chmod 000). Beam (the pipe's chain beam)
+## comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE, FireMode.PING, FireMode.FREEZE]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -164,6 +173,11 @@ const PING_RADIUS_LAST_M := 60.0
 const PING_RING_LAST_S := 3.0
 const REVEAL_LAST_S := 20.0
 const PING_COOLDOWN_FIRST_S := 1.0
+## chmod 000 (C29): its beam ticks at least this often and at most this rarely, in seconds, and reaches
+## at most this far.
+const FREEZE_TICK_FIRST_S := 0.03
+const FREEZE_TICK_LAST_S := 0.25
+const FREEZE_RANGE_LAST_M := 60.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -346,6 +360,11 @@ const PING_COOLDOWN_FIRST_S := 1.0
 @export var reveal_s: float = 0.0
 @export var reveal_fade_s: float = 0.0
 
+@export_group("Freeze")
+## chmod 000 (C29): every number of the freeze and the coolant, a FreezeTuning (inside
+## resources/chmod_000.tres). Empty for every other weapon.
+@export var freeze: Resource = null
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -363,7 +382,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug, mine and ping" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug, mine, ping and freeze" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -381,6 +400,8 @@ func problems() -> PackedStringArray:
 		out.append_array(_mine_problems())
 	elif fire_mode == FireMode.PING:
 		out.append_array(_ping_problems())
+	elif fire_mode == FireMode.FREEZE:
+		out.append_array(_freeze_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -403,6 +424,8 @@ func problems() -> PackedStringArray:
 		out.append("only cron mines (fire_mode mine) fill the mine group")
 	if fire_mode != FireMode.PING and (ping_radius_m != 0.0 or ping_ring_s != 0.0 or reveal_s != 0.0 or reveal_fade_s != 0.0):
 		out.append("only ping (fire_mode ping) fills the ping group")
+	if fire_mode != FireMode.FREEZE and freeze != null:
+		out.append("only chmod 000 (fire_mode freeze) names a freeze tuning")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -490,6 +513,16 @@ func is_mine() -> bool:
 ## True for ping (C28): fire sends a sonar ring that reveals daemons; no ammo, no damage.
 func is_ping() -> bool:
 	return fire_mode == FireMode.PING
+
+
+## True for chmod 000 (C29): fire held runs a freeze beam on coolant; no damage, no magazine.
+func is_freeze() -> bool:
+	return fire_mode == FireMode.FREEZE
+
+
+## The freeze ray's numbers (C29), or null for any other weapon.
+func freeze_tuning() -> FreezeTuningScript:
+	return freeze as FreezeTuningScript if is_freeze() else null
 
 
 ## Runs of a mine placed as user, or with `root` (C22's "root crontab") root_extra_runs more.
@@ -752,6 +785,25 @@ func _ping_problems() -> PackedStringArray:
 		var v: float = b[1]
 		if not is_finite(v) or v <= b[2] or v > b[3]:
 			out.append("%s must be above %s and at most %s" % [b[0], b[2], b[3]])
+	return out
+
+
+func _freeze_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("chmod 000 runs one beam: pellet_count stays 1")
+	if projectile != null or has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("chmod 000 runs on coolant, not ammo: no magazine (-1), no projectile tuning, pierce, charge or ult")
+	if not is_finite(damage) or damage != 0.0:
+		out.append("chmod 000 does no damage: damage stays 0")
+	if not is_finite(fire_cooldown) or fire_cooldown < FREEZE_TICK_FIRST_S or fire_cooldown > FREEZE_TICK_LAST_S:
+		out.append("chmod 000's fire_cooldown, its beam tick, must be between %s and %s" % [FREEZE_TICK_FIRST_S, FREEZE_TICK_LAST_S])
+	if not is_finite(fire_range) or fire_range <= 0.0 or fire_range > FREEZE_RANGE_LAST_M:
+		out.append("chmod 000's fire_range, its beam's reach, must be above 0 and at most %s" % FREEZE_RANGE_LAST_M)
+	if not (freeze is FreezeTuningScript):
+		out.append("chmod 000 (fire_mode freeze) needs a FreezeTuning in freeze")
+	elif not freeze.problems().is_empty():
+		out.append("chmod 000's freeze tuning is refused: %s" % freeze.problems()[0])
 	return out
 
 

@@ -25,6 +25,14 @@ extends StaticBody3D
 ## capture runs (--demo, or a --script run) the seed is fixed by its name, so stills and checks are
 ## the same every run. On a joiner in a match the host's seeds rebuild it (follow_seed()), so every
 ## screen draws the same daemon. Its death derezzes in its type's own colour.
+##
+## chmod 000 (C29): the freeze ray's beam builds its freeze meter (chill(); its Frost, an elite's slower
+## to fill); a full one freezes it (its brain does nothing, its art holds still, a tell it was in is
+## called off) under a frost crust (scripts/fx/frost_look.gd). The next hit on it frozen thaws it and
+## lands the freeze tuning's frozen_hit_scale times harder, and one at least shatter_damage strong
+## shatters it whatever its health; every kill of a frozen daemon is a shatter: it derezzes in the frost
+## opal in a storm of frost. In practice the beam freezes the old dummy too. On a joiner in a match where
+## they fight its meter is the host's word (follow_frost()).
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -32,6 +40,8 @@ const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const DEFAULT_DEREZZ_PATH := "res://resources/derezz.tres"
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const DAEMON_AI_PATH := "res://resources/daemon_ai.tres"
+## A shatter's storm of frost: the whole of the frost pool's chips (C29).
+const SHATTER_BURST := 1.0
 
 enum State { ALIVE, DEREZZING, RESPAWNING }
 
@@ -78,6 +88,11 @@ var killer := 0
 ## joiner's) credits none here and names that player.
 var _credit := true
 var _killer := 0
+## Its freeze meter and freeze (C29), and its frost on screen once the beam has met it.
+var frost: Frost
+var _frost_look: FrostLook
+## Its deaths that were shatters (C29), for the checks.
+var shatters := 0
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -90,6 +105,7 @@ func _ready() -> void:
 	# The hex is the volume, drawn by no camera; the art under it is what is seen (A2).
 	_body.layers = 0
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	frost = Frost.new()
 	_build_art(_spawn_seed())
 	_health = max_health
 	brain = DaemonBrain.new(self, _art)
@@ -166,6 +182,14 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	# is judging.
 	var breakers := BreakerDirector.of(self)
 	var scale: float = breakers.exploit_scale(_killer if _killer != 0 else breakers.my_id(), self, point, source) if breakers != null else 1.0
+	# Frozen by chmod 000 (C29): the hit thaws it and lands harder; a strong one shatters it outright.
+	var frozen_now := frost != null and frost.frozen()
+	if frozen_now:
+		frost.thaw()
+		_art.frozen = false
+		scale *= frost.tuning.frozen_hit_scale
+		if damage >= frost.tuning.shatter_damage:
+			_health = 0.0
 	_health -= damage * scale
 	var ice := IceDirector.of(self)
 	if ice != null:
@@ -176,8 +200,46 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 		if brain != null and director != null:
 			brain.on_hit(point, director)  # roused, or a swarm scattered (C27b)
 		return true
-	_start_derezz(point, direction)
+	_start_derezz(point, direction, frozen_now)
 	return true
+
+
+## chmod 000's beam on it for `seconds` (C29): its freeze meter builds; true when that froze it just now.
+## Nothing while it is down, and nothing on a joiner's copy of the host's daemon (the host judges).
+func chill(seconds: float, _point: Vector3 = Vector3.INF, _direction: Vector3 = Vector3.ZERO, _source: String = "") -> bool:
+	if state != State.ALIVE or _follows() or frost == null:
+		return false
+	var froze := frost.beam(seconds)
+	if froze:
+		_art.frozen = true
+	_show_frost()
+	return froze
+
+
+## True while chmod 000 holds it frozen (C29): its brain does nothing.
+func chmod_frozen() -> bool:
+	return frost != null and frost.frozen() and state == State.ALIVE
+
+
+## On a joiner in a match where the daemons fight (C29), the host's word on its freeze meter: the bits
+## Frost packs beside its state.
+func follow_frost(bits: int) -> void:
+	if frost == null:
+		return
+	frost.take_bits(bits)
+	_art.frozen = frost.frozen() and state == State.ALIVE
+	_show_frost()
+
+
+## Its frost on screen, made the first time there is any.
+func _show_frost() -> void:
+	if _frost_look == null and frost != null and (frost.chill > 0.0 or frost.frozen()):
+		_frost_look = FrostLook.of(_art, frost)
+
+
+## The frost on it now (C29), or null before the beam has met it.
+func frost_look() -> FrostLook:
+	return _frost_look
 
 
 ## A hit another player's shot landed (C27b: the host judging a joiner's shot at its daemon): as
@@ -200,6 +262,8 @@ func _follows() -> bool:
 func _physics_process(delta: float) -> void:
 	_fit_box()
 	if state == State.ALIVE:
+		if frost != null and frost.tick(delta):
+			_art.frozen = false  # thawed (C29)
 		return
 	_state_time += delta
 	# A joiner's copy of the host's daemon (C27b) changes state only on the host's word: it never
@@ -218,7 +282,7 @@ func _physics_process(delta: float) -> void:
 			_finish_respawn()
 
 
-func _start_derezz(point: Vector3, direction: Vector3) -> void:
+func _start_derezz(point: Vector3, direction: Vector3, shattered: bool = false) -> void:
 	credited = _credit
 	killer = 0 if _credit else _killer
 	_go_down()
@@ -231,8 +295,14 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	shot = shot.normalized()
 	var fx := DerezzFx.new()
 	_fx_root().add_child(fx)
-	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d, 0, _art.core_color)  # in its type's colour (A5)
+	# In its type's colour (A5); a frozen daemon's shatter in the frost opal, in a storm of frost (C29).
+	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d, 0, Palette.FROST if shattered else _art.core_color)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
+	if shattered:
+		shatters += 1
+		var chips := ParticleFx.of(self)
+		if chips != null:
+			chips.frost(_body.global_position, _hex.height * 0.6, SHATTER_BURST)
 	downed.emit(self)
 
 
@@ -240,6 +310,9 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 func _go_down() -> void:
 	state = State.DEREZZING
 	_state_time = 0.0
+	if frost != null:
+		frost.clear()
+	_art.frozen = false
 	_shape.set_deferred("disabled", true)
 	if _box != null:
 		_box.set_deferred("disabled", true)
@@ -271,6 +344,8 @@ func _begin_rematerialise() -> void:
 func _finish_respawn() -> void:
 	state = State.ALIVE
 	_health = max_health
+	if frost != null:
+		frost.clear()
 	_body.scale = Vector3.ONE
 	_art.set_unstable(0.0)
 	_tag.visible = true
@@ -332,6 +407,9 @@ func reset_for_round() -> void:
 	if state == State.RESPAWNING:
 		_finish_respawn()
 	_health = max_health
+	if frost != null:
+		frost.clear()
+	_art.frozen = false
 	_go_home()
 
 
@@ -397,6 +475,9 @@ func _spawn_seed() -> int:
 func _build_art(seed: int) -> void:
 	var old := _art
 	_art = DaemonArt.make(art, self, seed)
+	_frost_look = null  # it lived under the old art (C29)
+	if frost != null:
+		frost.kind = Frost.Kind.ELITE if _art.elite else Frost.Kind.DAEMON
 	if old != null:
 		_art.displays = old.displays
 		_art.drive(old.act, old.act_u)
