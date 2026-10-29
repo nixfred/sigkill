@@ -85,8 +85,8 @@ const BLACK_ICE_GLASS := Color(0.007843137, 0.011764706, 0.015686275)  # #020304
 # cobalt, 0.28 from the ultraviolet). Its HUD text a light tint of it, legible on black (0.13 from the
 # nearest); its highlight, the beam's core and the frost's glints, a near-white tint of it.
 const FROST := Color(0.658823529, 0.470588235, 0.517647059)  # #a87884 chmod 000's body and light, the frost on what it froze
-const FROST_HI := Color(0.960784314, 0.815686275, 0.839215686)  # #f5d0d6 its beam's core and the frost's glints
-const FROST_TEXT := Color(0.882352941, 0.588235294, 0.635294118)  # #e196a2 its strip lines, its readout, "permission denied"
+const FROST_HI := Color(0.960784314, 0.815686275, 0.839215686)  # #f5d0d6 its beam's thin core and the frost's glints
+const FROST_TEXT := Color(0.882352941, 0.588235294, 0.635294118)  # #e196a2 its light skin's beam colour, the frost's cracks, its strip lines and readout
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -101,7 +101,7 @@ const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

@@ -226,7 +226,7 @@ func frost(point: Vector3, radius_m: float, share_of: float) -> void:
 	var r := clampf(radius_m, 0.2, 2.5)
 	if m.emission_sphere_radius != r:
 		m.emission_sphere_radius = r
-	_fire(Kind.FROST, Transform3D(Basis.IDENTITY, point), Palette.FROST_HI, share_of)
+	_fire(Kind.FROST, Transform3D(Basis.IDENTITY, point), Palette.FROST, share_of)
 
 
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
@@ -449,16 +449,16 @@ static func _process_material(kind: Kind) -> ParticleProcessMaterial:
 			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 			m.emission_sphere_radius = 0.6
 			m.direction = Vector3.UP
-			m.spread = 140.0
-			m.initial_velocity_min = 1.0
-			m.initial_velocity_max = 3.5
-			m.radial_velocity_min = 1.0
-			m.radial_velocity_max = 2.5
-			m.gravity = Vector3.DOWN * 4.0
-			m.damping_min = 1.0
-			m.damping_max = 2.0
-			m.scale_min = 0.5
-			m.scale_max = 1.3
+			m.spread = 120.0
+			m.initial_velocity_min = 0.4
+			m.initial_velocity_max = 1.6
+			m.radial_velocity_min = 0.4
+			m.radial_velocity_max = 1.2
+			m.gravity = Vector3.DOWN * 7.0
+			m.damping_min = 1.5
+			m.damping_max = 2.5
+			m.scale_min = 0.3
+			m.scale_max = 0.8
 			m.use_rotation_3d = true
 			m.rotation_3d_min = -Vector3.ONE * FULL_TURN
 			m.rotation_3d_max = Vector3.ONE * FULL_TURN

@@ -233,13 +233,13 @@ const I3_LINEUP_CAM := Vector3(0.0, 2.6, 19.5)
 ## shatter's frames after the cannon's shot; the hunter's view (round 2) and Black ICE's (round 4, its spot,
 ## where the player stands off it, the frames of beam).
 const C29_SLOT := 9
-const C29_PLAYER_AT := Vector3(0.0, 0.95, 15.0)
-const C29_ROGUE_AT := Vector3(0.5, 0.0, 10.4)
+const C29_PLAYER_AT := Vector3(1.6, 0.95, 15.0)
+const C29_ROGUE_AT := Vector3(2.1, 0.0, 10.4)
 const C29_PRECHILL := 0.8
 const C29_FREEZE_FRAMES := 5
-const C29_STRIP_CROP := Rect2i(1300, 790, 620, 290)
-const C29_STRIP_SCALE := 2
-const C29_ZOMBIE_AT := Vector3(-0.6, 0.0, 9.8)
+const C29_STRIP_CROP := Rect2i(1580, 935, 340, 120)
+const C29_STRIP_SCALE := 3
+const C29_ZOMBIE_AT := Vector3(1.0, 0.0, 9.8)
 const C29_CHILL_FRAMES := 33
 const C29_SHATTER_FRAMES := 8
 const C29_HUNTER_FROM := Vector3(10.0, 0.95, 7.0)
@@ -1346,9 +1346,10 @@ func _c29() -> void:
 	while rogue.brain.state != DaemonBrain.State.TELL:
 		await _frames(1)
 	_player.hold_fire = true
+	var told := 0.0
 	while not rogue.chmod_frozen():
+		told = rogue.brain.state_t
 		await _frames(1)
-	var told: float = rogue.brain.state_t
 	await _frames(C29_FREEZE_FRAMES)
 	print("capture: rogue.d frozen in its tell (%d frozen offs, \"%s\"); the readout \"%s\"; the strip \"%s\" over \"%s\", \"%s\"" % [rogue.brain.frozen_offs, rogue.frost_look().tag_text().replace("\n", " "), hud.freeze_hud().line_text(), hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().state_text()])
 	var frame := await _grab()
@@ -1358,8 +1359,7 @@ func _c29() -> void:
 	corner.resize(C29_STRIP_CROP.size.x * C29_STRIP_SCALE, C29_STRIP_CROP.size.y * C29_STRIP_SCALE, Image.INTERPOLATE_NEAREST)
 	corner.save_png(OUT.path_join("c29-strip.png"))
 	_shots += 1
-	print("capture: c29-freeze and c29-strip (its corner %s, %dx) from one frame, %.2f s into the tell" % [C29_STRIP_CROP, C29_STRIP_SCALE, told])
-	await _beam_cost(rogue)
+	print("capture: c29-freeze and c29-strip (its corner %s, %dx) from one frame, frozen %.2f s into the tell" % [C29_STRIP_CROP, C29_STRIP_SCALE, told])
 	_player.hold_fire = false
 	# The shatter: the cannon drawn while it is still frozen, one shot.
 	_player.select_slot(0)
@@ -1379,10 +1379,14 @@ func _c29() -> void:
 	_c27b_place(zombie, _main.to_global(C29_ZOMBIE_AT))
 	_player.select_slot(C29_SLOT)
 	await _frames(SETTLE_FRAMES)
+	_player.inventory.coolant(C29_SLOT).refill()
 	_player.hold_fire = true
 	await _frames(C29_CHILL_FRAMES)
 	print("capture: the zombie half frozen: its meter %.2f, \"%s\"" % [zombie.frost.chill, hud.freeze_hud().line_text()])
 	await _save("c29-chill")
+	while not zombie.chmod_frozen():
+		await _frames(1)
+	await _beam_cost(zombie)
 	_player.hold_fire = false
 	_c27b_place(zombie, C27B_PARKED)
 	await _frames(90)
@@ -1401,6 +1405,7 @@ func _c29() -> void:
 	var hunter := ice.hunter
 	await _stand(C29_HUNTER_FROM, hunter.global_position + Vector3.UP * hunter.tuning.hunter_hover_m)
 	life.combat.states[1]["protect_left"] = 1000.0
+	_player.inventory.coolant(C29_SLOT).refill()
 	_player.hold_fire = true
 	while not hunter.chmod_frozen():
 		var to: Vector3 = hunter.global_position + Vector3.UP * hunter.tuning.hunter_hover_m - _player.get_node("Head/Camera").global_position
@@ -1420,11 +1425,13 @@ func _c29() -> void:
 	if ice.hunter != null:
 		for i in 3:
 			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	# The player stands first, then Black ICE is out at its spot ahead: it hunts at once, slowed by the beam.
+	var spot_at: Vector3 = IceDirector.BLACK_SPOTS[C29_BLACK_SPOT]
+	await _stand(spot_at + C29_BLACK_OFF, _main.to_global(spot_at + Vector3.UP * 2.6))
+	_player.inventory.coolant(C29_SLOT).refill()
 	var b := ice.summon_black(C29_BLACK_SPOT)
 	b.phase_t = b.tuning.tell_s
 	b.step(0.0, ice.daemons)
-	var core: Vector3 = b.global_position + Vector3.UP * 2.6
-	await _stand(Vector3(_main.to_local(b.global_position)) + C29_BLACK_OFF, core)
 	_player.hold_fire = true
 	for i in C29_BLACK_FRAMES:
 		var to: Vector3 = b.global_position + Vector3.UP * 2.0 - _player.get_node("Head/Camera").global_position
@@ -1435,17 +1442,25 @@ func _c29() -> void:
 	_player.hold_fire = false
 
 
-## What the beam and the frost cost (C29): the beam's nodes and triangles, and the GPU's time with the
-## beam running on a frozen daemon against with it hidden.
+## What the beam and the frost cost (C29): the beam's nodes, the frost's crust sets, and the GPU's time
+## with the beam running on a frozen daemon against with both hidden, twice each in turn.
 func _beam_cost(target: Node3D) -> void:
 	var beam: Node3D = _player.freeze_beam()
 	var look: FrostLook = target.frost_look()
-	var on := await _gpu_ms(A4_GPU_FRAMES)
-	beam.visible = false
-	look.visible = false
-	var off := await _gpu_ms(A4_GPU_FRAMES)
+	var times := []
+	for i in 2:
+		beam.visible = true
+		for crust in look.crusts():
+			crust.visible = true
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		beam.visible = false
+		for crust in look.crusts():
+			crust.visible = false  # the look itself shows itself each frame; its crusts are what draw
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
 	beam.visible = true
-	print("capture: the beam is %d nodes and the frost %d crust sets; the GPU %.2f ms a frame with them, %.2f without" % [beam.get_child_count(), look.crusts().size(), on, off])
+	for crust in look.crusts():
+		crust.visible = true
+	print("capture: the beam is %d nodes and the frost %d crust sets; the GPU %.2f and %.2f ms a frame with them, %.2f and %.2f without" % [beam.get_child_count(), look.crusts().size(), times[0], times[2], times[1], times[3]])
 
 
 ## A still from a free camera at `at` looking at `look` (arena space), the player and the HUD hidden.

@@ -25,8 +25,8 @@ const SHEATH_R := 0.032
 const BREATH := 0.18
 const BREATH_HZ := 5.0
 ## Energies of the core and the sheath.
-const CORE_ENERGY := 4.0
-const SHEATH_ENERGY := 2.2
+const CORE_ENERGY := 3.0
+const SHEATH_ENERGY := 1.8
 ## The shards: how many ride the beam, how far out they turn, how fast they travel (metres a second), how
 ## many turns of the helix a metre of beam holds, how fast it turns (a second), their size.
 const SHARDS := 18
@@ -36,9 +36,11 @@ const SHARD_PER_M := 0.5
 const SHARD_TURNS := 2.2
 const SHARD_SIZE := Vector3(0.016, 0.016, 0.06)
 ## The bloom where it ends: its radius and energy; brighter when it meets a target that freezes.
-const BLOOM_R := 0.1
-const BLOOM_ENERGY := 3.0
-const BLOOM_HIT := 1.8
+const BLOOM_R := 0.09
+const BLOOM_ENERGY := 2.2
+const BLOOM_HIT := 1.6
+## The shards' and the spray's glow.
+const SHARD_ENERGY := 1.6
 ## The spray where it ends: particles, life, speed.
 const SPRAY := 24
 const SPRAY_S := 0.4
@@ -81,7 +83,7 @@ func _ready() -> void:
 	_shards = MultiMeshInstance3D.new()
 	_shards.name = "Shards"
 	_shards.multimesh = mm
-	_shards.material_override = Palette.glow(Palette.FROST_HI, BLOOM_ENERGY)
+	_shards.material_override = Palette.glow(Palette.FROST_TEXT, SHARD_ENERGY)
 	_shards.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_shards)
 	var bloom_mesh := SphereMesh.new()
@@ -92,7 +94,7 @@ func _ready() -> void:
 	_bloom = MeshInstance3D.new()
 	_bloom.name = "Bloom"
 	_bloom.mesh = bloom_mesh
-	_bloom.material_override = Palette.glow(Palette.FROST_HI, BLOOM_ENERGY)
+	_bloom.material_override = Palette.glow(Palette.FROST_TEXT, BLOOM_ENERGY)
 	_bloom.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_bloom)
 	_spray = _make_spray()
@@ -171,7 +173,8 @@ func _place() -> void:
 	var breath := 1.0 + BREATH * sin(TAU * BREATH_HZ * _clock)
 	for layer in [_core, _sheath]:
 		var r: float = CORE_R if layer == _core else SHEATH_R * breath
-		layer.global_transform = Transform3D(basis.scaled(Vector3(r, length, r)), mid)
+		# Scaled in its own axes (its columns), never the world's: the cylinder's length runs down the beam.
+		layer.global_transform = Transform3D(Basis(basis.x * r, basis.y * length, basis.z * r), mid)
 		layer.set_instance_shader_parameter(&"strength", _strength)
 		layer.set_instance_shader_parameter(&"length_m", length)
 	var mm := _shards.multimesh
@@ -183,7 +186,8 @@ func _place() -> void:
 		var off := (right * cos(turn) + up * sin(turn)) * SHARD_R * (0.4 + 0.6 * sin(PI * u))
 		var at := _from + span * u + off
 		var size := SHARD_SIZE * _strength * (0.5 + 0.5 * sin(PI * u))
-		mm.set_instance_transform(i, Transform3D(_along_z(way).scaled(size), at))
+		var shard := _along_z(way)
+		mm.set_instance_transform(i, Transform3D(Basis(shard.x * size.x, shard.y * size.y, shard.z * size.z), at))
 	_bloom.global_position = _to
 	_bloom.scale = Vector3.ONE * (BLOOM_HIT if _struck else 1.0) * (0.6 + 0.4 * _strength) * breath
 	_spray.global_transform = Transform3D(_along_z(-way), _to)
@@ -265,7 +269,7 @@ func _make_spray() -> GPUParticles3D:
 	p.lifetime = SPRAY_S
 	p.local_coords = false
 	p.emitting = false
-	p.material_override = Palette.glow(Palette.FROST_HI, BLOOM_ENERGY)
+	p.material_override = Palette.glow(Palette.FROST_TEXT, SHARD_ENERGY)
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.visibility_aabb = AABB(Vector3(-2.0, -2.0, -2.0), Vector3(4.0, 4.0, 4.0))
 	return p

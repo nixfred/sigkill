@@ -18,16 +18,20 @@ const CrustShader = preload("res://shaders/frost_crust.gdshader")
 const NODE_NAME := "FrostLook"
 ## The tag: how far over the target's own name tag, its font size and size on screen (fixed), and how
 ## often its numbers are written again.
-const TAG_ABOVE_M := 0.15
-const TAG_FONT := 30
+const TAG_ABOVE_M := 0.55
+const TAG_FONT := 24
 const TAG_PIXEL := 0.0009
 const TAG_OUTLINE := 8
 const TAG_EVERY_S := 0.1
 const CHILL_LINE := "chmod 000  %d%%"
 const DENIED_LINE := "PERMISSION DENIED\n---------- 000  %.1fs"
-## The bursts: how many of the pool's chips a freeze and a thaw throw (a share).
+## The bursts: how many of the pool's chips a freeze and a thaw throw (a share), and the most a burst
+## spreads round the body's middle, metres.
 const FREEZE_BURST := 1.0
 const THAW_BURST := 0.45
+const BURST_LAST_M := 1.0
+## A body's height when its parts give none.
+const HEIGHT_FIRST := 0.8
 ## The avatar's capsule crust, round its body.
 const BODY_RADIUS := 0.46
 const BODY_HEIGHT := 1.62
@@ -41,6 +45,8 @@ var _tag: Label3D
 var _frost: Frost
 var _base_y := 0.0
 var _height := 2.0
+## The body's lowest point in its art's own space (its parts as posed when the look was made).
+var _low := DaemonArt.GROUND_Y
 var _shown := -1.0
 var _was_frozen := false
 var _tag_wait := 0.0
@@ -85,6 +91,7 @@ static func material() -> ShaderMaterial:
 		_material = ShaderMaterial.new()
 		_material.shader = CrustShader
 		_material.set_shader_parameter("frost", Palette.FROST)
+		_material.set_shader_parameter("edge", Palette.FROST_TEXT)
 		_material.set_shader_parameter("glint", Palette.FROST_HI)
 	return _material
 
@@ -105,7 +112,11 @@ func _setup_art(art: DaemonArt, frost: Frost) -> void:
 		ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(ghost)
 		_ghosts.append(ghost)
-	_height = maxf(art.tag_height * 0.85, 0.8)
+	# The body's height from its own parts as they stand (a tall name tag is no measure of it).
+	var box := art.pose_bounds()
+	var scale := art.global_transform.basis.get_scale().y if art.is_inside_tree() else 1.0
+	_height = clampf(box.size.y * scale, HEIGHT_FIRST, 8.0) if box.size.y > 0.0 else maxf(art.tag_height * 0.85, HEIGHT_FIRST)
+	_low = box.position.y if box.size.y > 0.0 else DaemonArt.GROUND_Y
 	_make_tag(art.tag_height + TAG_ABOVE_M)
 	visible = false
 
@@ -145,6 +156,8 @@ func _make_tag(at_y: float) -> void:
 	_tag.outline_modulate = Palette.VOID
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tag.shaded = false
+	_tag.no_depth_test = true  # read whole, never cut by a spike or a plate in front of it
+	_tag.render_priority = Material.RENDER_PRIORITY_MAX
 	_tag.visible = false
 	add_child(_tag)
 
@@ -198,10 +211,10 @@ func _process(delta: float) -> void:
 			_tag.text = DENIED_LINE % maxf(_frost.frozen_left, 0.0) if frozen else CHILL_LINE % roundi(now * 100.0)
 
 
-## Where the target's feet are (world y): the art's ground.
+## Where the target's feet are (world y): its body's lowest point.
 func _feet_y() -> float:
 	var art := get_parent() as Node3D
-	return (art.global_position.y + DaemonArt.GROUND_Y * art.global_transform.basis.get_scale().y) if art != null else global_position.y
+	return art.to_global(Vector3(0.0, _low, 0.0)).y if art != null else global_position.y
 
 
 ## A burst of frost chips off the body.
@@ -213,4 +226,6 @@ func _burst(share: float) -> void:
 		return  # a thaw on a body already gone (a shatter) throws nothing more
 	var fx := ParticleFx.of(self)
 	if fx != null:
-		fx.frost(global_position + Vector3.UP * (_height * 0.4), _height * 0.5, share)
+		var feet := _shell.global_position.y - _height * 0.5 if _shell != null else _feet_y()
+		var middle := Vector3(global_position.x, feet + _height * 0.5, global_position.z)
+		fx.frost(middle, minf(_height * 0.35, BURST_LAST_M), share)
