@@ -21,8 +21,8 @@ extends SceneTree
 ## runaway's drones round their core; a line-up of three of each type built from other seeds, no two
 ## alike (each creature's own art, standing, facing the camera, one row a type, the rows stacked);
 ## the three elites in their tells; and the runaway's core killed, its drones scattering; then it
-## prints what daemons cost: each one's posing timed alone, and the GPU's time and the frame's
-## processing with nine drawn and with them hidden. Every
+## prints what daemons cost: each type's posing timed alone, and the GPU's time with nine drawn and
+## with them hidden. Every
 ## other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -145,14 +145,15 @@ const A5_ROGUE_CAM := Vector3(1.7, 1.15, 3.0)
 const A5_ZOMBIE_CAM := Vector3(-0.4, 1.35, 9.2)
 const A5_ZOMBIE_LOOK := Vector3(-3.2, 1.15, 7.4)
 const A5_CHARGE_SHARE := 0.8
-const A5_SWARM_CAM := Vector3(-4.9, 2.3, 15.9)
-const A5_SWARM_LOOK := Vector3(-8.0, 1.8, 12.0)
+const A5_SWARM_CAM := Vector3(-5.0, 2.2, 15.6)
+const A5_SWARM_LOOK := Vector3(-8.0, 2.05, 12.0)
+const A5_SWARM_FOV := 40.0
 const A5_ROWS := [["rogue_daemon", "rogue.d", [Vector3(-4.3, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(4.3, 0.0, 10.0)], [0.95, 0.1, 0.55]], ["zombie_process", "zombie", [Vector3(-3.4, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(3.4, 0.0, 10.0)], [0.55, 0.95, 0.1]], ["runaway_swarm", "runaway", [Vector3(-4.6, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(4.6, 0.0, 10.0)], [0.1, 0.55, 0.95]]]
 const A5_LINEUP_CAM := Vector3(0.0, 1.5, 16.8)
 const A5_LINEUP_LOOK := Vector3(0.0, 1.1, 10.0)
 const A5_LINEUP_BAND := Rect2i(0, 270, 1920, 500)
-const A5_ELITES := [["rogue_daemon", "rogue.d", Vector3(-4.6, 0.0, 10.5)], ["zombie_process", "zombie", Vector3(0.0, 0.0, 10.5)], ["runaway_swarm", "runaway", Vector3(4.6, 0.0, 10.5)]]
-const A5_ELITE_CAM := Vector3(0.0, 1.5, 17.5)
+const A5_ELITES := [["rogue_daemon", "rogue.d", Vector3(-4.0, 0.0, 10.5)], ["zombie_process", "zombie", Vector3(0.0, 0.0, 10.5)], ["runaway_swarm", "runaway", Vector3(4.4, 0.0, 10.5)]]
+const A5_ELITE_CAM := Vector3(0.0, 1.5, 18.2)
 const A5_ELITE_LOOK := Vector3(0.0, 1.2, 10.5)
 const A5_SCATTER_CAM := Vector3(-4.4, 2.6, 16.2)
 const A5_SCATTER_LOOK := Vector3(-8.0, 1.6, 12.0)
@@ -551,7 +552,7 @@ func _a5() -> void:
 	# The runaway on its platform, its drones round the core.
 	var swarm: Node3D = targets.get_node("DummyD")
 	_c27b_place(swarm, _main.to_global(Vector3(-8.0, 1.0, 12.0)))
-	cam = _free_camera(A5_SWARM_CAM, A5_SWARM_LOOK, A2B_FOV)
+	cam = _free_camera(A5_SWARM_CAM, A5_SWARM_LOOK, A5_SWARM_FOV)
 	await _frames(60)
 	await _save("a5-runaway")
 	_free_camera_done(cam)
@@ -651,39 +652,41 @@ func _a5_elite_seed(_type: String, from: int) -> int:
 	return from
 
 
-## What the line-up costs: the GPU's time a frame and the frame's processing (Performance's process
-## time, the daemons' posing in it) with all nine drawn and with them hidden (a hidden daemon poses
-## nothing), what the GPU drew each way, and each daemon's own posing timed on its own.
+## What daemons cost (A5), on this machine: each type's posing timed alone (its three of the line-up,
+## its whole _process, five rounds of A5_COST_FRAMES frames: the quickest round and the median, as
+## the machine's other work only ever slows a round), and the GPU's time a frame with the nine drawn
+## and with them hidden, three times each in turn (its spread is the timer's noise), with what the
+## GPU drew each way.
 func _a5_cost(lineup: Array[DaemonArt]) -> void:
-	for round in 3:
-		var usec := 0
-		for i in A5_COST_FRAMES:
-			for art in lineup:
-				var t0 := Time.get_ticks_usec()
-				art._process(1.0 / 60.0)
-				usec += Time.get_ticks_usec() - t0
-			await _frames(1)
-		print("capture: a5 cost, posing round %d: %.1f us a daemon a frame (%d daemons, %d frames, its whole _process)" % [round + 1, float(usec) / (A5_COST_FRAMES * lineup.size()), lineup.size(), A5_COST_FRAMES])
-	var drawn := await _a5_measure()
-	for art in lineup:
-		art.visible = false
-	await _frames(10)
-	var hidden := await _a5_measure()
+	for k in 3:
+		var three := lineup.slice(k * 3, k * 3 + 3)
+		var rounds := PackedFloat32Array()
+		for round in 5:
+			var usec := 0
+			for i in A5_COST_FRAMES:
+				for art in three:
+					var t0 := Time.get_ticks_usec()
+					art._process(1.0 / 60.0)
+					usec += Time.get_ticks_usec() - t0
+				await _frames(1)
+			rounds.append(float(usec) / (A5_COST_FRAMES * three.size()))
+		rounds.sort()
+		print("capture: a5 cost, %s posing: %.1f us a daemon a frame at the quickest, %.1f the median (rounds %s)" % [three[0].ai_kind, rounds[0], rounds[2], ", ".join(Array(rounds).map(func(x): return "%.1f" % x))])
+	var gpu := PackedStringArray()
+	var calls := PackedInt32Array([0, 0])
+	var prims := PackedInt32Array([0, 0])
+	for pass_ in 6:
+		var shown := pass_ % 2 == 0
+		for art in lineup:
+			art.visible = shown
+		await _frames(10)
+		var ms := await _gpu_ms(A5_COST_FRAMES)
+		gpu.append("%s %.3f" % ["drawn" if shown else "hidden", ms])
+		calls[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		prims[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
 	for art in lineup:
 		art.visible = true
-	await _frames(10)
-	print("capture: a5 cost, the nine drawn: GPU %.3f ms, process %.3f ms, %d draw calls, %d primitives; hidden: GPU %.3f ms, process %.3f ms, %d draw calls, %d primitives; the nine cost %.3f ms of GPU and %.3f ms of process a frame (%.3f and %.3f each)" % [drawn[0], drawn[1], drawn[2], drawn[3], hidden[0], hidden[1], hidden[2], hidden[3], drawn[0] - hidden[0], drawn[1] - hidden[1], (drawn[0] - hidden[0]) / lineup.size(), (drawn[1] - hidden[1]) / lineup.size()])
-
-
-## The GPU's time a frame, the process time a frame (milliseconds, averaged over A5_COST_FRAMES),
-## and the last frame's draw calls and primitives.
-func _a5_measure() -> Array:
-	var gpu := await _gpu_ms(A5_COST_FRAMES)
-	var process := 0.0
-	for i in A5_COST_FRAMES:
-		await _frames(1)
-		process += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
-	return [gpu, process / A5_COST_FRAMES, root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)]
+	print("capture: a5 cost, the GPU's time a frame at 1920x1080 with the nine drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
 
 
 ## Sends a ping: fire for one frame.

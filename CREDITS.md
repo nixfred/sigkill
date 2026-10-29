@@ -9,6 +9,7 @@ PID   USER            %CPU  COMMAND
 2     Larry           88.4  writes every line of code (Claude Code)
 3     SIGKILL         71.2  producer, designer, daemon wrangler
 1337  @QuantaCortex   64.0  audit_trail --visor --trace-parents
+1338  @TimProvencio   57.3  ice --white --hunter --black --breakers
 ```
 
 ## Community-built
@@ -18,6 +19,7 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 | Contributor | Idea | In the game as |
 |---|---|---|
 | Albert / [@QuantaCortex](https://x.com/QuantaCortex) | [Audit Trail visor](https://x.com/QuantaCortex/status/2114564781050908930): trace every enemy to its parent process; sever the spawn chain to change the arena | Audit Trail visor (planned, C43) |
+| Tim Provencio / [@TimProvencio](https://x.com/TimProvencio) | ICE and ICEbreakers: William Gibson's intrusion countermeasure electronics as a new enemy class, the system defending itself against you (white ICE, hunter ICE, Black ICE), and one-use ICEbreakers to carry against it | ICE and ICEbreakers (queued, I1 to I3, before C29) |
 
 ## Brand
 

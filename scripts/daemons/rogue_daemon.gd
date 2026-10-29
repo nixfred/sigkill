@@ -157,7 +157,7 @@ func _build() -> void:
 	reach = AABB(Vector3(-2.4, -1.0, -2.6), Vector3(4.8, 3.8, 5.2))
 	tag_height = 2.75
 	budget_triangles = 4200
-	budget_draw_calls = 14
+	budget_draw_calls = 16
 	size_low = 0.88
 	size_high = 1.08
 	elite_size = 1.18
