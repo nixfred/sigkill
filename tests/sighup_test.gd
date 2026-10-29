@@ -787,6 +787,12 @@ func _match_checks() -> void:
 	var copy_rogue := _dummy(client["main"], "DummyA")
 	var shown := await _wait(func(): return copy_rogue.brain.hup != DaemonBrain.Hup.NONE and copy_rogue.hup_look() != null and copy_rogue.hup_look().tag_text() != "", 60)
 	_check("acceptance: while the daemons fight the host's daemons are the joiner's burst's too: rogue.d confused on the host (%s, by player %d), and the joiner's copy shows it from the host's word (%s, its tag \"%s\")" % [rogue.brain.hup_name(), rogue.brain.hup_by, copy_rogue.brain.hup_name(), copy_rogue.hup_look().tag_text().replace("\n", " / ") if copy_rogue.hup_look() != null else ""], confused >= 0 and shown >= 0 and rogue.brain.hup_by == cid)
+	# The joiner leaves while its copy is confused on the host's word: its own daemons decide again, and the
+	# borrowed confusion (no numbers of its own) ends quietly instead of running on.
+	cs.leave()
+	var ended := await _wait(func(): return copy_rogue.brain.hup == DaemonBrain.Hup.NONE, 120)
+	await _frames(30)
+	_check("a joiner that leaves while one of its copies is confused by the host's word: its daemons decide again and that confusion ends quietly (%d frames), nothing run on numbers it never had" % ended, ended >= 0 and copy_rogue.brain.hup == DaemonBrain.Hup.NONE)
 	await _drop_side(client)
 	await _drop_side(host)
 

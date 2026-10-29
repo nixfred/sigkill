@@ -614,9 +614,10 @@ func hup_name() -> String:
 
 ## How far through its reload or its wander it is, 0 to 1 (0 when not confused).
 func hup_share() -> float:
-	if hup == Hup.NONE or hup_tuning == null:
+	if hup == Hup.NONE:
 		return 0.0
-	return clampf(hup_t / (hup_tuning.reload_s if hup == Hup.RELOAD else hup_tuning.wander_s), 0.0, 1.0)
+	var t := hup_tuning if hup_tuning != null else SighupTuning.shipped()  # a joiner's copy: the shipped numbers
+	return clampf(hup_t / (t.reload_s if hup == Hup.RELOAD else t.wander_s), 0.0, 1.0)
 
 
 ## How many times as hard a /dev/null hole drags it now (C31's rule for the confused, C32).
@@ -658,6 +659,9 @@ func _tick_hup(delta: float, d) -> void:
 	if hup == Hup.NONE:
 		hup_guard = maxf(hup_guard - delta, 0.0)
 		return
+	if hup_tuning == null:
+		_clear_hup()  # the host's word lent it (this screen followed); deciding again, it has no numbers to run on
+		return
 	hup_t += delta
 	if hup == Hup.RELOAD and hup_t >= hup_tuning.reload_s:
 		hup = Hup.WANDER
@@ -696,6 +700,9 @@ func _clear_hup() -> void:
 ## One step confused: the reload's stall, or the wander (and, where `lash_ok`, its lashes).
 func _step_confused(delta: float, d, lash_ok: bool) -> void:
 	art.displays = false
+	if hup_tuning == null:
+		_clear_hup()
+		return
 	if hup == Hup.RELOAD:
 		velocity = Vector3.ZERO
 		art.drive(DaemonArt.Act.RECOVER, hup_share())
