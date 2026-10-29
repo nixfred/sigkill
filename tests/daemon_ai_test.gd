@@ -635,8 +635,14 @@ func _match_checks() -> void:
 	await _frames(30)
 	var drawn_held := cd.bolt_of(held_bolt.id)
 	var drawn_at: Vector3 = drawn_held.global_position if drawn_held != null else Vector3.INF
-	await _frames(12)
-	_check("in a match a bolt hangs on its target's SIGSTOP, by the host's count, even with its zombie down, and the joiner's drawn copy hangs with it (the host's word on the bolt itself)", stopped >= 0 and held_bolt.live and held_bolt.global_position == hung and hs.combat.health_of(cid) == 100.0 and drawn_held != null and drawn_held.live and drawn_held.global_position.distance_to(drawn_at) < 0.01, "moved %.3f m" % held_bolt.global_position.distance_to(hung) if held_bolt.live else held_bolt.ended)
+	# Every frame, not two samples: a drawn copy flying on and snapped back past 0.5 m would match
+	# itself now and then.
+	var drawn_moved := 0.0
+	for i in 12:
+		await _frames(1)
+		if drawn_held != null and drawn_held.live:
+			drawn_moved = maxf(drawn_moved, drawn_held.global_position.distance_to(drawn_at))
+	_check("in a match a bolt hangs on its target's SIGSTOP, by the host's count, even with its zombie down, and the joiner's drawn copy hangs with it every frame (the host's word on the bolt itself)", stopped >= 0 and held_bolt.live and held_bolt.global_position == hung and hs.combat.health_of(cid) == 100.0 and drawn_held != null and drawn_held.live and drawn_moved < 0.01, ("moved %.3f m" % held_bolt.global_position.distance_to(hung) if held_bolt.live else held_bolt.ended) + ", drawn moved %.3f m" % drawn_moved)
 	client["player"].sigstop.press()
 	await _wait(func(): return not hs.combat.sigstop_on(cid), 60)
 	await _wait(func(): return not held_bolt.live, 180)
@@ -683,7 +689,9 @@ func _match_checks() -> void:
 	var dodged := hd.throw_bolt(zombie_host, dodge_from, Vector3.BACK)
 	await _wait(func(): return not dodged.live, 120)
 	avatar.interp_delay_s = 0.1
-	_check("acceptance: the host hunts and meets a joiner where it last heard it: with the avatar still drawn where the joiner was (heard after %d frames), the director's place for it is the newest one, and a bolt thrown at the drawn avatar passes it, landing nothing (%s)" % [heard, dodged.ended], heard >= 0 and lagging and newest and dodged.ended != "player" and dodged.met != cid and hs.combat.health_of(cid) == health_before, "drawn %.2f m off the old place" % avatar.global_position.distance_to(old_at))
+	# Passes it: ends well beyond the drawn avatar, not on its hit volume.
+	var beyond: float = (dodged.end_at - old_at).dot(Vector3.BACK)
+	_check("acceptance: the host hunts and meets a joiner where it last heard it: with the avatar still drawn where the joiner was (heard after %d frames), the director's place for it is the newest one, and a bolt thrown at the drawn avatar passes it (%s %.1f m beyond), landing nothing" % [heard, dodged.ended, beyond], heard >= 0 and lagging and newest and dodged.ended != "player" and beyond > 1.0 and dodged.met != cid and hs.combat.health_of(cid) == health_before, "drawn %.2f m off the old place" % avatar.global_position.distance_to(old_at))
 	# The host turns practice on: every player's dummies are its own old ones again.
 	GameSettings.current().set_value("gameplay", "practice", true)
 	var rested := await _wait(func(): return cs.host_practice and cd.mode == DaemonDirector.Mode.REST and hd.mode == DaemonDirector.Mode.REST, 120)
