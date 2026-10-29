@@ -21,7 +21,9 @@ extends RefCounted
 ## daemons fight back at the difficulty (easy, normal or hard; normal by default), unless
 ## practice is on: then they are the old dummies that never attack. ICE (I1: the system's own
 ## defences, walls, nodes and a hunter) is on unless its setting is off, and never in practice. In a
-## match all three are the host's rule, as light trails are. Key binds live in their
+## match all three are the host's rule, as light trails are. Mods (C33) are on: the host's match rule (whether
+## the host judges each player's weapon mods; off, everyone plays the shipped weapons), fixed for a match when
+## the host starts it. Key binds live in their
 ## own section, one per action the player changed (scripts/controls.gd says which actions
 ## and what a bind may be); an action left out has its default.
 ##
@@ -94,6 +96,7 @@ const SCHEMA := {
 		"port": [TYPE_INT, 0, [0, PORT_LAST]],
 		"net_stats": [TYPE_BOOL, false],
 		"light_trails": [TYPE_BOOL, false],
+		"mods": [TYPE_BOOL, true],
 	},
 }
 ## The quality preset's name when the toggles match no preset.

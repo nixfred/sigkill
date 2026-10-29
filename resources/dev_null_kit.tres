@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_plum"]
+script = ExtResource("2_skin")
+skin = "plum"
+display_name = "stock plum"
+fiction = "everything written here is gone"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_dev_zero"]
+script = ExtResource("2_skin")
+skin = "dev_zero"
+display_name = "/dev/zero"
+fiction = "endless nothing, in white"
+feat = "discards"
+need = 8
+
+[sub_resource type="Resource" id="Skin_dev_random"]
+script = ExtResource("2_skin")
+skin = "dev_random"
+display_name = "/dev/random"
+fiction = "the entropy pool, stirred"
+feat = "discards"
+need = 25
+
+[sub_resource type="Resource" id="Mod_wide_horizon"]
+script = ExtResource("3_mod")
+id = "wide_horizon"
+display_name = "wide horizon"
+fiction = "a wider pull, a shorter hold"
+gains = {"projectile:radius_m": 11.0}
+costs = {"projectile:hold_s": 3.0}
+feat = "discards"
+need = 2
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "dev_null"
+skins = Array[Resource]([SubResource("Skin_plum"), SubResource("Skin_dev_zero"), SubResource("Skin_dev_random")])
+mod = SubResource("Mod_wide_horizon")

@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_ice"]
+script = ExtResource("2_skin")
+skin = "ice"
+display_name = "stock ice"
+fiction = "ice-white: the signal nothing catches"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_blacklight"]
+script = ExtResource("2_skin")
+skin = "blacklight"
+display_name = "blacklight"
+fiction = "kill -9 under UV: nothing hides"
+feat = "rail_heads"
+need = 3
+
+[sub_resource type="Resource" id="Skin_p1"]
+script = ExtResource("2_skin")
+skin = "p1"
+display_name = "P1 phosphor"
+fiction = "the first green screen's hardest glow"
+feat = "black_ice"
+need = 1
+
+[sub_resource type="Resource" id="Mod_quickdraw"]
+script = ExtResource("3_mod")
+id = "quickdraw"
+display_name = "quickdraw"
+fiction = "no wind-up, and the meter asks for more"
+gains = {"charge_s": 0.15}
+costs = {"ult_meter": 3.6}
+feat = "kills_sigkill_rail"
+need = 3
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "sigkill_rail"
+skins = Array[Resource]([SubResource("Skin_ice"), SubResource("Skin_blacklight"), SubResource("Skin_p1")])
+mod = SubResource("Mod_quickdraw")

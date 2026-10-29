@@ -97,5 +97,5 @@ dart_radius_m = 0.03
 dart_trail_m = 0.9
 bracket_open_px = 34.0
 bracket_marked_px = 14.0
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["max_count"])
+skin_slots = Array[String](["cobalt", "color_always", "regex"])

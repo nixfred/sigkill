@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_teal"]
+script = ExtResource("2_skin")
+skin = "teal"
+display_name = "stock teal"
+fiction = "the terminal's own: teal on black"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_tty1"]
+script = ExtResource("2_skin")
+skin = "tty1"
+display_name = "tty1"
+fiction = "green phosphor on the first console"
+feat = "kills_terminal_cannon"
+need = 25
+
+[sub_resource type="Resource" id="Skin_dracula"]
+script = ExtResource("2_skin")
+skin = "dracula"
+display_name = "Dracula"
+fiction = "the theme that never sleeps"
+feat = "kills_terminal_cannon"
+need = 75
+
+[sub_resource type="Resource" id="Mod_overclock"]
+script = ExtResource("3_mod")
+id = "overclock"
+display_name = "overclock"
+fiction = "nice -n -5: more cycles, thinner hits"
+gains = {"fire_cooldown": 0.13}
+costs = {"damage": 21.0}
+feat = "kills_terminal_cannon"
+need = 10
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "terminal_cannon"
+skins = Array[Resource]([SubResource("Skin_teal"), SubResource("Skin_tty1"), SubResource("Skin_dracula")])
+mod = SubResource("Mod_overclock")

@@ -48,6 +48,10 @@ const SPRAY_S := 0.4
 const HISS_GAIN := 0.35
 const HISS_UNIT := 5.0
 
+## Its colours (C33): the shooter's skin of chmod 000, the stock frost opal until painted.
+var body := Palette.FROST
+var hot := Palette.FROST_HI
+var light := Palette.FROST_TEXT
 var _core: MeshInstance3D
 var _sheath: MeshInstance3D
 var _shards: MultiMeshInstance3D
@@ -83,7 +87,7 @@ func _ready() -> void:
 	_shards = MultiMeshInstance3D.new()
 	_shards.name = "Shards"
 	_shards.multimesh = mm
-	_shards.material_override = Palette.glow(Palette.FROST_TEXT, SHARD_ENERGY)
+	_shards.material_override = Palette.glow(light, SHARD_ENERGY)
 	_shards.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_shards)
 	var bloom_mesh := SphereMesh.new()
@@ -94,7 +98,7 @@ func _ready() -> void:
 	_bloom = MeshInstance3D.new()
 	_bloom.name = "Bloom"
 	_bloom.mesh = bloom_mesh
-	_bloom.material_override = Palette.glow(Palette.FROST_TEXT, BLOOM_ENERGY)
+	_bloom.material_override = Palette.glow(light, BLOOM_ENERGY)
 	_bloom.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_bloom)
 	_spray = _make_spray()
@@ -110,6 +114,24 @@ func _ready() -> void:
 
 
 ## The beam runs from `from` to `to` (world space) now; `struck` when it meets something it freezes.
+## The beam in the light skin `skin` (C33, scripts/palette.gd): its sheath in the skin's body, its core's heat in
+## its hot colour, its shards, bloom and spray in its beam colour. The frost it leaves on a target keeps chmod's
+## own opal (scripts/fx/frost_look.gd): a state reads the same whoever froze it.
+func paint(skin: String) -> void:
+	body = Palette.skin_body(skin)
+	hot = Palette.skin_hot(skin)
+	light = Palette.skin_beam(skin)
+	if _core == null:
+		return
+	for layer in [_core, _sheath]:
+		var mat := layer.material_override as ShaderMaterial
+		mat.set_shader_parameter("color", body)
+		mat.set_shader_parameter("hot", hot)
+	_shards.material_override = Palette.glow(light, SHARD_ENERGY)
+	_bloom.material_override = Palette.glow(light, BLOOM_ENERGY)
+	_spray.material_override = Palette.glow(light, SHARD_ENERGY)
+
+
 func aim(from: Vector3, to: Vector3, struck: bool = false) -> void:
 	if not from.is_finite() or not to.is_finite():
 		return
@@ -230,8 +252,8 @@ func _layer(layer_name: String, radius: float, is_core: bool) -> MeshInstance3D:
 	cyl.cap_bottom = false
 	var mat := ShaderMaterial.new()
 	mat.shader = BeamShader
-	mat.set_shader_parameter("color", Palette.FROST)
-	mat.set_shader_parameter("hot", Palette.FROST_HI)
+	mat.set_shader_parameter("color", body)
+	mat.set_shader_parameter("hot", hot)
 	mat.set_shader_parameter("core", 1.0 if is_core else 0.0)
 	mat.set_shader_parameter("energy", CORE_ENERGY if is_core else SHEATH_ENERGY)
 	var node := MeshInstance3D.new()
@@ -269,7 +291,7 @@ func _make_spray() -> GPUParticles3D:
 	p.lifetime = SPRAY_S
 	p.local_coords = false
 	p.emitting = false
-	p.material_override = Palette.glow(Palette.FROST_TEXT, SHARD_ENERGY)
+	p.material_override = Palette.glow(light, SHARD_ENERGY)
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.visibility_aabb = AABB(Vector3(-2.0, -2.0, -2.0), Vector3(4.0, 4.0, 4.0))
 	return p

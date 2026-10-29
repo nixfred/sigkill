@@ -697,7 +697,7 @@ func _match_checks() -> void:
 	var cid: int = cs.my_id
 	var src := FileAccess.get_file_as_string("res://scripts/net/net_session.gd")
 	var rpcs := src.count("@rpc(")
-	_check("acceptance: the wire: protocol 18 (17 since C31's /dev/null), no new message (28 RPCs): a throw is the usual _throw, the burst, its count and a player it caught ride _blast, a daemon's confusion the state word, its root the seed's sign", joined and Session.PROTOCOL == 18 and rpcs == 28, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 19 (17 since C31's /dev/null, 18 at C32, 19 since C33's loadouts), no new message (28 RPCs): a throw is the usual _throw, the burst, its count and a player it caught ride _blast, a daemon's confusion the state word, its root the seed's sign", joined and Session.PROTOCOL == 19 and rpcs == 28, "%d RPCs" % rpcs)
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:
 		_park(_dummy(host["main"], name))
 		_park(_dummy(client["main"], name))

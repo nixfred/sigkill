@@ -85,3 +85,5 @@ ping_radius_m = 18.0
 ping_ring_s = 0.5
 reveal_s = 4.0
 reveal_fade_s = 0.8
+mod_slots = Array[String](["interval"])
+skin_slots = Array[String](["lime", "traceroute", "echo_reply"])

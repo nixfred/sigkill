@@ -96,6 +96,8 @@ var judge_daemon := Callable()
 var judge_players := Callable()
 var body_color := Palette.DEV_NULL
 var light_color := Palette.DEV_NULL_TEXT
+## Its skin's hot colour (C33): the ring's inner edge and the photon ring.
+var hot_color := Palette.DEV_NULL_HI
 
 var phase := Phase.FLYING
 ## Seconds since it was thrown, and since it opened.
@@ -144,6 +146,7 @@ static func spawn(root_node: Node, with_tuning: Tuning, origin: Vector3, velocit
 	hole.moves_daemons = moves
 	hole.body_color = Palette.skin_body(skin)
 	hole.light_color = Palette.skin_beam(skin)
+	hole.hot_color = Palette.skin_hot(skin)
 	hole._pos = origin
 	hole._vel = velocity
 	field_of(root_node).add_child(hole)
@@ -197,6 +200,7 @@ func _ready() -> void:
 	_look = LookScript.new()
 	_look.name = "Look"
 	add_child(_look)
+	_look.hot_color = hot_color
 	_look.setup(tuning, body_color, light_color, reach)
 	_hum = _player_3d(_sound("hum"), -6.0)
 	_boom = _player_3d(_sound("boom"), 0.0)

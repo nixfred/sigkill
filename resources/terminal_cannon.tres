@@ -81,5 +81,5 @@ falloff_floor = 1.0
 light_skin = "teal"
 reload_click_hz = 900.0
 reload_gain = 0.5
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["overclock"])
+skin_slots = Array[String](["teal", "tty1", "dracula"])

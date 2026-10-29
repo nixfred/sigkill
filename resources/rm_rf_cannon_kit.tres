@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_ember"]
+script = ExtResource("2_skin")
+skin = "ember"
+display_name = "stock ember"
+fiction = "the one command you cannot take back"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_preserve_root"]
+script = ExtResource("2_skin")
+skin = "preserve_root"
+display_name = "--preserve-root"
+fiction = "the one guard it keeps, in white"
+feat = "kills_rm_rf_cannon"
+need = 12
+
+[sub_resource type="Resource" id="Skin_dd"]
+script = ExtResource("2_skin")
+skin = "dd"
+display_name = "dd"
+fiction = "if=/dev/zero of=wall: through the system"
+feat = "ice_walls"
+need = 5
+
+[sub_resource type="Resource" id="Mod_no_prompt"]
+script = ExtResource("3_mod")
+id = "no_prompt"
+display_name = "no prompt"
+fiction = "a shorter wind-up, a harder blowback"
+gains = {"charge_s": 0.35}
+costs = {"self_damage_share": 0.75}
+feat = "kills_rm_rf_cannon"
+need = 4
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "rm_rf_cannon"
+skins = Array[Resource]([SubResource("Skin_ember"), SubResource("Skin_preserve_root"), SubResource("Skin_dd")])
+mod = SubResource("Mod_no_prompt")

@@ -107,3 +107,5 @@ light_skin = "frost"
 reload_click_hz = 900.0
 reload_gain = 0.5
 freeze = SubResource("Resource_freeze")
+mod_slots = Array[String](["deep_tank"])
+skin_slots = Array[String](["frost", "chmod_755", "immutable"])

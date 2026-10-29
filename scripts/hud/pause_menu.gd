@@ -20,6 +20,10 @@ extends Control
 ## plays by, at once when changed mid-match; a joiner plays by its host's. Gameplay (C27b): the
 ## daemons' difficulty, and practice (daemons that never attack); in a match both are the
 ## host's, like light trails.
+##
+## Loadout (C33): the menu's Loadout opens the loadout screen (scripts/hud/loadout_screen.gd): every weapon's
+## skins and mod, earned by playing. Alone, what the player wears changes as it closes. The settings add the
+## host's "mods" match rule (multiplayer) and "reset progress", which asks twice before it wipes every unlock.
 
 signal closed
 
@@ -41,6 +45,13 @@ const REAL_DATA_DEMO := "this run: demo data"
 const NAME_NOTE := "a label only: in a match you are Daemon-<slot>"
 const RELAY_NOTE := "empty: no online rooms, no network call"
 const TRAILS_NOTE := "your match when you host; joiners get the host's"
+const MODS_NOTE := "mods in your matches; fixed when you start hosting"
+const RESET_PROGRESS := "Reset progress"
+const RESET_CONFIRM := "Really wipe? click again"
+const RESET_ASK := "Wipe every unlock and count? Click Reset progress again within %d s. Nothing else changes."
+const RESET_DONE := "Progress wiped: every weapon back to its own skin, nothing earned."
+## Seconds the reset's second click is waited for.
+const RESET_WAIT_S := 4.0
 const PRACTICE_NOTE := "practice: no attacks, no ICE; a match plays by its host's"
 const RELAY_HINT := "udp://host:9010"
 ## The graphics toggles (A4) in a grid under the preset, three to a row: [label, key].
@@ -99,6 +110,9 @@ var _port: SpinBox
 var _relay: LineEdit
 var _fov: HSlider
 var _fov_value: Label
+var _loadout: LoadoutScreen
+var _reset: Button
+var _reset_left := 0.0
 
 
 func _ready() -> void:
@@ -138,6 +152,7 @@ func open() -> void:
 		return
 	_open = true
 	_status_text = ""
+	Progress.current().flush()  # a pause is a good moment to keep what this run has earned (C33)
 	_was_captured = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or (player != null and is_instance_valid(player) and player.get("assume_captured") == true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_block_player(true)
@@ -154,6 +169,9 @@ func close() -> void:
 	if not _open:
 		return
 	_capturing = ""
+	if _loadout.is_open():
+		_loadout.visible = false
+		_wear_choices()
 	_save_if_changed()
 	_open = false
 	visible = false
@@ -164,10 +182,65 @@ func close() -> void:
 	closed.emit()
 
 
+## The loadout screen (C33), over the menu.
+func open_loadout() -> void:
+	if not _open:
+		open()
+	_pause.visible = false
+	_sheet.visible = false
+	_loadout.player = player
+	_loadout.session = session
+	_loadout.open()
+
+
+func showing_loadout() -> bool:
+	return _open and _loadout.is_open()
+
+
+func loadout_screen() -> LoadoutScreen:
+	return _loadout
+
+
+## The loadout screen closed: alone, the player wears what it chose now (a match holds the host's look).
+func _on_loadout_closed() -> void:
+	_wear_choices()
+	if _open:
+		_show_pause()
+
+
+func _wear_choices() -> void:
+	if not _online() and player != null and is_instance_valid(player) and player.has_method("wear"):
+		player.wear(player.chosen_look())
+
+
+## Reset progress (C33): the first click asks, a second within RESET_WAIT_S wipes every unlock and count.
+func _on_reset_progress() -> void:
+	if _reset_left <= 0.0:
+		_reset_left = RESET_WAIT_S
+		_reset.text = RESET_CONFIRM
+		_say(RESET_ASK % roundi(RESET_WAIT_S))
+		return
+	_reset_left = 0.0
+	_reset.text = RESET_PROGRESS
+	Progress.current().reset()
+	_wear_choices()
+	_say(RESET_DONE)
+
+
+func _process(delta: float) -> void:
+	if _reset_left > 0.0:
+		_reset_left -= delta
+		if _reset_left <= 0.0 and _reset != null:
+			_reset.text = RESET_PROGRESS
+			if _status_text.begins_with(RESET_ASK.left(20)):
+				_say("")
+
+
 func open_settings() -> void:
 	if not _open:
 		open()
 	_pause.visible = false
+	_loadout.visible = false
 	_sheet.visible = true
 	_status_text = ""
 	_refresh()
@@ -206,8 +279,8 @@ func begin_rebind(action: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open:
-		return
+	if not _open or _loadout.is_open():
+		return  # the loadout screen takes its own keys (Esc goes back to the menu)
 	if _capturing != "":
 		var button := event is InputEventKey or event is InputEventMouseButton
 		if button:
@@ -249,6 +322,7 @@ func _take_bind(action: String, event: InputEvent) -> void:
 func _show_pause() -> void:
 	_save_if_changed()
 	_sheet.visible = false
+	_loadout.visible = false
 	_pause.visible = true
 	# The save that leaving the settings just made, said where it can be seen.
 	var saved := _status_text == SAVED_LINE or _status_text == NOT_SAVED_LINE
@@ -453,7 +527,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], ["Loadout", open_loadout], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -482,10 +556,16 @@ func _build() -> void:
 	sheet.add_child(foot)
 	_button(foot, "Back", 0).pressed.connect(_show_pause)
 	_button(foot, "Defaults", 0).pressed.connect(_on_defaults)
+	_reset = _button(foot, RESET_PROGRESS, 0)
+	_reset.pressed.connect(_on_reset_progress)
 	_status = _label(foot, "", FONT, Palette.HOSTILE_AMBER)
 	_status.clip_text = true
 	_status.custom_minimum_size.x = COLUMN_W * 2
 	_sheet.visible = false
+	_loadout = LoadoutScreen.new()
+	_loadout.name = "Loadout"
+	add_child(_loadout)
+	_loadout.closed.connect(_on_loadout_closed)
 
 
 func _build_controls(col: VBoxContainer) -> void:
@@ -630,6 +710,8 @@ func _build_multiplayer(col: VBoxContainer) -> void:
 	_check(col, "net stats", "multiplayer", "net_stats")
 	_check(col, "light trails", "multiplayer", "light_trails")
 	_label(col, TRAILS_NOTE, FONT - 2, Palette.TEAL)
+	_check(col, "mods", "multiplayer", "mods")
+	_label(col, MODS_NOTE, FONT - 2, Palette.TEAL)
 
 
 ## The relay URL as typed, trimmed; refused (and said why) unless empty or a relay URL:

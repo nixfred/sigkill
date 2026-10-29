@@ -98,5 +98,5 @@ mine_radius_m = 0.18
 telegraph_s = 0.3
 crontab_note_s = 1.6
 remove_word = "crontab -r"
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["every_minute"])
+skin_slots = Array[String](["rose", "midnight", "reboot"])

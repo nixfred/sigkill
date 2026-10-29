@@ -124,6 +124,43 @@ const DEV_NULL_TEXT := Color(0.937254902, 0.560784314, 0.890196078)  # #ef8fe3 i
 const SIGHUP := Color(0.0, 0.749019608, 0.0)  # #00bf00 SIGHUP's body and light, its carrier wave, a confused daemon's seams
 const SIGHUP_HI := Color(0.8, 1.0, 0.760784314)  # #ccffc2 the wave's front, the burst's flash, the scan up a confused daemon
 const SIGHUP_TEXT := Color(0.529411765, 0.82745098, 0.360784314)  # #87d35c its light skin's beam colour, its strip lines, the "?" and "reloading config" tags
+# Light skins (C33): every weapon's alternates, each a name and a little fiction on the loadout screen
+# (resources/<weapon>_kit.tres), all cosmetic. Never near an enemy: every skin's body and beam keep at least
+# 0.16 (OKLab) from every hostile light (HOSTILE_LIGHTS: the daemons' crimson, hostile red and amber, the
+# runaway's hot magenta, the glitch's magenta, ICE's glacier, the hunter's cobalt, Black ICE's slate), which
+# leaves the greens, the yellow-greens, the cyans, the violets, pale pinks and whites (a search of the hue
+# wheel). A weapon's own skins keep 0.15 apart, so each reads apart at a glance; the beams are light enough
+# to read on black as the strip's text. Two weapons may share a colour, never a skin.
+const SKIN_PHOSPHOR := Color(0.200000000, 1.000000000, 0.200000000)  # #33ff33 an old green-screen console's phosphor: tty1
+const SKIN_P1 := Color(0.254901961, 1.000000000, 0.000000000)  # #41ff00 the harder, yellower P1 phosphor of the first green screens
+const SKIN_SPRING := Color(0.200000000, 1.000000000, 0.400000000)  # #33ff66 a spring green: @reboot and /dev/random
+const SKIN_DRACULA := Color(0.741176471, 0.576470588, 0.976470588)  # #bd93f9 the Dracula theme's purple
+const SKIN_DRACULA_GREEN := Color(0.313725490, 0.980392157, 0.482352941)  # #50fa7b the Dracula theme's green: its beam, grep's --color and chmod 755's seams
+const SKIN_CGA_CYAN := Color(0.333333333, 1.000000000, 1.000000000)  # #55ffff CGA's bright cyan: ^C and traceroute
+const SKIN_PINK := Color(0.960784314, 0.760784314, 0.905882353)  # #f5c2e7 Catppuccin's pink: SIGTERM's and the echo reply's
+const SKIN_MAUVE := Color(0.796078431, 0.650980392, 0.968627451)  # #cba6f7 Catppuccin's mauve: its beam
+const SKIN_BLACKLIGHT := Color(0.678431373, 0.200000000, 1.000000000)  # #ad33ff a blacklight's ultraviolet
+const SKIN_C64 := Color(0.486274510, 0.439215686, 0.854901961)  # #7c70da the Commodore 64's light blue: C64 and @midnight
+const SKIN_C64_CYAN := Color(0.666666667, 1.000000000, 0.933333333)  # #aaffee the C64's cyan: a beam
+const SKIN_CHARTREUSE := Color(0.800000000, 1.000000000, 0.000000000)  # #ccff00 chartreuse: exponential and dd
+const SKIN_CHARTREUSE_HI := Color(0.956862745, 1.000000000, 0.701960784)  # #f4ffb3 a near-white tint of it
+const SKIN_JADE := Color(0.176470588, 0.835294118, 0.717647059)  # #2dd5b7 a jade: fork()'s child and tee
+const SKIN_JADE_HI := Color(0.760784314, 1.000000000, 0.941176471)  # #c2fff0 a near-white tint of it
+const SKIN_INIT := Color(0.545098039, 0.349019608, 1.000000000)  # #8b59ff an electric violet: init and mkfifo
+const SKIN_VIOLET_HI := Color(0.878431373, 0.815686275, 1.000000000)  # #e0d0ff a near-white violet: the violets' beam
+const SKIN_CGA_YELLOW := Color(1.000000000, 1.000000000, 0.333333333)  # #ffff55 CGA's bright yellow: regex and 300 baud
+const SKIN_YELLOW_HI := Color(1.000000000, 1.000000000, 0.800000000)  # #ffffcc a near-white tint of it
+const SKIN_PAPER := Color(0.909803922, 0.941176471, 1.000000000)  # #e8f0ff a cool paper white: --preserve-root and chattr +i
+const SKIN_WHITE := Color(0.949019608, 0.949019608, 0.949019608)  # #f2f2f2 a VT220's white: /dev/zero
+const SKIN_DIAL := Color(0.545098039, 0.913725490, 0.992156863)  # #8be9fd a dial tone's pale cyan
+const SKIN_DIAL_HI := Color(0.878431373, 0.972549020, 1.000000000)  # #e0f8ff a near-white tint of it
+const SKIN_CYAN_HI := Color(0.878431373, 1.000000000, 1.000000000)  # #e0ffff a near-white cyan: the cyans' beam
+const SKIN_MINT_HI := Color(0.878431373, 1.000000000, 0.909803922)  # #e0ffe8 a near-white mint: the greens' beam
+const SKIN_PINK_HI := Color(1.000000000, 0.901960784, 0.964705882)  # #ffe6f6 a near-white pink: the echo reply's beam
+## How far a skin's hot colour runs from its beam toward white, when it names none (C33).
+const SKIN_HOT_WHITE := 0.55
+## Every light an enemy shows (C33): a skin keeps clear of each, so a player's weapon never reads as one.
+const HOSTILE_LIGHTS := [HOSTILE_RED, CRIMSON, HOSTILE_AMBER, HOT_MAGENTA, GLITCH_SPLIT, GLACIER, HUNTER_COBALT, BLACK_ICE]
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -137,8 +174,11 @@ const FOG := Color(0.011764706, 0.070588235, 0.078431373)  # #031214 the depth f
 const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the sky's haze at the horizon
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
-## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT], "brass": [PIPE, PIPE_TEXT], "plum": [DEV_NULL, DEV_NULL_TEXT], "carrier": [SIGHUP, SIGHUP_TEXT]}
+## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's. The
+## first thirteen are the weapons' own (stock); the rest are the alternates a player earns (C33).
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT, FROST_HI], "brass": [PIPE, PIPE_TEXT, PIPE_HI], "plum": [DEV_NULL, DEV_NULL_TEXT, DEV_NULL_HI], "carrier": [SIGHUP, SIGHUP_TEXT, SIGHUP_HI],
+	"tty1": [SKIN_PHOSPHOR, MATRIX_HEAD], "dracula": [SKIN_DRACULA, SKIN_DRACULA_GREEN], "ctrl_c": [SKIN_CGA_CYAN, SKIN_CYAN_HI], "catppuccin": [SKIN_PINK, SKIN_MAUVE], "blacklight": [SKIN_BLACKLIGHT, SKIN_VIOLET_HI], "p1": [SKIN_P1, MATRIX_HEAD], "c64": [SKIN_C64, SKIN_C64_CYAN], "exponential": [SKIN_CHARTREUSE, SKIN_CHARTREUSE_HI], "jade": [SKIN_JADE, SKIN_JADE_HI], "init": [SKIN_INIT, SKIN_VIOLET_HI], "color_always": [SKIN_DRACULA_GREEN, SKIN_MINT_HI], "regex": [SKIN_CGA_YELLOW, SKIN_YELLOW_HI], "preserve_root": [SKIN_PAPER, FLASH],
+	"dd": [SKIN_CHARTREUSE, SKIN_CHARTREUSE_HI], "midnight": [SKIN_C64, SKIN_VIOLET_HI], "reboot": [SKIN_SPRING, MATRIX_HEAD], "traceroute": [SKIN_CGA_CYAN, SKIN_CYAN_HI], "echo_reply": [SKIN_PINK, SKIN_PINK_HI], "chmod_755": [SKIN_DRACULA_GREEN, SKIN_MINT_HI], "immutable": [SKIN_PAPER, FLASH], "tee": [SKIN_JADE, SKIN_JADE_HI], "mkfifo": [SKIN_INIT, SKIN_VIOLET_HI], "dev_zero": [SKIN_WHITE, FLASH], "dev_random": [SKIN_SPRING, SKIN_C64_CYAN], "dial_tone": [SKIN_DIAL, SKIN_DIAL_HI], "baud_300": [SKIN_CGA_YELLOW, SKIN_YELLOW_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff
@@ -461,6 +501,14 @@ static func skin_body(skin: String) -> Color:
 ## A weapon light skin's beam colour: tracers, the muzzle flash, a miss's sparks.
 static func skin_beam(skin: String) -> Color:
 	return SKINS.get(skin, SKINS["teal"])[1]
+
+
+## A weapon light skin's hot colour (C33): the near-white cores of a beam, an arc, a wave's front, a hole's
+## ring. A skin may name its own (a third entry, as the stock frost, brass, plum and carrier do); otherwise its
+## beam colour run most of the way to white.
+static func skin_hot(skin: String) -> Color:
+	var entry: Array = SKINS.get(skin, SKINS["teal"])
+	return entry[2] if entry.size() > 2 else (entry[1] as Color).lerp(FLASH, SKIN_HOT_WHITE)
 
 
 ## Dark body with a glowing emission colour. Used for the weapon viewmodels.

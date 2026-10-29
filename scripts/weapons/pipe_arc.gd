@@ -62,6 +62,10 @@ const SPILL_LAST := 1.0
 const CRACKLE_GAIN := 0.5
 const CRACKLE_UNIT := 6.0
 
+## Its colours (C33): the shooter's skin of pipe |, the stock brass until painted.
+var body := Palette.PIPE
+var hot := Palette.PIPE_HI
+var light := Palette.PIPE_TEXT
 var _ribbons: MeshInstance3D
 var _mesh: ImmediateMesh
 var _material: ShaderMaterial
@@ -90,8 +94,8 @@ func _ready() -> void:
 	_mesh = ImmediateMesh.new()
 	_material = ShaderMaterial.new()
 	_material.shader = ArcShader
-	_material.set_shader_parameter("color", Palette.PIPE)
-	_material.set_shader_parameter("hot", Palette.PIPE_HI)
+	_material.set_shader_parameter("color", body)
+	_material.set_shader_parameter("hot", hot)
 	_material.set_shader_parameter("packet_m", PACKET_M)
 	_material.set_shader_parameter("packet_speed", PACKET_SPEED)
 	_ribbons = MeshInstance3D.new()
@@ -115,7 +119,7 @@ func _ready() -> void:
 	_blooms = MultiMeshInstance3D.new()
 	_blooms.name = "Blooms"
 	_blooms.multimesh = mm
-	_blooms.material_override = Palette.glow(Palette.PIPE_TEXT, BLOOM_ENERGY)
+	_blooms.material_override = Palette.glow(light, BLOOM_ENERGY)
 	_blooms.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_blooms.top_level = true
 	add_child(_blooms)
@@ -132,6 +136,19 @@ func _ready() -> void:
 
 ## A chain: the stream leaves `from` (world space) and reaches each of `points` in order; the first
 ## `linked` of them are links (the rest, at most one, where a miss ended).
+## The arcs in the light skin `skin` (C33, scripts/palette.gd): their sheath in the skin's body, their cores and
+## packets in its hot colour, the blooms at each link in its beam colour.
+func paint(skin: String) -> void:
+	body = Palette.skin_body(skin)
+	hot = Palette.skin_hot(skin)
+	light = Palette.skin_beam(skin)
+	if _material == null:
+		return
+	_material.set_shader_parameter("color", body)
+	_material.set_shader_parameter("hot", hot)
+	_blooms.material_override = Palette.glow(light, BLOOM_ENERGY)
+
+
 func fire(from: Vector3, points: PackedVector3Array, linked: int) -> void:
 	if not from.is_finite() or points.is_empty():
 		return

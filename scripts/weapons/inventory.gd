@@ -385,6 +385,34 @@ func clear_jams() -> void:
 
 ## Every magazine and reserve full again, nothing in progress, the ult meter empty: a fresh
 ## life.
+## Takes `old`'s state over for the same weapons worn anew (C33: a skin or a mod changed, scripts/player.gd
+## wear()): the drawn and last slots, the ult meter (at most the new full), each magazine (at most its new size)
+## and reserve, each interval, jam and recharge, and each tank or buffer whose tuning did not change (a changed
+## one starts as a new life's). Nothing refills; a reload or a draw in progress is let go.
+func take_state(old: RefCounted) -> void:
+	if old == null or old.slot_count() != defs.size():
+		return
+	current = old.current
+	last = old.last
+	fiction_left = old.fiction_left
+	block_left = old.block_left
+	free_ammo = old.free_ammo
+	var ult := ult_slot()
+	meter = minf(old.meter, defs[ult].ult_meter) if ult >= 0 else 0.0
+	for i in defs.size():
+		var mag: int = old.mags[i]
+		var reserve: int = old.reserves[i]
+		mags[i] = mag if defs[i].magazine_size == WeaponDefScript.INFINITE else mini(maxi(mag, 0), defs[i].magazine_size)
+		reserves[i] = reserve if defs[i].reserve_ammo == WeaponDefScript.INFINITE or reserve == WeaponDefScript.INFINITE else mini(reserve, defs[i].reserve_ammo)
+		cooldowns[i] = old.cooldowns[i]
+		jams[i] = old.jams[i]
+		recharges[i] = old.recharges[i]
+		if old.coolants[i] != null and coolants[i] != null and defs[i].freeze_tuning() == old.defs[i].freeze_tuning():
+			coolants[i] = old.coolants[i]
+		if old.buffers[i] != null and buffers[i] != null and defs[i].pipe_tuning() == old.defs[i].pipe_tuning():
+			buffers[i] = old.buffers[i]
+
+
 func refill() -> void:
 	meter = 0.0
 	for i in defs.size():

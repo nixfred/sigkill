@@ -262,8 +262,22 @@ extends Node
 ## 13), _bomb and _blast mean a burst for it and the state words carry the confusion, which an older build
 ## would neither draw nor believe, so protocol 18.
 ##
+## Unlocks, mods and skins (C33, scripts/unlocks/): a player's loadout is its look, one byte a weapon (the
+## skin's index in the weapon's kit, and a bit for its mod; scripts/unlocks/loadout.gd). A joiner's hello
+## carries its own after its name; the host cleans it (an unknown skin is the weapon's own) and, while its
+## "mods" rule is off (the settings' multiplayer "mods", on by default, fixed for the match when it starts
+## hosting and told to joiners on _rules), clears every mod. Every roster carries each player's accepted look,
+## so every screen draws each player's shots, throws, beams and arcs in that player's skins (def_of()), and the
+## host judges each player's shots and throws with the mods it accepted (scripts/net/combat.gd keeps every
+## player's worn weapons); a joiner wears the look the host accepted for it from its first roster. A look is
+## fixed for the match: the loadout screen's changes count from the next. Unlocks are earned on each machine
+## alone, and in a match only from the host's word for that player (a kill it credits with its weapon, a
+## headshot it confirms: _death, and _daemon_struck now naming the weapon). The hello, the roster, _rules and
+## _daemon_struck changed, so protocol 19; an older build gets the version refusal.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
-## never the system's user or host name), positions, angles and velocities, shot intents
+## never the system's user or host name), each player's look (C33: a skin index and a mod bit per weapon,
+## game data) and the mods rule, positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
 ## (on or off, the seconds left), the light-trail rule and walls, sudo asks and each
 ## player's sudo charges and root time, a fork() shot's seed, a grep shot's seed and its claimed and
@@ -366,7 +380,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 18
+const PROTOCOL := 19
 ## An avatar's freeze beam starts this far ahead of its eye and this far below it (C29): its emitter.
 const BEAM_AHEAD_M := 0.45
 const BEAM_DROP_M := 0.2
@@ -375,6 +389,8 @@ const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
 const MAGIC_1 := 0x4B  # "K"
 const HELLO_HEAD := 5
+## The longest look a hello carries (C33): one byte a weapon, two banks of slots at most.
+const LOOK_LAST := 18
 const REPLY_HEAD := 7
 const VERSION_LAST := 65535
 const SLOT_LAST := 255
@@ -532,6 +548,8 @@ var _seq := 0
 var _send_wait_s := 0.0
 ## Host: joiners that passed the handshake, id -> {slot, name}, until peer_connected.
 var _pending := {}
+## Hosting: each joiner still in its handshake, its look as the host took it from its hello (C33).
+var _pending_looks := {}
 ## Host: refused joiners and the grace left before they are dropped, id -> ms.
 var _refused := {}
 var _ct: CombatTuningScript
@@ -609,6 +627,13 @@ var host_practice := true
 var host_difficulty := "normal"
 ## The host's ICE setting (I1), as this joiner last heard it: on unless the host turned it off.
 var host_ice := true
+## The match's mods rule (C33): hosting, the host's own setting when it started hosting; joined, the host's
+## word. Off, every player's mods are cleared and the host judges the shipped weapons.
+var match_mods := true
+## Each player's look as this screen keeps it (C33): id -> its look (a byte a weapon), and id -> its weapons as
+## worn (weapon id -> WeaponDef).
+var looks := {}
+var _worn := {}
 ## Hosting, the wait to the next ICE word; joined, ICE words taken (for the checks).
 var _ice_wait_s := 0.0
 var ice_words := 0
@@ -880,6 +905,8 @@ func attach(arena: Node, player: Node) -> void:
 			stop.intent.connect(_on_sigstop_intent)
 		if is_online() and not _stop_word.is_empty():
 			stop.take_host(_stop_word[0], _stop_word[1])  # the host's word outlives an R reload
+	if is_online():
+		_wear_match_look()  # the new arena's player wears the match's look (C33)
 	if is_online() and _kept_inventory != null and player.has_method("adopt_inventory"):
 		player.adopt_inventory(_kept_inventory)  # an R reload mid-match keeps the ammo
 	_kept_inventory = null
@@ -933,11 +960,15 @@ func host(port: int = -1) -> bool:
 	multiplayer.multiplayer_peer = _enet
 	my_id = 1
 	players = {1: {"slot": 1, "name": assigned_name(_t.display_name, 1)}}
+	# The match's mods rule, fixed while it lasts, and this player's own look as it accepts it (C33).
+	match_mods = GameSettings.current().value("multiplayer", "mods") == true
+	_set_look(1, Loadout.accepted(_own_look(), match_mods))
+	_wear_match_look()
 	_seq = 0
 	fire_seq = 0
 	_clock = 0.0
 	combat = Combat.new(_ct, _weapon_list, _swap_s)
-	combat.add_player(1)
+	combat.add_player(1, _worn_defs(1))
 	_top_left = top_tuning_in_use().refresh_s
 	_reset_player_weapons()
 	_mirror_from_combat()
@@ -1461,6 +1492,7 @@ func _shut_peer() -> void:
 		IP.erase_resolve_item(_resolve_item)
 		_resolve_item = -1
 	_pending.clear()
+	_pending_looks.clear()
 	_refused.clear()
 	_relay_join = {}
 	if _enet != null:
@@ -1521,8 +1553,14 @@ func _clear_players() -> void:
 	root_left = {}
 	_my_charges = 0
 	_top_word = {}
+	match_mods = true
+	looks = {}
+	_worn = {}
+	_pending_looks = {}
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_alive"):
 		_player.set_alive(true)
+	if _player != null and is_instance_valid(_player) and _player.has_method("wear"):
+		_player.wear(_player.chosen_look())  # the match is over: back to its own choices (C33)
 	combat_changed.emit()
 
 
@@ -1530,7 +1568,7 @@ func _clear_players() -> void:
 
 func _on_authenticating(id: int) -> void:
 	if state == State.CONNECTING and id == 1:
-		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, _t.display_name))
+		(multiplayer as SceneMultiplayer).send_auth(1, hello_bytes(protocol, _t.display_name, _own_look()))
 
 
 func _on_auth(id: int, data: PackedByteArray) -> void:
@@ -1561,7 +1599,9 @@ func _host_auth(id: int, data: PackedByteArray) -> void:
 		return
 	var slot := _free_slot()
 	var name := assigned_name(hello["name"], slot)
+	# Its look as the host takes it (C33): cleaned, its mods cleared while the match's rule is off.
 	_pending[id] = {"slot": slot, "name": name}
+	_pending_looks[id] = Loadout.accepted(Loadout.clean(hello["look"], _weapon_list), match_mods)
 	m.send_auth(id, reply_bytes(protocol, Verdict.OK, slot, name))
 	m.complete_auth(id)
 
@@ -1587,6 +1627,7 @@ func _joiner_auth(data: PackedByteArray) -> void:
 func _on_auth_failed(id: int) -> void:
 	if state == State.HOSTING:
 		_pending.erase(id)
+		_pending_looks.erase(id)
 		_refused.erase(id)
 	elif state == State.CONNECTING and id == 1:
 		_fail(_refusal if _refusal != "" else CANT_REACH)
@@ -1599,7 +1640,9 @@ func _on_peer_connected(id: int) -> void:
 	_pending.erase(id)
 	_set_peer_timeout(id)
 	_steady_loopback(id)
-	combat.add_player(id)
+	_set_look(id, _pending_looks.get(id, PackedByteArray()))
+	_pending_looks.erase(id)
+	combat.add_player(id, _worn_defs(id))
 	_actions_from[id] = 0
 	_mirror_from_combat()
 	_spawn_avatar(id)
@@ -1617,7 +1660,7 @@ func _on_peer_disconnected(id: int) -> void:
 	players.erase(id)
 	combat.remove_player(id)
 	_actions_from.erase(id)
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat, _flat_round]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat, _flat_round, looks, _worn]:
 		table.erase(id)
 	_drop_avatar(id)
 	_drop_jobs(id)  # cron's jobs leave with their owner (C27)
@@ -1691,7 +1734,9 @@ func _send_roster() -> void:
 	var deads := PackedByteArray()
 	var protects := PackedFloat32Array()
 	var life_numbers := PackedInt32Array()
+	var looks_now := PackedByteArray()
 	for id in players:
+		looks_now.append_array(look_of(id))
 		ids.append(id)
 		slots.append(players[id]["slot"])
 		names.append(players[id]["name"])
@@ -1702,16 +1747,17 @@ func _send_roster() -> void:
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_roster.rpc_id(id, ids, slots, names, healths, deads, protects, life_numbers)
+			_roster.rpc_id(id, ids, slots, names, healths, deads, protects, life_numbers, looks_now)
 	_send_rules()  # a new joiner learns the match's rules with its first roster
 
 
 @rpc("authority", "call_remote", "reliable")
-func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray, protects: PackedFloat32Array, life_numbers: PackedInt32Array) -> void:
+func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedStringArray, healths: PackedFloat32Array, deads: PackedByteArray, protects: PackedFloat32Array, life_numbers: PackedInt32Array, worn_looks: PackedByteArray) -> void:
 	if state != State.JOINED:
 		return
 	var n := ids.size()
-	if n < 1 or n > _t.max_players or slots.size() != n or names.size() != n or healths.size() != n or deads.size() != n or protects.size() != n or life_numbers.size() != n:
+	var w := _weapon_list.size()
+	if n < 1 or n > _t.max_players or slots.size() != n or names.size() != n or healths.size() != n or deads.size() != n or protects.size() != n or life_numbers.size() != n or worn_looks.size() != n * w:
 		return
 	var next := {}
 	for i in n:
@@ -1722,11 +1768,12 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 		return
 	players = next
 	for i in n:
+		_set_look(ids[i], worn_looks.slice(i * w, (i + 1) * w))  # each player's look, as the host accepted it (C33)
 		health[ids[i]] = healths[i]
 		dead[ids[i]] = deads[i] != 0
 		protect_left[ids[i]] = protects[i]
 		lives[ids[i]] = life_numbers[i]
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat, looks, _worn]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -1831,6 +1878,7 @@ func _spawn_avatar(id: int) -> void:
 	avatar.extrapolate_max_s = _t.extrapolate_max_ms / 1000.0
 	_players_node.add_child(avatar)
 	avatars[id] = avatar
+	_paint_avatar(id)
 	_show_avatar_state(id)
 
 
@@ -1859,8 +1907,70 @@ func _sync_weapons() -> void:
 	if _player == null or not is_instance_valid(_player) or not _player.has_method("reset_inventory"):
 		return
 	_weapons_synced = true
+	_wear_match_look()  # the look the host accepted for this player (C33), before the fresh start
 	_player.reset_inventory(true)
 	_on_weapon_drawn(_player.weapon_tuning().id)
+
+
+# --- Looks (C33): each player's skins and mods. ---
+
+## Player `id`'s `weapon` as that player wears it in this match (C33): in its skin, with its mod when the host
+## accepted one; the shipped weapon for anyone or anything else.
+func def_of(id: int, weapon: String) -> WeaponDefScript:
+	var worn: Dictionary = _worn.get(id, {})
+	return worn[weapon] if worn.has(weapon) else _weapons.get(weapon)
+
+
+## Player `id`'s look as this screen keeps it (the host's accepted one), or every weapon stock.
+func look_of(id: int) -> PackedByteArray:
+	var look = looks.get(id)
+	return look if look is PackedByteArray and look.size() == _weapon_list.size() else Loadout.stock(_weapon_list)
+
+
+## Player `id` wears `look` from now on, on this screen: its weapons made once, its avatar's beam and arcs painted.
+func _set_look(id: int, look: PackedByteArray) -> void:
+	if not players.has(id):
+		return
+	var clean := Loadout.clean(look, _weapon_list)
+	var worn := {}
+	for def in Loadout.defs_for(_weapon_list, clean):
+		worn[def.id] = def
+	looks[id] = clean
+	_worn[id] = worn
+	_paint_avatar(id)
+
+
+## Player `id`'s weapons as worn, in slot order: what the host's combat judges its shots with.
+func _worn_defs(id: int) -> Array:
+	return Loadout.defs_for(_weapon_list, look_of(id))
+
+
+## Player `id`'s avatar's freeze beam and chains in its skins.
+func _paint_avatar(id: int) -> void:
+	var avatar = avatars.get(id)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.has_method("paint_weapons"):
+		return
+	var freeze := "frost"
+	var chain := "brass"
+	for def in _worn.get(id, {}).values():
+		if def.is_freeze():
+			freeze = def.light_skin
+		elif def.is_chain():
+			chain = def.light_skin
+	avatar.paint_weapons(freeze, chain)
+
+
+## This player's own look as it chose it on the loadout screen (its progress).
+func _own_look() -> PackedByteArray:
+	if _player != null and is_instance_valid(_player) and _player.has_method("chosen_look"):
+		return _player.chosen_look()
+	return Loadout.clean(Loadout.look_of(_weapon_list, Progress.current()), _weapon_list)
+
+
+## This player wears the look the host accepted for it.
+func _wear_match_look() -> void:
+	if _player != null and is_instance_valid(_player) and _player.has_method("wear") and players.has(my_id):
+		_player.wear(look_of(my_id))
 
 
 ## A match starts with slot 1 drawn and every weapon full on this side, as the host counts.
@@ -2037,7 +2147,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 	if shooter != my_id and ice != null and ice.jammed(shooter, weapon):
 		combat.drop_after(Combat.DROP_JAM)  # an ICE field jammed this weapon in its hand (I1)
 		return
-	var def: WeaponDefScript = combat.weapons[weapon]
+	var def: WeaponDefScript = combat.def_of(shooter, weapon)  # its skin and the mod the host accepted (C33)
 	# Within the tolerance is not enough: a claimed origin the host's view of the eye
 	# cannot see (behind cover it stands against) is a shot through that cover.
 	if shooter != 1 and _obstructed(shooter, eye, origin, def.hit_mask):
@@ -2408,7 +2518,7 @@ func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
 ## A chain in this arena: the host's, which decides (fuses, contacts, the judge), or a
 ## joiner's, which only draws on the host's word. The thrower's own body is never hit.
 func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(thrower, weapon)
 	if def.is_hole():
 		_spawn_hole(throw_id, thrower, weapon, seed, origin, dir, deciding)  # /dev/null (C31): its own throw
 		return
@@ -2437,7 +2547,7 @@ func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin
 ## the rest. The seed's sign is the thrower's root (a wider hole). The thrower's own screen moves and hurts
 ## its own idle dummies in a match whose daemons do not fight, as pipe | does (C30).
 func _spawn_hole(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(thrower, weapon)
 	var never: Array[RID] = []
 	if thrower == my_id and _player != null and is_instance_valid(_player):
 		never.append(_player.get_rid())
@@ -2548,7 +2658,7 @@ func _judge_hole(hole: Node, what: String, throw_id: int, thrower: int, weapon: 
 ## seed's sign is the thrower's root (a wider reach). The thrower's own screen confuses its own idle dummies
 ## in a match whose daemons do not fight, as pipe | and /dev/null land on them (C30, C31).
 func _spawn_hup(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(thrower, weapon)
 	var never: Array[RID] = []
 	if thrower == my_id and _player != null and is_instance_valid(_player):
 		never.append(_player.get_rid())
@@ -2643,7 +2753,7 @@ func _tell_blast(throw_id: int, gen: int, index: int, local: Vector3, only := 0)
 func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: String) -> void:
 	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player):
 		return
-	var tuning: Resource = _weapons[weapon].projectile
+	var tuning: Resource = def_of(thrower, weapon).projectile
 	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
 	var hits := PackedInt32Array()
 	var healths := PackedFloat32Array()
@@ -2695,7 +2805,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, thrower: int, weapon: Str
 ## handed to it (its callout, its shot count, its own dummies). A grep shot's darts (C25) go the
 ## same way, one homing on each of `marks` (player ids) as this side sees it, or one straight.
 func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, origin: Vector3, dir: Vector3, deciding: bool, marks := PackedInt32Array()) -> void:
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(shooter, weapon)
 	var root: bool = combat.root(shooter) if deciding and combat != null else root_left.get(shooter, 0.0) > 0.0
 	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
 	var mine: bool = shooter == my_id and _player_ready()
@@ -2738,7 +2848,7 @@ func _on_volley_finished(_landed: int, shot_id: int) -> void:
 func _spawn_ping(id: int, pinger: int, weapon: String, at: Vector3, deciding: bool) -> void:
 	var center: Vector3 = _arena.to_global(at)
 	var mine: bool = pinger == my_id and _player_ready()
-	var pulse := PingPulseScript.spawn(_arena, _weapons[weapon], center, center.y - FEET_M, deciding, mine)
+	var pulse := PingPulseScript.spawn(_arena, def_of(pinger, weapon), center, center.y - FEET_M, deciding, mine)
 	_volleys[id] = pulse
 	pulse.finished.connect(_on_volley_finished.bind(id))
 	if mine:
@@ -2760,7 +2870,7 @@ func _mine_place(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScri
 ## which draws and runs on the host's word (`armed`: already past its arm delay). This player's own
 ## is handed to it, for the strip's count and the callout.
 func _spawn_mine(id: int, owner: int, weapon: String, at: Vector3, normal: Vector3, left: int, deciding: bool, armed: bool) -> void:
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(owner, weapon)
 	var judge := _judge_slug_blast.bind(owner, weapon, false) if deciding else Callable()
 	var mine := CronMine.spawn(_arena, def, _arena.to_global(at), (_arena.global_transform.basis * normal).normalized(), id, owner, left, deciding, armed, judge)
 	_mines[id] = mine
@@ -2912,7 +3022,7 @@ func _on_slug_blasted(at: Vector3, shot_id: int) -> void:
 func _judge_slug_blast(at: Vector3, shooter: int, weapon: String, root: bool) -> int:
 	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player) or _arena == null or not is_instance_valid(_arena):
 		return 0
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(shooter, weapon)
 	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
 	var scale := combat.damage_scale(shooter)
 	var hits := PackedInt32Array()
@@ -3037,7 +3147,7 @@ func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shoote
 		var id: int = collider.get_meta(PLAYER_ID_META, 0)
 		if id != shooter and combat.has_player(id):
 			victim = id
-	var def: WeaponDefScript = _weapons[weapon]
+	var def: WeaponDefScript = def_of(shooter, weapon)
 	if victim == 0:
 		if shooter != my_id and daemons_fight() and _is_daemon(collider):
 			return _hit_daemon(collider, shooter, def.fork_damage(gen) * combat.damage_scale(shooter), at, dir, weapon)  # a joiner's pellet on the host's daemon (C27b)
@@ -3269,7 +3379,8 @@ func _broadcast_shot(shooter: int, weapon: String, origin: Vector3, ends: Packed
 func _shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
 	if state != State.JOINED or not players.has(shooter) or not _weapons.has(weapon) or not origin.is_finite():
 		return
-	var most: int = _weapons[weapon].pipe_tuning().root_max_links if _weapons[weapon].is_chain() else _weapons[weapon].pellet_count
+	var worn: WeaponDefScript = def_of(shooter, weapon)  # its mod may change how many pellets or links (C33)
+	var most: int = worn.pipe_tuning().root_max_links if worn.is_chain() else worn.pellet_count
 	if ends.is_empty() or ends.size() > most or hits.size() != healths.size() or hits.size() > players.size():
 		return
 	for end in ends:
@@ -3298,7 +3409,7 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 		_draw_chain(shooter, origin, ends)  # pipe | (C30): the stream link to link
 	elif shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_volley():
 		for end in ends:
-			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
+			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), def_of(shooter, weapon))  # in the shooter's skin (C33)
 	if hits.is_empty():
 		shot_confirmed.emit(shooter, 0, origin, ends[0])
 	for hit in hits:
@@ -3629,17 +3740,18 @@ func _send_rules() -> void:
 	_told_rule = daemon_rule()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_rules.rpc_id(id, _trails_rule, _told_rule[0], _told_rule[1], _told_rule[2])
+			_rules.rpc_id(id, _trails_rule, _told_rule[0], _told_rule[1], _told_rule[2], match_mods)
 
 
 ## The match's rules, from the host: light-trail mode on or off (C20), and the daemons' (C27b):
 ## practice (the old never-attack dummies) or fighting, at which difficulty; and whether ICE is on
-## (I1; never in practice).
+## (I1; never in practice); and whether the host accepts mods (C33: fixed for the match).
 @rpc("authority", "call_remote", "reliable")
-func _rules(light_trails: bool, practice: bool, difficulty: String, ice: bool) -> void:
+func _rules(light_trails: bool, practice: bool, difficulty: String, ice: bool, mods: bool) -> void:
 	if state != State.JOINED or not DaemonAiTuning.DIFFICULTIES.has(difficulty):
 		return
-	var news := practice != host_practice or difficulty != host_difficulty or ice != host_ice
+	var news := practice != host_practice or difficulty != host_difficulty or ice != host_ice or mods != match_mods
+	match_mods = mods
 	host_practice = practice
 	host_difficulty = difficulty
 	host_ice = ice
@@ -3815,24 +3927,28 @@ func _daemon_bolt(index: int, bolt_id: int, from: Vector3, dir: Vector3) -> void
 
 
 ## The host's word to the shooter that its shot struck daemon `dummy` (C27b): its hit marker, and
-## a kill's credit. Nothing for the host's own shots, which land on its own arena.
-func _tell_struck(shooter: int, dummy: Node, killed: bool) -> void:
+## a kill's credit, with the weapon it came from (C33: the kill's feat). Nothing for the host's own shots,
+## which land on its own arena.
+func _tell_struck(shooter: int, dummy: Node, killed: bool, weapon: String = "") -> void:
 	if shooter == 1 or not multiplayer.get_peers().has(shooter):
 		return
 	var index := _daemon_index(dummy)
 	if index >= 0:
-		_daemon_struck.rpc_id(shooter, index, killed)
+		_daemon_struck.rpc_id(shooter, index, killed, weapon)
 
 
-## This player's own shot struck the host's daemon `index`, from the host, and killed it or not:
-## its hit marker (the kill's credit comes with the death in the state word).
+## This player's own shot struck the host's daemon `index`, from the host, and killed it or not, with
+## `weapon` (C33): its hit marker (the kill's credit comes with the death in the state word), and a kill's feat
+## toward this player's unlocks, on the host's word.
 @rpc("authority", "call_remote", "reliable")
-func _daemon_struck(index: int, killed: bool) -> void:
+func _daemon_struck(index: int, killed: bool, weapon: String) -> void:
 	if state != State.JOINED or _arena == null or not is_instance_valid(_arena):
 		return
 	var director := DaemonDirector.of(_arena)
 	if director == null or index < 0 or index >= director.brains().size():
 		return
+	if killed and _weapons.has(weapon):
+		Progress.match_feat("kills_" + weapon)
 	daemon_struck.emit(index, killed)
 
 
@@ -3847,7 +3963,7 @@ func breaker_hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3
 func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3, source: String = "") -> bool:
 	var landed: bool = dummy.hit_by_other(damage, point, way, shooter, source) == true
 	if landed:
-		_tell_struck(shooter, dummy, not dummy.is_alive())
+		_tell_struck(shooter, dummy, not dummy.is_alive(), source)
 	return landed
 
 
@@ -4204,6 +4320,12 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE or weapon == BLACK_CAUSE:
 		last_killer_name[victim] = _daemon_name(weapon)  # derezzed by the daemon, named as this screen shows it (C27b); or by hunter ICE (I1), or Black ICE (I3)
 		last_kill_self[victim] = FLAT_WORD if weapon == BLACK_CAUSE else DAEMON_WORD
+	if killer == my_id and killer != victim and _weapons.has(weapon):
+		# A kill the host credits this player with, by its weapon (C33): a feat toward its unlocks, and a kill -9
+		# headshot one more (the head as this player's own trace of the rail saw it).
+		Progress.match_feat("kills_" + weapon)
+		if _weapons[weapon].is_ult() and _player_ready() and _player.took_head(victim):
+			Progress.match_feat("rail_heads")
 	if killer == my_id and killer != victim and _weapons.has(weapon) and _player_ready():
 		if _weapons[weapon].is_ult():
 			_player.rail_kill.emit(_player.took_head(victim))
@@ -4513,26 +4635,36 @@ static func hostname_ok(name: String) -> bool:
 	return true
 
 
-## The joiner's hello: "SK", the protocol version, the name's length and the name.
-static func hello_bytes(version: int, name: String) -> PackedByteArray:
+## The joiner's hello: "SK", the protocol version, the name's length and the name; then (C33) the look's
+## length and the look, one byte a weapon.
+static func hello_bytes(version: int, name: String, look := PackedByteArray()) -> PackedByteArray:
 	var shown := name if Tuning.name_ok(name) else PLACEHOLDER
 	var out := PackedByteArray([MAGIC_0, MAGIC_1, 0, 0, 0])
 	out.encode_u16(2, clampi(version, 0, VERSION_LAST))
 	out.encode_u8(4, shown.length())
 	out.append_array(shown.to_ascii_buffer())
+	if not look.is_empty():
+		out.append(mini(look.size(), LOOK_LAST))
+		out.append_array(look.slice(0, LOOK_LAST))
 	return out
 
 
-## {version, name} from a hello, or {} when it is not one. A name the game cannot show
-## becomes the placeholder.
+## {version, name, look} from a hello, or {} when it is not one. A name the game cannot show
+## becomes the placeholder; a hello with no look (an older build's) has an empty one.
 static func parse_hello(data: PackedByteArray) -> Dictionary:
 	if data.size() < HELLO_HEAD or data[0] != MAGIC_0 or data[1] != MAGIC_1:
 		return {}
 	var n := data.decode_u8(4)
-	if data.size() != HELLO_HEAD + n:
+	var look := PackedByteArray()
+	if data.size() > HELLO_HEAD + n:
+		var k := data.decode_u8(HELLO_HEAD + n)
+		if data.size() != HELLO_HEAD + n + 1 + k:
+			return {}
+		look = data.slice(HELLO_HEAD + n + 1)
+	elif data.size() != HELLO_HEAD + n:
 		return {}
-	var name := data.slice(HELLO_HEAD).get_string_from_ascii()
-	return {"version": data.decode_u16(2), "name": name if Tuning.name_ok(name) else PLACEHOLDER}
+	var name := data.slice(HELLO_HEAD, HELLO_HEAD + n).get_string_from_ascii()
+	return {"version": data.decode_u16(2), "name": name if Tuning.name_ok(name) else PLACEHOLDER, "look": look}
 
 
 ## The host's reply: "SK", its version, the verdict, the slot and the assigned name.

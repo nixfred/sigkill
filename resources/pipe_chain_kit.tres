@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_brass"]
+script = ExtResource("2_skin")
+skin = "brass"
+display_name = "stock brass"
+fiction = "stdout into stdin, in brass"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_tee"]
+script = ExtResource("2_skin")
+skin = "tee"
+display_name = "tee"
+fiction = "one in, two out, in jade"
+feat = "kills_pipe_chain"
+need = 15
+
+[sub_resource type="Resource" id="Skin_mkfifo"]
+script = ExtResource("2_skin")
+skin = "mkfifo"
+display_name = "mkfifo"
+fiction = "a pipe with a name"
+feat = "chains3"
+need = 15
+
+[sub_resource type="Resource" id="Mod_xargs"]
+script = ExtResource("3_mod")
+id = "xargs"
+display_name = "xargs"
+fiction = "more links, each one weaker"
+gains = {"pipe:max_links": 6, "pipe:root_max_links": 7}
+costs = {"pipe:link_keep": 0.6}
+feat = "chains3"
+need = 3
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "pipe_chain"
+skins = Array[Resource]([SubResource("Skin_brass"), SubResource("Skin_tee"), SubResource("Skin_mkfifo")])
+mod = SubResource("Mod_xargs")

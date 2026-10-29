@@ -610,7 +610,7 @@ func _match_checks() -> void:
 	var cid: int = cs.my_id
 	var session_code := _code("res://scripts/net/net_session.gd")
 	var rpcs := session_code.count("@rpc(")
-	_check("acceptance: the wire: protocol 18 (15 at C29, 16 at C30, 17 at C31, 18 at C32), no new message (28 RPCs, as I2 left them) and no changed one: a chain is the usual fire intent, told as the usual shot message (its ends the chain's points)", joined and Session.PROTOCOL == 18 and rpcs == 28 and _body(session_code, "_handle_fire").contains("_pipe_judge(shooter, origin, dir, def)") and _body(session_code, "_shot").contains("pipe_tuning().root_max_links"), "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 19 (15 at C29, 16 at C30, 17 at C31, 18 at C32, 19 at C33), no new message (28 RPCs, as I2 left them) and no changed one: a chain is the usual fire intent, told as the usual shot message (its ends the chain's points)", joined and Session.PROTOCOL == 19 and rpcs == 28 and _body(session_code, "_handle_fire").contains("_pipe_judge(shooter, origin, dir, def)") and _body(session_code, "_shot").contains("pipe_tuning().root_max_links"), "%d RPCs" % rpcs)
 	var hp = host["player"]
 	var cp = client["player"]
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:

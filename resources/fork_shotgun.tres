@@ -91,5 +91,5 @@ pellet_radius_m = 0.035
 pellet_trail_m = 0.7
 fork_flash_radius_m = 0.09
 fork_flash_s = 0.08
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["deep_fork"])
+skin_slots = Array[String](["yellow", "jade", "init"])

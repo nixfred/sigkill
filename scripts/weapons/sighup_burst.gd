@@ -79,6 +79,8 @@ var exclude: Array[RID] = []
 var judge_players := Callable()
 var body_color := Palette.SIGHUP
 var light_color := Palette.SIGHUP_TEXT
+## Its skin's hot colour (C33): the wave's front, the flash, the pop.
+var hot_color := Palette.SIGHUP_HI
 
 var phase := Phase.FLYING
 ## Seconds since it was thrown, and since it went off.
@@ -123,6 +125,7 @@ static func spawn(root_node: Node, with_tuning: Tuning, origin: Vector3, velocit
 	burst.decides_daemons = daemons
 	burst.body_color = Palette.skin_body(skin)
 	burst.light_color = Palette.skin_beam(skin)
+	burst.hot_color = Palette.skin_hot(skin)
 	burst._pos = origin
 	burst._vel = velocity
 	field_of(root_node).add_child(burst)
@@ -162,6 +165,7 @@ func _ready() -> void:
 	_look = LookScript.new()
 	_look.name = "Look"
 	add_child(_look)
+	_look.hot_color = hot_color
 	_look.setup(tuning, body_color, light_color, reach)
 	_hiss = AudioStreamPlayer3D.new()
 	_hiss.stream = _sound()

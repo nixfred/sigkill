@@ -185,6 +185,8 @@ func _land(damage: float, point: Vector3, direction: Vector3, source: String, sh
 		_hurt(point, direction)
 		return true
 	_health = 0.0
+	if shooter == 0 and self is IceBarrier:
+		Progress.judged_feat(self, "ice_walls")  # an ICE wall broken by this machine's own player (C33)
 	_break(point, direction)
 	return true
 

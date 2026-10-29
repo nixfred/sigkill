@@ -81,5 +81,5 @@ falloff_floor = 0.2
 light_skin = "violet"
 reload_click_hz = 640.0
 reload_gain = 0.55
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["choke"])
+skin_slots = Array[String](["violet", "ctrl_c", "catppuccin"])

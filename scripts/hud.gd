@@ -54,6 +54,7 @@ var _freeze: FreezeHud
 var _pipe: PipeHud
 var _dev_null: DevNullHud
 var _sighup: SighupHud
+var _toast: UnlockToast
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -170,6 +171,10 @@ func _ready() -> void:
 	_sighup.name = "SighupHud"
 	_sighup.crosshair = _crosshair
 	root.add_child(_sighup)
+	# Unlocks (C33): "UNLOCKED: <name>" near the top the moment a skin or a mod is earned.
+	_toast = UnlockToast.new()
+	_toast.name = "UnlockToast"
+	root.add_child(_toast)
 
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
@@ -330,6 +335,10 @@ func confirm_hit() -> void:
 
 func net_hud() -> NetHud:
 	return _net
+
+
+func unlock_toast() -> UnlockToast:
+	return _toast
 
 
 func pause_menu() -> PauseMenu:

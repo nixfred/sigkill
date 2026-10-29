@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_lime"]
+script = ExtResource("2_skin")
+skin = "lime"
+display_name = "stock lime"
+fiction = "the ring that finds them"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_traceroute"]
+script = ExtResource("2_skin")
+skin = "traceroute"
+display_name = "traceroute"
+fiction = "every hop lit cyan"
+feat = "pings"
+need = 30
+
+[sub_resource type="Resource" id="Skin_echo_reply"]
+script = ExtResource("2_skin")
+skin = "echo_reply"
+display_name = "echo reply"
+fiction = "64 bytes from 127.0.0.1"
+feat = "pings"
+need = 100
+
+[sub_resource type="Resource" id="Mod_interval"]
+script = ExtResource("3_mod")
+id = "interval"
+display_name = "ping -i 5"
+fiction = "a shorter wait, a shorter reach"
+gains = {"fire_cooldown": 5.0}
+costs = {"ping_radius_m": 13.0}
+feat = "pings"
+need = 10
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "ping_sonar"
+skins = Array[Resource]([SubResource("Skin_lime"), SubResource("Skin_traceroute"), SubResource("Skin_echo_reply")])
+mod = SubResource("Mod_interval")

@@ -260,7 +260,7 @@ func _refresh() -> void:
 		var plain: String = (SLOT_THROWN % [i + 1, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % (i + 1)
 		label.text = (SLOT_GAP if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else plain)
 		var ult: bool = inv.defs[i].is_ult()
-		label.add_theme_color_override("font_color", inv.defs[i].skin_beam() if ult and inv.meter_ready() else Palette.MINT)
+		label.add_theme_color_override("font_color", inv.defs[i].skin_beam() if ult and inv.meter_ready() else (skin_tint(inv.defs[i]) if i == inv.current else Palette.MINT))
 		label.modulate = Color(1, 1, 1, DIM if ult and not inv.meter_ready() else 1.0)
 	_refresh_banks(inv)
 	var ult_slot: int = inv.ult_slot()
@@ -295,7 +295,7 @@ func _refresh() -> void:
 		_ammo.text = AMMO_ENDLESS % def.short_name
 	else:
 		_ammo.text = AMMO_LINE % [def.short_name, str(mag), ENDLESS if reserve == WeaponDefScript.INFINITE else str(reserve)]
-	var color := Palette.MINT
+	var color := skin_tint(def)
 	var state_color := Palette.TEAL
 	var charging: bool = player.has_method("is_charging") and player.is_charging()
 	if inv.is_reloading():
@@ -326,7 +326,7 @@ func _refresh() -> void:
 		var tank = inv.coolant(inv.current)
 		var lit := clampi(roundi(tank.share() * BAR_CELLS), 0, BAR_CELLS)
 		_state.text = (VENT_LINE if tank.venting else COOLANT_LINE) % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
-		state_color = Palette.HOSTILE_AMBER if tank.venting else Palette.FROST_TEXT
+		state_color = Palette.HOSTILE_AMBER if tank.venting else def.skin_beam()
 		if tank.venting:
 			color = Palette.HOSTILE_AMBER
 	elif def.is_chain() and inv.buffer(inv.current) != null:
@@ -334,7 +334,7 @@ func _refresh() -> void:
 		var pipe = inv.buffer(inv.current)
 		var lit := clampi(roundi(pipe.share() * BAR_CELLS), 0, BAR_CELLS)
 		_state.text = (BLOCKED_LINE if pipe.blocked else BUFFER_LINE) % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
-		state_color = Palette.HOSTILE_AMBER if pipe.blocked else Palette.PIPE_TEXT
+		state_color = Palette.HOSTILE_AMBER if pipe.blocked else def.skin_beam()
 		if pipe.blocked:
 			color = Palette.HOSTILE_AMBER
 	elif def.is_ping() and player.has_method("ping_ready"):
@@ -361,6 +361,14 @@ func _refresh() -> void:
 
 ## The two slot rows (C29): bank 2's, its keys led by the bank key's name, the drawn one bracketed and
 ## named; the active bank's row lit, the other dimmed.
+## The drawn weapon's colour on the strip (C33): its earned skin's beam colour while it wears one (its slot and
+## its line), the strip's mint in its own skin.
+static func skin_tint(def: WeaponDefScript) -> Color:
+	if def.skin_slots.is_empty() or def.light_skin == def.skin_slots[0]:
+		return Palette.MINT
+	return def.skin_beam()
+
+
 func _refresh_banks(inv) -> void:
 	_bank2.visible = inv.slot_count() > Arsenal.BANK_SLOTS
 	if not _bank2.visible:

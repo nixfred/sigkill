@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_frost"]
+script = ExtResource("2_skin")
+skin = "frost"
+display_name = "stock frost"
+fiction = "permission denied, in frost opal"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_chmod_755"]
+script = ExtResource("2_skin")
+skin = "chmod_755"
+display_name = "chmod 755"
+fiction = "rwxr-xr-x: the safe default"
+feat = "shatters"
+need = 3
+
+[sub_resource type="Resource" id="Skin_immutable"]
+script = ExtResource("2_skin")
+skin = "immutable"
+display_name = "chattr +i"
+fiction = "immutable: not even root"
+feat = "shatters"
+need = 12
+
+[sub_resource type="Resource" id="Mod_deep_tank"]
+script = ExtResource("3_mod")
+id = "deep_tank"
+display_name = "deep tank"
+fiction = "a bigger tank, a shorter hold"
+gains = {"freeze:coolant_s": 5.5}
+costs = {"freeze:freeze_s": 2.2}
+feat = "freezes"
+need = 5
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "chmod_000"
+skins = Array[Resource]([SubResource("Skin_frost"), SubResource("Skin_chmod_755"), SubResource("Skin_immutable")])
+mod = SubResource("Mod_deep_tank")

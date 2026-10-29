@@ -148,6 +148,8 @@ var blacks_withdrawn := 0
 var flatlines := 0
 ## True once Black ICE has flatlined this machine's own player this round.
 var _flatlined_me := false
+## True once Black ICE came this round (C33: a round survived with it out earns a feat).
+var _black_came := false
 ## Black ICE's sounds, made once, at the start of the first round it can come in (about 150 ms of
 ## synthesis, at a round's start rather than at its arrival): word -> AudioStreamWAV.
 var _black_sounds := {}
@@ -247,6 +249,7 @@ func start_round(number: int) -> void:
 		prepare_black_sounds()  # once, at the first round it can come in: never a hitch at its arrival
 	round_t = 0.0
 	_flatlined_me = false
+	_black_came = false
 
 
 func _forget() -> void:
@@ -484,6 +487,7 @@ func _make_black(seed: int, at: Vector3, phase: int) -> BlackIce:
 	b.broke.connect(_on_black_broke)
 	black = b
 	blacks_made += 1
+	_black_came = true
 	black_arrived.emit()
 	return b
 
@@ -560,6 +564,9 @@ func _on_black_broke(_piece: Node3D) -> void:
 
 ## The round is over (the round HUD's word): no Black ICE comes now, and one still out withdraws.
 func _on_round_ended(_number: int = 0) -> void:
+	if _black_came and not flatlined_me():
+		Progress.judged_feat(self, "black_ice")  # this player lived through a round with Black ICE out (C33)
+	_black_came = false
 	black_plan = -1.0
 	if mode == Mode.RUN and black != null and is_instance_valid(black) and black.present_now():
 		black.withdraw_now()

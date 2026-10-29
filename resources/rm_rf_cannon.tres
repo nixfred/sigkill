@@ -96,5 +96,5 @@ blast_edge_damage = 8.0
 self_damage_share = 0.5
 blast_ring_s = 0.45
 blast_wait_s = 0.5
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["no_prompt"])
+skin_slots = Array[String](["ember", "preserve_root", "dd"])

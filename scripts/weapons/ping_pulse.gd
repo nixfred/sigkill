@@ -37,8 +37,8 @@ const STREAKS_UP_M := 0.2
 
 static var _floor_mesh: PlaneMesh
 static var _wall_mesh: CylinderMesh
-static var _floor_material: ShaderMaterial
-static var _wall_material: ShaderMaterial
+## The ring's looks, made once per light skin (C33) and shared: "<skin>/floor" and "<skin>/wall".
+static var _materials := {}
 
 ## The weapon (a WeaponDef with fire_mode ping), the ring's centre (world space, the pinger's
 ## middle) and the floor under it; whether it decides (staggers daemons) and whether it reveals.
@@ -75,7 +75,7 @@ func _ready() -> void:
 	_floor = MeshInstance3D.new()
 	_floor.name = "Floor"
 	_floor.mesh = _floor_shape()
-	_floor.material_override = _floor_look()
+	_floor.material_override = _look_of(_skin(), false)
 	_floor.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var span: float = weapon.ping_radius_m + FRONT_M
 	_floor.scale = Vector3(span, 1.0, span)
@@ -84,13 +84,13 @@ func _ready() -> void:
 	_wall = MeshInstance3D.new()
 	_wall.name = "Wall"
 	_wall.mesh = _wall_shape()
-	_wall.material_override = _wall_look()
+	_wall.material_override = _look_of(_skin(), true)
 	_wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_wall.position.y = WALL_M * 0.5
 	add_child(_wall)
 	var fx := ParticleFx.of(self)
 	if fx != null:
-		fx.ping(Vector3(center.x, floor_y + STREAKS_UP_M, center.z), Palette.LIME, weapon.ping_radius_m, weapon.ping_ring_s)
+		fx.ping(Vector3(center.x, floor_y + STREAKS_UP_M, center.z), Palette.skin_body(_skin()), weapon.ping_radius_m, weapon.ping_ring_s)
 	_step(0.0)
 
 
@@ -157,7 +157,7 @@ func _meet(r: float) -> void:
 			if director != null:
 				director.pinged(dummy, center)
 		if fx != null:
-			fx.blast(middle, Palette.LIME, MET_BURST_M)
+			fx.blast(middle, Palette.skin_body(_skin()), MET_BURST_M)
 		met.emit(dummy)
 	# ICE (I1): a ping meeting the hunter mid-tell staggers it as it does a daemon; and since C29 the hunter,
 	# the nodes and Black ICE are outlined through the level as a daemon is (the walls stand in plain sight).
@@ -176,7 +176,7 @@ func _meet(r: float) -> void:
 		if piece == ice.hunter and deciding and ice.decides():
 			piece.brain.pinged(center, ice.daemons)
 		if fx != null:
-			fx.blast(middle, Palette.LIME, MET_BURST_M)
+			fx.blast(middle, Palette.skin_body(_skin()), MET_BURST_M)
 
 
 static func _floor_shape() -> PlaneMesh:
@@ -199,23 +199,25 @@ static func _wall_shape() -> CylinderMesh:
 	return _wall_mesh
 
 
-static func _floor_look() -> ShaderMaterial:
-	if _floor_material == null:
-		_floor_material = _look(false)
-	return _floor_material
+## The pinger's skin of ping (C33): the ring, its streaks and the bursts where it meets something are its; the
+## outlines it leaves stay ping's own lime (scripts/weapons/ping_reveal.gd), a state that reads the same for all.
+func _skin() -> String:
+	var skin = weapon.get("light_skin") if weapon != null else null
+	return skin if skin is String else "lime"
 
 
-static func _wall_look() -> ShaderMaterial:
-	if _wall_material == null:
-		_wall_material = _look(true)
-	return _wall_material
+static func _look_of(skin: String, wall: bool) -> ShaderMaterial:
+	var key := "%s/%s" % [skin, "wall" if wall else "floor"]
+	if not _materials.has(key):
+		_materials[key] = _look(wall, Palette.skin_body(skin), Palette.skin_beam(skin))
+	return _materials[key]
 
 
-static func _look(wall: bool) -> ShaderMaterial:
+static func _look(wall: bool, color: Color, front: Color) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = WaveShader
 	m.set_shader_parameter("wall", wall)
-	m.set_shader_parameter("color", Palette.LIME)
-	m.set_shader_parameter("front_color", Palette.LIME_HI)
+	m.set_shader_parameter("color", color)
+	m.set_shader_parameter("front_color", front)
 	m.set_shader_parameter("front_m", FRONT_M)
 	return m

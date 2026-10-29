@@ -196,6 +196,17 @@ func pipe_arc() -> PipeArc:
 	return _pipe
 
 
+## Its freeze beam and its chains in the skins this player wears (C33: the look the host's roster carries).
+func paint_weapons(freeze_skin: String, chain_skin: String) -> void:
+	_beam.paint(freeze_skin)
+	_pipe.paint(chain_skin)
+
+
+## Its freeze beam (C29), for the checks.
+func freeze_beam() -> FreezeBeam:
+	return _beam
+
+
 ## A received position: `seq` orders them; an older one, or one too far ahead, is dropped.
 func push_sample(seq: int, pos: Vector3, yaw: float, pitch: float, vel: Vector3) -> void:
 	received += 1

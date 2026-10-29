@@ -87,5 +87,5 @@ feed_pid = true
 ult_meter = 3.0
 ult_per_health = 0.8
 ult_per_kill = 0.2
-mod_slots = Array[String]([])
-skin_slots = Array[String]([])
+mod_slots = Array[String](["quickdraw"])
+skin_slots = Array[String](["ice", "blacklight", "p1"])

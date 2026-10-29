@@ -9,7 +9,8 @@ extends Node3D
 ## (C27b) the daemons' director and this player's life alone: the daemons fight back; (I1) ICE's
 ## director beside it, which builds the system's walls, nodes and hunter each round; (I2) the
 ## ICEbreakers' director, which keeps every intruder's breakers and runs them; and (I3) the arena's
-## blackout, its hum and its lights, which Black ICE takes away while it is out.
+## blackout, its hum and its lights, which Black ICE takes away while it is out. Unlocks (C33): this player's kills
+## of the daemons it judged here count toward its unlocks (scripts/unlocks/progress.gd), saved as rounds end.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -83,6 +84,11 @@ func _ready() -> void:
 	_hud.set_player(_player)
 	_hud.set_round_targets(dummies)
 	_hud.set_targets(_remaining, _total)
+	# Unlocks (C33): the counts this run earned are saved at each round's end, as the game quits, and at most
+	# every half minute between.
+	var rounds = _hud.round_hud()
+	if rounds != null and rounds.has_signal("round_ended"):
+		rounds.round_ended.connect(func(_number: int): Progress.current().flush())
 	# LAN and tailnet play (C13): the session lives beside this scene and outlives an R
 	# reload; this arena shows its players and sends this player's movement.
 	var session = NetSession.of(self)
@@ -165,8 +171,23 @@ func _on_target_downed(dummy: Node3D) -> void:
 	if dummy.get("credited") != false:
 		_player.on_dummy_downed()  # alone, a kill toward a sudo charge (C22)
 		_hud.note_kill()
+		# This player's kill, judged here (alone, or hosting): a feat toward its unlocks (C33).
+		var weapon = dummy.get("killed_with")
+		if weapon is String and weapon != "":
+			Progress.judged_feat(self, "kills_" + weapon)
+		if dummy.get("shattered_last") == true:
+			Progress.judged_feat(self, "shatters")
 	_remaining -= 1
 	_hud.set_targets(_remaining, _total)
+
+
+func _process(delta: float) -> void:
+	Progress.current().tick(delta)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+		Progress.current().flush()
 
 
 func _on_target_respawned(_dummy: Node3D) -> void:

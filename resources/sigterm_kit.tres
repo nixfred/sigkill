@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_violet"]
+script = ExtResource("2_skin")
+skin = "violet"
+display_name = "stock violet"
+fiction = "please exit, in violet"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_ctrl_c"]
+script = ExtResource("2_skin")
+skin = "ctrl_c"
+display_name = "^C"
+fiction = "SIGINT: the interrupt every hand knows"
+feat = "kills_sigterm"
+need = 20
+
+[sub_resource type="Resource" id="Skin_catppuccin"]
+script = ExtResource("2_skin")
+skin = "catppuccin"
+display_name = "Catppuccin"
+fiction = "a soothing pastel for a firm request"
+feat = "kills_sigterm"
+need = 50
+
+[sub_resource type="Resource" id="Mod_choke"]
+script = ExtResource("3_mod")
+id = "choke"
+display_name = "choke"
+fiction = "a tighter grace period: fewer, closer pleas"
+gains = {"spread_degrees": 4.0}
+costs = {"pellet_count": 7}
+feat = "kills_sigterm"
+need = 8
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "sigterm"
+skins = Array[Resource]([SubResource("Skin_violet"), SubResource("Skin_ctrl_c"), SubResource("Skin_catppuccin")])
+mod = SubResource("Mod_choke")

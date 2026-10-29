@@ -11,7 +11,9 @@ extends "res://scripts/weapon_tuning.gd"
 ## Weapons are cosmetic fiction only: a fiction line names the signal or command a weapon
 ## stands for, and nothing real is ever run, signalled or touched.
 ##
-## The mod and skin slots are empty data for now: no unlocks, no progression (C33).
+## The mod and skin slots (C33) name what the weapon offers: its light skins, its own first, and its one mod,
+## each one's name, fiction, numbers and the feat that earns it in its kit beside it (resources/<id>_kit.tres,
+## scripts/unlocks/weapon_kit.gd). Empty slots offer nothing more than the weapon's own skin.
 ##
 ## The rail and the ult (C17, resources/sigkill_rail.tres): a weapon may charge before it
 ## fires (charge_s), pierce every target on its line up to the level's geometry (pierce),
@@ -133,6 +135,8 @@ const RESERVE_LAST := 9999
 const RELOAD_FIRST_S := 0.1
 const RELOAD_LAST_S := 10.0
 const SLOT_ENTRY_LAST := 32
+## One mod a weapon (C33).
+const MOD_SLOTS_LAST := 1
 const NEAR_PARALLEL := 0.98
 const CHARGE_LAST_S := 2.0
 const METER_FIRST := 0.5
@@ -397,9 +401,9 @@ const CHAIN_RANGE_LAST_M := 60.0
 @export var pipe: Resource = null
 
 @export_group("Slots")
-## Mod slots: empty data for now (unlocks and mods are C33).
+## Its mod (C33): the one mod's id, or none.
 @export var mod_slots: Array[String] = []
-## Light skin slots: empty data for now (C33).
+## Its light skins (C33): palette skin names, its own (light_skin) first, then the ones a player earns.
 @export var skin_slots: Array[String] = []
 
 
@@ -501,6 +505,10 @@ func problems() -> PackedStringArray:
 			if not _is_line(entry, SLOT_ENTRY_LAST):
 				out.append("%s entries must be 1 to %d printable characters" % [pair[0], SLOT_ENTRY_LAST])
 				break
+	if mod_slots.size() > MOD_SLOTS_LAST:
+		out.append("a weapon has at most %d mod" % MOD_SLOTS_LAST)
+	if not skin_slots.is_empty() and (skin_slots[0] != light_skin or skin_slots.any(func(s): return not Palette.SKINS.has(s))):
+		out.append("skin_slots name palette skins, the weapon's own light_skin first")
 	return out
 
 

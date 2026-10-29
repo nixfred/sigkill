@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_rose"]
+script = ExtResource("2_skin")
+skin = "rose"
+display_name = "stock rose"
+fiction = "a scheduled job, in rose"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_midnight"]
+script = ExtResource("2_skin")
+skin = "midnight"
+display_name = "@midnight"
+fiction = "0 0 * * *: it runs while you sleep"
+feat = "kills_cron_mines"
+need = 12
+
+[sub_resource type="Resource" id="Skin_reboot"]
+script = ExtResource("2_skin")
+skin = "reboot"
+display_name = "@reboot"
+fiction = "the first job after every boot"
+feat = "kills_cron_mines"
+need = 30
+
+[sub_resource type="Resource" id="Mod_every_minute"]
+script = ExtResource("3_mod")
+id = "every_minute"
+display_name = "*/1"
+fiction = "sooner runs, fewer of them"
+gains = {"run_interval_s": 1.4}
+costs = {"runs": 2}
+feat = "kills_cron_mines"
+need = 4
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "cron_mines"
+skins = Array[Resource]([SubResource("Skin_rose"), SubResource("Skin_midnight"), SubResource("Skin_reboot")])
+mod = SubResource("Mod_every_minute")

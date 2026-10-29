@@ -593,7 +593,7 @@ func _match_checks() -> void:
 	var cs = client["session"]
 	var cid: int = cs.my_id
 	var rpcs := _code("res://scripts/net/net_session.gd").count("@rpc(")
-	_check("acceptance: the wire: protocol 15 (14 at I3; 16 since C30's pipe |, 17 since C31's /dev/null, 18 since C32's SIGHUP), no new message (28 RPCs as I2 left them): a beam tick is the usual fire intent, and the meters ride words already sent", joined and Session.PROTOCOL == 18 and rpcs == 28, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 15 (14 at I3; 16 since C30's pipe |, 17 since C31's /dev/null, 18 since C32's SIGHUP, 19 since C33's loadouts), no new message (28 RPCs as I2 left them): a beam tick is the usual fire intent, and the meters ride words already sent", joined and Session.PROTOCOL == 19 and rpcs == 28, "%d RPCs" % rpcs)
 	var hp = host["player"]
 	var cp = client["player"]
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:

@@ -161,38 +161,57 @@ func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3,
 	first_weapon = weapon_defs[0].id if not weapon_defs.is_empty() else ""
 
 
-func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning), "frost": Frost.new(Frost.Kind.PLAYER), "coolant": _new_coolant(), "buffer": _new_buffer()}
+## A new player, carrying `worn` (C33: its weapons in slot order as it wears them, its skins and the mods the
+## host accepted; empty for the shipped ones): every shot and throw of its is judged with these.
+func add_player(id: int, worn: Array = []) -> void:
+	var mine := {}
+	for def in (worn if worn.size() == weapons.size() else weapons.values()):
+		mine[def.id] = def
+	for weapon in weapons:
+		if not mine.has(weapon):
+			mine[weapon] = weapons[weapon]
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "weapons": mine, "ammo": _full_ammo(mine), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning), "frost": Frost.new(Frost.Kind.PLAYER), "coolant": _new_coolant(mine), "buffer": _new_buffer(mine)}
 	record.join(id)
 
 
-## The loadout's freeze weapon (chmod 000, C29), or null when it has none.
-func freeze_def() -> WeaponDefScript:
-	for id in weapons:
-		if weapons[id].is_freeze():
-			return weapons[id]
+## Player `id`'s `weapon` as it wears it (C33): its mod applied when the host accepted one; the shipped
+## weapon for anyone else.
+func def_of(id: int, weapon: String) -> WeaponDefScript:
+	if states.has(id) and states[id]["weapons"].has(weapon):
+		return states[id]["weapons"][weapon]
+	return weapons.get(weapon)
+
+
+## The loadout's freeze weapon (chmod 000, C29) among `of` (id -> WeaponDef; the shipped ones by default), or
+## null when it has none.
+func freeze_def(of: Dictionary = {}) -> WeaponDefScript:
+	var pool := of if not of.is_empty() else weapons
+	for id in pool:
+		if pool[id].is_freeze():
+			return pool[id]
 	return null
 
 
-## A full tank for a new player, by the freeze weapon's numbers and the fire-rate tolerance; null with no
+## A full tank for a new player, by its freeze weapon's numbers and the fire-rate tolerance; null with no
 ## freeze weapon.
-func _new_coolant() -> Coolant:
-	var def := freeze_def()
+func _new_coolant(of: Dictionary = {}) -> Coolant:
+	var def := freeze_def(of)
 	return Coolant.new(def.freeze_tuning(), tuning.fire_rate_tolerance) if def != null else null
 
 
-## The loadout's chain beam (pipe |, C30), or null when it has none.
-func chain_def() -> WeaponDefScript:
-	for id in weapons:
-		if weapons[id].is_chain():
-			return weapons[id]
+## The loadout's chain beam (pipe |, C30) among `of`, or null when it has none.
+func chain_def(of: Dictionary = {}) -> WeaponDefScript:
+	var pool := of if not of.is_empty() else weapons
+	for id in pool:
+		if pool[id].is_chain():
+			return pool[id]
 	return null
 
 
-## An empty pipe buffer for a new player, by the chain beam's numbers and the fire-rate tolerance; null
+## An empty pipe buffer for a new player, by its chain beam's numbers and the fire-rate tolerance; null
 ## with no chain beam.
-func _new_buffer() -> PipeBuffer:
-	var def := chain_def()
+func _new_buffer(of: Dictionary = {}) -> PipeBuffer:
+	var def := chain_def(of)
 	return PipeBuffer.new(def.pipe_tuning(), tuning.fire_rate_tolerance) if def != null else null
 
 
@@ -231,11 +250,12 @@ func coolant_of(id: int) -> Coolant:
 	return states[id]["coolant"] if states.has(id) else null
 
 
-## The ult of the loadout (C17), or null when it has none.
-func ult_def() -> WeaponDefScript:
-	for id in weapons:
-		if weapons[id].is_ult():
-			return weapons[id]
+## The ult of the loadout (C17) among `of` (the shipped ones by default), or null when it has none.
+func ult_def(of: Dictionary = {}) -> WeaponDefScript:
+	var pool := of if not of.is_empty() else weapons
+	for id in pool:
+		if pool[id].is_ult():
+			return pool[id]
 	return null
 
 
@@ -247,8 +267,10 @@ func meter_of(id: int) -> float:
 ## Adds to `id`'s ult meter what a hit with another weapon earned: `share` of a target's
 ## health taken, a kill or not. Capped at full; nothing for a dead player or with no ult.
 func add_meter(id: int, share: float, killed: bool) -> void:
-	var ult := ult_def()
-	if ult == null or not states.has(id) or states[id]["dead"]:
+	if not states.has(id) or states[id]["dead"]:
+		return
+	var ult := ult_def(states[id]["weapons"])  # its own ult's numbers: a mod may ask more of the meter (C33)
+	if ult == null:
 		return
 	var meter: float = minf(states[id]["meter"] + ult.meter_gain(share, killed), ult.ult_meter)
 	states[id]["meter"] = ult.ult_meter if meter >= ult.ult_meter - METER_EPS else meter  # as the player's own
@@ -378,7 +400,7 @@ func reload(id: int, life: int, weapon: String, known_life: int, now: float) -> 
 	if not weapons.has(weapon) or weapon != s["drawn"]:
 		return _drop(DROP_WEAPON)
 	_finish_reload(s, now)
-	var def: WeaponDefScript = weapons[weapon]
+	var def: WeaponDefScript = s["weapons"][weapon]
 	var a: Dictionary = s["ammo"][weapon]
 	if not def.has_magazine() or s["reloading"] != "" or def.reload_take(a["mag"], a["reserve"]) <= 0:
 		return _drop(DROP_RELOAD)
@@ -430,10 +452,11 @@ func tick(delta: float) -> Array:
 		if s["buffer"] != null:
 			s["buffer"].tick(delta)  # pipe |'s buffer drains (C30)
 		for weapon in weapons:
-			var charges = weapons[weapon].charges_tuning()
+			var worn: WeaponDefScript = s["weapons"][weapon]
+			var charges = worn.charges_tuning()
 			if charges != null:
 				var a: Dictionary = s["ammo"][weapon]
-				var now: Array = charges.step_charges(a["mag"], weapons[weapon].magazine_size, a["recharge"], delta, tuning.fire_rate_tolerance)  # /dev/null's charges (C31), SIGHUP's (C32)
+				var now: Array = charges.step_charges(a["mag"], worn.magazine_size, a["recharge"], delta, tuning.fire_rate_tolerance)  # /dev/null's charges (C31), SIGHUP's (C32)
 				a["mag"] = now[0]
 				a["recharge"] = now[1]
 		if s["protect_left"] > 0.0:
@@ -469,7 +492,7 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_SHAPE)
 	if now < s["ready_at"]:
 		return _drop(DROP_SWAP)
-	var def: WeaponDefScript = weapons[weapon]
+	var def: WeaponDefScript = s["weapons"][weapon]  # as this player wears it (C33)
 	if s["reloading"] == weapon and now < s["reload_done_at"]:
 		return _drop(DROP_RELOAD)
 	var a: Dictionary = s["ammo"][weapon]
@@ -503,7 +526,7 @@ func throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vector3, ey
 		return _drop(DROP_FROZEN)  # chmod 000 holds it read-only (C29)
 	if not dir_ok(dir) or not origin.is_finite() or absf(origin.x) > WORLD_LAST or absf(origin.y) > WORLD_LAST or absf(origin.z) > WORLD_LAST:
 		return _drop(DROP_SHAPE)
-	var def: WeaponDefScript = weapons[weapon]
+	var def: WeaponDefScript = states[id]["weapons"][weapon]  # as this player wears it (C33)
 	var a: Dictionary = states[id]["ammo"][weapon]
 	if not rate_ok(now, a["last_fire"], def.fire_cooldown, tuning.fire_rate_tolerance):
 		return _drop(DROP_RATE)
@@ -532,13 +555,14 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 	s["last_fire"] = now
 	s["last_seq"] = seq
 	var a: Dictionary = s["ammo"][weapon]
-	if weapons[weapon].has_magazine() and not s["sudo"].is_root():
+	var def: WeaponDefScript = s["weapons"][weapon]
+	if def.has_magazine() and not s["sudo"].is_root():
 		a["mag"] = maxi(a["mag"] - 1, 0)  # root spends nothing (C22)
-	if weapons[weapon].is_ult():
+	if def.is_ult():
 		s["meter"] = 0.0  # one full meter, one shot
-	if weapons[weapon].is_freeze() and s["coolant"] != null and not s["sudo"].is_root():
-		s["coolant"].spend(weapons[weapon].fire_cooldown)  # a beam tick's coolant (C29)
-	if weapons[weapon].is_chain() and s["buffer"] != null and not s["sudo"].is_root():
+	if def.is_freeze() and s["coolant"] != null and not s["sudo"].is_root():
+		s["coolant"].spend(def.fire_cooldown)  # a beam tick's coolant (C29)
+	if def.is_chain() and s["buffer"] != null and not s["sudo"].is_root():
 		s["buffer"].write()  # a chain's write (C30)
 	a["last_fire"] = now
 
@@ -564,7 +588,7 @@ func settle(id: int, now: float) -> void:
 func _finish_reload(s: Dictionary, now: float) -> void:
 	if s["reloading"] == "" or now < s["reload_done_at"]:
 		return
-	var def: WeaponDefScript = weapons[s["reloading"]]
+	var def: WeaponDefScript = s["weapons"][s["reloading"]]
 	var a: Dictionary = s["ammo"][s["reloading"]]
 	var take := def.reload_take(a["mag"], a["reserve"])
 	a["mag"] += take
@@ -584,11 +608,11 @@ func _alive_in(id: int, life: int, known_life: int) -> String:
 	return ""
 
 
-## Every weapon's magazine and reserve full, as at a new life.
-func _full_ammo() -> Dictionary:
+## Every weapon of `worn` (id -> WeaponDef) with its magazine and reserve full, as at a new life.
+func _full_ammo(worn: Dictionary) -> Dictionary:
 	var out := {}
-	for id in weapons:
-		out[id] = {"mag": weapons[id].magazine_size, "reserve": weapons[id].reserve_ammo, "last_fire": -INF, "recharge": 0.0}
+	for id in worn:
+		out[id] = {"mag": worn[id].magazine_size, "reserve": worn[id].reserve_ammo, "last_fire": -INF, "recharge": 0.0}
 	return out
 
 
@@ -644,7 +668,7 @@ func respawn(id: int) -> void:
 	s["dead"] = false
 	s["respawn_left"] = 0.0
 	s["protect_left"] = tuning.spawn_protection_s
-	s["ammo"] = _full_ammo()
+	s["ammo"] = _full_ammo(s["weapons"])
 	s["reloading"] = ""
 	s["ready_at"] = -INF
 	s["meter"] = 0.0

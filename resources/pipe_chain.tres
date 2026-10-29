@@ -97,3 +97,5 @@ light_skin = "brass"
 reload_click_hz = 700.0
 reload_gain = 0.5
 pipe = SubResource("Resource_pipe")
+mod_slots = Array[String](["xargs"])
+skin_slots = Array[String](["brass", "tee", "mkfifo"])

@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_carrier"]
+script = ExtResource("2_skin")
+skin = "carrier"
+display_name = "stock carrier"
+fiction = "an old modem's carrier light"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_dial_tone"]
+script = ExtResource("2_skin")
+skin = "dial_tone"
+display_name = "dial tone"
+fiction = "the line is open"
+feat = "lash_kills"
+need = 1
+
+[sub_resource type="Resource" id="Skin_baud_300"]
+script = ExtResource("2_skin")
+skin = "baud_300"
+display_name = "300 baud"
+fiction = "ATDT: three hundred baud, screeching"
+feat = "lash_kills"
+need = 5
+
+[sub_resource type="Resource" id="Mod_wideband"]
+script = ExtResource("3_mod")
+id = "wideband"
+display_name = "wideband"
+fiction = "a wider burst, a shorter confusion"
+gains = {"projectile:radius_m": 9.0}
+costs = {"projectile:wander_s": 2.8}
+feat = "hups"
+need = 6
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "sighup"
+skins = Array[Resource]([SubResource("Skin_carrier"), SubResource("Skin_dial_tone"), SubResource("Skin_baud_300")])
+mod = SubResource("Mod_wideband")

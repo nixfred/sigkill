@@ -162,6 +162,9 @@ const SighupBurstScript = preload("res://scripts/weapons/sighup_burst.gd")
 const LEVEL_MASK := 1
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
+## The feats (C33): a pipe chain landing on this many links, one fork bomb's tree derezzing this many.
+const CHAIN_FEAT_LINKS := 3
+const BOMB_FEAT_KILLS := 3
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
 const THROW_AHEAD_M := 0.4
 const THROW_CLEAR_M := 0.1
@@ -266,6 +269,10 @@ var _root_look := false
 var _t: Tuning
 var _w: WeaponDefScript  # the drawn weapon
 var _a: Arsenal
+## The arsenal's weapons as shipped, slot 1 first (a test's slot-1 weapon in its place), and the look they are
+## worn in now (C33, scripts/unlocks/loadout.gd): each one's skin and mod.
+var _base_defs: Array = []
+var worn_look := PackedByteArray()
 var _spawn: Transform3D
 var _fire_queued := false
 var _throw_queued := false
@@ -423,7 +430,10 @@ func _ready() -> void:
 			push_warning("weapon tuning: " + issue + "; using the built-in defaults instead")
 		var first: Resource = weapon if weapon_issues.is_empty() else WeaponDefScript.new()
 		defs = [first] + defs.slice(1).filter(func(def): return def.id != first.id)
-	inventory = Inventory.new(defs, _a.swap_s, _a.fiction_s)
+	_base_defs = defs
+	# Worn as this player chose on the loadout screen (C33): each weapon's skin and mod, from its progress.
+	worn_look = Loadout.clean(Loadout.look_of(defs, Progress.current()), defs)
+	inventory = Inventory.new(Loadout.defs_for(defs, worn_look), _a.swap_s, _a.fiction_s)
 	_rng.randomize()
 	_pellet_rng.randomize()
 	_shake_rng.randomize()
@@ -453,12 +463,13 @@ func _ready() -> void:
 	grep = GrepLock.new()
 	grep.name = "GrepLock"
 	add_child(grep)
-	grep.marked.connect(func(_target: Node3D): grep_marked.emit())
+	grep.marked.connect(func(_target: Node3D): grep_marked.emit(); Progress.judged_feat(self, "grep_marks"))
 	frost = Frost.new(Frost.Kind.PLAYER)
 	_freeze_beam = FreezeBeamScript.new()
 	add_child(_freeze_beam)
 	_pipe_arc = PipeArcScript.new()
 	add_child(_pipe_arc)
+	_paint_emitters()
 
 
 func _notification(what: int) -> void:
@@ -1001,6 +1012,46 @@ func reset_inventory(drawing: bool = false) -> void:
 	_show_weapon()
 
 
+## Wears `look` (C33, scripts/unlocks/loadout.gd): each weapon in its skin, with its mod or without. The weapons
+## keep their state: the drawn slot, the ult meter, each magazine (at most its new size) and reserve, a tank or a
+## buffer whose numbers did not change; nothing refills, and a reload or draw in progress is let go. Each model
+## whose weapon changed is built again (its seams, its hot parts and its muzzle burst in the new skin). Alone the
+## loadout screen calls it as it closes; the session when a match starts (the look the host accepted) and ends.
+func wear(look: PackedByteArray) -> void:
+	var next := Loadout.clean(look, _base_defs)
+	if next == worn_look:
+		return
+	worn_look = next
+	var old := inventory
+	inventory = Inventory.new(Loadout.defs_for(_base_defs, worn_look), _a.swap_s, _a.fiction_s)
+	inventory.take_state(old)
+	if _viewmodel_rig != null:
+		for i in inventory.defs.size():
+			if inventory.defs[i] != old.defs[i] and i < _viewmodels.size():
+				_viewmodels[i].queue_free()
+				_viewmodels[i] = _build_viewmodel(inventory.defs[i])
+		_root_look = false
+		_step_root()
+	_paint_emitters()
+	_show_weapon()
+
+
+## chmod 000's beam and pipe |'s arcs in the skins their weapons wear (C33).
+func _paint_emitters() -> void:
+	if _freeze_beam == null:
+		return
+	for def in inventory.defs:
+		if def.is_freeze():
+			_freeze_beam.paint(def.light_skin)
+		elif def.is_chain():
+			_pipe_arc.paint(def.light_skin)
+
+
+## The look this player chose (its progress): what it wears alone and asks to wear in a match.
+func chosen_look() -> PackedByteArray:
+	return Loadout.clean(Loadout.look_of(_base_defs, Progress.current()), _base_defs)
+
+
 ## Every weapon full again, the drawn one kept: a respawn that came while this arena was away.
 func refill_weapons() -> void:
 	inventory.refill()
@@ -1339,6 +1390,8 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 			landed_any = landed_any or landed
 			if landed and collider.has_method("is_alive") and not collider.call("is_alive"):
 				rail_kill.emit(head)
+				if head:
+					Progress.judged_feat(self, "rail_heads")  # a kill -9 headshot (C33)
 		else:
 			_rail_heads[int(collider.get_meta("player_id", 0))] = head
 		CannonFx.spawn_impact(fx_root, point, normal, true, _w)
@@ -1507,6 +1560,8 @@ func _fire_ping() -> void:
 	if match_meter:
 		return
 	last_ping = PingPulseScript.spawn(_fx_root(), _w, global_position, global_position.y - _half_height(), true, true)
+	if last_ping != null and last_ping.has_signal("met"):
+		last_ping.met.connect(func(_dummy: Node3D): Progress.judged_feat(self, "pings"))  # each daemon found (C33)
 
 
 ## True when fire asks for a shot this frame: a click, or for the freeze beam fire held (C29).
@@ -1528,6 +1583,7 @@ func _fire_freeze() -> void:
 	beam_end = hit["end"]
 	if beam_target != null and beam_target.has_method("chill") and beam_target.call("chill", _w.fire_cooldown, beam_end, forward, _w.id) == true:
 		freezes_made += 1
+		Progress.judged_feat(self, "freezes")  # a freeze earns toward chmod 000's unlocks (C33)
 		_hit_sfx.play()
 	if _beaming <= 0.0:
 		CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
@@ -1577,6 +1633,7 @@ func _fire_pipe() -> void:
 	# The links this machine lands: every one that is not a player (whose hits the host judges).
 	var hit_target := false
 	var from := origin
+	var linked := 0
 	for link in last_chain:
 		var point: Vector3 = link["point"]
 		var node = link["node"]
@@ -1586,8 +1643,11 @@ func _fire_pipe() -> void:
 			var landed: bool = node.call("hit", base * _damage_scale(), point, (point - from).normalized(), _w.id) == true
 			if landed:
 				_meter_from(node, before, base)
+				linked += 1
 			hit_target = hit_target or landed
 		from = point
+	if linked >= CHAIN_FEAT_LINKS:
+		Progress.judged_feat(self, "chains3")  # a chain through three or more (C33)
 	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
 	_kick()
 	if _shake_on:
@@ -1629,6 +1689,7 @@ func take_hole(hole: Node3D) -> void:
 
 func _on_hole_discarded(_what: Node, _at: Vector3) -> void:
 	hole_discarded.emit()
+	Progress.judged_feat(self, "discards")  # a discard earns toward /dev/null's unlocks (C33)
 
 
 ## This player's SIGHUP burst (C32): kept, its catches the round HUD's callout (once a burst).
@@ -1639,6 +1700,7 @@ func take_hup_burst(burst: Node3D) -> void:
 
 
 func _on_hup_caught(_what: Node, _at: Vector3, burst: Node3D) -> void:
+	Progress.judged_feat(self, "hups")  # each one hung up earns toward SIGHUP's unlocks (C33)
 	if is_instance_valid(burst) and burst.get("caught_count") == 1:
 		hup_caught.emit()
 
@@ -1980,7 +2042,7 @@ func _throw_from(slot: int) -> void:
 		var burst := SighupBurstScript.spawn(_fx_root(), def.hup_tuning(), origin, SighupBurstScript.throw_velocity(def.hup_tuning(), forward), _bomb_rng.randi(), "solo", true, 0, root_on, def.light_skin, never)
 		take_hup_burst(burst)
 		return
-	var chain := ForkBomb.spawn(_fx_root(), def.projectile, origin, ForkBomb.throw_velocity(def.projectile, forward), _bomb_rng.randi(), "solo", true, def.light_skin, never, _judge_blast.bind(def))
+	var chain := ForkBomb.spawn(_fx_root(), def.projectile, origin, ForkBomb.throw_velocity(def.projectile, forward), _bomb_rng.randi(), "solo", true, def.light_skin, never, _judge_blast.bind(def, {}))
 	chain.blasted.connect(_on_bomb_blasted)
 
 
@@ -1994,7 +2056,7 @@ func _on_bomb_blasted(gen: int, _index: int, _at: Vector3) -> void:
 ## with nothing of the level between the blast and the daemon's middle, takes the tuning's
 ## damage for its distance (the thrower is never hurt: no self-damage). A daemon it hurts
 ## fills the ult meter as the other weapons do.
-func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> void:
+func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript, tally: Dictionary = {}) -> void:
 	var tuning: Resource = def.projectile
 	var root := _fx_root()
 	var space := get_world_3d().direct_space_state
@@ -2010,7 +2072,12 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 		if not space.intersect_ray(sight).is_empty():
 			continue  # a wall between: the blast does not reach
 		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
-		if dummy.call("hit", amount, middle, (middle - at).normalized(), def.id) == true and not match_meter:
+		var struck: bool = dummy.call("hit", amount, middle, (middle - at).normalized(), def.id) == true
+		if struck and dummy.has_method("is_alive") and not dummy.call("is_alive"):
+			tally["kills"] = int(tally.get("kills", 0)) + 1
+			if tally["kills"] == BOMB_FEAT_KILLS:
+				Progress.judged_feat(self, "bomb_triples")  # one fork bomb's tree derezzed three (C33)
+		if struck and not match_meter:
 			var max_health = dummy.get("max_health")
 			if max_health is float and max_health > 0.0:
 				var killed: bool = dummy.has_method("is_alive") and not dummy.call("is_alive")

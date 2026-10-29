@@ -686,7 +686,7 @@ func _match_checks() -> void:
 	var cp: Node = client["player"]
 	var cid: int = cs.my_id
 	var session_code := _code("res://scripts/net/net_session.gd")
-	_check("a host and a joiner over ENet on 127.0.0.1; the joiner set the display name Neo: it is Daemon-2 all the same (C14), Neo is a label on its own screen only, and the hello still carries the tuning's placeholder", joined and cs.my_name() == "Daemon-2" and hs.players[cid]["name"] == "Daemon-2" and cs.display_label() == "Neo" and cs.roster_text() == "Daemon-1, Daemon-2 (you, Neo)" and hs.roster_text() == "Daemon-1 (you, Neo), Daemon-2" and session_code.contains("hello_bytes(protocol, _t.display_name)") and session_code.count("display_label()") == 2, cs.roster_text())
+	_check("a host and a joiner over ENet on 127.0.0.1; the joiner set the display name Neo: it is Daemon-2 all the same (C14), Neo is a label on its own screen only, and the hello still carries the tuning's placeholder", joined and cs.my_name() == "Daemon-2" and hs.players[cid]["name"] == "Daemon-2" and cs.display_label() == "Neo" and cs.roster_text() == "Daemon-1, Daemon-2 (you, Neo)" and hs.roster_text() == "Daemon-1 (you, Neo), Daemon-2" and session_code.contains("hello_bytes(protocol, _t.display_name, _own_look())") and session_code.count("display_label()") == 2, cs.roster_text())
 	await _until(func(): return hs.avatars.has(cid) and cs.avatars.has(1) and not hs.dead.get(1, false) and hs.protect_left.get(1, 0.0) <= 0.0 and hs.protect_left.get(cid, 0.0) <= 0.0, 6000)
 	var menu: PauseMenu = host["hud"].pause_menu()
 	host["hud"].open_menu()

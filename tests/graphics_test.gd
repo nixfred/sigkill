@@ -55,7 +55,7 @@ const ARSENAL_SHA := "b98ef06f812877af00be320ad1350d3942b35f03fa78c00d355c03b0ab
 ## ray's own are resources/chmod_000.tres (C29_TRES).
 const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
 const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
-const PROTOCOL := 18
+const PROTOCOL := 19
 const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
 const I1_TRES := ["ice.tres"]
@@ -69,6 +69,10 @@ const C30_TRES := ["pipe_chain.tres"]
 const C31_TRES := ["dev_null.tres"]
 ## SIGHUP's own numbers (C32): resources/sighup.tres.
 const C32_TRES := ["sighup.tres"]
+## Each weapon's kit beside it (C33): its skins and its mod, resources/<id>_kit.tres. The weapons' own files
+## name their kit's ids in the C16 slots, which held nothing before; the pin reads them back empty
+## (_without_c33_slots()), so it still proves no gameplay number of a weapon moved.
+const C33_KITS := ["chmod_000_kit.tres", "cron_mines_kit.tres", "dev_null_kit.tres", "fork_bomb_kit.tres", "fork_shotgun_kit.tres", "grep_seeker_kit.tres", "ping_sonar_kit.tres", "pipe_chain_kit.tres", "rm_rf_cannon_kit.tres", "sighup_kit.tres", "sigkill_rail_kit.tres", "sigterm_kit.tres", "terminal_cannon_kit.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may. 1600 at
 ## A4 (full to the last since C29's frost pool); 1700 since C30, for pipe |'s own pool of packets (4 x 24);
 ## 1800 since C31, for /dev/null's own pool of debris drawn in (2 x 48); 1900 since C32, for SIGHUP's own pool
@@ -181,7 +185,7 @@ func _source_checks() -> void:
 	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
 	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
 	tres.sort()
-	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES + C31_TRES + C32_TRES
+	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES + C31_TRES + C32_TRES + C33_KITS
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
@@ -190,7 +194,7 @@ func _source_checks() -> void:
 	var as_was := arsenal_text.replace("load_steps=15", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/chmod_000.tres\" id=\"11_chmod\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/pipe_chain.tres\" id=\"12_pipe\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/dev_null.tres\" id=\"13_dev_null\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/sighup.tres\" id=\"14_sighup\"]\n", "").replace(", ExtResource(\"10_ping\"), ExtResource(\"11_chmod\"), ExtResource(\"12_pipe\"), ExtResource(\"13_dev_null\"), ExtResource(\"14_sighup\")])", "])")
 	var arsenal := as_was.sha256_text()
 	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added; since C31 dev_null.tres, the black hole's own, and the arsenal with it added; since C32 sighup.tres, the confusion grenade's own, and the arsenal with it added) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30, 17 since C31, 18 since C32)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added; since C31 dev_null.tres, the black hole's own, and the arsenal with it added; since C32 sighup.tres, the confusion grenade's own, and the arsenal with it added; since C33 each weapon's kit beside it, its skin and mod slots naming the kit's ids, read back empty here) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30, 17 since C31, 18 since C32, 19 since C33)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---
@@ -630,8 +634,16 @@ func _dir_sha(dir: String, ext: String, only: Array = []) -> String:
 	ctx.start(HashingContext.HASH_SHA256)
 	for n in names:
 		ctx.update((n + "\n").to_utf8_buffer())
-		ctx.update(FileAccess.get_file_as_bytes(dir + n))
+		var bytes := FileAccess.get_file_as_bytes(dir + n)
+		ctx.update(_without_c33_slots(bytes.get_string_from_utf8()).to_utf8_buffer() if ext == ".tres" else bytes)
 	return ctx.finish().hex_encode()
+
+
+## A weapon's .tres with its C16 slots read back empty, as they were before C33 named its kit's skins and mod
+## in them: the slots name data, never a gameplay number.
+static func _without_c33_slots(text: String) -> String:
+	var slots := RegEx.create_from_string("(mod_slots|skin_slots) = Array\\[String\\]\\(\\[[^\\]]*\\]\\)")
+	return slots.sub(text, "$1 = Array[String]([])", true)
 
 
 func _shader_code(path: String) -> String:

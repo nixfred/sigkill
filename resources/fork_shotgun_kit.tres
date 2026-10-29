@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="WeaponKit" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_kit.gd" id="1_kit"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_skin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/unlocks/weapon_mod.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Skin_yellow"]
+script = ExtResource("2_skin")
+skin = "yellow"
+display_name = "stock yellow"
+fiction = "every pellet a parent"
+feat = ""
+need = 0
+
+[sub_resource type="Resource" id="Skin_jade"]
+script = ExtResource("2_skin")
+skin = "jade"
+display_name = "jade"
+fiction = "a child process, born jade"
+feat = "kills_fork_shotgun"
+need = 20
+
+[sub_resource type="Resource" id="Skin_init"]
+script = ExtResource("2_skin")
+skin = "init"
+display_name = "init"
+fiction = "PID 1 adopts every orphan"
+feat = "kills_fork_shotgun"
+need = 50
+
+[sub_resource type="Resource" id="Mod_deep_fork"]
+script = ExtResource("3_mod")
+id = "deep_fork"
+display_name = "deep fork"
+fiction = "one more fork a pellet, one shell less"
+gains = {"fork_generations": 2}
+costs = {"magazine_size": 3}
+feat = "kills_fork_shotgun"
+need = 8
+
+[resource]
+script = ExtResource("1_kit")
+weapon = "fork_shotgun"
+skins = Array[Resource]([SubResource("Skin_yellow"), SubResource("Skin_jade"), SubResource("Skin_init")])
+mod = SubResource("Mod_deep_fork")

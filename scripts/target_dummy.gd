@@ -89,6 +89,10 @@ var credited := true
 ## On the host, whose kill its last death was: another player's id, or 0 for this machine's own
 ## player (C27b; sent in the state word, so a joiner's copy credits it with the death itself).
 var killer := 0
+## The weapon its last death came from (its id, the killing hit's source; "" for none, a lash's), and whether that
+## death was a frozen body shattered (C33: the feats a kill earns, scripts/unlocks/progress.gd).
+var killed_with := ""
+var shattered_last := false
 ## The next death's credit and killer: a hit another player's shot landed (the host judging a
 ## joiner's) credits none here and names that player.
 var _credit := true
@@ -258,6 +262,7 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 		if brain != null and director != null:
 			brain.on_hit(point, director)  # roused, or a swarm scattered (C27b)
 		return true
+	killed_with = source
 	_start_derezz(point, direction, frozen_now)
 	return true
 
@@ -344,6 +349,7 @@ func _physics_process(delta: float) -> void:
 func _start_derezz(point: Vector3, direction: Vector3, shattered: bool = false) -> void:
 	credited = _credit
 	killer = 0 if _credit else _killer
+	shattered_last = shattered
 	_go_down()
 	# The voxels get a push along the killing shot: its real direction when the shooter
 	# gives one, otherwise from where it struck toward the body's centre.
