@@ -36,6 +36,12 @@ extends Node3D
 ## carried back by the daemon's own motion (carried()). With no act (practice, or no brain) the
 ## type lives its old idle life, the threat displays included. Still visual only: what lands is
 ## the brain's judgement, never the art's.
+##
+## A ping's stagger (C28): a walker (rogue.d, a zombie) whose tell a ping called off plays the
+## scatter act as a stagger: staggered() is 1 as it starts and eases to 0, the type reels by it (the
+## rogue cowering low, the zombie thrown back with its arms up) and its glitch spikes with it (the
+## shaders' unstable slot, never above what a respawn's glitch reaches). The swarm's stagger is its
+## own scatter.
 
 const Palette = preload("res://scripts/palette.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
@@ -67,6 +73,8 @@ const GRAVITY := 9.8
 const HIDDEN := Transform3D(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
 ## How fast a type eases between its idle life and a brain's acts, a second (C27b).
 const DRIVE_EASE := 4.0
+## A walker's stagger after a ping (C28): its glitch at the stagger's start, as an unstable share.
+const STAGGER_GLITCH := 0.6
 
 ## A part's unit shape: SHARD a six-sided crystal from its base (the origin) to its tip (+Y 1), a
 ## unit across; GEM a cut gem centred on the origin, a unit across and tall; CUBE a unit voxel;
@@ -135,6 +143,8 @@ var _hit := 0.0
 var _locked := 0.0
 var _locked_goal := 0.0
 var _unstable := 0.0
+## The stagger's glitch now (C28), sent with the respawn's in the unstable slot (the larger of the two).
+var _shudder := 0.0
 var _poll := 0.0
 var _seed := 0.0
 ## What the shaders were last told of the flash, the lock and the glitch.
@@ -286,6 +296,14 @@ func body_box_size() -> Vector3:
 	return Vector3.ZERO
 
 
+## A walker's stagger after a ping (C28): 1 as it starts, easing to 0; 0 when it is not staggering
+## and always for the swarm, whose stagger is its scatter.
+func staggered() -> float:
+	if act != Act.SCATTER or ai_kind == "swarm":
+		return 0.0
+	return 1.0 - smoothstep(0.0, 1.0, act_u)
+
+
 func hit_glow() -> float:
 	return _hit
 
@@ -404,6 +422,7 @@ func _process(delta: float) -> void:
 		_locked_goal = 1.0 if _marked() else 0.0
 	_locked = move_toward(_locked, _locked_goal, LOCK_EASE * delta)
 	_drive = move_toward(_drive, 0.0 if act == Act.IDLE else 1.0, DRIVE_EASE * delta)
+	_shudder = STAGGER_GLITCH * staggered()
 	_step_carry()
 	_pose(_clock, delta)
 	if _spray_live:
@@ -448,7 +467,8 @@ func _marked() -> bool:
 func _send(all: bool) -> void:
 	var hit := all or _hit != _sent_hit
 	var locked := all or _locked != _sent_locked
-	var unstable := all or _unstable != _sent_unstable
+	var glitch := maxf(_unstable, _shudder)
+	var unstable := all or glitch != _sent_unstable
 	if not (hit or locked or unstable):
 		return
 	for node in _drawn:
@@ -457,10 +477,10 @@ func _send(all: bool) -> void:
 		if locked:
 			node.set_instance_shader_parameter(&"locked", _locked)
 		if unstable:
-			node.set_instance_shader_parameter(&"unstable", _unstable)
+			node.set_instance_shader_parameter(&"unstable", glitch)
 	_sent_hit = _hit
 	_sent_locked = _locked
-	_sent_unstable = _unstable
+	_sent_unstable = glitch
 
 
 # --- What a type gives. ---

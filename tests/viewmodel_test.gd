@@ -10,7 +10,7 @@ extends SceneTree
 ## held, and the game never runs the tool. Each model built alone: its Muzzle marker at its front,
 ## in front of the camera and in view at the arena's field of view, never over the crosshair; its
 ## trim glowing in its own skin at its own energy; a low triangle budget; one mesh with a surface
-## per material; eight different shapes; root's red on the trim, the hot parts and the rims, and
+## per material; eight different shapes (nine since C28's ping); root's red on the trim, the hot parts and the rims, and
 ## back; the rail's coils lighting in order with its charge, rm -rf's core and vents with its
 ## wind-up; the placeholder box where none is named. In the real arena with the real player: only
 ## the drawn model shown, the player's muzzle its Muzzle; a shot's beam starting at it and its flash
@@ -93,7 +93,7 @@ func _resource_checks() -> void:
 			wrong.append(def.id)
 		else:
 			paths[script.resource_path] = true
-	_check("acceptance: every weapon of the arsenal (8) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 8 and paths.size() == 8 and wrong.is_empty(), ", ".join(wrong))
+	_check("acceptance: every weapon of the arsenal (8 at A1, 9 since C28's ping) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 9 and paths.size() == 9 and wrong.is_empty(), ", ".join(wrong))
 	var bad = _defs[0].duplicate()
 	bad.viewmodel_model = load("res://scripts/palette.gd")
 	var none = _defs[0].duplicate()
@@ -208,11 +208,11 @@ func _model_checks() -> void:
 		shapes["%d %d %d %d" % [roundi(box.size.x * 100.0), roundi(box.size.y * 100.0), roundi(box.size.z * 100.0), tris]] = def.id
 	_check("acceptance: every model is built: a Muzzle marker of its own, a Body mesh of 2 to 4 surfaces each with its material (body, plates, polymer, hot parts), the trim its own mesh, the script its weapon names", built.is_empty(), ", ".join(built))
 	_check("acceptance: every model's trim glows in its weapon's own light skin at the weapon's own energy, its base darkened under it as the old box's was", glow.is_empty(), ", ".join(glow))
-	_check("acceptance: low poly: every model between %d and %d triangles (all eight %d), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
+	_check("acceptance: low poly: every model between %d and %d triangles (all nine %d, eight at A1), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
 	_check("acceptance: every Muzzle marker is at its model's front, on the barrel's tip, so effects come out of the barrel", front.is_empty(), ", ".join(front))
 	_check("acceptance: every muzzle sits in front of the camera, %.1f m at least, and in view at the arena's %d degree field of view, at 16:9 and at 4:3" % [MUZZLE_NEAREST_M, cam.fov], view.is_empty(), ", ".join(view))
 	_check("no model reaches within %d degrees of the crosshair" % CROSSHAIR_CLEAR_DEGREES, clear.is_empty(), ", ".join(clear))
-	_check("acceptance: eight different shapes: no two models share their size and triangle count", shapes.size() == 8, str(shapes.size()))
+	_check("acceptance: nine different shapes (eight at A1, ping's since C28): no two models share their size and triangle count", shapes.size() == 9, str(shapes.size()))
 	await _look_checks(models)
 	_placeholder_checks(cam)
 

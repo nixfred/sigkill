@@ -246,7 +246,7 @@ func _arena_checks() -> void:
 	var inv = p.get("inventory")
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 7 (after the cannon, SIGTERM, the rail, the fork bomb, fork() and grep); the player holds seven (eight since C27's cron)", shipped.loadout.size() == 8 and shipped.loadout[SLOT] == _w and inv.slot_count() == 8 and inv.defs[SLOT].id == "rm_rf_cannon", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 7 (after the cannon, SIGTERM, the rail, the fork bomb, fork() and grep); the player holds seven (eight since C27's cron, nine since C28's ping)", shipped.loadout.size() == 9 and shipped.loadout[SLOT] == _w and inv.slot_count() == 9 and inv.defs[SLOT].id == "rm_rf_cannon", str(inv.defs.map(func(d): return d.id)))
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_7
 	key.pressed = true
@@ -510,7 +510,7 @@ func _layout_checks() -> void:
 			var clear_px: float = strip.get_global_rect().position.x - guide.get_global_rect().end.x if guide.visible else INF
 			strips.append([host["hud"].weapon_hud().slots_text(), strip_labels, host["hud"].weapon_hud().state_text(), snappedf(clear_px, 0.1)])
 			await _settle(p, 1.2)
-		_check("acceptance: at %dx%d the strip fits seven slots (eight since C27) clear of the guide panel: with SIGTERM drawn (\"%s\") and with the rm -rf cannon winding up (\"%s\", its prompt \"%s\" on the third line), four rm -rf kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7 8" and strips[1][0] == "1 2 3 4(2) 5 6 [7 rm -rf] 8" and strips[0][1] == 12 and strips[1][1] == 12 and PROMPT.begins_with(strips[1][2]) and strips[1][2].length() >= 7 and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "rm -rf sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
+		_check("acceptance: at %dx%d the strip fits seven slots (eight since C27, nine since C28) clear of the guide panel: with SIGTERM drawn (\"%s\") and with the rm -rf cannon winding up (\"%s\", its prompt \"%s\" on the third line), four rm -rf kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7 8 9" and strips[1][0] == "1 2 3 4(2) 5 6 [7 rm -rf] 8 9" and strips[0][1] == 13 and strips[1][1] == 13 and PROMPT.begins_with(strips[1][2]) and strips[1][2].length() >= 7 and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "rm -rf sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
 		_drop(host)
 		await _frames(2)
 	root.size = before

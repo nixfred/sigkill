@@ -43,6 +43,12 @@ extends Control
 ## clear of the guide panel at 960x540 (a two-row strip waits for a ninth weapon). While cron is in
 ## hand, the third line is the crontab: "crontab 2/3" (this player's jobs running and the limit),
 ## or "crontab full: oldest out" for a moment after a placement removed the oldest.
+##
+## ping (C28) is slot 9, the last free one, still on the one slot line (the strip's redesign comes
+## with C29): the slot line a point smaller again (10), so nine slots stay clear of the guide panel
+## at 960x540. A cooldown, not ammo: drawn, its ammo line reads "ping  ready" or the seconds left
+## ("ping  4.2s"), and the third line is the sonar coming back, "sonar [######....]" in its lime,
+## "sonar ready: 18m" (its reach) once it is.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -75,12 +81,16 @@ const VISION_LINE := "%s vision [%s%s]"
 const VISION_ON_LINE := "%s VISION [%s%s]"
 const CRONTAB_LINE := "crontab %d/%d"
 const CRONTAB_FULL := "crontab full: oldest out"
+const PING_READY := "%s  ready"
+const PING_WAIT := "%s  %.1fs"
+const SONAR_LINE := "sonar [%s%s]"
+const SONAR_READY := "sonar ready: %dm"
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
 const FONT := 14
-## The slot line's size: a point under the small lines' (C27), so eight slots stay clear of the
-## guide panel.
-const SLOT_FONT := 11
+## The slot line's size: a point under the small lines' (C27), and another for the ninth slot (C28),
+## so nine slots stay clear of the guide panel.
+const SLOT_FONT := 10
 const SMALL_FONT := 12
 const MARGIN := 18
 ## Room kept below the strip for the hint line.
@@ -210,6 +220,9 @@ func _refresh() -> void:
 		_ammo.text = (ULT_READY % def.short_name) if inv.meter_ready() else (ULT_FILLING % [def.short_name, floori(inv.meter_share() * 100.0)])
 	elif def.is_thrown():
 		_ammo.text = THROWN_LINE % [def.short_name, mag]
+	elif def.is_ping():
+		var wait: float = inv.cooldowns[inv.current]
+		_ammo.text = (PING_WAIT % [def.short_name, wait]) if wait > 0.0 else (PING_READY % def.short_name)
 	elif not def.has_magazine():
 		_ammo.text = AMMO_ENDLESS % def.short_name
 	else:
@@ -233,6 +246,12 @@ func _refresh() -> void:
 	elif def.has_magazine() and mag <= 0:
 		_state.text = DRY_LINE if reserve == 0 else EMPTY_LINE
 		color = Palette.HOSTILE_AMBER
+	elif def.is_ping() and player.has_method("ping_ready"):
+		# ping (C28): the sonar coming back, or ready with its reach.
+		var back: float = player.ping_ready()
+		var lit := clampi(floori(back * BAR_CELLS), 0, BAR_CELLS)
+		_state.text = (SONAR_READY % roundi(def.ping_radius_m)) if back >= 1.0 else SONAR_LINE % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
+		state_color = def.skin_beam() if back >= 1.0 else def.skin_body()
 	elif def.is_mine() and player.has_method("crontab_count"):
 		# cron (C27): the crontab, or the note that its oldest job went.
 		_state.text = CRONTAB_FULL if player.crontab_noted() else CRONTAB_LINE % [player.crontab_count(), def.crontab_limit]

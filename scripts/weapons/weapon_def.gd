@@ -70,18 +70,26 @@ extends "res://scripts/weapon_tuning.gd"
 ## fade_s. A player holds crontab_limit at most (a new one removes the oldest, noted for
 ## crontab_note_s); another player's shot within mine_hit_radius_m removes one, "remove_word" in
 ## the feed. The Mine group is empty (0) for every other weapon.
+##
+## ping (C28, resources/ping_sonar.tres): fire_mode PING sends one sonar ring out from the shooter's
+## body: no magazine, no ammo, only its fire_cooldown, and no damage (damage 0). The ring grows to
+## ping_radius_m over ping_ring_s, through walls, and every daemon it meets is pinged: outlined
+## through the level with a tag over it for reveal_s, fading over the last reveal_fade_s, on the
+## pinger's screen alone; one it meets in the middle of a tell has that attack called off and
+## staggers (the stagger's length is the daemons' own number, resources/daemon_ai.tres). The Ping
+## group is empty (0) for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 
-enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE }
+enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING }
 
 ## Magazine and reserve value for "no limit": the terminal cannon never runs dry.
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
-## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf), mines since C27 (cron).
-## Beam comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE]
+## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf), mines since C27 (cron),
+## the sonar ring since C28 (ping). Beam comes later.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE, FireMode.PING]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -150,6 +158,12 @@ const MINE_HIT_LAST_M := 2.0
 const MINE_RADIUS_LAST_M := 1.0
 const FADE_LAST_S := 5.0
 const NOTE_LAST_S := 10.0
+## ping (C28): the bounds of its numbers. A ping is a cooldown, never a burst: at least
+## PING_COOLDOWN_FIRST_S between two.
+const PING_RADIUS_LAST_M := 60.0
+const PING_RING_LAST_S := 3.0
+const REVEAL_LAST_S := 20.0
+const PING_COOLDOWN_FIRST_S := 1.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -322,6 +336,16 @@ const NOTE_LAST_S := 10.0
 ## "removed Daemon-2's job").
 @export var remove_word: String = ""
 
+@export_group("Ping")
+## ping (C28): how far the sonar ring reaches from the shooter's body, in metres, and how long it
+## takes to get there (its front moves at ping_radius_m / ping_ring_s, metres a second).
+@export var ping_radius_m: float = 0.0
+@export var ping_ring_s: float = 0.0
+## How long a daemon it meets stays outlined through the level, tag and all, and the last part of
+## that over which the outline fades out.
+@export var reveal_s: float = 0.0
+@export var reveal_fade_s: float = 0.0
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -339,7 +363,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug and mine" % fire_mode)
+		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug, mine and ping" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -355,6 +379,8 @@ func problems() -> PackedStringArray:
 		out.append_array(_slug_problems())
 	elif fire_mode == FireMode.MINE:
 		out.append_array(_mine_problems())
+	elif fire_mode == FireMode.PING:
+		out.append_array(_ping_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -375,6 +401,8 @@ func problems() -> PackedStringArray:
 		out.append("only the rm -rf slug and cron mines (fire_mode slug or mine) fill the blast group")
 	if fire_mode != FireMode.MINE and (place_range_m != 0.0 or arm_s != 0.0 or run_interval_s != 0.0 or runs != 0 or crontab_limit != 0 or remove_word != ""):
 		out.append("only cron mines (fire_mode mine) fill the mine group")
+	if fire_mode != FireMode.PING and (ping_radius_m != 0.0 or ping_ring_s != 0.0 or reveal_s != 0.0 or reveal_fade_s != 0.0):
+		out.append("only ping (fire_mode ping) fills the ping group")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -457,6 +485,11 @@ func is_slug() -> bool:
 ## True for cron mines (C27): fire places a scheduled job that runs blasts on its own.
 func is_mine() -> bool:
 	return fire_mode == FireMode.MINE
+
+
+## True for ping (C28): fire sends a sonar ring that reveals daemons; no ammo, no damage.
+func is_ping() -> bool:
+	return fire_mode == FireMode.PING
 
 
 ## Runs of a mine placed as user, or with `root` (C22's "root crontab") root_extra_runs more.
@@ -698,6 +731,27 @@ func _mine_problems() -> PackedStringArray:
 		out.append("blast_edge_damage must be between 0 and the centre's damage")
 	if not _is_line(remove_word, WORD_LAST):
 		out.append("remove_word must be 1 to %d printable characters" % WORD_LAST)
+	return out
+
+
+func _ping_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("ping sends one ring: pellet_count stays 1")
+	if projectile != null or has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("ping is a cooldown, not ammo: no magazine (-1), no projectile tuning, pierce, charge or ult")
+	if not is_finite(damage) or damage != 0.0:
+		out.append("ping does no damage: damage stays 0")
+	if not is_finite(fire_cooldown) or fire_cooldown < PING_COOLDOWN_FIRST_S:
+		out.append("ping's fire_cooldown, its cooldown, must be at least %s" % PING_COOLDOWN_FIRST_S)
+	var bounds := [
+		["ping_radius_m", ping_radius_m, 0.0, PING_RADIUS_LAST_M], ["ping_ring_s", ping_ring_s, 0.0, PING_RING_LAST_S],
+		["reveal_s", reveal_s, 0.0, REVEAL_LAST_S], ["reveal_fade_s", reveal_fade_s, 0.0, reveal_s],
+	]
+	for b in bounds:
+		var v: float = b[1]
+		if not is_finite(v) or v <= b[2] or v > b[3]:
+			out.append("%s must be above %s and at most %s" % [b[0], b[2], b[3]])
 	return out
 
 

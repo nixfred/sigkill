@@ -36,6 +36,8 @@ const EMBER := Color(1.0, 0.415686275, 0.101960784)  # #ff6a1a rm -rf body, slug
 const EMBER_HI := Color(1.0, 0.788235294, 0.639215686)  # #ffc9a3 rm -rf slug trail and muzzle flash
 const ROSE := Color(1.0, 0.37254902, 0.690196078)  # #ff5fb0 cron mines, their rings and schedule text (C27): pink, between the fork bomb's magenta and hostile red
 const ROSE_HI := Color(1.0, 0.760784314, 0.88627451)  # #ffc2e2 a cron mine's brighten before a run
+const LIME := Color(0.721568627, 1.0, 0.176470588)  # #b8ff2d ping's body, its sonar ring and the outline of what it finds (C28): yellow-green, between the code rain's green and fork()'s yellow but neither
+const LIME_HI := Color(0.894117647, 1.0, 0.701960784)  # #e4ffb3 ping's ring front and its tags
 # Weapon viewmodels (A1): dark gunmetal bodies, lighter plates and shrouds, near-black polymer
 # grips, under each weapon's neon trim (its light skin) and hot parts (its beam colour).
 const GUNMETAL := Color(0.047058824, 0.062745098, 0.078431373)  # #0c1014 viewmodel body
@@ -59,7 +61,7 @@ const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

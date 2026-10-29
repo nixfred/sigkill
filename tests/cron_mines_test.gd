@@ -231,7 +231,7 @@ func _arena_checks() -> void:
 	var inv = p.get("inventory")
 	var orphans := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	var shipped: Resource = load("res://resources/arsenal.tres")
-	_check("acceptance: the arsenal carries it as weapon 8 (after the cannon, SIGTERM, the rail, the fork bomb, fork(), grep and rm -rf); the player holds eight", shipped.loadout.size() == 8 and shipped.loadout[SLOT] == _w and inv.slot_count() == 8 and inv.defs[SLOT].id == "cron_mines", str(inv.defs.map(func(d): return d.id)))
+	_check("acceptance: the arsenal carries it as weapon 8 (after the cannon, SIGTERM, the rail, the fork bomb, fork(), grep and rm -rf); the player holds eight (nine since C28's ping)", shipped.loadout.size() == 9 and shipped.loadout[SLOT] == _w and inv.slot_count() == 9 and inv.defs[SLOT].id == "cron_mines", str(inv.defs.map(func(d): return d.id)))
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_8
 	key.pressed = true
@@ -255,7 +255,7 @@ func _arena_checks() -> void:
 	var last: int = inv.current
 	await _settle(p, 1.8)  # past the fiction line drawing shows for a moment
 	await process_frame
-	_check("acceptance: key 8 draws it; the weapon cycle reaches it after rm -rf and wraps from it to the cannon and back; Q returns to it; the strip's third line is the crontab, \"crontab 0/3\"", by_key == SLOT and next == SLOT and wrapped == 0 and back == SLOT and last == SLOT and wh.state_text() == "crontab 0/3", "%d %d %d %d %d '%s'" % [by_key, next, wrapped, back, last, wh.state_text()])
+	_check("acceptance: key 8 draws it; the weapon cycle reaches it after rm -rf and goes on from it (to the cannon until C28, to ping, slot 9, since) and back; Q returns to it; the strip's third line is the crontab, \"crontab 0/3\"", by_key == SLOT and next == SLOT and wrapped == SLOT + 1 and back == SLOT and last == SLOT and wh.state_text() == "crontab 0/3", "%d %d %d %d %d '%s'" % [by_key, next, wrapped, back, last, wh.state_text()])
 	var dummies := _line_up(main)
 	var calls := []
 	p.cron_ran.connect(func(): calls.append(hud.round_hud().get("last_callout")))
@@ -432,7 +432,7 @@ func _layout_checks() -> void:
 						wrong.append("under a panel: %s %s" % [label.text.left(20), rect])
 			var clear_px: float = strip.get_global_rect().position.x - guide.get_global_rect().end.x if guide.visible else INF
 			strips.append([host["hud"].weapon_hud().slots_text(), strip_labels, host["hud"].weapon_hud().state_text(), snappedf(clear_px, 0.1)])
-		_check("acceptance: at %dx%d the strip fits eight slots clear of the guide panel (its slot line a point smaller, 11 px): with SIGTERM drawn (\"%s\") and with cron drawn (\"%s\", \"%s\" on the third line), four cron kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7 8" and strips[1][0] == "1 2 3 4(2) 5 6 7 [8 cron]" and strips[0][1] == 12 and strips[1][1] == 12 and strips[1][2] == "crontab 0/3" and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "cron sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
+		_check("acceptance: at %dx%d the strip fits eight slots clear of the guide panel (its slot line a point smaller, 11 px; nine slots and 10 px since C28): with SIGTERM drawn (\"%s\") and with cron drawn (\"%s\", \"%s\" on the third line), four cron kills in the feed, the net panel and a long guide notice all inside the screen, nothing covering anything" % [size.x, size.y, strips[0][0], strips[1][0], strips[1][2]], wrong.is_empty() and strips[0][0] == "1 [2 SIGTERM] 3 4(2) 5 6 7 8 9" and strips[1][0] == "1 2 3 4(2) 5 6 7 [8 cron] 9" and strips[0][1] == 13 and strips[1][1] == 13 and strips[1][2] == "crontab 0/3" and strips[0][3] > 0.0 and strips[1][3] > 0.0 and hud.feed_text().size() == 4 and hud.feed_text()[0] == "cron sent by Daemon-2 to Daemon-1", "%s; %s" % [strips, ", ".join(wrong)])
 		_drop(host)
 		await _frames(2)
 	root.size = before

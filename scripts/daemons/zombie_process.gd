@@ -55,6 +55,12 @@ const BITS := 10
 const BIT_S := 1.7
 ## Twitches: about one every TWITCH_EVERY seconds.
 const TWITCH_EVERY := 1.2
+## A ping's stagger (C28), at its start: how far back it leans (radians), how far it is thrown back
+## and down, and how far it shudders side to side.
+const STAGGER_LEAN := 0.5
+const STAGGER_BACK_M := 0.15
+const STAGGER_DROP_M := 0.1
+const STAGGER_SHAKE_M := 0.07
 
 ## Part ids: the body's bones, then each ghost's, layer by layer.
 var _bones := PackedInt32Array()
@@ -143,8 +149,11 @@ func _skeleton(t: float, layer: int, shift: Vector3, off: bool) -> void:
 	var root := _root_at(p)
 	var yaw := _yaw_at(p) + (0.25 * amp * sign if kind == 3 else 0.0)
 	var turn := Basis(Vector3.UP, yaw)
-	var body := turn * Basis(Vector3.BACK, 0.16 * drag)
+	# A ping's stagger (C28): thrown back, leaning away, shuddering, its arms flung up.
+	var reel := staggered()
+	var body := turn * Basis(Vector3.BACK, 0.16 * drag) * Basis(Vector3.RIGHT, STAGGER_LEAN * reel)
 	var jump := turn * Vector3(0.14 * sign, 0.0, 0.05) * (amp if kind == 3 and tau < 0.1 else 0.0)
+	jump += turn * Vector3(STAGGER_SHAKE_M * sin(37.0 * t), -STAGGER_DROP_M, STAGGER_BACK_M) * reel
 	var pelvis := root + Vector3(0.0, HIP_H + 0.05 * lurch - 0.1 * drag, 0.0) + shift + jump
 	if layer == 0:
 		pelvis += recoil()
@@ -181,7 +190,7 @@ func _skeleton(t: float, layer: int, shift: Vector3, off: bool) -> void:
 		var swing := 0.15 * sin(TAU * f + PI) if side == 0 else 0.35 * sin(TAU * f + 0.5)
 		var hang := Vector3((0.45 if side == 0 else 0.3) * x, -1.0, -0.15 + swing).normalized()
 		var jerk := amp if (kind == 1 and side == 0) or (kind == 2 and side == 1) else 0.0
-		var upper := hang.lerp(Vector3(1.0 * x, 0.5, -0.6).normalized(), jerk).normalized()
+		var upper := hang.lerp(Vector3(1.0 * x, 0.5, -0.6).normalized(), jerk).normalized().lerp(Vector3(0.8 * x, 0.7, 0.2).normalized(), reel).normalized()
 		var fore := (upper + Vector3(0.0, 0.3, -0.55)).normalized()
 		# The tell (C27b): the right claw raised at its prey, thrown forward in the strike.
 		var raise := _raise() if side == 1 else 0.0

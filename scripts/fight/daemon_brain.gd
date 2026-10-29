@@ -30,6 +30,12 @@ extends RefCounted
 ## player's): no step, no clock, no attack. In practice it walks home and stands, the old dummy.
 ## On a joiner it decides nothing: it plays the host's word (follow()).
 ##
+## ping (C28): a ping's ring meeting it in the middle of its tell calls that attack off (pinged()):
+## nothing is thrown, its slot goes, and it staggers, knocked a little back from the ping, before it
+## hunts again after its attack's own wait. The stagger is the scatter state, the same word on the
+## wire (the swarm's stagger is its scatter, a walker's its knock back), so a joiner draws it with no
+## new message. A ping meeting it doing anything else changes nothing: it is no hit and rouses no one.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -62,6 +68,8 @@ var art: DaemonArt
 var kind := "rogue"
 var state: State = State.HOME
 var state_t := 0.0
+## Staggers since it was made: tells a ping called off (C28).
+var staggers := 0
 ## The player hunted (0 none), the last place it saw it, and for how long it has not.
 var prey := 0
 var last_seen := Vector3.INF
@@ -99,6 +107,8 @@ var word_frozen := false
 
 var _look := 0.0
 var _strike_dir := Vector3.FORWARD
+## A walker's stagger (C28) is knocked back over this share of it, then holds still.
+const KNOCK_SHARE := 0.3
 ## How far this strike's lunge carries the rogue: only what closes the gap, up to rogue_lunge_m.
 var _lunge := 0.0
 var _dive_from := Vector3.ZERO
@@ -204,6 +214,22 @@ func on_hit(point: Vector3, d) -> void:
 		var near: int = d.nearest_prey(dummy.global_position, _eye(d))
 		if near != 0:
 			_hunt(near, d.prey_point(near))
+
+
+## A ping's ring met it from `from` (world space, the ring's centre, C28): in the middle of its tell
+## the attack is called off and it staggers (the scatter state: a walker knocked back, the swarm
+## scattering), then hunts again; anything else it is doing goes on. Only where the brains decide.
+## True when it staggered.
+func pinged(from: Vector3, d) -> bool:
+	if d == null or not d.runs() or state != State.TELL:
+		return false
+	_release(d)
+	burst_left = 0
+	staggers += 1
+	_flee_from = from if from.is_finite() else dummy.global_position
+	_note("stagger")
+	_enter(State.SCATTER)
+	return true
 
 
 func _step_home(delta: float, d) -> void:
@@ -368,14 +394,24 @@ func _step_return(delta: float, d) -> void:
 
 func _step_scatter(delta: float, d) -> void:
 	var t: DaemonAiTuning = d.tuning
-	art.drive(DaemonArt.Act.SCATTER, state_t / maxf(t.swarm_scatter_s, 0.001))
+	var scatter_s := _scatter_s(d)
+	art.drive(DaemonArt.Act.SCATTER, state_t / scatter_s)
 	var away := dummy.global_position + Vector3.UP * MIDDLE_M - _flee_from
 	away.y = 0.0
 	if away.length_squared() < 0.0001:
 		away = dummy.global_transform.basis.z
-	_shove(away.normalized() * t.swarm_scatter_speed * delta, d, true)
-	if state_t >= t.swarm_scatter_s:
-		cooldown = maxf(cooldown, t.swarm_burst_gap_s)
+	if kind == "swarm":
+		_shove(away.normalized() * t.swarm_scatter_speed * delta, d, true)
+	else:
+		# A walker's stagger (C28): knocked back from the ping over its first part, then still.
+		velocity = Vector3.ZERO
+		if state_t <= scatter_s * KNOCK_SHARE:
+			_shove(away.normalized() * (t.ping_knock_m / (scatter_s * KNOCK_SHARE)) * delta, d)
+	if state_t >= scatter_s:
+		if kind == "swarm":
+			cooldown = maxf(cooldown, t.swarm_burst_gap_s)
+		else:
+			cooldown = maxf(cooldown, (t.rogue_cooldown_s if kind == "rogue" else t.zombie_cooldown_s) / d.aggression())
 		_enter(State.HUNT if d.prey_valid(prey) else State.RETURN)
 
 
@@ -449,7 +485,7 @@ func follow(delta: float, d) -> void:
 		State.RECOVER:
 			art.drive(DaemonArt.Act.RECOVER, state_t / _recover_s(d))
 		State.SCATTER:
-			art.drive(DaemonArt.Act.SCATTER, state_t / maxf(d.tuning.swarm_scatter_s, 0.001))
+			art.drive(DaemonArt.Act.SCATTER, state_t / _scatter_s(d))
 		State.HUNT, State.RETURN:
 			art.drive(DaemonArt.Act.MOVE)
 		_:
@@ -624,6 +660,12 @@ func _recover_s(d) -> float:
 		"zombie":
 			return t.zombie_recover_s
 	return t.swarm_burst_gap_s if burst_left > 0 else t.swarm_recover_s
+
+
+## How long the scatter state lasts: the swarm's scatter, a walker's stagger after a ping (C28).
+func _scatter_s(d) -> float:
+	var t: DaemonAiTuning = d.tuning
+	return maxf(t.swarm_scatter_s if kind == "swarm" else t.ping_stagger_s, 0.001)
 
 
 func _from_home() -> float:

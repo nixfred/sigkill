@@ -1,8 +1,9 @@
 class_name ParticleFx
 extends Node3D
 ## The game's GPU particles (A4): sparks off what a shot strikes, derezz bits off a daemon it hits,
-## debris from a blast, sparks shed behind a projectile in flight, and each weapon family's muzzle
-## burst. Cosmetic only: no collision, no ray, nothing outside the game.
+## debris from a blast, sparks shed behind a projectile in flight, each weapon family's muzzle
+## burst, and a ping's sonar ring (C28): a flat disc of streaks flying out level with the ring's
+## front. Cosmetic only: no collision, no ray, nothing outside the game.
 ##
 ## Everything is made once. The arena (scripts/main.gd) makes this node, which holds a fixed pool of
 ## one-shot emitters for each kind of effect; an effect takes the next emitter of its kind round the
@@ -32,7 +33,7 @@ const MUZZLE_GROUP := &"particle_muzzle_burst"
 ## A beam that ends this short of its weapon's range met something; one that reaches it hit the sky.
 const BEAM_OPEN_M := 1.0
 
-enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL }
+enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING }
 ## Each pool: [emitters, particles each, lifetime in seconds, how far its particles may fly, metres].
 const POOLS := {
 	Kind.SPARK: [12, 24, 0.45, 4.0],
@@ -40,6 +41,7 @@ const POOLS := {
 	Kind.BLAST: [4, 64, 0.9, 8.0],
 	Kind.TRAIL: [12, 40, 0.4, 40.0],
 	Kind.HEAVY_TRAIL: [2, 64, 0.6, 40.0],
+	Kind.PING: [2, 96, 0.5, 64.0],
 }
 ## The particle level: [the share of each effect's particles shown, trails on].
 const LEVELS := {"low": [0.25, false], "medium": [0.5, true], "high": [1.0, true]}
@@ -113,7 +115,7 @@ func _ready() -> void:
 			p.name = "%s%d" % [Kind.keys()[kind].capitalize().replace(" ", ""), i]
 			# A world-space effect: its particles stay where they were thrown as the emitter moves.
 			p.local_coords = false
-			if kind == Kind.SPARK or kind == Kind.BLAST:
+			if kind == Kind.SPARK or kind == Kind.BLAST or kind == Kind.PING:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
 			elif trail:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
@@ -195,6 +197,22 @@ func beam_end(start: Vector3, finish: Vector3, color: Color, reach_m: float) -> 
 ## Debris from a blast at `point` in `color`: more of it the farther the blast reaches.
 func blast(point: Vector3, color: Color, reach_m: float) -> void:
 	_fire(Kind.BLAST, Transform3D(Basis.IDENTITY, point), color, clampf(reach_m / 4.0, 0.35, 1.0))
+
+
+## A ping's ring (C28): a flat disc of streaks from `point` flying out level at the ring's own speed,
+## `radius_m` in `seconds`, so they ride its front, in `color`. The speed and the life are the one
+## ping weapon's: set on the pool when they change (the first ping), never per ping.
+func ping(point: Vector3, color: Color, radius_m: float, seconds: float) -> void:
+	var life := maxf(seconds, 0.05)
+	var speed := radius_m / life
+	var m := _process_material(Kind.PING)
+	if m.initial_velocity_min != speed or m.initial_velocity_max != speed:
+		m.initial_velocity_min = speed
+		m.initial_velocity_max = speed
+	for p in _pools[Kind.PING]:
+		if p.lifetime != life:
+			p.lifetime = life
+	_fire(Kind.PING, Transform3D(Basis.IDENTITY, point), color, 1.0)
 
 
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
@@ -295,6 +313,8 @@ static func family_of(def: Resource) -> Family:
 			return Family.SEEKER
 		6:
 			return Family.HEAVY
+		8:
+			return Family.RAIL
 	return Family.RAIL if (charge is float or charge is int) and charge > 0.0 else Family.PULSE
 
 
@@ -397,6 +417,17 @@ static func _process_material(kind: Kind) -> ParticleProcessMaterial:
 			m.damping_max = 3.0
 			m.scale_min = 0.8
 			m.scale_max = 1.6
+		Kind.PING:
+			# Level all round, every streak at the ring's speed (ping() sets it): a ring of light.
+			m.direction = Vector3.RIGHT
+			m.spread = 180.0
+			m.flatness = 1.0
+			m.initial_velocity_min = 30.0
+			m.initial_velocity_max = 30.0
+			m.gravity = Vector3.ZERO
+			m.lifetime_randomness = 0.0
+			m.scale_min = 1.2
+			m.scale_max = 2.2
 		Kind.TRAIL, Kind.HEAVY_TRAIL:
 			var heavy := kind == Kind.HEAVY_TRAIL
 			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE

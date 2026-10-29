@@ -34,16 +34,22 @@ const Player = preload("res://scripts/player.gd")
 ## resources/ (every .tres) and scripts/net/ (every .gd) as they were at dee2482: SHA-256 over each
 ## file's name and a newline, then its bytes, in name order. Since C27b resources/ also holds
 ## daemon_ai.tres, the daemons' own numbers: the pin covers the files dee2482 had (DEE2482_TRES),
-## and nothing else may join them.
-const RESOURCES_SHA := "bff9abb41595538b62df6ff11d662bc8ae685d0f6ed79eb5088ddaacc1babeda"
+## and nothing else may join them. Since C28 the arsenal holds ping as its ninth weapon
+## (arsenal.tres) and resources/ holds ping_sonar.tres: the pin covers dee2482's other 24 files
+## (603599096ad5, the same bytes as at dee2482; bff9abb41595 with arsenal.tres), and arsenal.tres
+## is dee2482's to the byte once ping's three lines are taken out (ARSENAL_SHA, its load steps, its
+## ping and the ping in the loadout): the eight before it and every timing number as they were.
+const RESOURCES_SHA := "603599096ad58a96c8c127f49f93d77c2a9d8aa9b4791ead955ff0504eb32b0a"
+const ARSENAL_SHA := "b98ef06f812877af00be320ad1350d3942b35f03fa78c00d355c03b0ab1b39a4"
 ## Since C27b the session carries the daemons (its brief changes scripts/net/, protocol 10): the
 ## pin over scripts/net/ (eeca5f69c759 at dee2482, every .gd) is now its files that hold numbers,
 ## as they were at dee2482 (NET_NUMBERS_SHA).
 const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
 const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
 const PROTOCOL := 10
-const DEE2482_TRES := ["announcer.tres", "arsenal.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
+const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
+const C28_TRES := ["arsenal.tres", "ping_sonar.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may.
 const PARTICLE_BUDGET := 1600
 const MUZZLE_BUDGET := 32
@@ -153,12 +159,16 @@ func _source_checks() -> void:
 	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
 	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
 	tres.sort()
-	var expected_tres := DEE2482_TRES + C27B_TRES
+	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
 	var protocol := _code("res://scripts/net/net_session.gd").contains("const PROTOCOL := %d" % PROTOCOL)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	var arsenal_text := FileAccess.get_file_as_string("res://resources/arsenal.tres")
+	var as_was := arsenal_text.replace("load_steps=11", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace(", ExtResource(\"10_ping\")])", "])")
+	var arsenal := as_was.sha256_text()
+	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---
@@ -324,7 +334,7 @@ func _particle_checks(main: Node) -> void:
 		if by_family.has(family) and by_family[family] != burst.process_material:
 			bursts.append("%s does not share its family's" % model.name)
 		by_family[family] = burst.process_material
-	_check("acceptance: muzzle flash per weapon family: every model carries its family's GPU burst under its Muzzle (in its own space, at most %d particles), the same family sharing one process material; %d families among the 8" % [MUZZLE_BUDGET, by_family.size()], bursts.is_empty() and models.size() == 8 and by_family.size() >= 5, ", ".join(bursts))
+	_check("acceptance: muzzle flash per weapon family: every model carries its family's GPU burst under its Muzzle (in its own space, at most %d particles), the same family sharing one process material; %d families among the 9 (8 at A4, ping's since C28 the rail's ring)" % [MUZZLE_BUDGET, by_family.size()], bursts.is_empty() and models.size() == 9 and by_family.size() >= 5, ", ".join(bursts))
 
 	# A muzzle burst fires with a shot's flash.
 	p.respawn_at(main.to_global(Vector3(0.0, 0.95, 10.0)))

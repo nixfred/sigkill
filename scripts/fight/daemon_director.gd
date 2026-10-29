@@ -7,6 +7,7 @@ extends Node
 ## (not spawn-protected) or frozen by SIGSTOP; it keeps the attacker cap (at most max_attackers
 ## daemons in a tell or a strike on one player at a time); it checks sight and walls against the
 ## level; it throws the zombies' bolts from a fixed pool (scripts/fight/glitch_bolt.gd); and it
+## passes on a ping's ring meeting a daemon (C28) to its brain, which staggers when caught mid-tell; it
 ## lands every hit through the combat path, the difficulty's damage scale on it: alone through
 ## the player's own health (scripts/fight/solo_life.gd, which runs the match's combat rules),
 ## hosting through the session (scripts/net/net_session.gd), which judges it in the match's
@@ -305,6 +306,15 @@ func throw_bolt(brain: DaemonBrain, from: Vector3, dir: Vector3, bolt_id: int = 
 			bolt.id = bolt_id
 		return bolt
 	return null
+
+
+## A ping's ring met `dummy` from `from` (world space, C28): its brain staggers when the ping caught it
+## in the middle of a tell. Only while the brains decide here: never in practice, never on a joiner
+## (the host's own pulse judges a match's). True when it staggered.
+func pinged(dummy: Node, from: Vector3) -> bool:
+	if mode != Mode.RUN or dummy == null or dummy.get("brain") == null:
+		return false
+	return dummy.brain.pinged(from, self)
 
 
 ## Every bolt of `brain`'s ends now: its daemon's reset (a new round) leaves nothing of it flying.

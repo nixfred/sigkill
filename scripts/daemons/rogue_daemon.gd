@@ -49,6 +49,12 @@ const REAR_PITCH := 0.62
 const PIVOT := Vector3(0.0, 0.0, 0.3)
 const LIFT := 0.22
 const LUNGE := 0.28
+## A ping's stagger (C28), at its start: how far the body drops, how far the front pitches down and
+## rolls each way (radians), and how far it shudders side to side.
+const STAGGER_DROP_M := 0.2
+const STAGGER_PITCH := 0.35
+const STAGGER_ROLL := 0.22
+const STAGGER_SHAKE_M := 0.06
 ## The box round its body for a shot (C27b): head to tail spike, and the back shards' bases, in
 ## body space (its centre) and its size.
 const BOX_AT := Vector3(0.0, 0.12, 0.2)
@@ -162,13 +168,16 @@ func _pose(t: float, delta: float) -> void:
 	var yaw := (_p[0] + 0.85 * sin(0.31 * t + _p[3]) + 0.35 * sin(0.9 * s)) * idle
 	var turn := Basis(Vector3.UP, yaw)
 	var breath := sin(TAU * 0.55 * t + _p[1])
-	var tremble := sin(t * 61.0) * (0.014 + 0.02 * _drive) * rear * (1.0 - strike)
-	var centre := Vector3(GLIDE.x * sin(1.25 * s + _p[1]) * idle + tremble, GROUND_Y + BODY_H + 0.025 * breath + LIFT * rear, GLIDE.y * sin(0.83 * s + _p[2]) * idle)
+	# A ping's stagger (C28): it cowers low, head down, shuddering side to side, never a rear-up.
+	var reel := staggered()
+	var tremble := sin(t * 61.0) * (0.014 + 0.02 * _drive) * rear * (1.0 - strike) + sin(t * 43.0) * STAGGER_SHAKE_M * reel
+	var centre := Vector3(GLIDE.x * sin(1.25 * s + _p[1]) * idle + tremble, GROUND_Y + BODY_H + 0.025 * breath + LIFT * rear - STAGGER_DROP_M * reel, GLIDE.y * sin(0.83 * s + _p[2]) * idle)
 	centre += turn * Vector3.FORWARD * (LUNGE * strike) + recoil()
 	_turn = turn
 	_centre = centre
-	var pitch := REAR_PITCH * rear * (1.0 - 0.7 * strike) - 0.25 * strike + 0.3 * jolt()
-	var body := turn * Basis(Vector3.RIGHT, pitch)
+	var pitch := REAR_PITCH * rear * (1.0 - 0.7 * strike) - 0.25 * strike + 0.3 * jolt() - STAGGER_PITCH * reel
+	var roll := sin(t * 29.0) * STAGGER_ROLL * reel
+	var body := turn * Basis(Vector3.FORWARD, roll) * Basis(Vector3.RIGHT, pitch)
 	var xf := Transform3D(body, centre + turn * PIVOT - body * PIVOT)
 	var up := body * Vector3.UP
 	var ahead := body * Vector3.FORWARD
@@ -211,7 +220,7 @@ func _pose(t: float, delta: float) -> void:
 		var shoulder := Vector3(0.11 * x, 0.26, -0.55)
 		var r := rear * (1.0 - strike)
 		var sway := 0.06 * sin(1.7 * t + side * 1.3)
-		var d1 := Vector3(0.18 * x, -0.05 + sway, -1.0).lerp(Vector3(0.55 * x, 1.1, -0.45), r).lerp(Vector3(0.08 * x, -0.55, -1.0), strike).normalized()
+		var d1 := Vector3(0.18 * x, -0.05 + sway, -1.0).lerp(Vector3(0.55 * x, 1.1, -0.45), r).lerp(Vector3(0.08 * x, -0.55, -1.0), strike).lerp(Vector3(0.9 * x, -0.3, -0.35), reel).normalized()
 		var elbow := shoulder + d1 * 0.58
 		var d2 := Vector3(0.0, -0.75, 0.65).lerp(Vector3(0.25 * x, 0.25, -1.0), r).lerp(Vector3(0.0, -1.0, -0.25), strike).normalized()
 		var tip := elbow + d2 * 0.62

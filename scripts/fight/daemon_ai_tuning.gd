@@ -7,8 +7,9 @@ extends Resource
 ## aggression shortens every wait between attacks (the tells never get shorter: an attack is
 ## always readable). The default instance is resources/daemon_ai.tres; the brains
 ## (scripts/fight/daemon_brain.gd) and their director (scripts/fight/daemon_director.gd)
-## read it. Units are metres, seconds, metres a second and health points. Fiction only:
-## nothing here touches a real process.
+## read it. Units are metres, seconds, metres a second and health points. Since C28 a ping that
+## catches a daemon in the middle of its tell staggers it: how long, and how far it is knocked back,
+## are the daemons' own numbers too. Fiction only: nothing here touches a real process.
 
 @export_group("Hunting")
 ## A daemon sees a player this close, with nothing of the level between its eye and the
@@ -86,6 +87,13 @@ extends Resource
 @export var swarm_scatter_s: float = 1.0
 @export var swarm_scatter_speed: float = 7.0
 
+@export_group("Ping")
+## A ping's ring meeting a walker (rogue.d, a zombie) in the middle of its tell (C28): the attack is
+## called off and it staggers this long, knocked this far back from the ping over the stagger's first
+## part, then hunts again after its attack's own wait. The swarm's stagger is its scatter (above).
+@export var ping_stagger_s: float = 1.0
+@export var ping_knock_m: float = 0.5
+
 @export_group("Difficulty")
 ## Every daemon's damage times this, and every wait between its attacks divided by its
 ## aggression, on easy, normal and hard.
@@ -110,6 +118,7 @@ const RANGES := {
 	"swarm_speed": [0.1, 30.0], "swarm_orbit_m": [0.5, 30.0], "swarm_tell_s": [0.2, 5.0], "swarm_dive_speed": [1.0, 60.0], "swarm_dive_s": [0.1, 5.0],
 	"swarm_hit_m": [0.1, 5.0], "swarm_damage": [0.0, 1000.0], "swarm_burst_gap_s": [0.0, 10.0], "swarm_recover_s": [0.02, 10.0], "swarm_cooldown_s": [0.1, 60.0], "swarm_dive_past_m": [0.0, 10.0],
 	"swarm_scatter_s": [0.0, 10.0], "swarm_scatter_speed": [0.0, 50.0],
+	"ping_stagger_s": [0.1, 10.0], "ping_knock_m": [0.0, 5.0],
 	"easy_damage": [0.0, 10.0], "easy_aggression": [0.1, 10.0], "normal_damage": [0.0, 10.0], "normal_aggression": [0.1, 10.0],
 	"hard_damage": [0.0, 10.0], "hard_aggression": [0.1, 10.0],
 }

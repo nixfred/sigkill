@@ -246,6 +246,7 @@ const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 const CronMine = preload("res://scripts/weapons/cron_mine.gd")
+const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 ## A cron mine's word in _blast (C27): a run's generation is the runs left after it (0 and up);
 ## a removal's is one of these, the remover's player id the index for a shot.
 const MINE_CRONTAB := -1
@@ -1876,6 +1877,18 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		combat.drop_after(Combat.DROP_ORIGIN)
 		return
 	combat.accept(shooter, seq, weapon, _clock)
+	if def.is_ping():
+		# ping (C28): the host sends the ring out from where it last heard the pinger and judges its
+		# own daemons with it (one caught mid-tell staggers); every joiner draws the same ring from
+		# the seed message, and only the pinger's own screen outlines what it meets. No new message.
+		var center := _body_of(shooter)
+		if not center.is_finite():
+			center = origin
+		_throws += 1
+		_spawn_ping(_throws, shooter, weapon, center, true)
+		_tell_seed(_throws, shooter, weapon, 0, center, dir)
+		_flush_sudo()
+		return
 	if def.is_fork():
 		# fork() (C24): the pellets fly as a volley the host runs and judges; every joiner
 		# draws the same one from its seed.
@@ -2034,13 +2047,16 @@ func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: 
 ## (C25: `marks` the player ids the host believed, empty for the others).
 @rpc("authority", "call_remote", "reliable")
 func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks: PackedInt32Array) -> void:
-	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley()):
+	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley() or _weapons[weapon].is_ping()):
 		return
 	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
 	# A believed mark of a player who has left since flies its dart straight (_mark_point), so
 	# the darts stay as many as the host's and fan the same.
 	if marks.size() > WeaponDefScript.MARKS_LAST or (not marks.is_empty() and not _weapons[weapon].is_seeker()):
+		return
+	if _weapons[weapon].is_ping():
+		_spawn_ping(throw_id, thrower, weapon, origin, false)  # its ring from where the host heard the pinger (C28)
 		return
 	if _weapons[weapon].is_mine():
 		var left: int = absi(seed)
@@ -2209,6 +2225,19 @@ func _spawn_volley(shot_id: int, shooter: int, weapon: String, shot_seed: int, o
 
 func _on_volley_finished(_landed: int, shot_id: int) -> void:
 	_volleys.erase(shot_id)
+
+
+## A ping's ring in this arena (C28), id `id` of `pinger`, from `at` (arena space, the pinger's
+## middle as the host heard it): the host's decides (its daemons caught mid-tell stagger), a
+## joiner's only draws; this player's own outlines what it meets. Kept with the volleys until done.
+func _spawn_ping(id: int, pinger: int, weapon: String, at: Vector3, deciding: bool) -> void:
+	var center: Vector3 = _arena.to_global(at)
+	var mine: bool = pinger == my_id and _player_ready()
+	var pulse := PingPulseScript.spawn(_arena, _weapons[weapon], center, center.y - FEET_M, deciding, mine)
+	_volleys[id] = pulse
+	pulse.finished.connect(_on_volley_finished.bind(id))
+	if mine:
+		_player.last_ping = pulse
 
 
 ## Where `shooter`'s mine sticks (C27): the host's view of its aim from `origin` along `dir` (arena

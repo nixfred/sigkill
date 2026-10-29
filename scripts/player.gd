@@ -114,6 +114,7 @@ const GrepLock = preload("res://scripts/weapons/grep_lock.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 const CronMine = preload("res://scripts/weapons/cron_mine.gd")
+const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -272,6 +273,9 @@ var _jobs: Array = []
 var _crontab_note_left := 0.0
 ## Mines this player placed alone: each one's id.
 var _placed := 0
+## Pings this player sent (C28), and the last one's ring while it is out alone (for the checks).
+var pings_sent := 0
+var last_ping: Node = null
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
@@ -953,6 +957,8 @@ func _step_weapon(delta: float) -> void:
 	if _throw_pressed and alive:
 		quick_throw()
 	_throw_pressed = false
+	if _w.is_ping():
+		_viewmodel.set_charge(ping_ready())  # the dish's rings relight as the cooldown comes back (C28)
 	_place_viewmodel(delta)
 
 
@@ -1086,6 +1092,9 @@ func _fire() -> void:
 		return
 	if _w.is_mine():
 		_fire_mine()
+		return
+	if _w.is_ping():
+		_fire_ping()
 		return
 	shots_fired += 1
 	var origin := _camera.global_position
@@ -1313,6 +1322,35 @@ func _fire_mine() -> void:
 	if live.size() > _w.crontab_limit:
 		live[0].remove(CronMine.CRONTAB)
 		note_crontab_full(_w)
+
+
+## A ping (C28): the small flash, kick and sound here at once. Alone the ring goes out from this
+## player's middle, deciding (it staggers a daemon caught mid-tell) and revealing here; in a match only
+## the intent goes: the host sends the ring from where it heard this player, judges its daemons, and
+## this screen draws the ring and outlines what it meets. Never a shot: no damage, no accuracy.
+func _fire_ping() -> void:
+	pings_sent += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	_fire_sfx.play()
+	fire_intent.emit(origin, forward, _w.id)
+	if match_meter:
+		return
+	last_ping = PingPulseScript.spawn(_fx_root(), _w, global_position, global_position.y - _half_height(), true, true)
+
+
+## How far ping's cooldown has come back (C28), 0 just sent to 1 ready: its dish's rings and the strip.
+func ping_ready() -> float:
+	var slot := -1
+	for i in inventory.defs.size():
+		if inventory.defs[i].is_ping():
+			slot = i
+	if slot < 0:
+		return 0.0
+	var wait: float = inventory.defs[slot].fire_cooldown
+	return clampf(1.0 - inventory.cooldowns[slot] / maxf(wait, 0.0001), 0.0, 1.0)
 
 
 ## A mine of this player's (C27): kept for the strip's count, its first run the callout.
