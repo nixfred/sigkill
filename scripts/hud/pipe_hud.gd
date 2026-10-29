@@ -33,6 +33,10 @@ const LINE_FONT := 17
 const SMALL_FONT := 13
 const LINE_FONT_SMALLER := 13
 const SMALL_FONT_SMALLER := 11
+## How short every name is cut, in turn, when a row will not fit even drawn smaller (0: whole), and the
+## mark a cut name ends in.
+const NAME_CUTS := [0, 12, 7]
+const CUT_MARK := "~"
 ## The gap between the chain and its count, and the room kept at each side of the screen.
 const ROW_GAP_PX := 14.0
 const SIDE_ROOM_PX := 16.0
@@ -70,26 +74,33 @@ func _refresh() -> void:
 	var p := player
 	if p == null or not is_instance_valid(p) or p.get("alive") != true:
 		return
-	var lines := _lines(p)
-	if lines.is_empty():
+	if _lines(p, 0).is_empty():
 		return
-	var age: float = p.get("chain_age") if p.get("chain_age") is float else INF
-	var alpha := 1.0 if lines[2] == "now" else clampf((READOUT_S - age) / FADE_S, 0.0, 1.0)
-	_line.text = lines[0]
-	_small.text = lines[1]
-	_line.visible = _line.text != ""
-	_small.visible = _small.text != ""
-	_line.modulate.a = alpha
-	_small.modulate.a = alpha
 	# One row under the crosshair, the count after the chain (the breakers' effect lines stay under it); a
-	# row too wide for the screen is drawn smaller.
-	var fits := true
-	for sizes in [[LINE_FONT, SMALL_FONT], [LINE_FONT_SMALLER, SMALL_FONT_SMALLER]]:
-		_line.add_theme_font_size_override("font_size", sizes[0])
-		_small.add_theme_font_size_override("font_size", sizes[1])
-		fits = _row_width() <= size.x - SIDE_ROOM_PX * 2.0
+	# row too wide for the screen is drawn smaller, then with its names cut short.
+	var lines := PackedStringArray()
+	for cut in NAME_CUTS:
+		lines = _lines(p, cut)
+		_line.text = lines[0]
+		_small.text = lines[1]
+		_line.visible = _line.text != ""
+		_small.visible = _small.text != ""
+		var fits := false
+		for sizes in [[LINE_FONT, SMALL_FONT], [LINE_FONT_SMALLER, SMALL_FONT_SMALLER]]:
+			_line.add_theme_font_size_override("font_size", sizes[0])
+			_small.add_theme_font_size_override("font_size", sizes[1])
+			fits = _row_width() <= size.x - SIDE_ROOM_PX * 2.0
+			if fits:
+				break
 		if fits:
 			break
+	# A label grows to its text but never shrinks back on its own: fit both to what they show now.
+	_line.size = _line.get_minimum_size()
+	_small.size = _small.get_minimum_size()
+	var age: float = p.get("chain_age") if p.get("chain_age") is float else INF
+	var alpha := 1.0 if lines[2] == "now" else clampf((READOUT_S - age) / FADE_S, 0.0, 1.0)
+	_line.modulate.a = alpha
+	_small.modulate.a = alpha
 	var left := (size.x - _row_width()) * 0.5
 	var top := size.y * 0.5 + LINE_DROP
 	_line.position = Vector2(left, top)
@@ -104,8 +115,9 @@ func _row_width() -> float:
 	return w
 
 
-## [line, small line, "now" for a live note or "" for a chain's readout], or [] for nothing to show.
-func _lines(p: Node) -> PackedStringArray:
+## [line, small line, "now" for a live note or "" for a chain's readout], or [] for nothing to show; with
+## `cut` above 0 every name longer than it cut to it, its end marked.
+func _lines(p: Node, cut: int = 0) -> PackedStringArray:
 	var def = p.weapon_tuning() if p.has_method("weapon_tuning") else null
 	if def == null or not def.is_chain():
 		return PackedStringArray()
@@ -120,7 +132,7 @@ func _lines(p: Node) -> PackedStringArray:
 	var links: Array = p.get("last_chain")
 	match String(p.get("chain_end")):
 		"wall":
-			return PackedStringArray([PROMPT % _name(links[0]), WALL_LINE, ""])
+			return PackedStringArray([PROMPT % _name(links[0], cut), WALL_LINE, ""])
 		"black":
 			return PackedStringArray([BLACK_TITLE, BLACK_LINE, ""])
 		"protected":
@@ -129,15 +141,16 @@ func _lines(p: Node) -> PackedStringArray:
 			return PackedStringArray()
 	var names := PackedStringArray()
 	for link in links:
-		names.append(_name(link) + (FROZEN_MARK if link.get("frozen") == true else ""))
+		names.append(_name(link, cut) + (FROZEN_MARK if link.get("frozen") == true else ""))
 	var count := ONE_LINK if links.size() == 1 else LINKS_LINE % links.size()
 	if p.get("chain_walled") == true:
 		count = WALLED_LINE % [links.size(), "link" if links.size() == 1 else "links"]
 	return PackedStringArray([PROMPT % PipeChain.JOIN.join(names), count, ""])
 
 
-static func _name(link: Dictionary) -> String:
-	return String(link.get("name", "?"))
+static func _name(link: Dictionary, cut: int = 0) -> String:
+	var who := String(link.get("name", "?"))
+	return who.left(cut - 1) + CUT_MARK if cut > 0 and who.length() > cut else who
 
 
 func _label(font_size: int) -> Label:
