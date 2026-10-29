@@ -15,8 +15,10 @@ const NODE_NAME := "HupLook"
 ## The tag: how far over the target's own name tag, its fonts (fixed size on screen, so a far one reads),
 ## its outline, and how often the reload's line is written again.
 const TAG_ABOVE_M := 0.45
+## The "?" sits lower, right over the head.
+const WANDER_ABOVE_M := 0.15
 const RELOAD_FONT := 26
-const WANDER_FONT := 64
+const WANDER_FONT := 84
 const TAG_PIXEL := 0.0009
 const TAG_OUTLINE := 10
 const TAG_EVERY_S := 0.12
@@ -34,6 +36,7 @@ const HANGUP_BURST := 0.35
 var _art: DaemonArt
 var _tag: Label3D
 var _base_y := 0.0
+var _wander_y := 0.0
 var _phase := 0
 var _share := 0.0
 var _clock := 0.0
@@ -65,7 +68,11 @@ func _setup(art: DaemonArt) -> void:
 	_seed = art.build_seed
 	_tag = Label3D.new()
 	_tag.name = "Tag"
-	_base_y = art.tag_height + TAG_ABOVE_M
+	# Over the name tag: the art's origin is its body's middle, GROUND_Y over the feet the name tag is measured
+	# from, and the art is scaled by its size about the ground (A5).
+	var size := maxf(art.size_scale, 0.01)
+	_base_y = art.tag_height + (DaemonArt.GROUND_Y + TAG_ABOVE_M) / size
+	_wander_y = art.tag_height + (DaemonArt.GROUND_Y + WANDER_ABOVE_M) / size
 	_tag.position.y = _base_y
 	_tag.font = Palette.mono_font()
 	_tag.font_size = RELOAD_FONT
@@ -126,7 +133,7 @@ func _step(delta: float) -> void:
 			_tag.text = RELOAD_LINE % [dots, "#".repeat(lit), ".".repeat(BAR_CELLS - lit)]
 	elif _phase == 2:
 		_tag.font_size = WANDER_FONT
-		_tag.position.y = _base_y + BOB_M * sin(TAU * BOB_HZ * _clock + float(_seed % 97))
+		_tag.position.y = _wander_y + BOB_M * sin(TAU * BOB_HZ * _clock + float(_seed % 97))
 		# Now and then it flickers out or doubles, as a signal that keeps dropping does.
 		var tick := int(_clock * FLICKER_HZ)
 		var roll := DaemonArt.roll_of(_seed, tick, 3)

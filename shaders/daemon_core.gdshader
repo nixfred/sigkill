@@ -69,8 +69,8 @@ void fragment() {
 	float wandering = step(1.5, hup);
 	float scan = smoothstep(0.72, 1.0, fract(world_pos.y * hup_bands_per_m - t * hup_climb));
 	vec3 carrier = hup_color.rgb * energy * 1.3 * part.y;
-	col = mix(col, mix(col * 0.2, carrier, scan), reloading);
+	col = mix(col, mix(col * 0.15 + carrier * 0.35, carrier * 1.6, scan), reloading);
 	float cycle = fract(part.x * 5.0 + t * hup_cycle_hz);
-	col = mix(col, mix(col, carrier, step(0.62, cycle)) * step(0.3, cycle), wandering);
+	col = mix(col, mix(col, carrier, step(0.4, cycle)) * step(0.2, cycle), wandering);
 	ALBEDO = mix(col, flash_color.rgb * flash_energy, hit);
 }

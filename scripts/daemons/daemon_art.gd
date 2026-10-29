@@ -108,8 +108,8 @@ const SEED_LAST := 0x7fffffff
 ## wandering; its glitch's floor and its spikes while confused, and how often a spike may come.
 const HUP_STUTTER_HZ := 7.0
 const HUP_HOLD := [0.0, 0.8, 0.4]
-const HUP_GLITCH := [0.0, 0.3, 0.12]
-const HUP_SPIKE := 0.55
+const HUP_GLITCH := [0.0, 0.16, 0.08]
+const HUP_SPIKE := 0.4
 const HUP_SPIKE_HZ := 11.0
 
 ## A part's unit shape: SHARD a six-sided crystal from its base (the origin) to its tip (+Y 1), a

@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30 or c31):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31 or c32):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -44,7 +44,13 @@ extends SceneTree
 ## four daemons in (stretched toward its core, the floor's mark, the readout over the crosshair), the strip's two
 ## rows with /dev/null drawn cut from that frame and shown three times the size, the implosion, a knot of daemons
 ## the hole drew together chained by pipe |, ICE (the hunter pulled, a node held in place, the gate flickering)
-## and Black ICE refusing it ("/dev/null: device busy"); then it prints what a hole costs. Every other set plays in practice,
+## and Black ICE refusing it ("/dev/null: device busy"); then it prints what a hole costs; c32, SIGHUP: a burst
+## mid-wave over four daemons (its carrier trace on the floor, its curtain of static running out, each daemon it
+## has reached stalled "reloading config"), the strip's two rows with SIGHUP drawn cut from that frame and shown
+## three times the size, a crowd of fighting daemons confused (their "?", their seams cycling) turning on each
+## other (a lash caught mid-strike), a caught player's own screen (the glitch, the drifting crosshair, the link
+## hung up), ICE (the hunter confused, a node reloading, the gate untouched) and Black ICE refusing it
+## ("SIGHUP: ignored (nohup)"); then it prints what a burst costs. Every other set plays in practice,
 ## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -298,6 +304,20 @@ const C31_KNOT_FRAMES := 22
 const C31_KNOT_CHAIN_FRAMES := 30
 const C31_ICE_FROM := Vector3(5.5, 0.95, 4.5)
 const C31_ICE_DROP := Vector3(-1.6, 0.3, -3.6)
+## c32 (C32): SIGHUP's slot; where the player stands and where the device is dropped (arena space: it goes off
+## half a metre over the floor there); the four daemons round it (rogue.d, the zombie, the runaway, the second
+## zombie); the frames after it goes off for its still (its front then most of the way out); the crowd that
+## turns on itself (close enough to lash), and the most frames waited for a lash's strike; ICE's drop.
+const C32_SLOT := 12
+const C32_PLAYER_AT := Vector3(1.0, 0.95, 14.6)
+const C32_DROP := Vector3(0.0, 0.2, 7.4)
+const C32_CROWD := [Vector3(-3.0, 0.0, 6.2), Vector3(3.4, 0.0, 8.6), Vector3(1.6, 1.0, 4.4), Vector3(-1.4, 0.0, 9.9)]
+const C32_WAVE_FRAMES := 19
+const C32_KNOT := [Vector3(-1.1, 0.0, 7.6), Vector3(1.1, 0.0, 7.8), Vector3(0.2, 0.0, 6.0), Vector3(0.0, 0.0, 9.2)]
+const C32_LASH_WAIT := 330
+const C32_KNOT_FROM := Vector3(0.8, 0.95, 12.0)
+const C32_ICE_FROM := Vector3(5.5, 0.95, 4.0)
+const C32_ICE_DROP := Vector3(-2.6, 0.2, -3.4)
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -372,6 +392,11 @@ func _run() -> void:
 		return
 	if _set == "c31":
 		await _c31()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c32":
+		await _c32()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1747,6 +1772,156 @@ func _c31() -> void:
 	await _frames(C31_HOLE_FRAMES)
 	print("capture: Black ICE: \"%s\", seals %d, held %s" % [black_hole.tag_text().replace("\n", " / "), b.seals_left, black_hole.held.has(b)])
 	await _save("c31-black")
+
+
+func _c32() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var hud = _main.get_node("Hud")
+	var life := _main.get_node("SoloLife")
+	var def: Resource = load("res://resources/sighup.tres")
+	var order := ["DummyA", "DummyB", "DummyD", "DummyC"]
+	# The burst: dropped among four daemons standing (practice); the still with its front most of the way out,
+	# each daemon it has passed stalled and scanned green, its tag typing "reloading config".
+	await _stand(C32_PLAYER_AT, _main.to_global(C32_DROP + Vector3(0.0, 0.9, 0.0)))
+	_player.select_slot(C32_SLOT)
+	await _frames(SETTLE_FRAMES)
+	for i in order.size():
+		var dummy: Node3D = targets.get_node(order[i])
+		_c27b_place(dummy, _main.to_global(C32_CROWD[i]))
+		_c30_tough(dummy)
+	await _frames(20)
+	var burst := await _c32_burst(def, C32_DROP)
+	await _frames(C32_WAVE_FRAMES)
+	print("capture: the burst: its front %.1f m, %d caught; its tag \"%s\"; the strip \"%s\" over \"%s\", \"%s\", \"%s\"" % [burst.front_m(), burst.caught_count, burst.tag_text().replace("\n", " / "), hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
+	var frame := await _grab()
+	frame.save_png(OUT.path_join("c32-hup.png"))
+	_shots += 1
+	var corner := frame.get_region(C30_STRIP_CROP)
+	corner.resize(C30_STRIP_CROP.size.x * C30_STRIP_SCALE, C30_STRIP_CROP.size.y * C30_STRIP_SCALE, Image.INTERPOLATE_NEAREST)
+	corner.save_png(OUT.path_join("c32-strip.png"))
+	_shots += 1
+	await _hup_cost(burst)
+	await _frames(400)
+	# The crowd turning on itself: the daemons fight now (the player out of their reach of attack), four
+	# close together; the still on a lash's strike (one daemon lunging at, or diving through, another).
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	life.combat.states[1]["protect_left"] = 100000.0
+	await _stand(C32_KNOT_FROM, _main.to_global(Vector3(0.0, 1.1, 7.6)))
+	for i in order.size():
+		var dummy: Node3D = targets.get_node(order[i])
+		_c27b_place(dummy, _main.to_global(C32_KNOT[i]))
+		_c30_tough(dummy)
+		dummy.brain.hup_guard = 0.0
+	await _frames(4)
+	var knot := await _c32_burst(def, Vector3(0.0, 0.2, 7.8))
+	# rogue.d's lunge and slash reads best; any lash's strike will do once the wait is half gone.
+	var lashing: Node3D = null
+	for i in C32_LASH_WAIT:
+		for name in order:
+			var dummy: Node3D = targets.get_node(name)
+			if dummy.brain.get("_lash_mark") != null and dummy.brain.state == DaemonBrain.State.STRIKE and dummy.brain.state_t > 0.08 and (name == "DummyA" or i > C32_LASH_WAIT / 2):
+				lashing = dummy
+		if lashing != null:
+			break
+		await _frames(1)
+	var lashes := 0
+	for name in order:
+		lashes += targets.get_node(name).brain.lashes
+	print("capture: the crowd confused: %s lashing (%d lashes so far); %d caught" % [String(lashing.name) if lashing != null else "none", lashes, knot.caught_count if is_instance_valid(knot) else -1])
+	await _save("c32-confused")
+	await _frames(400)
+	# A caught player's own screen (as another player's SIGHUP leaves it): the glitch, the crosshair drifting
+	# off the middle (its true point a faint dot), "SIGHUP: hung up", the AI link hung up.
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	GameSettings.current().set_value("gameplay", "practice", true)
+	await _stand(C32_PLAYER_AT, _main.to_global(Vector3(0.0, 1.4, 4.0)))
+	_player.take_hup(def.hup_tuning().player_s, def.hup_tuning().player_drift_px)
+	await _frames(24)
+	print("capture: a caught player: \"%s\", the crosshair %s px off, the link hung up %s" % [hud.sighup_hud().line_text(), str(hud.get("_crosshair").drift()), str(hud.guide().link_hung_up())])
+	await _save("c32-player")
+	await _frames(200)
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	await _frames(30)
+	# ICE: round 2: the hunter confused (it forgets what it learned), the jam node reloading, the gate untouched.
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	hud.round_hud()._start_round(2)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _stand(C32_ICE_FROM, _main.to_global(C32_ICE_DROP + Vector3(0.0, 1.2, 0.0)))
+	_player.select_slot(C32_SLOT)
+	await _frames(40)
+	if ice.hunter != null:
+		ice.hunter.global_position = _main.to_global(C31_ICE_HUNTER)
+	ice.note_damage("sigkill_rail", 300.0)
+	var learned := ice.adapt_text()
+	var ice_burst := await _c32_burst(def, C32_ICE_DROP)
+	await _frames(C32_WAVE_FRAMES + 12)
+	print("capture: ICE: learned \"%s\", now \"%s\"; the hunter %s, the jam node %s; %d nodes reloaded" % [learned, ice.adapt_text(), ice.hunter.brain.hup_name() if ice.hunter != null else "none", IceNode.STATE_NAMES[ice.node_of("jam").state], ice_burst.nodes_reloaded if is_instance_valid(ice_burst) else -1])
+	await _save("c32-ice")
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	await _frames(90)
+	# Black ICE: round 4, out at its spot; the hangup means nothing to it: "SIGHUP: ignored (nohup)".
+	hud.round_hud()._start_round(4)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var spot_at: Vector3 = IceDirector.BLACK_SPOTS[C30_BLACK_SPOT]
+	await _stand(spot_at + C31_BLACK_OFF, _main.to_global(spot_at + Vector3.UP * 2.2 + Vector3(0.0, 0.0, 3.0)))
+	var b := ice.summon_black(C30_BLACK_SPOT)
+	b.phase_t = b.tuning.tell_s
+	b.step(0.0, ice.daemons)
+	await _frames(20)
+	var black_burst := await _c32_burst(def, spot_at + Vector3(0.0, 0.2, 4.0))
+	await _frames(C32_WAVE_FRAMES + 12)
+	print("capture: Black ICE: \"%s\", seals %d, confused %s" % [black_burst.tag_text().replace("\n", " / "), b.seals_left, b.brain.hup_name()])
+	await _save("c32-black")
+
+
+## A burst of the player's own dropped at `at` (arena space) as if thrown there, gone off (C32).
+func _c32_burst(def: Resource, at: Vector3) -> Node3D:
+	var burst = SighupBurst.spawn(_main, def.hup_tuning(), _main.to_global(at), Vector3.ZERO, 32, "solo", true, 0, false, def.light_skin, [_player.get_rid()])
+	_player.take_hup_burst(burst)
+	for i in 60:
+		if burst.went():
+			break
+		await _frames(1)
+	return burst
+
+
+## What a burst costs (C32): the GPU's time with it held mid-wave and drawn against with its look hidden, twice
+## each in turn, and what one step of its wave's sweep takes on this machine.
+func _hup_cost(burst: Node3D) -> void:
+	var look: Node3D = burst.get("_look")
+	var times := []
+	burst.set_physics_process(false)  # held mid-wave while it is measured
+	for i in 2:
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		look.visible = false
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		look.visible = true
+	var passed: Dictionary = burst.get("_passed")
+	var was := passed.duplicate()
+	passed.clear()
+	var t0 := Time.get_ticks_usec()
+	burst.call("_sweep")
+	var step_us := Time.get_ticks_usec() - t0
+	passed.merge(was, true)
+	burst.set_physics_process(true)
+	print("capture: a burst costs the GPU %.2f and %.2f ms a frame drawn, %.2f and %.2f hidden; one step of its sweep %d microseconds" % [times[0], times[2], times[1], times[3], step_us])
 
 
 ## A hole of the player's own dropped at `at` (arena space) as if thrown there, open (C31).

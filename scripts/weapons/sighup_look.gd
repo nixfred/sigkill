@@ -32,21 +32,23 @@ const CURTAIN_M := 2.6
 const CURTAIN_SIDES := 64
 const FLOOR_MARGIN := 1.1
 ## The flash: its light's energy at the burst, how long it takes to fall away, and its point's size.
-const FLASH_ENERGY := 6.0
-const FLASH_S := 0.5
+const FLASH_ENERGY := 3.0
+const FLASH_S := 0.4
 const POP_M := 0.35
 ## The spike of the carrier: its height and its radius, and how long it stands.
 const SPIKE_M := 4.5
 const SPIKE_R := 0.05
 const SPIKE_S := 0.4
-## The light that rides with the wave, lighting what it reaches green.
-const WAVE_LIGHT := 1.6
+## The light that rides with the wave, lighting what it reaches green (softly: a deck lit flat green read as a
+## plate in the first stills), and its falloff.
+const WAVE_LIGHT := 0.45
+const LIGHT_FALLOFF := 1.8
 ## Seconds the wave's look takes to fade once its front has reached its edge.
 const AFTER_S := 1.1
 ## Its tag: the font's size, its pixel's, how far over the burst it floats and how far it rises.
 const TAG_FONT := 40
 const TAG_PIXEL := 0.007
-const TAG_RISE_M := 2.2
+const TAG_RISE_M := 3.6
 const TAG_CLIMB_M := 0.5
 
 var tuning: Tuning
@@ -227,6 +229,7 @@ func _build_burst() -> void:
 	_flash.name = "Flash"
 	_flash.light_color = body_color.lerp(hot_color, 0.35)
 	_flash.shadow_enabled = false
+	_flash.omni_attenuation = LIGHT_FALLOFF
 	_burst.add_child(_flash)
 	_tag = Label3D.new()
 	_tag.name = "Tag"
@@ -237,6 +240,8 @@ func _build_burst() -> void:
 	_tag.modulate = light_color
 	_tag.outline_modulate = Palette.VOID
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_tag.no_depth_test = true  # over what stands in front of it (Black ICE's spikes hid its refusal)
+	_tag.render_priority = Material.RENDER_PRIORITY_MAX
 	_tag.position = Vector3.UP * TAG_RISE_M
 	_burst.add_child(_tag)
 	for node in [_floor, _curtain, _spike, _pop]:
