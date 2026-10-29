@@ -162,7 +162,11 @@ func is_head_hit(point: Vector3) -> bool:
 func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
 	if state != State.ALIVE or _follows():
 		return false
-	_health -= damage
+	# An exploit breaker's bonus on a weak seam (I2): this machine's own shot, or the joiner's the host
+	# is judging.
+	var breakers := BreakerDirector.of(self)
+	var scale: float = breakers.exploit_scale(_killer if _killer != 0 else breakers.my_id(), self, point, source) if breakers != null else 1.0
+	_health -= damage * scale
 	var ice := IceDirector.of(self)
 	if ice != null:
 		ice.note_damage(source, damage)  # the system learns which weapon hits it hardest (I1)

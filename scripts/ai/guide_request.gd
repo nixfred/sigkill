@@ -11,6 +11,11 @@ extends RefCounted
 ## game's own fixed round tasks, coach or roast, whose instruction is added to the
 ## preamble. A task name the game does not know is dropped, so nothing but SIGKILL's own
 ## words can reach the instructions.
+##
+## The ICEbreaker pick (I2): between rounds and on T, while breakers are carried, the round's ICE and
+## breaker numbers go in as stats too (the ICE keys below, numbers and the game's own weapon ids only:
+## scripts/ice/breaker_pick.gd builds them), and a request carrying them adds the game's fixed
+## BREAKER_LINE to its instructions, so the guide also names the breaker to load.
 
 ## The fixed instructions every guide gets, as its system prompt where the agent allows one.
 const PREAMBLE := "You are the in-game guide in SIGKILL, a first-person shooter. Answer the player in at most three short lines. Use only the game stats and the player's message below. Do not use tools, do not read or write files, and do not run commands."
@@ -40,6 +45,19 @@ const STATS := {
 	"distance_m": ["float", 0.0, 1000000.0],
 	"slides": ["int", 0, 100000],
 	"jumps": ["int", 0, 100000],
+	# The ICEbreaker pick's numbers (I2): ICE standing now, the hunter, and this player's breakers.
+	"ice_walls": ["int", 0, 16],
+	"ice_wall_health_pct": ["int", 0, 100],
+	"ice_nodes": ["int", 0, 16],
+	"ice_node_health_pct": ["int", 0, 100],
+	"hunter_out": ["int", 0, 1],
+	"hunter_health_pct": ["int", 0, 100],
+	"hunter_adapted_weapon": ["enum", ["none", "terminal_cannon", "sigterm", "sigkill_rail", "fork_bomb", "fork_shotgun", "grep_seeker", "rm_rf_cannon", "cron_mines", "ping_sonar"]],
+	"hunter_adapted_pct": ["int", 0, 100],
+	"breakers_brute": ["int", 0, 9],
+	"breakers_exploit": ["int", 0, 9],
+	"breakers_cloak": ["int", 0, 9],
+	"breakers_decoy": ["int", 0, 9],
 }
 ## The game's own instructions for the end of a round, by task name. Only these words, and
 ## never anything the player or an AI wrote, are ever added to the preamble.
@@ -47,6 +65,10 @@ const TASKS := {
 	"coach": "The round just ended. Give the player one concrete tip for the next round, drawn from these round numbers, in one or two short sentences.",
 	"roast": "The round just ended. Roast the player's play in this round, PG-13, in one or two short sentences. Mock the play and the numbers only, never the player as a person. No slurs, nothing hateful, no profanity beyond mild words.",
 }
+## The game's own instruction added to a request carrying the ICEbreaker numbers (I2).
+const BREAKER_LINE := "ICE is in the arena. Also name the one ICEbreaker the player should load next (brute, exploit, cloak or decoy), from the ICE and breaker numbers, in one short sentence that starts with the breaker's name."
+## A stat only the ICEbreaker numbers carry: its presence adds BREAKER_LINE.
+const BREAKER_KEY := "breakers_brute"
 const UNSET := -1.0
 ## Characters removed from typed text besides control characters: direction overrides and
 ## isolates, marks and zero-width characters that could hide or reorder text.
@@ -135,9 +157,11 @@ func user_message() -> String:
 	return "Game stats: %s\nPlayer: %s" % [stats_line(), text if text != "" else "(no message)"]
 
 
-## The fixed instructions for this request: the preamble, plus the round task's own line.
+## The fixed instructions for this request: the preamble, plus the round task's own line, plus the
+## ICEbreaker pick's line when it carries the breaker numbers (I2).
 func preamble() -> String:
-	return PREAMBLE if task == "" else PREAMBLE + " " + TASKS[task]
+	var out: String = PREAMBLE if task == "" else PREAMBLE + " " + TASKS[task]
+	return out + " " + BREAKER_LINE if stats.has(BREAKER_KEY) else out
 
 
 ## The whole prompt, preamble first, for agents that take no separate system prompt.

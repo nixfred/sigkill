@@ -93,6 +93,28 @@ static func ice_burst(hz: float, gain: float) -> AudioStreamWAV:
 	return _render(Weapon.new(), ICE_BURST_SECONDS, hz * 2.0, hz, ICE_BURST_DECAY, ICE_BURST_NOISE, 2.01, gain)
 
 
+## The ICEbreakers' own sounds (I2), by name: "brute" a heavy downward thump with a crack of noise,
+## "exploit" a bright rising chirp, "cloak" an airy falling hush, "decoy" a two-note call, "empty" a dull
+## click (H with none of the loaded kind), "cycle" a short tick (Y), "pickup" a bright chime, "uncloak" a
+## rising hush as a cloak ends. Each is one of BREAKER_SOUNDS' [seconds, from Hz, to Hz, decay, noise,
+## second tone's ratio, gain].
+static func breaker(word: String) -> AudioStreamWAV:
+	var s: Array = BREAKER_SOUNDS.get(word, BREAKER_SOUNDS["empty"])
+	return _render(Weapon.new(), s[0], s[1], s[2], s[3], s[4], s[5], s[6])
+
+
+const BREAKER_SOUNDS := {
+	"brute": [0.45, 190.0, 48.0, 7.0, 0.45, 1.5, 0.6],
+	"exploit": [0.32, 520.0, 1560.0, 6.0, 0.05, 2.0, 0.32],
+	"cloak": [0.5, 900.0, 180.0, 5.5, 0.7, 1.5, 0.3],
+	"decoy": [0.36, 660.0, 990.0, 8.0, 0.08, 0.5, 0.32],
+	"empty": [0.06, 160.0, 120.0, 60.0, 0.5, 0.0, 0.3],
+	"cycle": [0.035, 1400.0, 1200.0, 80.0, 0.2, 0.0, 0.22],
+	"pickup": [0.22, 980.0, 1960.0, 12.0, 0.0, 1.5, 0.34],
+	"uncloak": [0.4, 220.0, 880.0, 7.0, 0.6, 1.5, 0.3],
+}
+
+
 static func _stream(data: PackedByteArray, rate: int) -> AudioStreamWAV:
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS

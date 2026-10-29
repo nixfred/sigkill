@@ -19,6 +19,11 @@ extends DaemonBrain
 ##
 ## On a joiner it plays the host's word (follow()), its aim with it (take_aim()), so every screen
 ## draws the trace and the lance where the host's hunter aimed.
+##
+## ICEbreakers (I2): a cloaked intruder is unseen (it goes on to where it last saw it, home after
+## hunter_lose_s); a decoy calling within the breakers' pull, anywhere in the arena (no leash), takes it
+## off whatever it hunts, even in the middle of its tell: the trace swings to the decoy (unless it has
+## locked), and the lance at the tell's end is judged on the decoy, never on the intruder it left.
 
 var ice: IceTuning
 ## Where its lance aims (world space, a unit vector) and how far it reached, the line's end.
@@ -97,7 +102,7 @@ func _spot(d) -> int:
 	var best := 0
 	var best_d := INF
 	for id in d.prey_ids():
-		if not d.prey_valid(id):
+		if not d.prey_valid(id) or d.prey_hidden(id):
 			continue
 		var at: Vector3 = d.prey_point(id)
 		var gap := _eye(d).distance_to(at)
@@ -114,8 +119,9 @@ func _step_hunt(delta: float, d) -> void:
 		_go_home()
 		return
 	var target: Vector3 = d.prey_point(prey)
-	var sees := _sees(target, d)
-	if sees:
+	var sees: bool = _sees(target, d) and not d.prey_hidden(prey)
+	var heard: bool = d.is_decoy(prey)  # a decoy's call says where it is (I2)
+	if sees or heard:
 		last_seen = target
 		unseen_t = 0.0
 	else:
@@ -123,12 +129,12 @@ func _step_hunt(delta: float, d) -> void:
 	if unseen_t > ice.hunter_lose_s:
 		_go_home()
 		return
-	var chase: Vector3 = target if sees else last_seen
+	var chase: Vector3 = target if sees or heard else last_seen
 	if not chase.is_finite():
 		velocity = Vector3.ZERO
 		return
-	_walk(_hunt_goal(chase, delta, d) if sees else chase, _speed(d), delta, d)
-	_face(target if sees else chase, delta, d)
+	_walk(_hunt_goal(chase, delta, d) if sees or heard else chase, _speed(d), delta, d)
+	_face(target if sees or heard else chase, delta, d)
 	if sees and cooldown <= 0.0 and _in_range(target, d) and d.prey_attackable(prey) and d.take_slot(self, prey):
 		holds_slot = true
 		burst_left = 0
@@ -140,7 +146,7 @@ func _step_tell(delta: float, d) -> void:
 	var tell_s := _tell_s(d)
 	art.drive(DaemonArt.Act.TELL, state_t / tell_s)
 	velocity = Vector3.ZERO
-	var target: Vector3 = d.prey_point(prey) if d.prey_valid(prey) else Vector3.INF
+	var target: Vector3 = d.prey_point(prey) if d.prey_valid(prey) and not d.prey_hidden(prey) else Vector3.INF
 	# The trace follows its prey until the lock, then holds still where it last aimed.
 	if target.is_finite() and state_t < tell_s - ice.hunter_lock_s:
 		_face(target, delta, d)
@@ -198,6 +204,25 @@ func _step_recover(_delta: float, d) -> void:
 	_release(d)
 	cooldown = ice.hunter_cooldown_s / d.aggression()
 	_enter(State.HUNT)
+
+
+## A decoy calls it (I2): hunting, at home or going home it hunts the decoy; in its tell it keeps the
+## tell, its prey (and its slot) the decoy now, the trace swinging to it unless it has locked.
+func _take_lure(lure: int, d) -> void:
+	if state == State.TELL:
+		_release(d)
+		prey = lure
+		last_seen = d.prey_point(lure)
+		unseen_t = 0.0
+		holds_slot = d.take_slot(self, lure)
+		_note("lured")
+		return
+	super(lure, d)
+
+
+## No leash: any decoy within the pull will do.
+func lure_ok(at: Vector3, _d) -> bool:
+	return at.is_finite()
 
 
 func _aim_at(target: Vector3) -> void:

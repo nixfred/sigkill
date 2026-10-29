@@ -301,7 +301,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 12
+const PROTOCOL := 13
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -521,6 +521,12 @@ var host_ice := true
 ## Hosting, the wait to the next ICE word; joined, ICE words taken (for the checks).
 var _ice_wait_s := 0.0
 var ice_words := 0
+## The ICEbreakers (I2): hosting, the wait to the next breaker word and the asks it refused; joined,
+## breaker words taken and asks sent (for the checks).
+var _breaker_wait_s := 0.0
+var breaker_refused := 0
+var breaker_words := 0
+var breaker_asks := 0
 ## The rule the host last told its joiners, and the wait to its next daemon word.
 var _told_rule := []
 var _daemon_wait_s := 0.0
@@ -1065,6 +1071,7 @@ func _physics_process(delta: float) -> void:
 			_tick_trails(delta)
 			_tick_daemons(delta)
 			_tick_ice(delta)
+			_tick_breakers(delta)
 			for id in combat.tick_sigstop(delta):
 				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
 			combat.tick_sudo(delta)  # root running out on the host's clock (C22)
@@ -1897,6 +1904,9 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		combat.drop_after(Combat.DROP_ORIGIN)
 		return
 	combat.accept(shooter, seq, weapon, _clock)
+	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	if breakers != null:
+		breakers.fired(shooter)  # a shot ends the shooter's cloak (I2)
 	if def.is_ping():
 		# ping (C28): the host sends the ring out from where it last heard the pinger and judges its
 		# own daemons with it (one caught mid-tell staggers); every joiner draws the same ring from
@@ -2046,6 +2056,9 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 	var live := ForkBomb.live_of(_arena, _bomb_key(id))
 	if combat.throw(id, life, weapon, origin, dir, eye, _view_of(id), lives.get(id, 0), _clock, live) != "":
 		return
+	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	if breakers != null:
+		breakers.fired(id)  # a throw ends the thrower's cloak (I2)
 	_throws += 1
 	var seed := _seeds.randi()
 	_spawn_chain(_throws, id, weapon, seed, origin, dir, true)
@@ -3307,6 +3320,12 @@ func _daemon_struck(index: int, killed: bool) -> void:
 	daemon_struck.emit(index, killed)
 
 
+## Hosting: a joiner's brute ICEbreaker charge reaching the host's daemon `dummy` (I2): landed as that
+## joiner's hit, its kill theirs, as a shot of theirs is.
+func breaker_hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3, source: String) -> bool:
+	return _hit_daemon(dummy, shooter, damage, point, way, source)
+
+
 ## A joiner's hit on the host's daemon `dummy` (C27b): landed as another player's (its kill not
 ## the host's), the shooter told. True when it landed.
 func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3, source: String = "") -> bool:
@@ -3495,6 +3514,94 @@ func _ice_effect(kind: int, seconds: float, weapon: String) -> void:
 	var ice := IceDirector.of(_arena)
 	if ice != null:
 		ice.take_effect(kind, seconds, weapon)
+
+
+# --- ICEbreakers (I2). ---
+
+## This player pressed U with a breaker of `kind` loaded, from its eye along `aim` (world space): on a
+## joiner only a request to the host, which runs it from where it last heard this player's eye.
+func breaker_intent(kind: int, _eye: Vector3, aim: Vector3) -> void:
+	if state != State.JOINED or _arena == null or not is_instance_valid(_arena) or not multiplayer.get_peers().has(1):
+		return
+	breaker_asks += 1
+	_breaker.rpc_id(1, lives.get(my_id, 0), kind, (_arena.global_transform.basis.inverse() * aim).normalized())
+
+
+## A joiner's ask to run its loaded breaker, to the host. Untyped like _fire: wrong types are counted,
+## never an engine error.
+@rpc("any_peer", "call_remote", "reliable")
+func _breaker(life: Variant, kind: Variant, dir: Variant) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	if typeof(life) != TYPE_INT or typeof(kind) != TYPE_INT or typeof(dir) != TYPE_VECTOR3:
+		breaker_refused += 1
+		return
+	_handle_breaker(multiplayer.get_remote_sender_id(), life, kind, dir)
+
+
+## The host's check of a joiner's breaker ask: a known, live player in this life, a kind that exists,
+## a way to aim; then the breakers' director runs it (or refuses it: none of that kind, too soon).
+func _handle_breaker(id: int, life: int, kind: int, dir: Vector3) -> void:
+	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	var eye := _eye_of(id) if players.has(id) else Vector3.INF
+	if breakers == null or not eye.is_finite() or life != lives.get(id, 0) or not combat.alive(id) or kind < 0 or kind >= Breakers.NAMES.size() or not dir.is_finite() or dir.length_squared() < 0.0001:
+		breaker_refused += 1
+		return
+	var aim: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	if not breakers.handle_intent(id, kind, _arena.to_global(eye), aim):
+		breaker_refused += 1
+
+
+## Every physics step hosting: while breakers are carried and anyone has joined, each joiner's own
+## breaker word at the sync rate.
+func _tick_breakers(delta: float) -> void:
+	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	if breakers == null or not breakers.decides() or players.size() < 2:
+		_breaker_wait_s = 0.0
+		return
+	_breaker_wait_s -= delta
+	if _breaker_wait_s > 0.0:
+		return
+	_breaker_wait_s += 1.0 / _t.sync_rate_hz
+	var connected := multiplayer.get_peers()
+	for id in players:
+		if id != 1 and connected.has(id):
+			var w: Dictionary = breakers.word_for(id)
+			_breakers.rpc_id(id, w["counts"], w["timers"], w["decoys"], w["pickups"], w["brute"], w["ran"], w["seeds"])
+
+
+## The host's word on this joiner's breakers (I2), at the sync rate: its own counts by kind, its
+## exploit's and cloak's seconds left, every decoy (arena space, its call left, landed or -1 for none),
+## every pickup spot (0 none, else 1 + its kind), the last brute charge (its count, from, way), its own
+## last run and pickup (a count and a kind each), and every decoy's and pickup's seed.
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _breakers(counts: PackedByteArray, timers: PackedFloat32Array, decoys: PackedFloat32Array, pickups: PackedByteArray, brute: PackedFloat32Array, ran: PackedInt32Array, seeds: PackedInt32Array) -> void:
+	if state != State.JOINED or host_practice or _arena == null or not is_instance_valid(_arena):
+		return
+	if counts.size() != Breakers.NAMES.size() or timers.size() != 2 or decoys.size() != BreakerDirector.DECOYS_LAST * BreakerDirector.DECOY_WORD or pickups.size() != BreakerDirector.SPOTS.size() or brute.size() != BreakerDirector.BRUTE_WORD:
+		return
+	if ran.size() != 4 or seeds.size() != BreakerDirector.DECOYS_LAST + BreakerDirector.SPOTS.size() or ran[0] < 0 or ran[2] < 0 or not Breakers.valid(ran[1]) or not Breakers.valid(ran[3]):
+		return
+	for v in seeds:
+		if v < 0:
+			return
+	for c in counts:
+		if c > BreakerTuning.CARRY_LAST:
+			return
+	for p in pickups:
+		if p > Breakers.NAMES.size():
+			return
+	for v in timers:
+		if not is_finite(v) or v < 0.0 or v > 60.0:
+			return
+	for v in decoys + brute:
+		if not is_finite(v) or absf(v) > WORLD_LAST * 1000.0:
+			return
+	var breakers := BreakerDirector.of(_arena)
+	if breakers == null:
+		return
+	breaker_words += 1
+	breakers.take_word(counts, timers, decoys, pickups, brute, ran, seeds)
 
 
 func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:

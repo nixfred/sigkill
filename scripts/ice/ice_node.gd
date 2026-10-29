@@ -13,6 +13,9 @@ extends IcePiece
 ## dome and in sight of the heart takes the effect, through the director (strike()). Then it waits
 ## its cooldown (shortened by the difficulty's aggression, as a daemon's waits are) and looks again.
 ## Stepping out of the dome or behind cover during the tell escapes it; so does breaking the node.
+## ICEbreakers (I2): a cloaked intruder neither starts its tell nor is reached by its field; a decoy
+## calling within its trigger range starts its tell as an intruder would, and at the tell's end takes
+## the whole field, reaching no one (the decoy flashes).
 ##
 ## Alone and hosting it decides (step()); on a joiner it plays the host's word (take_word()): its
 ## state and how far into it, so its tell, its dome and its sound show on every screen.
@@ -47,7 +50,9 @@ var state_t := 0.0
 ## The fields it has fired, and the intruders they reached, since it was made.
 var fires := 0
 var struck := 0
-## [its clock, a word, ...]: "tell", "field", "abort" for the checks.
+## Fields a decoy took instead (I2).
+var lured := 0
+## [its clock, a word, ...]: "tell", "field", "abort", "lured" (a decoy took it, I2) for the checks.
 var events: Array = []
 
 var _clock := 0.0
@@ -145,12 +150,19 @@ func step(delta: float, d, ice) -> void:
 			_look -= delta
 			if _look <= 0.0:
 				_look = tuning.node_look_s
-				if _spots(d):
+				if _spots(d) or ice.decoy_near(heart(), trigger_m()) != 0:
 					_enter(State.TELL)
 					_note("tell")
 		State.TELL:
 			if state_t >= tell_s():
-				struck += ice.strike(self, _reached(d))
+				# A decoy calling within its trigger range takes the whole field (I2): it reaches no one.
+				var lure: int = ice.decoy_near(heart(), trigger_m())
+				if lure != 0:
+					ice.strike_decoy(lure, heart())
+					lured += 1
+					_note("lured")
+				else:
+					struck += ice.strike(self, _reached(d))
 				fires += 1
 				_note("field")
 				_enter(State.FIELD)
@@ -163,10 +175,11 @@ func step(delta: float, d, ice) -> void:
 	_show()
 
 
-## True when an intruder is within its trigger range, in sight of its heart, alive and attackable.
+## True when an intruder is within its trigger range, in sight of its heart, alive, attackable and not
+## cloaked (I2).
 func _spots(d) -> bool:
 	for id in d.prey_ids():
-		if not d.prey_attackable(id):
+		if not d.prey_attackable(id) or d.prey_hidden(id):
 			continue
 		var at: Vector3 = d.prey_point(id)
 		if at.distance_to(heart()) <= trigger_m() and d.clear(heart(), at):
@@ -174,11 +187,12 @@ func _spots(d) -> bool:
 	return false
 
 
-## The intruders inside the dome now and in sight of the heart, alive and attackable: their ids.
+## The intruders inside the dome now and in sight of the heart, alive, attackable and not cloaked (I2):
+## their ids.
 func _reached(d) -> Array:
 	var out := []
 	for id in d.prey_ids():
-		if not d.prey_attackable(id):
+		if not d.prey_attackable(id) or d.prey_hidden(id):
 			continue
 		var at: Vector3 = d.prey_point(id)
 		if at.distance_to(heart()) <= field_m() and d.clear(heart(), at):

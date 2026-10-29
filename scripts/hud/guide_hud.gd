@@ -43,6 +43,7 @@ const Settings = preload("res://scripts/boot/guide_settings.gd")
 const Request = preload("res://scripts/ai/guide_request.gd")
 const Adapter = preload("res://scripts/ai/guide_adapter.gd")
 const Palette = preload("res://scripts/palette.gd")
+const BreakerPick = preload("res://scripts/ice/breaker_pick.gd")
 
 const DEFAULT_TUNING_PATH := "res://resources/hud.tres"
 const BADGE_PREFIX := "your AI: "
@@ -75,6 +76,11 @@ const DEMO_LOAD_NAME := "demo-chat-small"
 const DEMO_LOAD_BYTES := 4700000000
 const DEMO_KEYS_LINE := "T ask your AI   O AI on/off   L demo model load"
 const DEMO_ANSWER := "Demo mode: this is where your AI answers you, in its own words."
+## The ICEbreaker pick (I2): the ask box's hint while breakers are carried, and the scripted guide's
+## pick as it follows any line that is not the AI's own.
+const BREAKER_HINT := "   (Enter alone: which breaker to load)"
+const SCRIPTED_PICK := "Scripted guide: %s"
+const DEMO_PICK := "Demo mode: %s"
 const SPINNER := ["|", "/", "-", "\\"]
 const WEAPON := "terminal_cannon"
 const MODE := "practice"
@@ -101,6 +107,11 @@ var other_box_open := false
 ## the AI's answer to T is held back, hidden with its time on screen paused, and shows again
 ## when the break ends. Notices, the ask box and the questions still show.
 var hold_answer := false
+## The ICEbreakers' director (I2), set by the HUD: while breakers are carried a question carries the
+## round's ICE and breaker numbers (scripts/ice/breaker_pick.gd) so the AI names a breaker to load, Enter
+## with nothing typed asks for that pick alone, and every line that is not the AI's own (it is off,
+## refused, silent) is followed by the scripted guide's pick.
+var breakers: Node = null
 
 var _t: Resource
 var _link: Link
@@ -285,7 +296,23 @@ func game_stats() -> Dictionary:
 		stats["hits_landed"] = hits
 		if shots > 0:
 			stats["accuracy_percent"] = snappedf(100.0 * hits / shots, 0.1)
+	stats.merge(BreakerPick.numbers(breakers))  # the ICEbreaker pick's numbers (I2), {} with none
 	return stats
+
+
+## True while breakers are carried (I2): the guide picks one to load.
+func picks_breakers() -> bool:
+	return not BreakerPick.numbers(breakers).is_empty()
+
+
+## The scripted guide's pick now (I2): [the kind's name or "", its line].
+func breaker_pick() -> Array:
+	return BreakerPick.scripted(BreakerPick.numbers(breakers))
+
+
+## `line`, followed by the scripted guide's breaker pick while breakers are carried (I2).
+func _with_pick(line: String) -> String:
+	return line + "\n" + SCRIPTED_PICK % breaker_pick()[1] if picks_breakers() else line
 
 
 func note_kill() -> void:
@@ -367,7 +394,7 @@ func open_ask() -> void:
 		return
 	var reason := _refusal()
 	if reason != "":
-		_notice(reason, _t.off_color)
+		_notice(_with_pick(reason), _t.off_color)
 		return
 	_typing = true
 	_was_captured = _mouse_captured()
@@ -375,7 +402,7 @@ func open_ask() -> void:
 	_block_player(true)
 	_answer_ms_left = 0.0
 	_notice_ms_left = 0.0
-	_title.text = ASK_TITLE
+	_title.text = ASK_TITLE + (BREAKER_HINT if picks_breakers() else "")
 	_title.add_theme_color_override("font_color", _t.badge_color)
 	_body.visible = false
 	_edit.text = ""
@@ -514,11 +541,12 @@ func _answer_consent(allowed: bool) -> void:
 
 func _send(text: String) -> void:
 	_close_ask()
-	if text.strip_edges().is_empty():
+	# Nothing typed: nothing to ask, unless breakers are carried, when it asks for the pick alone (I2).
+	if text.strip_edges().is_empty() and not picks_breakers():
 		return
 	var reason := _refusal()
 	if reason != "":
-		_notice(reason, _t.off_color)
+		_notice(_with_pick(reason), _t.off_color)
 		return
 	_spin_at = 0
 	if demo:
@@ -564,7 +592,7 @@ func _poll_call(ms: float) -> void:
 		if _demo_wait_ms <= 0.0:
 			_asking = false
 			_link.last_call = {"ok": true, "error_kind": "", "latency_ms": _t.demo_latency_ms, "tokens_per_sec": -1.0}
-			_show_answer(DEMO_ANSWER)
+			_show_answer(DEMO_PICK % breaker_pick()[1] if picks_breakers() else DEMO_ANSWER)
 		return
 	var done := _link.poll_call()
 	if done.is_empty():
@@ -604,7 +632,7 @@ func _show_failure(kind: String) -> void:
 		line = NOT_LOADED_LINE
 	elif kind == "ai_off":
 		line = OFF_LINE
-	_notice(line, _t.warn_color, _t.answer_ms)
+	_notice(_with_pick(line), _t.warn_color, _t.answer_ms)
 
 
 func _notice(text: String, color: Color, ms: float = -1.0) -> void:

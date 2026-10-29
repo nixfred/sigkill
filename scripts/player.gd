@@ -79,6 +79,10 @@ extends CharacterBody3D
 ## host places, schedules and judges every mine, and hands this player its own (take_mine) for the
 ## strip's count. The first run of each of this player's mines is the round's "cron" callout.
 ##
+## ICEbreakers (I2): U runs the loaded breaker and Y loads the next kind; the presses go to the arena's
+## breaker director (scripts/ice/breaker_director.gd, `breakers`), which keeps them and decides. The
+## player only says where it looks from and along (eye_position(), aim_direction()).
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -186,6 +190,8 @@ var hits_landed := 0
 ## True while the guide HUD's ask box is open: no movement, jump, slide, look or fire, and a
 ## click does not grab the mouse. The HUD sets it and clears it.
 var input_blocked := false
+## The arena's ICEbreakers director (I2), set by main.gd: U and Y go to it.
+var breakers: Node = null
 ## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
 ## read keyboard and mouse input as if it were captured. Never set by the game.
 var assume_captured := false
@@ -411,6 +417,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		sudo.press()
 	elif event.is_action_pressed("throw_bomb"):
 		_throw_queued = true
+	elif event.is_action_pressed("run_breaker"):
+		if breakers != null and is_instance_valid(breakers):
+			breakers.press_run()
+	elif event.is_action_pressed("cycle_breaker"):
+		if breakers != null and is_instance_valid(breakers):
+			breakers.press_cycle()
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):
@@ -794,6 +806,11 @@ func eye_position() -> Vector3:
 
 
 ## How far above the body's origin the eyes sit when standing.
+## The way the player looks (world space, a unit vector): where a breaker is run along (I2).
+func aim_direction() -> Vector3:
+	return -_camera.global_transform.basis.z
+
+
 func eye_height() -> float:
 	return _t.stand_head_height
 

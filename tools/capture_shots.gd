@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5 or i1):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1 or i2):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -25,7 +25,11 @@ extends SceneTree
 ## with them hidden; i1, ICE in play: the west corridor's wall mid-crack under the cannon's beam, the
 ## jam node's tell with its dome, the HUD corrupted by the HUD node's field, the hunter mid-tell with
 ## its adaptation on the HUD and in its shields, and a line-up of hunters and nodes from other seeds;
-## then it prints what ICE costs. Every other set plays in practice, the old dummies, as it was shot.
+## then it prints what ICE costs; i2, the ICEbreakers: the readout bottom left with exploit's seam marks
+## lit on a daemon and the corridor's wall while a cloak runs (both effect lines up, the edges washed),
+## the brute's charge breaking the wall up close, the hunter's lance going into a decoy the player threw
+## instead of into the player, and a line-up of the four pickups and a decoy; then it prints what the breakers
+## cost. Every other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -180,6 +184,23 @@ const I1_HUNTER_AT := Vector3(6.1, 0.95, -0.5)
 const I1_LINEUP := [["hunter_art", "", Vector3(-5.2, 0.0, 9.0)], ["hunter_art", "", Vector3(0.0, 0.0, 9.0)], ["hunter_art", "", Vector3(5.2, 0.0, 9.0)], ["node_art", "jam", Vector3(-4.2, 0.0, 12.5)], ["node_art", "jam", Vector3(-1.4, 0.0, 12.5)], ["node_art", "hud", Vector3(1.4, 0.0, 12.5)], ["node_art", "hud", Vector3(4.2, 0.0, 12.5)]]
 const I1_LINEUP_CAM := Vector3(0.0, 3.4, 18.6)
 const I1_LINEUP_LOOK := Vector3(0.0, 1.2, 9.5)
+## i2: where the player stands in the corridor for exploit's marks (the wall ahead, a zombie at the side)
+## and the zombie's place; where it stands for the brute, close to the wall's other face; where it stands
+## for the decoy (in the hunter's sight) and where the decoy is thrown at; the line-up's pickups and its
+## decoy, and its camera.
+const I2_MARKS_AT := Vector3(-17.0, 0.95, 2.6)
+const I2_MARKS_LOOK := Vector3(-17.9, 1.3, 7.0)
+const I2_ZOMBIE_AT := Vector3(-18.9, 0.0, 5.2)
+const I2_BRUTE_AT := Vector3(-17.6, 0.95, 5.7)
+const I2_BRUTE_LOOK := Vector3(-17.6, 1.5, 8.0)
+const I2_BRUTE_FRAMES := 9
+const I2_DECOY_AT := Vector3(0.5, 0.95, -3.0)
+const I2_DECOY_THROW := Vector3(4.6, 2.2, 2.4)
+const I2_LANCE_FRAMES := 2
+const I2_LINEUP := [Vector3(-4.5, 0.0, 12.0), Vector3(-1.5, 0.0, 12.0), Vector3(1.5, 0.0, 12.0), Vector3(4.5, 0.0, 12.0)]
+const I2_LINEUP_DECOY := Vector3(0.0, 0.0, 14.6)
+const I2_LINEUP_CAM := Vector3(0.0, 2.4, 19.6)
+const I2_LINEUP_LOOK := Vector3(0.0, 1.15, 12.6)
 
 var _main: Node
 var _player: Node
@@ -226,6 +247,11 @@ func _run() -> void:
 		return
 	if _set == "i1":
 		await _i1()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "i2":
+		await _i2()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -881,6 +907,162 @@ func _ice_piece(type: String, at: Vector3, seed: int, prepare: Callable) -> Daem
 	art.setup(null, seed)
 	holder.add_child(art)
 	return art
+
+
+func _i2() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	var br: BreakerDirector = _main.get_node(BreakerDirector.NODE_NAME)
+	var hud = _main.get_node("Hud")
+	ice.start_round(1)
+	br.start_round(1)
+	await _frames(10)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	# exploit's marks: the HUD node behind the player broken first (its field would scramble the HUD), a
+	# cloak run so the zombie set at the corridor's side never sees the player, then exploit, then Y to
+	# load the brute: both effect lines up, the readout's counts showing what was spent.
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	_player.select_slot(0)
+	await _stand(I2_MARKS_AT, _main.to_global(I2_MARKS_LOOK))
+	br.use(1, Breakers.Kind.CLOAK, _player.eye_position(), _player.aim_direction())
+	var zombie: Node3D = targets.get_node("DummyB")
+	zombie.global_position = _main.to_global(I2_ZOMBIE_AT)
+	_c27b_place(zombie, _main.to_global(I2_ZOMBIE_AT))
+	await _frames(int(ceil(br.tuning.use_gap_s * 60.0)) + 2)
+	br.use(1, Breakers.Kind.EXPLOIT, _player.eye_position(), _player.aim_direction())
+	br.mine.loaded = Breakers.Kind.DECOY
+	br.press_cycle()
+	await _frames(24)
+	var marks: ExploitMarks = br.get_node("ExploitMarks")
+	print("capture: exploit's marks: %d seams marked; the readout '%s' / '%s'; under the crosshair %s; the edge wash %.2f" % [marks.shown(), hud.breaker_hud().loaded_text(), hud.breaker_hud().counts_text(), hud.breaker_hud().effect_text(), hud.breaker_hud().wash()])
+	await _save("i2-breakers")
+	# What the marks cost to place, a frame, while they show.
+	var usec := 0
+	for i in A5_COST_FRAMES:
+		var t0 := Time.get_ticks_usec()
+		marks._process(1.0 / 60.0)
+		usec += Time.get_ticks_usec() - t0
+		await _frames(1)
+		if not br.exploit_on_me():
+			break
+	print("capture: i2 cost, exploit's marks: %d placed a frame in %.1f us (one MultiMesh, one draw call)" % [marks.shown(), float(usec) / A5_COST_FRAMES])
+	_c27b_place(zombie, C27B_PARKED + Vector3(zombie.get_index() * 3.0, 0.0, 0.0))
+	await _frames(int((br.tuning.cloak_s + 0.5) * 60.0))
+	# The brute up close: the wall's other face, the charge breaking it whole.
+	ice.start_round(1)
+	br.start_round(1)
+	await _frames(5)
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	ice.node_of("hud").hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	await _stand(I2_BRUTE_AT, _main.to_global(I2_BRUTE_LOOK))
+	var wall := ice.wall("wall")
+	br.use(1, Breakers.Kind.BRUTE, _player.eye_position(), _player.aim_direction())
+	await _frames(I2_BRUTE_FRAMES)
+	print("capture: the brute up close (%.2f m): the wall (seed %d) %s, %d reached" % [_player.eye_position().distance_to(wall.blast_point(_player.eye_position())), wall.build_seed, "broken" if wall.broken else "standing at %.0f" % wall.health(), br.last_brute_hits])
+	await _save("i2-brute")
+	await _frames(90)
+	# The decoy: round 2 (the round HUD's own), both nodes broken; the hunter hunting the player, the
+	# decoy thrown off to the side, the hunter's tell swung onto it and its lance going into it, seen from
+	# the player's eyes off to the side of them both.
+	hud.round_hud()._start_round(2)
+	await _frames(5)
+	for kind in ["jam", "hud"]:
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var hunter := ice.hunter
+	await _stand(I2_DECOY_AT, hunter.global_position + Vector3.UP * ice.tuning.hunter_hover_m)
+	var throw_at: Vector3 = _main.to_global(I2_DECOY_THROW)
+	br.use(1, Breakers.Kind.DECOY, _player.eye_position(), (throw_at - _player.eye_position()).normalized())
+	var waited := 0
+	while not (hunter.brain.prey < 0 and hunter.brain.state == DaemonBrain.State.TELL) and waited < 900:
+		await _frames(1)
+		waited += 1
+	var decoy: Decoy = br.calling()[0] if not br.calling().is_empty() else null
+	if decoy != null:
+		# Both in view, the hunter still in its tell: the player turns to between the decoy and it.
+		var mid: Vector3 = (decoy.point() + hunter.global_position + Vector3.UP * ice.tuning.hunter_hover_m) * 0.5
+		var eyes: Camera3D = _player.get_node("Head/Camera")
+		var to := mid - eyes.global_position
+		_player.rotation.y = atan2(-to.x, -to.z)
+		_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	# Its lance, a bar of light, going into the decoy instead of the player.
+	while not (hunter.brain.prey < 0 and hunter.brain.state == DaemonBrain.State.STRIKE) and waited < 1200:
+		await _frames(1)
+		waited += 1
+	await _frames(I2_LANCE_FRAMES)
+	print("capture: the hunter's lance on the decoy after %d frames (prey %d, %d struck), the decoy %.1f m from the player with %.1f s of call left, the hunter %.1f m from it" % [waited, hunter.brain.prey, decoy.struck if decoy != null and is_instance_valid(decoy) else -1, decoy.global_position.distance_to(_player.global_position) if decoy != null and is_instance_valid(decoy) else -1.0, decoy.left if decoy != null and is_instance_valid(decoy) else -1.0, hunter.global_position.distance_to(decoy.global_position) if decoy != null and is_instance_valid(decoy) else -1.0])
+	await _save("i2-decoy")
+	_player.respawn_at(_main.to_global(C27B_PLAYER_AT))
+	hud.round_hud()._start_round(1)
+	GameSettings.current().set_value("gameplay", "ice", false)
+	await _frames(10)
+	# The line-up: the four pickups (each kind's emblem) and a decoy standing before them, from other seeds.
+	var cam := _free_camera(I2_LINEUP_CAM, I2_LINEUP_LOOK, A2B_FOV)
+	var lineup: Array[Node3D] = []
+	for k in I2_LINEUP.size():
+		var p := BreakerPickup.new()
+		p.kind = k
+		p.spawn_seed = 9100 + k * 7919
+		_main.add_child(p)
+		p.global_position = _main.to_global(I2_LINEUP[k])
+		lineup.append(p)
+	var standing := Decoy.new()
+	standing.tuning = br.tuning
+	standing.spawn_seed = 9500
+	standing.deciding = false
+	_main.add_child(standing)
+	standing.take_word(_main.to_global(I2_LINEUP_DECOY), true, br.tuning.decoy_s)
+	standing.rotation.y = 0.0
+	lineup.append(standing)
+	await _frames(70)
+	await _save("i2-lineup")
+	await _i2_cost(lineup)
+	_free_camera_done(cam)
+	for node in lineup:
+		node.queue_free()
+
+
+## What the breakers cost, on this machine: a pickup's and a decoy's art, each one's triangles and draw
+## calls as built, and its posing timed alone (its whole _process), five rounds of A5_COST_FRAMES frames:
+## the quickest round and the median; then the GPU's time a frame with the line-up drawn and hidden,
+## three times each in turn, with what the GPU drew each way.
+func _i2_cost(lineup: Array[Node3D]) -> void:
+	for group in [lineup.slice(0, 4), lineup.slice(4, 5)]:
+		var rounds := PackedFloat32Array()
+		for round in 5:
+			var usec := 0
+			for i in A5_COST_FRAMES:
+				for node in group:
+					var t0 := Time.get_ticks_usec()
+					node.art._process(1.0 / 60.0)
+					usec += Time.get_ticks_usec() - t0
+				await _frames(1)
+			rounds.append(float(usec) / (A5_COST_FRAMES * group.size()))
+		rounds.sort()
+		var art: DaemonArt = group[0].art
+		print("capture: i2 cost, %s: %d triangles, %d draw calls; posing %.1f us one a frame at the quickest, %.1f the median (rounds %s)" % [art.ai_kind, art.triangles(), art.draw_calls(), rounds[0], rounds[2], ", ".join(Array(rounds).map(func(x): return "%.1f" % x))])
+	var gpu := PackedStringArray()
+	var calls := PackedInt32Array([0, 0])
+	var prims := PackedInt32Array([0, 0])
+	for pass_ in 6:
+		var shown := pass_ % 2 == 0
+		for node in lineup:
+			node.visible = shown
+		await _frames(10)
+		var ms := await _gpu_ms(A5_COST_FRAMES)
+		gpu.append("%s %.3f" % ["drawn" if shown else "hidden", ms])
+		calls[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		prims[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
+	for node in lineup:
+		node.visible = true
+	print("capture: i2 cost, the GPU's time a frame at 1920x1080 with the line-up's five drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
 
 
 ## Sends a ping: fire for one frame.

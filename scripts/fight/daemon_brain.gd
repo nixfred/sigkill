@@ -36,6 +36,12 @@ extends RefCounted
 ## wire (the swarm's stagger is its scatter, a walker's its knock back), so a joiner draws it with no
 ## new message. A ping meeting it doing anything else changes nothing: it is no hit and rouses no one.
 ##
+## ICEbreakers (I2): a cloaked player is unseen (the director's prey_hidden()): it is never spotted,
+## a hunt on it falls back to where it was last seen (and home after lose_s), and a tell on it ends with
+## nothing thrown. A decoy calling within the breakers' pull (the director's lure_for()) is taken as
+## the prey instead of any player, at home, hunting or going home (never in the middle of an attack):
+## it is known where it is without sight (it calls), and hunted and struck like a player.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -156,6 +162,9 @@ func step(delta: float, d) -> void:
 	clock += delta
 	state_t += delta
 	cooldown = maxf(cooldown - delta, 0.0)
+	var lure: int = d.lure_for(self)
+	if lure != 0 and lure != prey:
+		_take_lure(lure, d)
 	match state:
 		State.HOME:
 			_step_home(delta, d)
@@ -254,16 +263,16 @@ func _step_hunt(delta: float, d) -> void:
 		_go_home()
 		return
 	var target: Vector3 = d.prey_point(prey)
-	var sees := _sees(target, d)
-	if sees:
-		last_seen = target
+	var sees: bool = _sees(target, d) and not d.prey_hidden(prey)
+	if sees or d.is_decoy(prey):
+		last_seen = target  # a decoy's call says where it is (I2)
 		unseen_t = 0.0
 	else:
 		unseen_t += delta
 	if unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m:
 		_go_home()
 		return
-	var chase: Vector3 = target if sees else last_seen
+	var chase: Vector3 = target if sees or d.is_decoy(prey) else last_seen
 	if not chase.is_finite():
 		velocity = Vector3.ZERO  # never seen yet this hunt: nowhere to go (Codex review)
 		return
@@ -280,7 +289,7 @@ func _step_tell(delta: float, d) -> void:
 	var tell_s := _tell_s(d)
 	art.drive(DaemonArt.Act.TELL, state_t / tell_s)
 	velocity = Vector3.ZERO
-	var target: Vector3 = d.prey_point(prey) if d.prey_valid(prey) else Vector3.INF
+	var target: Vector3 = d.prey_point(prey) if d.prey_valid(prey) and not d.prey_hidden(prey) else Vector3.INF
 	if target.is_finite():
 		_face(target, delta, d)
 	if state_t < tell_s:
@@ -366,7 +375,7 @@ func _step_recover(delta: float, d) -> void:
 		return
 	if kind == "swarm" and burst_left > 0 and d.prey_valid(prey):
 		var target: Vector3 = d.prey_point(prey)
-		if d.prey_attackable(prey) and _sees(target, d) and _in_range(target, d):
+		if d.prey_attackable(prey) and _sees(target, d) and not d.prey_hidden(prey) and _in_range(target, d):
 			_tell()  # the burst's next dive, its own tell first; the slot is still held
 			return
 	burst_left = 0
@@ -546,7 +555,7 @@ func _spot(d) -> int:
 	var best := 0
 	var best_d := INF
 	for id in d.prey_ids():
-		if not d.prey_valid(id):
+		if not d.prey_valid(id) or d.prey_hidden(id):
 			continue
 		var at: Vector3 = d.prey_point(id)
 		var gap := _eye(d).distance_to(at)
@@ -559,6 +568,19 @@ func _spot(d) -> int:
 		best = id
 		best_d = gap
 	return best
+
+
+## A decoy calls it (I2): at home, hunting or going home it takes the decoy `lure` as its prey; in
+## the middle of an attack or a stagger it goes on as it was.
+func _take_lure(lure: int, d) -> void:
+	if state == State.HOME or state == State.HUNT or state == State.RETURN:
+		_release(d)
+		_hunt(lure, d.prey_point(lure))
+
+
+## True when a decoy at `at` (world space) is one it may go after (I2): within its leash of home.
+func lure_ok(at: Vector3, d) -> bool:
+	return at.is_finite() and (not has_home or _flat(at - home.origin).length() <= d.tuning.leash_m)
 
 
 func _sees(at: Vector3, d) -> bool:

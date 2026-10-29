@@ -63,6 +63,12 @@ const GLACIER := Color(0.094117647, 0.698039216, 1.0)  # #18b2ff white ICE: wall
 const HUNTER_COBALT := Color(0.117647059, 0.188235294, 1.0)  # #1e30ff hunter ICE's seams, core and lance
 const HUNTER_TEXT := Color(0.603921569, 0.650980392, 1.0)  # #9aa6ff the hunter's HUD line, legible on black
 const ICE_CRYSTAL := Color(0.031372549, 0.070588235, 0.121568627)  # #08121f every piece's body
+# ICEbreakers (I2): the intruder's one-use programs, their pickups, decoys, seam marks and charge, in an
+# ultraviolet of their own: the farthest (OKLab) from every bright colour above that a search of the
+# hue wheel found (0.161 from the hunter's cobalt, 0.165 from SIGTERM's violet); its HUD text a light
+# tint of it, legible on black and 0.10 from violet and the hunter's line.
+const BREAKER := Color(0.454901961, 0.0, 0.8)  # #7400cc pickups, decoys, exploit's seam marks, the brute's charge
+const BREAKER_TEXT := Color(0.760784314, 0.498039216, 1.0)  # #c27fff the breaker readout and its notices
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the

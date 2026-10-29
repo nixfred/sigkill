@@ -6,8 +6,9 @@ extends Node3D
 ## environment's glow), shadows (the sun's; the room light never casts any) and the code rain
 ## (C16b); SSAO, SSR, the full or plain skyline, the particle level, and the two screen post
 ## effects (A4). It makes the arena's particle pool and post layer once, when it loads, and
-## (C27b) the daemons' director and this player's life alone: the daemons fight back; and (I1) ICE's
-## director beside it, which builds the system's walls, nodes and hunter each round.
+## (C27b) the daemons' director and this player's life alone: the daemons fight back; (I1) ICE's
+## director beside it, which builds the system's walls, nodes and hunter each round; and (I2) the
+## ICEbreakers' director, which keeps every intruder's breakers and runs them.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -51,7 +52,18 @@ func _ready() -> void:
 	ice.life = life
 	ice.rounds = _hud.round_hud()
 	add_child(ice)
+	# ICEbreakers (I2): the intruder's one-use programs against ICE and the daemons, beside them.
+	var breakers := BreakerDirector.new()
+	breakers.daemons = director
+	breakers.ice = ice
+	breakers.player = _player
+	breakers.rounds = _hud.round_hud()
+	add_child(breakers)
+	director.breakers = breakers
+	ice.breakers = breakers
+	_player.breakers = breakers
 	_hud.set_ice(ice)
+	_hud.set_breakers(breakers)
 	_hud.set_solo_life(life)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
@@ -73,6 +85,7 @@ func _ready() -> void:
 		life.session = session
 		director.session = session
 		ice.session = session
+		breakers.session = session
 		session.attach(self, _player)
 		_hud.set_net_session(session)
 		# A room code or invite link on the command line (C15), once per run: the panel opens

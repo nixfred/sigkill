@@ -89,9 +89,20 @@ func is_hittable() -> bool:
 ## Called by a shot through its ray, a pellet, a dart or a blast, as a daemon's hit(). True when it
 ## landed: never once broken, never on a joiner (the host judges).
 func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
+	return _land(damage, point, direction, source, 0)
+
+
+## Another player's hit, judged by the host: the same as hit(), the shooter's own exploit counting (I2).
+func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, shooter: int = 0, source: String = "") -> bool:
+	return _land(damage, point, direction, source, shooter)
+
+
+## A hit from intruder `shooter` (0 this machine's own): through the director, an exploit breaker's
+## bonus on a weak seam included (I2).
+func _land(damage: float, point: Vector3, direction: Vector3, source: String, shooter: int) -> bool:
 	if broken or director == null or not director.decides():
 		return false
-	var taken: float = director.take(self, damage, source)
+	var taken: float = director.take(self, damage, source, director.exploit_scale(shooter, self, point, source))
 	if taken <= 0.0:
 		return false
 	hits += 1
@@ -102,11 +113,6 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	_health = 0.0
 	_break(point, direction)
 	return true
-
-
-## Another player's hit, judged by the host: the same as hit().
-func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, _shooter: int = 0, source: String = "") -> bool:
-	return hit(damage, point, direction, source)
 
 
 ## A hit that did not break it: the art's flash and spray, and the type's own reaction.

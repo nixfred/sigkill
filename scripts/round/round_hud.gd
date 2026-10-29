@@ -53,6 +53,10 @@ extends Control
 const TuningScript = preload("res://scripts/round/announcer_tuning.gd")
 const Stats = preload("res://scripts/round/round_stats.gd")
 const Announcer = preload("res://scripts/round/round_announcer.gd")
+const BreakerPick = preload("res://scripts/ice/breaker_pick.gd")
+## The summary panel's ICEbreaker pick (I2): the AI's, or the scripted guide's line.
+const PICK_AI := "next round, load %s (your AI's pick)"
+const PICK_SCRIPTED := "ICEbreaker pick: %s"
 const Palette = preload("res://scripts/palette.gd")
 const Sfx = preload("res://scripts/sfx_synth.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
@@ -88,6 +92,10 @@ var tuning: Resource = null
 var guide: Control = null
 ## Set by the multiplayer panel while it is up: the summary panel stays hidden.
 var hold_summary := false
+## The ICEbreakers' director (I2), set by the HUD: while breakers are carried the round's end asks the
+## guide which one to load next too (the round's ICE and breaker numbers ride in its one call), and the
+## summary panel shows the pick: the AI's when its line names one, else the scripted guide's.
+var breakers: Node = null
 
 var stats: Stats
 var announcer: Announcer
@@ -120,6 +128,9 @@ var _who: Label
 var _line: Label
 var _tip_who: Label
 var _tip: Label
+var _pick: Label
+## The ICEbreaker numbers as the round ended (I2), {} with no breakers carried.
+var _pick_numbers := {}
 var _chime: AudioStreamPlayer
 
 
@@ -290,7 +301,8 @@ func _end_round() -> void:
 	_left_s = _t.intermission_seconds
 	_callout_left_s = 0.0
 	_spin_at = 0
-	announcer.round_ended(stats.payload())
+	_pick_numbers = BreakerPick.numbers(breakers)
+	announcer.round_ended(stats.payload(), _pick_numbers)
 	_refresh()
 
 
@@ -449,7 +461,7 @@ func summary_text() -> String:
 	if not _panel.visible:
 		return ""
 	var out := PackedStringArray()
-	for label in [_heading, _numbers, _who, _line, _tip_who, _tip]:
+	for label in [_heading, _numbers, _who, _line, _tip_who, _tip, _pick]:
 		if label.visible:
 			out.append(label.text)
 	return "\n".join(out)
@@ -500,6 +512,19 @@ func _refresh() -> void:
 		_who.text = "your AI (%s) roasts:" % guide.session_link().display_name()
 		_tip_who.text = "your AI (%s) coaches:" % guide.session_link().display_name()
 		_tip.text = Announcer.DEMO_TIP
+	_pick.visible = not _pick_numbers.is_empty()
+	_pick.text = pick_text()
+
+
+## The summary panel's ICEbreaker pick (I2): the AI's when its line names a breaker, else the scripted
+## guide's; "" with no breakers carried.
+func pick_text() -> String:
+	if _pick_numbers.is_empty():
+		return ""
+	var named := BreakerPick.kind_in(announcer.text) if announcer.state == "ai" else ""
+	if named != "":
+		return PICK_AI % named
+	return PICK_SCRIPTED % BreakerPick.scripted(_pick_numbers)[1]
 
 
 func _build() -> void:
@@ -538,7 +563,9 @@ func _build() -> void:
 	_line = _label(stack, _t.summary_font_size, Palette.MINT)
 	_tip_who = _label(stack, _t.summary_font_size, Palette.TEAL)
 	_tip = _label(stack, _t.summary_font_size, Palette.MINT)
-	for label in [_numbers, _line, _tip]:
+	_pick = _label(stack, _t.summary_font_size, Palette.BREAKER_TEXT)
+	_pick.visible = false
+	for label in [_numbers, _line, _tip, _pick]:
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_panel.visible = false
 	_fit_panel()

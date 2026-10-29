@@ -17,6 +17,10 @@ extends RefCounted
 ## bullet time (C18): F starts it and F again ends it (SIGCONT), rebindable like the rest.
 ## The fork bomb (C19): G throws one without drawing it, rebindable as "Fork bomb".
 ## Spectate as top (C23): Tab, held, shows the top table, rebindable as "top".
+## ICEbreakers (I2): U runs the loaded breaker and Y loads the next kind, rebindable as "run breaker"
+## and "next breaker". The brief's H was not free: it is the multiplayer panel's own (with J, K and L,
+## kept from every action since C13), so the run is on U, the nearest free key beside Y. Y was free: the
+## guide's yes to a question counts only while that question is up, and the question takes it first.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -35,7 +39,7 @@ const REBINDABLE := [
 	["reset_arena", "respawn"], ["ask_ai", "ask your AI"], ["toggle_ai", "AI on/off"],
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
 	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
-	["show_top", "top"],
+	["show_top", "top"], ["run_breaker", "run breaker"], ["cycle_breaker", "next breaker"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -89,6 +93,8 @@ static func ensure() -> void:
 	_key("code_rain_vision", [KEY_V])
 	_key("sudo_overcharge", [KEY_Z])
 	_key("show_top", [KEY_TAB])
+	_key("run_breaker", [KEY_U])
+	_key("cycle_breaker", [KEY_Y])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

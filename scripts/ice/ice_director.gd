@@ -56,9 +56,9 @@ const HUNTER_FACES := Vector3(0.0, 0.0, 5.0)
 const PIECE_COUNT := 4 + 1
 ## A hunter's word when there is none.
 const NO_HUNTER := 0xFF
-## I2's brute ICEbreaker: a hit of this source cracks a wall this many times harder (the hook only).
+## The brute ICEbreaker's hits (I2, scripts/ice/breaker_director.gd): past the hit cap (its own tuning
+## caps it), a wall taking brute_wall_scale times them, never resisted, never noted for the adaptation.
 const BRUTE := "breaker:brute"
-const BRUTE_SCALE := 3.0
 ## How far toward an adapted weapon's colour the hunter's shields go at the most.
 const TINT_SHARE := 0.85
 ## The hunter's adaptation as the HUD writes it.
@@ -77,6 +77,11 @@ var player: Node3D = null
 var life: Node = null
 var session: Node = null
 var rounds: Node = null
+## The ICEbreakers' director (I2): who is cloaked, where the decoys call, whose exploit runs. Set by
+## main.gd; null runs ICE as I1 did.
+var breakers: Node = null
+## How many times harder a wall takes the brute's charge (the breaker tuning's, set by its director).
+var brute_wall_scale := 5.0
 var mode: Mode = Mode.OFF
 var round_number := 1
 
@@ -349,25 +354,46 @@ func _physics_process(delta: float) -> void:
 
 # --- Judging what lands. ---
 
-## What a hit of `damage` from `source` takes off `piece`: never more than hit_cap (a brute
-## ICEbreaker's hit on a wall harder, I2's hook), the hunter's resistance to its adapted weapon (as it
-## stood before this hit) off it; then the weapon's damage is noted for the round. Deciding only.
-func take(piece: Node, damage: float, source: String) -> float:
+## What a hit of `damage` from `source` takes off `piece`: never more than hit_cap, times `bonus` (an
+## exploit breaker's on a weak seam, I2: after the cap), the hunter's resistance to its adapted weapon
+## (as it stood before this hit) off it; then the weapon's damage is noted for the round. The brute
+## breaker's charge is its own: past the cap, a wall taking brute_wall_scale times it. Deciding only.
+func take(piece: Node, damage: float, source: String, bonus: float = 1.0) -> float:
 	if mode != Mode.RUN or not is_finite(damage) or damage <= 0.0:
 		return 0.0
-	var amount := minf(damage, tuning.hit_cap)
-	if source == BRUTE and piece is IceBarrier:
-		amount = minf(damage * BRUTE_SCALE, tuning.hit_cap * BRUTE_SCALE)
+	var amount := minf(damage, tuning.hit_cap) * clampf(bonus, 1.0, 20.0) if is_finite(bonus) else minf(damage, tuning.hit_cap)
+	if source == BRUTE:
+		amount = damage * (brute_wall_scale if piece is IceBarrier else 1.0)
 	if piece == hunter:
 		amount *= 1.0 - resist_for(source)
 	note_damage(source, minf(damage, tuning.hit_cap))
 	return amount
 
 
+## How many times harder intruder `shooter`'s hit with `source` lands on `piece` at `point` (world
+## space): exploit's bonus on a weak seam (the breakers' director's word), else 1. `shooter` 0 is this
+## machine's own player.
+func exploit_scale(shooter: int, piece: Node, point: Vector3, source: String) -> float:
+	if breakers == null or not is_instance_valid(breakers):
+		return 1.0
+	return breakers.exploit_scale(shooter if shooter != 0 else breakers.my_id(), piece, point, source)
+
+
+## The nearest decoy calling within `range_m` of `at` (world space), as prey (its id), or 0 (I2).
+func decoy_near(at: Vector3, range_m: float) -> int:
+	return breakers.lure(at, range_m) if breakers != null and is_instance_valid(breakers) else 0
+
+
+## A node's field went into the decoy `id` names, from `from`: it flashes (I2).
+func strike_decoy(id: int, from: Vector3) -> bool:
+	return breakers != null and is_instance_valid(breakers) and breakers.strike_decoy(id, from)
+
+
 ## `amount` of damage from weapon `source` landed on the system (a daemon or a piece of ICE): noted for
-## the round's adaptation, at most hit_cap of it. Deciding only; an unknown source counts for nothing.
+## the round's adaptation, at most hit_cap of it. Deciding only; an unknown source counts for nothing,
+## and so does an ICEbreaker's (I2): the hunter adapts to weapons, never to a breaker.
 func note_damage(source: String, amount: float) -> void:
-	if mode != Mode.RUN or source == "" or not is_finite(amount) or amount <= 0.0:
+	if mode != Mode.RUN or source == "" or Breakers.is_source(source) or not is_finite(amount) or amount <= 0.0:
 		return
 	ledger[source] = float(ledger.get(source, 0.0)) + minf(amount, tuning.hit_cap)
 	var top := ""

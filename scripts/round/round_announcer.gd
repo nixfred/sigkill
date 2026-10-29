@@ -86,8 +86,10 @@ func _init(link: Link, cap: int, max_chars: int) -> void:
 	_max_chars = clampi(max_chars, 0, TuningScript.TEXT_LAST)
 
 
-## The round is over: starts its one call, or picks SIGKILL's line at once.
-func round_ended(stats: Dictionary) -> void:
+## The round is over: starts its one call, or picks SIGKILL's line at once. `extra` rides along in the
+## request only (I2: the ICEbreaker pick's numbers, which add the pick's line to the instructions); the
+## panel's numbers stay the round's own.
+func round_ended(stats: Dictionary, extra: Dictionary = {}) -> void:
 	if state == "thinking":
 		intermission_over()
 	text = ""
@@ -107,6 +109,7 @@ func round_ended(stats: Dictionary) -> void:
 		_scripted(word)
 		return
 	_asked_round = number
+	stats = stats.merged(extra)  # the ICEbreaker pick's numbers ride in the request only (I2)
 	var started: Dictionary = _link.ask(Request.build(stats, "", 0, task))
 	if not started.is_empty():
 		_scripted(Link.error_word(started.get("error_kind", "")))

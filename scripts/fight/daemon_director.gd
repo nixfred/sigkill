@@ -18,6 +18,13 @@ extends Node
 ## never-attack dummies). Alone the settings decide practice and the difficulty; in a match the
 ## host's do, as its light-trail rule (a joiner's own count for nothing).
 ##
+## ICEbreakers (I2, scripts/ice/breaker_director.gd): a cloaked player is hidden (prey_hidden(): no
+## daemon spots it, sees it or ends a tell on it, so a hunt falls back to where it was last seen), and a
+## decoy calling is prey of its own (an id below 0, never a player): within a decoy's pull a daemon (and
+## hunter ICE, which shares this world) takes the decoy as its prey instead (lure_for()), knows where it
+## is without sight (it calls), and what lands on it only flashes it (hurt()). Bolts meet decoys as
+## they meet players (bodies()).
+##
 ## Fiction only: nothing here touches a real process, file or the system.
 
 const GROUP := &"daemon_director"
@@ -42,6 +49,8 @@ var tuning: DaemonAiTuning
 var player: Node3D = null
 var life: Node = null
 var session: Node = null
+## The ICEbreakers' director (I2): who is cloaked, where the decoys call. Set by main.gd; null for none.
+var breakers: Node = null
 var mode: Mode = Mode.REST
 
 var _brains: Array = []
@@ -188,10 +197,14 @@ func prey_ids() -> Array:
 	return [1]
 
 
-## Where player `id`'s middle is now (world space); INF when it is down, not shown or unknown.
+## Where player `id`'s middle is now (world space); INF when it is down, not shown or unknown. A decoy's
+## id (below 0, I2): its middle while it calls.
 func prey_point(id: int) -> Vector3:
 	if id == 0:
 		return Vector3.INF
+	if id < 0:
+		var decoy = breakers.decoy_of(id) if _has_breakers() else null
+		return decoy.point() if decoy != null else Vector3.INF
 	if _online():
 		if id == session.my_id:
 			return player.global_position if _player_up() else Vector3.INF
@@ -204,19 +217,23 @@ func prey_point(id: int) -> Vector3:
 	return player.global_position if id == 1 and _player_up() else Vector3.INF
 
 
-## True while player `id` can be hunted: known, shown and alive.
+## True while player `id` can be hunted: known, shown and alive (a decoy: while it calls).
 func prey_valid(id: int) -> bool:
 	if id == 0 or not prey_point(id).is_finite():
 		return false
+	if id < 0:
+		return true
 	if _online():
 		return session.combat != null and session.combat.alive(id)
 	return life == null or life.alive()
 
 
-## True while player `id` can be attacked: hunted, and not spawn-protected.
+## True while player `id` can be attacked: hunted, and not spawn-protected (a decoy: while it calls).
 func prey_attackable(id: int) -> bool:
 	if not prey_valid(id):
 		return false
+	if id < 0:
+		return true
 	if _online():
 		return not session.combat.protected(id)
 	return life == null or not life.protected()
@@ -226,17 +243,17 @@ func prey_attackable(id: int) -> bool:
 ## (every daemon hunts it); in a match, that player's, by the host's count.
 func frozen(id: int) -> bool:
 	if _online():
-		return id != 0 and session.combat != null and session.combat.sigstop_on(id)
+		return id > 0 and session.combat != null and session.combat.sigstop_on(id)
 	return _player_up() and player.sigstop != null and player.sigstop.is_on()
 
 
-## The nearest hunted player in sight of `eye`, whatever the range (a daemon roused by a shot);
-## 0 for none.
+## The nearest hunted player in sight of `eye`, whatever the range (a daemon roused by a shot), never
+## a cloaked one (I2); 0 for none.
 func nearest_prey(_from: Vector3, eye: Vector3) -> int:
 	var best := 0
 	var best_d := INF
 	for id in prey_ids():
-		if not prey_valid(id):
+		if not prey_valid(id) or prey_hidden(id):
 			continue
 		var at := prey_point(id)
 		var gap := eye.distance_to(at)
@@ -244,6 +261,32 @@ func nearest_prey(_from: Vector3, eye: Vector3) -> int:
 			best = id
 			best_d = gap
 	return best
+
+
+## True while player `id` is cloaked (I2): no daemon or ICE sees it.
+func prey_hidden(id: int) -> bool:
+	return id > 0 and _has_breakers() and breakers.cloaked(id)
+
+
+## True for a decoy's id (I2).
+static func is_decoy(id: int) -> bool:
+	return id < 0
+
+
+## The decoy `brain` should go after instead of its prey now (I2): the nearest calling within the
+## breakers' pull of its eye that its own reach allows (a daemon's leash; the hunter has none), as prey;
+## 0 for none. Only while the brains decide here.
+func lure_for(brain: DaemonBrain) -> int:
+	if mode != Mode.RUN or not _has_breakers():
+		return 0
+	var lure: int = breakers.lure(brain._eye(self), breakers.tuning.decoy_pull_m)
+	if lure != 0 and not brain.lure_ok(prey_point(lure), self):
+		return 0
+	return lure
+
+
+func _has_breakers() -> bool:
+	return breakers != null and is_instance_valid(breakers)
 
 
 func _player_up() -> bool:
@@ -281,6 +324,8 @@ func hurt(id: int, base: float, brain: DaemonBrain, way: Vector3) -> bool:
 	var amount := base * damage_scale()
 	if mode != Mode.RUN or amount <= 0.0 or not prey_attackable(id):
 		return false  # only while the brains decide here: never in practice or on a joiner
+	if id < 0:
+		return breakers.strike_decoy(id, brain.dummy.global_position)  # a decoy (I2): it flashes, no one is hurt
 	if _online():
 		return session.daemon_hurt(id, amount, brain.dummy, way)
 	if life == null or id != 1:
@@ -403,9 +448,13 @@ func bolts_live() -> int:
 	return n
 
 
-## The players a bolt can pass, with where each one's middle is (world space): id -> point.
+## The players a bolt can pass, with where each one's middle is (world space): id -> point. The decoys
+## calling too (I2), by their ids.
 func bodies() -> Dictionary:
 	var out := {}
+	if _has_breakers():
+		for id in breakers.decoy_ids():
+			out[id] = prey_point(id)
 	if _online():
 		for id in session.players:
 			var at := prey_point(id)

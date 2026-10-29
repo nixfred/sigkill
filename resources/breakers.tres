@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="BreakerTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ice/breaker_tuning.gd" id="1_breakers"]
+
+[resource]
+script = ExtResource("1_breakers")
+start_count = 1
+carry_cap = 2
+use_gap_s = 0.35
+brute_reach_m = 4.5
+brute_full_m = 2.25
+brute_far_share = 0.5
+brute_cone_deg = 40.0
+brute_damage = 120.0
+brute_wall_scale = 5.0
+exploit_s = 6.0
+exploit_scale = 2.5
+exploit_radius_m = 0.4
+cloak_s = 5.0
+cloak_warn_s = 1.0
+decoy_s = 7.0
+decoy_speed = 9.0
+decoy_lift = 3.0
+decoy_gravity = 16.0
+decoy_flight_s = 2.0
+decoy_pull_m = 26.0
+pickup_first_s = 15.0
+pickup_every_s = 20.0
+pickups_live = 2
+pickup_take_m = 1.4

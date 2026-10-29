@@ -22,6 +22,7 @@ const GrepMarks = preload("res://scripts/hud/grep_marks.gd")
 const SpectateTop = preload("res://scripts/hud/spectate_top.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const IceHud = preload("res://scripts/hud/ice_hud.gd")
+const BreakerHud = preload("res://scripts/hud/breaker_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -42,6 +43,7 @@ var _grep: GrepMarks
 var _top: SpectateTop
 var _menu: PauseMenu
 var _ice: IceHud
+var _breakers: BreakerHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -118,12 +120,19 @@ func _ready() -> void:
 	_top.hud = self
 	root.add_child(_top)
 
+	# ICEbreakers (I2): the loaded breaker and the counts bottom left over the sudo badge, an effect's line
+	# under the crosshair, the cloak's edge wash.
+	_breakers = BreakerHud.new()
+	_breakers.name = "BreakerHud"
+	_breakers.sudo_badge = _sudo.badge()
+	root.add_child(_breakers)
+
 	# ICE (I1): the hunter's adaptation, the credit tag, a jam's notice and a field's corruption, over
 	# the rest of the HUD; the health line never covered.
 	_ice = IceHud.new()
 	_ice.name = "IceHud"
 	root.add_child(_ice)
-	var scrambled: Array[Control] = [_status, _round.round_label(), _weapons.strip(), _sudo.badge(), _combat.feed_box()]
+	var scrambled: Array[Control] = [_status, _round.round_label(), _weapons.strip(), _sudo.badge(), _combat.feed_box(), _breakers.box()]
 	_ice.scrambled = scrambled
 	_ice.health_line = _combat.line_label()
 	_ice.weapon_strip = _weapons.strip()
@@ -208,6 +217,18 @@ func set_ice(ice: Node) -> void:
 
 func ice_hud() -> IceHud:
 	return _ice
+
+
+## The ICEbreakers' director beside the arena (I2), for its readout, and the guide's numbers for its
+## breaker pick.
+func set_breakers(breakers: Node) -> void:
+	_breakers.director = breakers
+	_guide.breakers = breakers
+	_round.breakers = breakers
+
+
+func breaker_hud() -> BreakerHud:
+	return _breakers
 
 
 func combat_hud() -> CombatHud:

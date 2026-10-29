@@ -99,7 +99,7 @@ func _source_checks() -> void:
 	var told := _body(session, "_ice")
 	var effect := _body(session, "_ice_effect")
 	var fire := _body(session, "_handle_fire")
-	_check("acceptance: in a match the host runs ICE and sends its word: a new state message (the round, each piece's seed, health, word and time, the hunter's place, aim and reach, the adaptation) and a field's effect to the player it reached; the rule message carries the host's ICE setting; joiners' shots and blasts at ICE are the host's to judge; a jammed weapon's shots are refused; protocol 12", Session.PROTOCOL == 12 and told.contains("seeds: PackedInt32Array") and told.contains("ice.take_word(") and effect.contains("ice.take_effect(") and _body(session, "_rules").contains("ice: bool") and _body(session, "_is_daemon").contains("IceDirector.PIECES") and _body(session, "_blast_daemons").contains("ice.blast(") and fire.contains("ice.jammed(shooter, weapon)") and fire.contains("Combat.DROP_JAM"))
+	_check("acceptance: in a match the host runs ICE and sends its word: a new state message (the round, each piece's seed, health, word and time, the hunter's place, aim and reach, the adaptation) and a field's effect to the player it reached; the rule message carries the host's ICE setting; joiners' shots and blasts at ICE are the host's to judge; a jammed weapon's shots are refused; protocol 12 (13 since I2's ICEbreakers)", Session.PROTOCOL == 13 and told.contains("seeds: PackedInt32Array") and told.contains("ice.take_word(") and effect.contains("ice.take_effect(") and _body(session, "_rules").contains("ice: bool") and _body(session, "_is_daemon").contains("IceDirector.PIECES") and _body(session, "_blast_daemons").contains("ice.blast(") and fire.contains("ice.jammed(shooter, weapon)") and fire.contains("Combat.DROP_JAM"))
 	var problems := _t.problems() if _t != null else PackedStringArray(["no tuning"])
 	var bad := _t.duplicate() as IceTuning
 	bad.jam_tell_s = 0.5
@@ -107,7 +107,7 @@ func _source_checks() -> void:
 	_check("the tuning (resources/ice.tres) is sound, and refuses a tell under a second or adaptation to immunity", problems.is_empty() and bad.problems().size() == 2 and IceTuning.TELL_FIRST_S >= 1.0 and _t.jam_tell_s >= 1.0 and _t.hud_tell_s >= 1.0 and _t.hunter_tell_s >= 1.0, str(problems))
 	var dummy := _code("res://scripts/target_dummy.gd")
 	var player := _code("res://scripts/player.gd")
-	_check("hits carry their source (I2's hook): a daemon's hit and a piece of ICE's take the weapon's id, and every weapon's hit passes it; the brute breaker's hook is in the director", dummy.contains("source: String = \"\"") and _body(dummy, "hit").contains("ice.note_damage(source, damage)") and player.contains("end_point, dir, _w.id)") and player.contains("at, dir, def.id)") and _code(ICE_DIR + "ice_piece.gd").contains("source: String = \"\"") and _code(ICE_DIR + "ice_director.gd").contains("BRUTE_SCALE"))
+	_check("hits carry their source (I2's hook): a daemon's hit and a piece of ICE's take the weapon's id, and every weapon's hit passes it; the brute breaker's hook is in the director", dummy.contains("source: String = \"\"") and _body(dummy, "hit").contains("ice.note_damage(source, damage)") and player.contains("end_point, dir, _w.id)") and player.contains("at, dir, def.id)") and _code(ICE_DIR + "ice_piece.gd").contains("source: String = \"\"") and _code(ICE_DIR + "ice_director.gd").contains("brute_wall_scale"))
 
 
 func _palette_checks() -> void:
