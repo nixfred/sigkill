@@ -11,6 +11,9 @@ shader_type spatial;
 render_mode unshaded;
 
 global uniform float arena_clock;
+// Black ICE (I3) dims it: arena_light, the arena's light level (1 normal, its lights_low while it is out),
+// a shader global set by scripts/ice/blackout.gd.
+global uniform float arena_light;
 
 uniform vec4 holo_color : source_color = vec4(0.49, 1.0, 0.812, 1.0);
 uniform float energy : hint_range(0.0, 32.0) = 3.5;
@@ -35,5 +38,5 @@ void vertex() {
 
 void fragment() {
 	float band = 0.75 + 0.25 * sin((local_y * bands_per_m - mod(arena_clock, 1024.0) * band_speed) * TAU);
-	ALBEDO = holo_color.rgb * (energy * band);
+	ALBEDO = holo_color.rgb * (energy * band) * arena_light;
 }

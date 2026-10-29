@@ -7,11 +7,16 @@ extends RefCounted
 ## SIGKILL's own scripted guide (scripted()) gives the same kind of advice from the same numbers when the
 ## AI is off, refused or silent: a decoy for a hunter that has adapted, exploit for a hunter out, brute
 ## for walls standing, cloak for nodes standing, else whichever is carried.
+##
+## Black ICE (I3): its numbers ride along (out or not, its seals standing, how far it is from this player
+## in whole metres, whether it flatlined this player this round), and while it is out the scripted guide
+## puts it first: the exploit and brute combo when this player holds an exploit and enough brutes for its
+## seals, else the decoy, else the cloak, else the run (it is slower than a running intruder).
 
 const Kinds = preload("res://scripts/ice/breakers.gd")
 
 ## The guide's numbers' keys (the request whitelist's own), in order.
-const KEYS := ["round_number", "ice_walls", "ice_wall_health_pct", "ice_nodes", "ice_node_health_pct", "hunter_out", "hunter_health_pct", "hunter_adapted_weapon", "hunter_adapted_pct", "breakers_brute", "breakers_exploit", "breakers_cloak", "breakers_decoy"]
+const KEYS := ["round_number", "ice_walls", "ice_wall_health_pct", "ice_nodes", "ice_node_health_pct", "hunter_out", "hunter_health_pct", "hunter_adapted_weapon", "hunter_adapted_pct", "breakers_brute", "breakers_exploit", "breakers_cloak", "breakers_decoy", "black_ice_out", "black_ice_seals", "black_ice_distance_m", "black_ice_flatlined"]
 ## No weapon adapted to yet.
 const NONE := "none"
 ## The hunter's adaptation past this share makes the decoy the pick.
@@ -29,6 +34,13 @@ const ANY := {
 	"decoy": "Load decoy: throw it and everything hunting you goes after it instead.",
 }
 const NOTHING := "No breakers left: find a pickup, the ultraviolet beams."
+## While Black ICE is out (I3).
+const BLACK := {
+	"exploit": "Black ICE: run exploit, then brute it up close while exploit runs; %d seal%s to break, one brute each.",
+	"decoy": "Black ICE: throw a decoy and break away. It cannot be shot and it is slower than your run.",
+	"cloak": "Black ICE: cloak and slip past it; it cannot see you while the cloak holds.",
+	"": "Black ICE: run. It cannot be shot, it is slower than you, and its touch flatlines.",
+}
 
 
 ## The round's numbers now, from the breaker director `breakers` (its ICE director, its own counts):
@@ -73,6 +85,19 @@ static func numbers(breakers: Node) -> Dictionary:
 	var b: Breakers = breakers.mine
 	for k in Kinds.NAMES.size():
 		out["breakers_" + Kinds.name_of(k)] = b.count(k)
+	var black_out := 0
+	var seals := 0
+	var gap := 0
+	if ice != null and is_instance_valid(ice) and ice.mode != IceDirector.Mode.OFF and ice.black_out():
+		black_out = 1
+		seals = ice.black.seals_left
+		var me: Node3D = breakers.player
+		if me != null and is_instance_valid(me):
+			gap = mini(roundi(Vector2(me.global_position.x - ice.black.global_position.x, me.global_position.z - ice.black.global_position.z).length()), 1000)
+	out["black_ice_out"] = black_out
+	out["black_ice_seals"] = seals
+	out["black_ice_distance_m"] = gap
+	out["black_ice_flatlined"] = 1 if ice != null and is_instance_valid(ice) and ice.flatlined_me() else 0
 	return out
 
 
@@ -83,6 +108,14 @@ static func scripted(n: Dictionary) -> Array:
 	var adapted := int(n.get("hunter_adapted_pct", 0))
 	var walls := int(n.get("ice_walls", 0))
 	var nodes := int(n.get("ice_nodes", 0))
+	if int(n.get("black_ice_out", 0)) > 0:
+		var seals := maxi(int(n.get("black_ice_seals", 1)), 1)
+		if has.call("exploit") and int(n.get("breakers_brute", 0)) >= seals:
+			return ["exploit", BLACK["exploit"] % [seals, "" if seals == 1 else "s"]]
+		for kind in ["decoy", "cloak"]:
+			if has.call(kind):
+				return [kind, BLACK[kind]]
+		return ["", BLACK[""]]
 	if hunter and adapted >= DECOY_AT_PCT and has.call("decoy"):
 		return ["decoy", PICKS["decoy"] % [adapted, _weapon_word(String(n.get("hunter_adapted_weapon", NONE)))]]
 	if hunter and has.call("exploit"):

@@ -69,6 +69,13 @@ const ICE_CRYSTAL := Color(0.031372549, 0.070588235, 0.121568627)  # #08121f eve
 # tint of it, legible on black and 0.10 from violet and the hunter's line.
 const BREAKER := Color(0.454901961, 0.0, 0.8)  # #7400cc pickups, decoys, exploit's seam marks, the brute's charge
 const BREAKER_TEXT := Color(0.760784314, 0.498039216, 1.0)  # #c27fff the breaker readout and its notices
+# Black ICE (I3): the machine's last line of defence, its light almost absent: a cold, dead slate found by
+# a search of the cold hues (175 to 235 degrees, chroma under 0.075) for the farthest point (OKLab) from
+# every bright colour above (0.200 from grep's cobalt, 0.243 from glacier); its HUD text a light tint of
+# it, legible on black; its body a glass darker than the rest of ICE's.
+const BLACK_ICE := Color(0.164705882, 0.431372549, 0.505882353)  # #2a6e81 Black ICE's seams, seals and core
+const BLACK_ICE_TEXT := Color(0.466666667, 0.741176471, 0.82745098)  # #77bdd3 its warning, its line, a flatline
+const BLACK_ICE_GLASS := Color(0.007843137, 0.011764706, 0.015686275)  # #020304 its body
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -209,6 +216,22 @@ const ICE_FIELD_RIM_ENERGY := 2.4
 const ICE_FIELD_LATTICE_ENERGY := 1.1
 const ICE_FIELD_CELLS := 26.0
 const ICE_FIELD_FLASH_ENERGY := 6.0
+# Black ICE's look (I3): ICE's crystal darker still (its glass, the light inside its facets almost none,
+# its seams' line a trace, a thin cold rim only where it turns away, so its silhouette reads against the
+# dimmed arena, a hit's flash a cold flicker on its edges, never a white sheet), its glass rough and
+# barely reflecting, so light falls into it; and its light dimmer and slower than ICE's (the seams, the
+# seals, the core).
+const BLACK_ICE_FACET_ENERGY := 0.01
+const BLACK_ICE_EDGE_ENERGY := 0.08
+const BLACK_ICE_RIM_ENERGY := 0.24
+const BLACK_ICE_RIM_POWER := 4.5
+const BLACK_ICE_SPECULAR := 0.12
+const BLACK_ICE_ROUGHNESS := 0.45
+const BLACK_ICE_METALLIC := 0.0
+const BLACK_ICE_FLASH_ENERGY := 0.5
+const BLACK_ICE_LIGHT_ENERGY := 1.6
+const BLACK_ICE_LIGHT_BREATH := 0.25
+const BLACK_ICE_LIGHT_BREATH_HZ := 0.18
 # Derezz look (A2): the voxels' edge (a share of a face), the face's share of the glow, the edge's
 # boost, the cells a face breaks into; the death's flash (a column and a ground ring) and its glow.
 const DEREZZ_EDGE_WIDTH := 0.14
@@ -560,6 +583,36 @@ static func ice_light_material() -> ShaderMaterial:
 	for key in ["glitch_share", "tear_share", "part_share", "jitter_m", "tear_m", "part_jump_m"]:
 		mat.set_shader_parameter(key, 0.0)
 	return mat
+
+
+## Black ICE's body (I3): ICE's crystal shader, its glass near black and the light inside it almost
+## none, a cold rim in its own colour (edge_color, an instance uniform) so its silhouette reads in the
+## dark it brings. Made once, every Black ICE's.
+static func black_ice_crystal_material() -> ShaderMaterial:
+	if not _arena_cache.has("black_ice_crystal"):
+		var mat := ice_crystal_material()
+		mat.set_shader_parameter("crystal", BLACK_ICE_GLASS)
+		mat.set_shader_parameter("facet_energy", BLACK_ICE_FACET_ENERGY)
+		mat.set_shader_parameter("edge_energy", BLACK_ICE_EDGE_ENERGY)
+		mat.set_shader_parameter("rim_energy", BLACK_ICE_RIM_ENERGY)
+		mat.set_shader_parameter("rim_power", BLACK_ICE_RIM_POWER)
+		mat.set_shader_parameter("specular_amount", BLACK_ICE_SPECULAR)
+		mat.set_shader_parameter("roughness_amount", BLACK_ICE_ROUGHNESS)
+		mat.set_shader_parameter("metallic_amount", BLACK_ICE_METALLIC)
+		mat.set_shader_parameter("flash_energy", BLACK_ICE_FLASH_ENERGY)
+		_arena_cache["black_ice_crystal"] = mat
+	return _arena_cache["black_ice_crystal"]
+
+
+## Black ICE's light (I3): ICE's light, dimmer and slower. Made once.
+static func black_ice_light_material() -> ShaderMaterial:
+	if not _arena_cache.has("black_ice_light"):
+		var mat := ice_light_material()
+		mat.set_shader_parameter("energy", BLACK_ICE_LIGHT_ENERGY)
+		mat.set_shader_parameter("breath", BLACK_ICE_LIGHT_BREATH)
+		mat.set_shader_parameter("breath_hz", BLACK_ICE_LIGHT_BREATH_HZ)
+		_arena_cache["black_ice_light"] = mat
+	return _arena_cache["black_ice_light"]
 
 
 ## A white ICE node's field dome (I1): one material for every node, its colour and its moment

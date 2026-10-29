@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1 or i2):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2 or i3):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -29,7 +29,10 @@ extends SceneTree
 ## lit on a daemon and the corridor's wall while a cloak runs (both effect lines up, the edges washed),
 ## the brute's charge breaking the wall up close, the hunter's lance going into a decoy the player threw
 ## instead of into the player, and a line-up of the four pickups and a decoy; then it prints what the breakers
-## cost. Every other set plays in practice, the old dummies, as it was shot.
+## cost; i3, Black ICE: its arrival seen in play (the arena's lights down, the warning up, the guide's link
+## cut, it forming out of the floor), the combo (a decoy pinning it, exploit's marks on its seals, a brute
+## breaking one), a line-up of three from other seeds, and the loss screen of a flatline alone; then it
+## prints what Black ICE costs. Every other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -201,6 +204,25 @@ const I2_LINEUP := [Vector3(-4.5, 0.0, 12.0), Vector3(-1.5, 0.0, 12.0), Vector3(
 const I2_LINEUP_DECOY := Vector3(0.0, 0.0, 14.6)
 const I2_LINEUP_CAM := Vector3(0.0, 2.4, 19.6)
 const I2_LINEUP_LOOK := Vector3(0.0, 1.15, 12.6)
+## i3: where the player stands to watch it arrive (it forms at BLACK_SPOTS[3], between the gate and the
+## low wall, seen from east of the low wall so nothing stands between), how far the view turns right of it
+## (so it stands left of the gun in hand) and how far up it looks, and how far through its tell the still is; for the combo, which way the player stands from it, how far, and the frames after
+## the brute; for the decoy, where the decoy is thrown and where the player watches from; the line-up's
+## places, seeds and camera.
+const I3_ARRIVE_AT := Vector3(6.4, 0.95, 3.4)
+const I3_ARRIVE_TURN := -0.22
+const I3_ARRIVE_LOOK_H := 2.9
+const I3_ARRIVE_SHARE := 0.9
+const I3_SPOT := 3
+const I3_COMBO_FROM := Vector3(-2.0, 0.95, 4.0)
+const I3_COMBO_M := 3.9
+const I3_COMBO_FRAMES := 32
+const I3_DECOY_AT := Vector3(9.0, 0.0, 0.5)
+const I3_DECOY_WATCH := Vector3(2.5, 0.95, 4.5)
+const I3_LINEUP := [Vector3(-4.6, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(4.6, 0.0, 10.0)]
+const I3_LINEUP_SEEDS := [3101, 3101 + 7919, 3101 + 2 * 7919]
+const I3_LINEUP_CAM := Vector3(0.0, 2.6, 19.5)
+const I3_LINEUP_LOOK := Vector3(0.0, 2.1, 10.0)
 
 var _main: Node
 var _player: Node
@@ -252,6 +274,11 @@ func _run() -> void:
 		return
 	if _set == "i2":
 		await _i2()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "i3":
+		await _i3()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1063,6 +1090,158 @@ func _i2_cost(lineup: Array[Node3D]) -> void:
 	for node in lineup:
 		node.visible = true
 	print("capture: i2 cost, the GPU's time a frame at 1920x1080 with the line-up's five drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
+
+
+func _i3() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	var br: BreakerDirector = _main.get_node(BreakerDirector.NODE_NAME)
+	var hud = _main.get_node("Hud")
+	var blackout: Blackout = _main.get_node(Blackout.NODE_NAME)
+	# Its arrival: round 3, whose fixed roll brings it; the hunter and the nodes broken first so nothing
+	# else is in the frame; the player watching the spot it forms at, from across the floor.
+	hud.round_hud()._start_round(3)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	for kind in ["jam", "hud"]:
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	if ice.hunter != null:
+		ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+		ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+		ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var spot: Vector3 = IceDirector.BLACK_SPOTS[I3_SPOT]
+	await _stand(I3_ARRIVE_AT, _main.to_global(spot + Vector3(0.0, I3_ARRIVE_LOOK_H, 0.0)))
+	_player.rotation.y += I3_ARRIVE_TURN
+	var b := ice.summon_black(I3_SPOT)
+	while b.phase_t < ice.black_tuning.tell_s * I3_ARRIVE_SHARE:
+		await _frames(1)
+	print("capture: Black ICE (seed %d) arriving, %.1f s of its %.0f s tell gone; the lights at %.2f, the hum down %.2f; the warning %s; the guide's badge '%s'" % [b.build_seed, b.phase_t, ice.black_tuning.tell_s, blackout.level, blackout.hum_down, hud.black_ice_hud().warning_text(), hud.guide().badge_text()])
+	await _save("i3-black-ice")
+	# The combo: out and hunting, the player close in front of it: exploit (its marks on the seals), then a
+	# brute while it runs, breaking a seal and throwing it back.
+	while b.phase != BlackIce.Phase.OUT:
+		await _frames(1)
+	br.start_round(3)
+	br.mine.counts = PackedInt32Array([2, 1, 0, 1])
+	var at := b.global_position
+	var toward: Vector3 = _main.to_global(I3_COMBO_FROM)
+	var from: Vector3 = at + (toward - at).normalized() * I3_COMBO_M
+	_player.respawn_at(Vector3(from.x, _main.to_global(Vector3(0.0, 0.95, 0.0)).y, from.z))
+	await _frames(2)
+	var eyes: Camera3D = _player.get_node("Head/Camera")
+	var to := b.global_position + Vector3.UP * 2.4 - eyes.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	br.use(1, Breakers.Kind.EXPLOIT, _player.eye_position(), _player.aim_direction())
+	await _frames(int(ceil(br.tuning.use_gap_s * 60.0)) + 1)
+	br.use(1, Breakers.Kind.BRUTE, _player.eye_position(), _player.aim_direction())
+	await _frames(I3_COMBO_FRAMES)
+	print("capture: the combo: seals %d of %d, %s, the call '%s', exploit's marks %d, %.1f m apart" % [b.seals_left, ice.black_tuning.seals, b.brain.state_name(), hud.black_ice_hud().call_text(), br.get_node("ExploitMarks").shown(), Vector2(b.global_position.x - _player.global_position.x, b.global_position.z - _player.global_position.z).length()])
+	await _save("i3-combo")
+	# The decoy escape: thrown off to the side, it pulls Black ICE off the player, who watches from apart.
+	await _frames(int(ceil(br.tuning.use_gap_s * 60.0)) + 2)
+	var decoy_at: Vector3 = _main.to_global(I3_DECOY_AT)
+	br.use(1, Breakers.Kind.DECOY, _player.eye_position(), (decoy_at + Vector3.UP * 2.5 - _player.eye_position()).normalized())
+	_player.respawn_at(_main.to_global(I3_DECOY_WATCH))
+	var waited := 0
+	while not (b.brain.prey < 0 and br.calling().size() > 0 and Vector2(b.global_position.x - br.calling()[0].global_position.x, b.global_position.z - br.calling()[0].global_position.z).length() < 1.5) and waited < 600:
+		await _frames(1)
+		waited += 1
+	var look_at: Vector3 = b.global_position + Vector3.UP * 2.0
+	var view := look_at - eyes.global_position
+	_player.rotation.y = atan2(-view.x, -view.z)
+	_player.get_node("Head").rotation.x = atan2(view.y, Vector2(view.x, view.z).length())
+	await _frames(20)
+	print("capture: the decoy pulled it after %d frames (prey %d), the player %.1f m away, untouched" % [waited, b.brain.prey, Vector2(b.global_position.x - _player.global_position.x, b.global_position.z - _player.global_position.z).length()])
+	await _save("i3-decoy")
+	ice._on_round_ended(3)
+	await _frames(int(maxf(ice.black_tuning.withdraw_s, ice.black_tuning.restore_s) * 60.0) + 30)
+	# The line-up: three Black ICE from other seeds, standing in a row, seen from a free camera.
+	hud.round_hud()._start_round(1)
+	GameSettings.current().set_value("gameplay", "ice", false)
+	await _frames(10)
+	var cam := _free_camera(I3_LINEUP_CAM, I3_LINEUP_LOOK, A2B_FOV)
+	var lineup: Array[Node3D] = []
+	for i in I3_LINEUP.size():
+		var holder := Node3D.new()
+		_main.add_child(holder)
+		holder.global_position = _main.to_global(I3_LINEUP[i] + Vector3(0.0, 0.9, 0.0))
+		holder.rotation.y = 0.0
+		var art: DaemonArt = load("res://scripts/ice/black_ice_art.gd").new()
+		art.setup(null, I3_LINEUP_SEEDS[i])
+		holder.add_child(art)
+		art.drive(DaemonArt.Act.IDLE)
+		lineup.append(holder)
+	await _frames(70)
+	await _save("i3-lineup")
+	await _i3_cost(lineup)
+	_free_camera_done(cam)
+	for node in lineup:
+		node.queue_free()
+	# A flatline alone: the run over, the loss screen.
+	GameSettings.current().set_value("gameplay", "ice", true)
+	await _frames(10)
+	hud.round_hud()._start_round(4)
+	await _frames(5)
+	for kind in ["jam", "hud"]:
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+		ice.node_of(kind).hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var life: SoloLife = null
+	for child in _main.get_children():
+		if child is SoloLife:
+			life = child
+	while life.protected():
+		await _frames(1)
+	var c := ice.summon_black(I3_SPOT)
+	c.phase_t = ice.black_tuning.tell_s
+	await _stand(Vector3(spot.x + 6.0, 0.95, spot.z + 4.0), _main.to_global(spot + Vector3(0.0, 2.0, 0.0)))
+	while life.alive():
+		_player.respawn_at(c.global_position + Vector3(0.9, 0.95, 0.0))
+		await _frames(1)
+	await _frames(40)
+	print("capture: flatlined alone: '%s'" % hud.round_hud().summary_text().get_slice("\n", 0))
+	await _save("i3-flatline")
+
+
+## What Black ICE costs, on this machine: its art's triangles and draw calls as built, its posing timed
+## alone (its whole _process), five rounds of A5_COST_FRAMES frames: the quickest round and the median;
+## then the GPU's time a frame with the line-up drawn and hidden, three times each in turn.
+func _i3_cost(lineup: Array[Node3D]) -> void:
+	var rounds := PackedFloat32Array()
+	for round in 5:
+		var usec := 0
+		for i in A5_COST_FRAMES:
+			for node in lineup:
+				var t0 := Time.get_ticks_usec()
+				(node.get_child(0) as DaemonArt)._process(1.0 / 60.0)
+				usec += Time.get_ticks_usec() - t0
+			await _frames(1)
+		rounds.append(float(usec) / (A5_COST_FRAMES * lineup.size()))
+	rounds.sort()
+	var art: DaemonArt = lineup[0].get_child(0)
+	print("capture: i3 cost, Black ICE: %d triangles, %d draw calls; posing %.1f us one a frame at the quickest, %.1f the median (rounds %s)" % [art.triangles(), art.draw_calls(), rounds[0], rounds[2], ", ".join(Array(rounds).map(func(x): return "%.1f" % x))])
+	var gpu := PackedStringArray()
+	var calls := PackedInt32Array([0, 0])
+	var prims := PackedInt32Array([0, 0])
+	for pass_ in 6:
+		var shown := pass_ % 2 == 0
+		for node in lineup:
+			node.visible = shown
+		await _frames(10)
+		var ms := await _gpu_ms(A5_COST_FRAMES)
+		gpu.append("%s %.3f" % ["drawn" if shown else "hidden", ms])
+		calls[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		prims[0 if shown else 1] = root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)
+	for node in lineup:
+		node.visible = true
+	print("capture: i3 cost, the GPU's time a frame at 1920x1080 with the line-up's three drawn and hidden in turn: %s ms; drawn %d draw calls and %d primitives, hidden %d and %d" % [", ".join(gpu), calls[0], prims[0], calls[1], prims[1]])
 
 
 ## Sends a ping: fire for one frame.

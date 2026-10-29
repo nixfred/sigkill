@@ -98,6 +98,9 @@ var _lamp_nodes: Array[OmniLight3D] = []
 var _danger_nodes: Array[OmniLight3D] = []
 static var _clock := 0.0
 static var _clock_frame := -1
+## The arena's light level (I3): 1 normal, down while Black ICE is out (scripts/ice/blackout.gd sets it);
+## the lair's pulsing danger lights take it here, as they are set every frame.
+static var light_level := 1.0
 
 
 func _ready() -> void:
@@ -119,7 +122,7 @@ func _process(delta: float) -> void:
 	step_clock(delta)
 	var glow := 1.0 + Palette.DANGER_PULSE * sin(_clock * Palette.DANGER_PULSE_HZ * TAU)
 	for light in _danger_nodes:
-		light.light_energy = Palette.DANGER_LIGHT_ENERGY * glow
+		light.light_energy = Palette.DANGER_LIGHT_ENERGY * glow * light_level
 
 
 ## The arena's shader clock: stepped once a frame by whichever dressing is drawn first.

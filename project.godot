@@ -46,3 +46,10 @@ arena_clock={
 "type": "float",
 "value": 0.0
 }
+
+; The arena's light level (I3): 1 normal, down to Black ICE's lights_low while it is out. Set by
+; scripts/ice/blackout.gd, read by the arena's lights, panels, screens, holograms, floor, rain and skyline.
+arena_light={
+"type": "float",
+"value": 1.0
+}

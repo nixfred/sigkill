@@ -36,6 +36,11 @@ extends Control
 ## the boot screen, or made here when there is none, with the same headless guard and demo
 ## data. When R reloads the arena this HUD parks it for the next one; when the window is
 ## closed it shuts it down.
+##
+## Black ICE (I3): from its arrival until it is gone the guide's link shows cut: the badge reads "LINK
+## CUT" in Black ICE's colour, flickering, the latency and GPU lines go dark and the status line reads "NO
+## CARRIER". Cosmetic only: no call is made or cancelled because of it, T still asks and an answer still
+## shows; it comes back when Black ICE is gone.
 
 const HudTuningScript = preload("res://scripts/hud/hud_tuning.gd")
 const Link = preload("res://scripts/guide/guide_link.gd")
@@ -81,6 +86,10 @@ const DEMO_ANSWER := "Demo mode: this is where your AI answers you, in its own w
 const BREAKER_HINT := "   (Enter alone: which breaker to load)"
 const SCRIPTED_PICK := "Scripted guide: %s"
 const DEMO_PICK := "Demo mode: %s"
+## The link cut by Black ICE (I3): the badge, the status line, how fast the badge flickers.
+const CUT_BADGE := "your AI: LINK CUT"
+const CUT_STATUS := "NO CARRIER   Black ICE on the line"
+const CUT_FLICKER_HZ := 9.0
 const SPINNER := ["|", "/", "-", "\\"]
 const WEAPON := "terminal_cannon"
 const MODE := "practice"
@@ -112,8 +121,11 @@ var hold_answer := false
 ## with nothing typed asks for that pick alone, and every line that is not the AI's own (it is off,
 ## refused, silent) is followed by the scripted guide's pick.
 var breakers: Node = null
+## ICE's director (I3), set by the HUD: while its Black ICE is out the link shows cut.
+var ice: Node = null
 
 var _t: Resource
+var _cut_clock := 0.0
 var _link: Link
 var _typing := false
 var _was_captured := false
@@ -166,6 +178,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var ms := delta * 1000.0
+	_cut_clock = fmod(_cut_clock + delta, 3600.0)
 	_round_s = minf(_round_s + delta, ROUND_SECONDS_LAST)
 	_link.poll(ms)
 	_poll_call(ms)
@@ -317,6 +330,11 @@ func _with_pick(line: String) -> String:
 
 func note_kill() -> void:
 	_kills += 1
+
+
+## True while Black ICE has the guide's link cut (I3): from its arrival until it is gone.
+func link_cut() -> bool:
+	return ice != null and is_instance_valid(ice) and ice.has_method("black_out") and ice.black_out()
 
 
 func set_targets_left(remaining: int) -> void:
@@ -751,6 +769,14 @@ func _refresh() -> void:
 			else:
 				line = NOT_LOADED_LINE + (OWN_APP if hint == "own_app" else "") + ("   " + reason if reason != "" else "")
 		_status.text = line
+	if link_cut():
+		_badge.text = CUT_BADGE
+		_badge.add_theme_color_override("font_color", Palette.BLACK_ICE_TEXT)
+		_latency.visible = false
+		_gpu.visible = false
+		if not (_typing or _consent_prompt or _load_ui == "prompt"):
+			_status.text = CUT_STATUS
+	_badge.modulate.a = (0.35 if fmod(_cut_clock * CUT_FLICKER_HZ, 1.0) < 0.3 else 1.0) if link_cut() else 1.0
 	_panel.visible = _typing or _consent_prompt or _load_ui != "" or (_answer_ms_left > 0.0 and not hold_answer) or _notice_ms_left > 0.0
 
 

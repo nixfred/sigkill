@@ -274,6 +274,10 @@ const DAEMON_CAUSE := "daemon:"
 ## A death by hunter ICE's lance (I1), and the name it goes by in the feed.
 const ICE_CAUSE := "ice:hunter"
 const ICE_NAME := "hunter ICE"
+## A flatline by Black ICE's touch (I3): out for the rest of the (host's) round, no respawn till then.
+const BLACK_CAUSE := "ice:black"
+## The feed's second line for a flatline (I3).
+const FLAT_WORD := "flatlined: out until the round ends"
 const DAEMON_WORD := "derezzed by a daemon"
 ## The most daemons, and bolts, the state word may carry.
 const DAEMONS_LAST := 64
@@ -301,7 +305,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 13
+const PROTOCOL := 14
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -408,6 +412,10 @@ var last_kill_word := {}
 ## For a player its own weapon killed, that weapon's self-kill words, for the feed (C26); else "".
 var last_kill_self := {}
 var respawn_left := {}
+## Black ICE's flatlines (I3): a player down by one, held there until the host's next round (every
+## screen, from the death's cause); hosting, the ICE round it happened in.
+var _flat := {}
+var _flat_round := {}
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
 var lives := {}
@@ -521,6 +529,8 @@ var host_ice := true
 ## Hosting, the wait to the next ICE word; joined, ICE words taken (for the checks).
 var _ice_wait_s := 0.0
 var ice_words := 0
+## Joined: Black ICE words taken (I3, for the checks).
+var black_words := 0
 ## The ICEbreakers (I2): hosting, the wait to the next breaker word and the asks it refused; joined,
 ## breaker words taken and asks sent (for the checks).
 var _breaker_wait_s := 0.0
@@ -1075,8 +1085,11 @@ func _physics_process(delta: float) -> void:
 			for id in combat.tick_sigstop(delta):
 				_send_sigstop(id)  # that SIGSTOP ran out on the host's clock
 			combat.tick_sudo(delta)  # root running out on the host's clock (C22)
+			_tick_flatlined()
 			for id in combat.tick(delta):
-				if _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
+				if _flat_round.has(id):
+					combat.defer_respawn(id, RESPAWN_RETRY_S)  # flatlined by Black ICE: out until the round ends (I3)
+				elif _arena == null or not is_instance_valid(_arena) or _player == null or not is_instance_valid(_player):
 					combat.defer_respawn(id, RESPAWN_RETRY_S)  # no arena to choose a spawn in yet
 				elif _clock - _attached_at < SPAWN_LOOK_S and _opponents_unseen(id):
 					combat.defer_respawn(id, RESPAWN_RETRY_S)  # the arena just came back: wait for their positions
@@ -1386,6 +1399,8 @@ func _clear_players() -> void:
 	last_kill_self = {}
 	respawn_left = {}
 	lives = {}
+	_flat = {}
+	_flat_round = {}
 	_pending_spawn = Vector3.INF
 	_pending_weapon = ""
 	_roster_seen = false
@@ -1509,7 +1524,7 @@ func _on_peer_disconnected(id: int) -> void:
 	players.erase(id)
 	combat.remove_player(id)
 	_actions_from.erase(id)
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat, _flat_round]:
 		table.erase(id)
 	_drop_avatar(id)
 	_drop_jobs(id)  # cron's jobs leave with their owner (C27)
@@ -1602,7 +1617,7 @@ func _roster(ids: PackedInt32Array, slots: PackedInt32Array, names: PackedString
 		dead[ids[i]] = deads[i] != 0
 		protect_left[ids[i]] = protects[i]
 		lives[ids[i]] = life_numbers[i]
-	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives]:
+	for table in [health, dead, protect_left, last_killer, last_killer_name, last_kill_word, last_kill_self, respawn_left, lives, _flat]:
 		for id in table.keys():
 			if not players.has(id):
 				table.erase(id)
@@ -3408,6 +3423,8 @@ static func daemon_of(cause: String) -> int:
 func _daemon_name(cause: String) -> String:
 	if cause == ICE_CAUSE:
 		return ICE_NAME
+	if cause == BLACK_CAUSE:
+		return IceDirector.BLACK_NAME
 	var index := daemon_of(cause)
 	var director := DaemonDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
 	if director != null and index >= 0 and index < director.brains().size():
@@ -3463,17 +3480,21 @@ func _tick_ice(delta: float) -> void:
 		return
 	_ice_wait_s += 1.0 / _t.sync_rate_hz
 	var w: Dictionary = ice.word()
+	var bw: Dictionary = ice.black_word()
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_ice.rpc_id(id, w["round"], w["seeds"], w["healths"], w["words"], w["times"], w["hunter"], w["weapon"], w["percent"])
+			_ice.rpc_id(id, w["round"], w["seeds"], w["healths"], w["words"], w["times"], w["hunter"], w["weapon"], w["percent"], bw["seed"], bw["word"])
 
 
 ## The host's ICE, at the sync rate (I1): the round; every piece's seed, health, word and seconds into
 ## it (the two walls, the two nodes, the hunter, in the director's order); the hunter's place, yaw,
-## aim (arena space) and reach; the adaptation's weapon and percent. A joiner's ICE plays it.
+## aim (arena space) and reach; the adaptation's weapon and percent; and (I3) Black ICE's seed and word
+## (IceDirector's black_word(): its phase, the seconds into it, its seals, its place, yaw, brain state and
+## time, SIGSTOP's hold, the hits that flashed it, a broken seal's mend), in the same packet so it never
+## runs out of step with the rest of ICE. A joiner's ICE plays it.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _ice(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, hunter: PackedFloat32Array, weapon: String, percent: int) -> void:
+func _ice(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, hunter: PackedFloat32Array, weapon: String, percent: int, black_seed: int, black: PackedFloat32Array) -> void:
 	if state != State.JOINED or host_practice or not host_ice or _arena == null or not is_instance_valid(_arena):
 		return
 	var n := IceDirector.PIECE_COUNT
@@ -3487,11 +3508,62 @@ func _ice(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array, word
 	for v in hunter:
 		if not is_finite(v) or absf(v) > WORLD_LAST:
 			return
+	if not _black_ok(black_seed, black):
+		return
 	var ice := IceDirector.of(_arena)
 	if ice == null:
 		return
 	ice_words += 1
 	ice.take_word(round, seeds, healths, words, times, hunter, weapon, percent)
+	black_words += 1
+	ice.take_black_word(black_seed, black)
+
+
+## True for a sound Black ICE word from the host (I3): a seed, and BLACK_WORD finite numbers in the
+## world's range, its phase one of BlackIce.Phase, its seals within SEALS_LAST, its times not negative.
+func _black_ok(seed: int, word: PackedFloat32Array) -> bool:
+	if seed < 0 or word.size() != IceDirector.BLACK_WORD:
+		return false
+	for v in word:
+		if not is_finite(v) or absf(v) > WORLD_LAST:
+			return false
+	return word[0] >= 0.0 and word[0] <= BlackIce.Phase.GONE and word[2] >= 0.0 and word[2] <= BlackIceTuning.SEALS_LAST and word[1] >= 0.0 and word[8] >= 0.0 and word[10] >= 0.0 and word[11] >= 0.0
+
+
+## Hosting: Black ICE touched player `id` (I3, the host's ICE director's judgement): a flatline. All of its
+## health taken at once in the match's combat (spawn protection holds), told to everyone as a death by
+## Black ICE, and held down, no respawn, until the host's ICE starts its next round. True when it did.
+func black_ice_flatline(id: int, _black: Node, way: Vector3) -> bool:
+	if state != State.HOSTING or combat == null or not combat.has_player(id) or _arena == null or not is_instance_valid(_arena):
+		return false
+	var outcome := combat.damage_player(id, id, combat.health_of(id) + _ct.max_health)
+	if outcome.is_empty() or not outcome["killed"]:
+		return false
+	var ice := IceDirector.of(_arena)
+	_flat_round[id] = ice.round_number if ice != null else 0
+	var local_way: Vector3 = (_arena.global_transform.basis.inverse() * way).normalized() if not way.is_zero_approx() else Vector3.FORWARD
+	_broadcast_death(id, id, local_way, BLACK_CAUSE)
+	_mirror_from_combat()
+	_flush_sudo()
+	return true
+
+
+## True while player `id` is down by Black ICE's flatline (I3): out until the host's next round.
+func flatlined(id: int) -> bool:
+	return _flat.get(id, false)
+
+
+## Hosting: a flatline is over when the host's ICE is on a new round (or off, or gone): that player's
+## respawn comes due now.
+func _tick_flatlined() -> void:
+	if _flat_round.is_empty():
+		return
+	var ice := IceDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
+	for id in _flat_round.keys():
+		if ice == null or not ice.decides() or ice.round_number != _flat_round[id] or not combat.has_player(id):
+			_flat_round.erase(id)
+			if combat.has_player(id) and not combat.alive(id):
+				combat.defer_respawn(id, RESPAWN_RETRY_S)
 
 
 ## Hosting: a field of this arena's ICE reached joiner `id`: its `kind` (IceDirector.Effect) for
@@ -3615,7 +3687,7 @@ func _broadcast_death(victim: int, killer: int, dir: Vector3, weapon: String) ->
 ## A player went down, from the host, and to which weapon.
 @rpc("authority", "call_remote", "reliable")
 func _death(victim: int, killer: int, dir: Vector3, weapon: String) -> void:
-	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not (_weapons.has(weapon) or weapon == LIGHT_TRAIL or daemon_of(weapon) >= 0 or weapon == ICE_CAUSE):
+	if state != State.JOINED or not players.has(victim) or not players.has(killer) or not dir.is_finite() or not (_weapons.has(weapon) or weapon == LIGHT_TRAIL or daemon_of(weapon) >= 0 or weapon == ICE_CAUSE or weapon == BLACK_CAUSE):
 		return
 	_apply_death(victim, killer, dir, weapon)
 
@@ -3627,15 +3699,18 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 	last_killer_name[victim] = players.get(killer, {}).get("name", assigned_name("", 0))
 	last_kill_word[victim] = _feed_word(victim, weapon)
 	last_kill_self[victim] = _weapons[weapon].self_kill_word if killer == victim and _weapons.has(weapon) else ""
-	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE:
-		last_killer_name[victim] = _daemon_name(weapon)  # derezzed by the daemon, named as this screen shows it (C27b); or by hunter ICE (I1)
-		last_kill_self[victim] = DAEMON_WORD
+	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE or weapon == BLACK_CAUSE:
+		last_killer_name[victim] = _daemon_name(weapon)  # derezzed by the daemon, named as this screen shows it (C27b); or by hunter ICE (I1), or Black ICE (I3)
+		last_kill_self[victim] = FLAT_WORD if weapon == BLACK_CAUSE else DAEMON_WORD
 	if killer == my_id and killer != victim and _weapons.has(weapon) and _player_ready():
 		if _weapons[weapon].is_ult():
 			_player.rail_kill.emit(_player.took_head(victim))
 		else:
 			_player.add_meter(_player.meter_gain(0.0, true))  # the kill bonus
 	respawn_left[victim] = _ct.respawn_delay_s
+	if weapon == BLACK_CAUSE:
+		_flat[victim] = true  # out until the round ends (I3): no countdown
+		respawn_left[victim] = 0.0
 	var trails := LightTrails.find(_arena)
 	if trails != null:
 		trails.clear(victim)  # a death takes that player's walls away
@@ -3655,7 +3730,7 @@ func _apply_death(victim: int, killer: int, dir: Vector3, weapon: String) -> voi
 func _feed_word(victim: int, weapon: String) -> String:
 	if weapon == LIGHT_TRAIL:
 		return LIGHT_TRAIL_WORD
-	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE:
+	if daemon_of(weapon) >= 0 or weapon == ICE_CAUSE or weapon == BLACK_CAUSE:
 		return _daemon_name(weapon)
 	if not _weapons.has(weapon):
 		return ""
@@ -3732,6 +3807,7 @@ func _respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: fl
 ## player takes it, so a draw that crossed its death leaves no difference behind.
 func _apply_respawn(id: int, life: int, pos: Vector3, protect_s: float, new_health: float, held: String) -> void:
 	dead[id] = false
+	_flat.erase(id)
 	health[id] = new_health
 	protect_left[id] = protect_s
 	lives[id] = life

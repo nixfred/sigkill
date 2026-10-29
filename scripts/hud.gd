@@ -23,6 +23,7 @@ const SpectateTop = preload("res://scripts/hud/spectate_top.gd")
 const PauseMenu = preload("res://scripts/hud/pause_menu.gd")
 const IceHud = preload("res://scripts/hud/ice_hud.gd")
 const BreakerHud = preload("res://scripts/hud/breaker_hud.gd")
+const BlackIceHud = preload("res://scripts/hud/black_ice_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -44,6 +45,7 @@ var _top: SpectateTop
 var _menu: PauseMenu
 var _ice: IceHud
 var _breakers: BreakerHud
+var _black: BlackIceHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -137,6 +139,12 @@ func _ready() -> void:
 	_ice.health_line = _combat.line_label()
 	_ice.weapon_strip = _weapons.strip()
 
+	# Black ICE (I3): its arrival's warning, its line while it is out (with the scripted guide's word on
+	# it), its proximity at the screen's edges, its end.
+	_black = BlackIceHud.new()
+	_black.name = "BlackIceHud"
+	root.add_child(_black)
+
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
 	_menu.name = "PauseMenu"
@@ -210,9 +218,12 @@ func set_net_session(session: Node) -> void:
 	_top.session = session
 
 
-## ICE's director beside the arena (I1), for its part of the HUD.
+## ICE's director beside the arena (I1), for its part of the HUD; and (I3) Black ICE's warning and line,
+## and the guide's link it cuts.
 func set_ice(ice: Node) -> void:
 	_ice.ice = ice
+	_black.ice = ice
+	_guide.ice = ice
 
 
 func ice_hud() -> IceHud:
@@ -225,10 +236,15 @@ func set_breakers(breakers: Node) -> void:
 	_breakers.director = breakers
 	_guide.breakers = breakers
 	_round.breakers = breakers
+	_black.breakers = breakers
 
 
 func breaker_hud() -> BreakerHud:
 	return _breakers
+
+
+func black_ice_hud() -> BlackIceHud:
+	return _black
 
 
 func combat_hud() -> CombatHud:

@@ -49,6 +49,11 @@ extends Control
 ##
 ## The announcer's voice (C16b): each callout rings a short chime on the Announcer bus, and
 ## its words are the subtitles, shown while the subtitles setting is on (the default).
+##
+## Black ICE (I3): a flatline alone (the life's flatlined) ends the round at once as a loss: the break's
+## summary says so plainly over a darkened screen ("FLATLINED by Black ICE"), and the run is over: the
+## next round is round 1 again, which brings the player back. round_ended tells ICE the round is over
+## (Black ICE withdraws), and playing() is the round's play clock that times its arrival.
 
 const TuningScript = preload("res://scripts/round/announcer_tuning.gd")
 const Stats = preload("res://scripts/round/round_stats.gd")
@@ -79,11 +84,17 @@ const FORK_LINE := "fork()"
 const GREP_LINE := "grep"
 const RM_LINE := "rm -rf"
 const CRON_LINE := "cron"
+## A flatline's loss (I3): the summary's heading and its line.
+const FLATLINE_HEADING := "FLATLINED by %s   RUN OVER   round 1 in %d s"
+const FLATLINE_LINE := "Black ICE touched you. The run is over: the next one starts at round 1."
+const VEIL_ALPHA := 0.6
 
 enum Phase { ROUND, BREAK }
 
 ## A round started (I1: ICE builds its pieces again and forgets its adaptation): its number.
 signal round_started(number: int)
+## A round ended, its break beginning (I3: Black ICE withdraws): its number.
+signal round_ended(number: int)
 
 # Set these before the node enters the tree.
 ## AnnouncerTuning; null for resources/announcer.tres.
@@ -132,6 +143,12 @@ var _pick: Label
 ## The ICEbreaker numbers as the round ended (I2), {} with no breakers carried.
 var _pick_numbers := {}
 var _chime: AudioStreamPlayer
+## The round ended as a loss: flatlined alone (I3), the run over; the next round is round 1. And what
+## flatlined it, for the heading; the darkened screen behind the summary.
+var lost := false
+var _lost_to := ""
+var _veil: ColorRect
+var _style: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -153,6 +170,8 @@ func restart(with_tuning: Resource) -> void:
 	callouts_shown = 0
 	callouts_dropped = 0
 	last_callout = ""
+	lost = false
+	_lost_to = ""
 	_start_round(1)
 
 
@@ -189,6 +208,8 @@ func set_life(life: Node) -> void:
 	_life = life
 	if life != null and life.has_signal("died") and not life.is_connected("died", _on_died):
 		life.connect("died", _on_died)
+	if life != null and life.has_signal("flatlined") and not life.is_connected("flatlined", _on_flatlined):
+		life.connect("flatlined", _on_flatlined)
 
 
 ## The session beside the arena: this player's deaths in a match count in the round too (C27b).
@@ -223,6 +244,11 @@ func seconds_left() -> float:
 ## True while the break's summary panel is up.
 func showing_summary() -> bool:
 	return phase == Phase.BREAK
+
+
+## True while the round's play runs (I3: Black ICE's arrival is timed on it): a round on, the player in it.
+func playing() -> bool:
+	return phase == Phase.ROUND and engaged()
 
 
 func _physics_process(delta: float) -> void:
@@ -304,6 +330,7 @@ func _end_round() -> void:
 	_pick_numbers = BreakerPick.numbers(breakers)
 	announcer.round_ended(stats.payload(), _pick_numbers)
 	_refresh()
+	round_ended.emit(stats.round_number)
 
 
 func _next_round() -> void:
@@ -313,7 +340,10 @@ func _next_round() -> void:
 			dummy.reset_for_round()
 	if _life != null and is_instance_valid(_life) and _life.has_method("reset_for_round"):
 		_life.reset_for_round()  # alone, back at full health (C27b)
-	_start_round(stats.round_number + 1)
+	var next := 1 if lost else stats.round_number + 1  # a flatline's loss: a new run (I3)
+	lost = false
+	_lost_to = ""
+	_start_round(next)
 
 
 func _track_distance() -> void:
@@ -341,6 +371,15 @@ func _on_downed(dummy: Node3D) -> void:
 func _on_died(_cause: String) -> void:
 	if phase == Phase.ROUND:
 		stats.on_death()
+
+
+## Flatlined alone by Black ICE (I3): the round ends now, as a loss, and the run with it.
+func _on_flatlined(cause: String) -> void:
+	if phase != Phase.ROUND:
+		return
+	lost = true
+	_lost_to = cause
+	_end_round()
 
 
 ## A player died in a match: this player's own deaths count (C27b).
@@ -491,11 +530,16 @@ func _refresh() -> void:
 	_callout_label.text = last_callout
 	_callout_label.visible = phase == Phase.ROUND and _callout_left_s > 0.0 and subtitles_on()
 	_panel.visible = phase == Phase.BREAK and not hold_summary
+	_veil.visible = _panel.visible and lost
+	_style.border_color = Palette.HOSTILE_RED if lost else Palette.TEAL
 	if not _panel.visible:
 		return
 	var shown: Dictionary = announcer.payload
 	var demo: bool = announcer.state == "demo"
 	_heading.text = "ROUND %d OVER%s   next round in %d s" % [int(shown.get("round_number", 0)), "   (demo data)" if demo else "", maxi(ceili(_left_s), 0)]
+	_heading.add_theme_color_override("font_color", Palette.HOSTILE_RED if lost else Palette.TEAL)
+	if lost:
+		_heading.text = FLATLINE_HEADING % [_lost_to if _lost_to != "" else "Black ICE", maxi(ceili(_left_s), 0)]
 	var first := float(shown.get("time_to_first_derezz_s", -1.0))
 	_numbers.text = "shots %d   hits %d   accuracy %.1f%%\nprocesses down %d   best streak %d   first down %s\nmoved %.1f m   slides %d   jumps %d   derezzed %d" % [
 		int(shown.get("shots", 0)), int(shown.get("hits", 0)), float(shown.get("accuracy_pct", 0.0)),
@@ -505,6 +549,8 @@ func _refresh() -> void:
 	_who.text = announcer.title() + ("  " + SPINNER[_spin_at] if announcer.state == "thinking" else "")
 	_who.add_theme_color_override("font_color", Palette.TEAL if ai else Palette.HOSTILE_AMBER)
 	_line.text = Announcer.DEMO_ROAST if demo else announcer.text
+	if lost and _line.text == "":
+		_line.text = FLATLINE_LINE
 	_line.visible = _line.text != ""
 	_tip_who.visible = demo
 	_tip.visible = demo
@@ -545,6 +591,13 @@ func _build() -> void:
 	_callout_label.offset_left = 0.0
 	_callout_label.offset_right = 0.0
 	_callout_label.visible = false
+	# A flatline's loss (I3): the screen darkened behind the summary, so the loss reads plainly.
+	_veil = ColorRect.new()
+	_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_veil.color = Color(Palette.VOID, VEIL_ALPHA)
+	_veil.visible = false
+	add_child(_veil)
+	_veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel = PanelContainer.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
@@ -552,6 +605,7 @@ func _build() -> void:
 	style.border_color = Palette.TEAL
 	style.set_border_width_all(1)
 	style.set_content_margin_all(12)
+	_style = style
 	_panel.add_theme_stylebox_override("panel", style)
 	add_child(_panel)
 	var stack := VBoxContainer.new()

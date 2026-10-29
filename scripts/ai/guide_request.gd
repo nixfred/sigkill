@@ -16,6 +16,11 @@ extends RefCounted
 ## breaker numbers go in as stats too (the ICE keys below, numbers and the game's own weapon ids only:
 ## scripts/ice/breaker_pick.gd builds them), and a request carrying them adds the game's fixed
 ## BREAKER_LINE to its instructions, so the guide also names the breaker to load.
+##
+## Black ICE (I3): the pick's numbers carry it too (whether it is out, its seals standing, how far it is
+## from the player in whole metres, whether it flatlined the player this round: numbers only), and a
+## request with it out adds the game's fixed BLACK_ICE_LINE, so the guide recommends the decoy or the
+## exploit and brute combo.
 
 ## The fixed instructions every guide gets, as its system prompt where the agent allows one.
 const PREAMBLE := "You are the in-game guide in SIGKILL, a first-person shooter. Answer the player in at most three short lines. Use only the game stats and the player's message below. Do not use tools, do not read or write files, and do not run commands."
@@ -58,6 +63,11 @@ const STATS := {
 	"breakers_exploit": ["int", 0, 9],
 	"breakers_cloak": ["int", 0, 9],
 	"breakers_decoy": ["int", 0, 9],
+	# Black ICE (I3): out or not, its seals standing, how far from the player, a flatline this round.
+	"black_ice_out": ["int", 0, 1],
+	"black_ice_seals": ["int", 0, 9],
+	"black_ice_distance_m": ["int", 0, 1000],
+	"black_ice_flatlined": ["int", 0, 1],
 }
 ## The game's own instructions for the end of a round, by task name. Only these words, and
 ## never anything the player or an AI wrote, are ever added to the preamble.
@@ -69,6 +79,9 @@ const TASKS := {
 const BREAKER_LINE := "ICE is in the arena. Also name the one ICEbreaker the player should load next (brute, exploit, cloak or decoy), from the ICE and breaker numbers, in one short sentence that starts with the breaker's name."
 ## A stat only the ICEbreaker numbers carry: its presence adds BREAKER_LINE.
 const BREAKER_KEY := "breakers_brute"
+## The game's own instruction added while Black ICE is out (I3: black_ice_out is 1).
+const BLACK_ICE_LINE := "Black ICE is out: weapons cannot hurt it and its touch flatlines the player. Only an exploit, then a brute charge while that exploit runs, breaks one of its seals (black_ice_seals of them stand), and a decoy pulls it away. Recommend the decoy, or that exploit and brute combo when the player carries enough brutes for its seals."
+const BLACK_ICE_KEY := "black_ice_out"
 const UNSET := -1.0
 ## Characters removed from typed text besides control characters: direction overrides and
 ## isolates, marks and zero-width characters that could hide or reorder text.
@@ -161,7 +174,11 @@ func user_message() -> String:
 ## ICEbreaker pick's line when it carries the breaker numbers (I2).
 func preamble() -> String:
 	var out: String = PREAMBLE if task == "" else PREAMBLE + " " + TASKS[task]
-	return out + " " + BREAKER_LINE if stats.has(BREAKER_KEY) else out
+	if stats.has(BREAKER_KEY):
+		out += " " + BREAKER_LINE
+	if int(stats.get(BLACK_ICE_KEY, 0)) == 1:
+		out += " " + BLACK_ICE_LINE
+	return out
 
 
 ## The whole prompt, preamble first, for agents that take no separate system prompt.

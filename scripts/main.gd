@@ -7,8 +7,9 @@ extends Node3D
 ## (C16b); SSAO, SSR, the full or plain skyline, the particle level, and the two screen post
 ## effects (A4). It makes the arena's particle pool and post layer once, when it loads, and
 ## (C27b) the daemons' director and this player's life alone: the daemons fight back; (I1) ICE's
-## director beside it, which builds the system's walls, nodes and hunter each round; and (I2) the
-## ICEbreakers' director, which keeps every intruder's breakers and runs them.
+## director beside it, which builds the system's walls, nodes and hunter each round; (I2) the
+## ICEbreakers' director, which keeps every intruder's breakers and runs them; and (I3) the arena's
+## blackout, its hum and its lights, which Black ICE takes away while it is out.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -62,6 +63,10 @@ func _ready() -> void:
 	director.breakers = breakers
 	ice.breakers = breakers
 	_player.breakers = breakers
+	# Black ICE (I3): the arena's hum and lights, dimmed and silenced while it is out.
+	var blackout := Blackout.new()
+	blackout.ice = ice
+	add_child(blackout)
 	_hud.set_ice(ice)
 	_hud.set_breakers(breakers)
 	_hud.set_solo_life(life)

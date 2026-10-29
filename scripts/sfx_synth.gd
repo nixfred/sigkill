@@ -115,6 +115,94 @@ const BREAKER_SOUNDS := {
 }
 
 
+## The arena's hum (I3): a low, steady server-room drone, a loop of HUM_S seconds (every tone a whole
+## number of cycles in it, so the loop has no seam): a mains hum and its octave and fifth, swelling slowly,
+## with a breath of air. It plays under everything on the Music bus until Black ICE takes it away.
+static func arena_hum() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(HUM_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED
+	var air := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var swell := 0.8 + 0.2 * sin(TAU * t / HUM_S)
+		var tone := sin(TAU * 55.0 * t) * 0.5 + sin(TAU * 110.0 * t) * 0.3 + sin(TAU * 165.0 * t) * 0.12 + sin(TAU * 220.0 * t + 0.6) * 0.08
+		air = lerpf(air, rng.randf_range(-1.0, 1.0), 0.02)
+		data.encode_s16(i * 2, int(clampf((tone * swell + air * 0.5) * HUM_GAIN, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+const HUM_S := 4.0
+## The hum, the drone and the fall hold nothing above a few hundred hertz: half the usual rate does.
+const LOW_RATE := 22050
+const HUM_GAIN := 0.3
+
+
+## Black ICE's sounds (I3), by name: "arrive" a deep fall `seconds` long (its whole arrival: a low tone
+## sinking under a growing rumble, cut at the tell's end); "drone" its presence, a loop of low beating
+## tones heard near it; "crack" a seal breaking, a glassy crack over a boom; "break" its end, a long
+## shattering fall; "mend" a seal closing, a cold rising tone; "withdraw" its sinking away.
+static func black_ice(word: String, seconds: float = 6.0) -> AudioStreamWAV:
+	match word:
+		"arrive":
+			return _fall(seconds, 160.0, 34.0, 0.75)
+		"drone":
+			var rate := LOW_RATE
+			var count := int(DRONE_S * rate)
+			var data := PackedByteArray()
+			data.resize(count * 2)
+			for i in count:
+				var t := float(i) / rate
+				var tone := sin(TAU * 41.0 * t) * 0.55 + sin(TAU * 43.0 * t) * 0.35 + sin(TAU * 82.5 * t) * 0.1
+				data.encode_s16(i * 2, int(clampf(tone * 0.7, -1.0, 1.0) * INT16_FULL_SCALE))
+			var stream := _stream(data, rate)
+			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream.loop_begin = 0
+			stream.loop_end = count
+			return stream
+	var s: Array = BLACK_ICE_SOUNDS.get(word, BLACK_ICE_SOUNDS["crack"])
+	return _render(Weapon.new(), s[0], s[1], s[2], s[3], s[4], s[5], s[6])
+
+
+const DRONE_S := 2.0
+const BLACK_ICE_SOUNDS := {
+	"crack": [0.7, 1400.0, 90.0, 5.0, 0.55, 2.7, 0.7],
+	"break": [1.6, 420.0, 28.0, 2.2, 0.65, 1.5, 0.75],
+	"mend": [0.6, 180.0, 540.0, 4.0, 0.1, 1.5, 0.4],
+	"withdraw": [1.4, 90.0, 30.0, 2.0, 0.4, 1.5, 0.5],
+}
+
+
+## A deep fall `seconds` long from `start_hz` to `end_hz`: a sinking tone with its octave under a
+## rumble that grows all the way, cut off at the end so the ear hears where it lands.
+static func _fall(seconds: float, start_hz: float, end_hz: float, gain: float) -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := maxi(int(seconds * rate), 1)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED
+	var phase := 0.0
+	var rumble := 0.0
+	for i in count:
+		var u := float(i) / count
+		var freq := start_hz * pow(end_hz / start_hz, sqrt(u))
+		phase = fmod(phase + TAU * freq / rate, TAU)
+		rumble = lerpf(rumble, rng.randf_range(-1.0, 1.0), 0.01)
+		var tone := sin(phase) * 0.6 + sin(phase * 0.5) * 0.4
+		var swell := minf(u * 6.0, 1.0) * (0.5 + 0.5 * u)
+		var tail := minf((1.0 - u) * 120.0, 1.0)
+		data.encode_s16(i * 2, int(clampf((tone * 0.7 + rumble * 2.5 * u) * swell * tail * gain, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
 static func _stream(data: PackedByteArray, rate: int) -> AudioStreamWAV:
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS

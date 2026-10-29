@@ -28,6 +28,16 @@ extends Node3D
 ## it refuses that weapon's shots until it clears. A jam (jam_s) locks the weapon in hand (the others
 ## still swap in and fire); a corruption (hud_s) scrambles parts of the HUD, never the health line.
 ##
+## Black ICE (I3, scripts/ice/black_ice.gd): the machine's last line of defence, rare: each round from
+## its tuning's from_round (never round 1) its chance is rolled once, seeded (fixed by the round in demo,
+## test and capture runs), and when it comes it arrives at a seeded moment of the round's play, at the one
+## of BLACK_SPOTS farthest from every intruder. At most one a round: a broken one never comes back that
+## round, and the round's end withdraws one still out. This director steps it, judges every intruder's
+## middle against its touch each step (a touch flatlines: alone, life.flatline() ends the run; hosting,
+## the session's black_ice_flatline() takes the intruder out for the rest of the round) and sends the
+## host's word on it. Its darkness (the lights, the hum) and its cut of the guide's link are read here by
+## scripts/ice/blackout.gd and the HUD. Its numbers: resources/black_ice.tres (BlackIceTuning).
+##
 ## Everything is simulated: ICE reads nothing real and touches nothing real.
 
 const Dummy = preload("res://scripts/target_dummy.gd")
@@ -39,6 +49,13 @@ const NODE_NAME := "IceDirector"
 ## Every piece of ICE joins this group: the host judges joiners' shots at them, blasts reach them.
 const PIECES := &"ice"
 const TUNING_PATH := "res://resources/ice.tres"
+## Where Black ICE may arrive (arena space, open floor at least 5.8 m from every spawn): the one farthest
+## from the nearest intruder.
+const BLACK_SPOTS := [Vector3(16.0, 0.0, -4.0), Vector3(-13.0, 0.0, -7.0), Vector3(11.0, 0.0, -9.0), Vector3(3.0, 0.0, -3.0), Vector3(-6.0, 0.0, 17.0)]
+## A flatline's cause, as the death line and the feed name it.
+const BLACK_NAME := "Black ICE"
+## The host's word on Black ICE: how many numbers (black_word()).
+const BLACK_WORD := 12
 const ARSENAL_PATH := "res://resources/arsenal.tres"
 enum Mode { OFF, RUN, FOLLOW }
 ## A field's effect on a player: its weapon jammed, its HUD corrupted.
@@ -66,6 +83,10 @@ const ADAPT_LINE := "HUNTER ADAPTED: %s -%d%%"
 
 ## This player's own field effects as they land: Effect, seconds.
 signal effect_fired(kind: int, seconds: float)
+## Black ICE arrived (I3): its tell has begun, on this screen.
+signal black_arrived
+## An intruder touched Black ICE and flatlined (deciding): its id.
+signal flatlined(id: int)
 
 ## An IceTuning; null for resources/ice.tres. Set before the node enters the tree.
 var tuning: IceTuning
@@ -82,6 +103,8 @@ var rounds: Node = null
 var breakers: Node = null
 ## How many times harder a wall takes the brute's charge (the breaker tuning's, set by its director).
 var brute_wall_scale := 5.0
+## A BlackIceTuning; null for resources/black_ice.tres. Set before the node enters the tree.
+var black_tuning: BlackIceTuning
 var mode: Mode = Mode.OFF
 var round_number := 1
 
@@ -105,6 +128,21 @@ var jams_on_me := 0
 var corruptions_on_me := 0
 ## Host: each joiner's jam, id -> [weapon id, seconds left].
 var _jams := {}
+## Black ICE (I3): the one in the arena now (null for none); this round's plan, its arrival in seconds
+## of the round's play (-1 for none this round); the round's play so far; and, for the checks, how many
+## came, were broken and withdrew since this director was made, and the flatlines.
+var black: BlackIce = null
+var black_plan := -1.0
+var round_t := 0.0
+var blacks_made := 0
+var blacks_killed := 0
+var blacks_withdrawn := 0
+var flatlines := 0
+## True once Black ICE has flatlined this machine's own player this round.
+var _flatlined_me := false
+## Black ICE's sounds, made once, at the start of the first round it can come in (about 150 ms of
+## synthesis, at a round's start rather than at its arrival): word -> AudioStreamWAV.
+var _black_sounds := {}
 
 var _rng := RandomNumberGenerator.new()
 var _weapons := {}
@@ -128,6 +166,7 @@ func _init() -> void:
 func _ready() -> void:
 	add_to_group(GROUP)
 	tuning = IceTuning.usable(tuning)
+	black_tuning = BlackIceTuning.usable(black_tuning)
 	_rng.randomize()
 	var arsenal := load(ARSENAL_PATH) as ArsenalTuning
 	if arsenal != null:
@@ -137,6 +176,8 @@ func _ready() -> void:
 		round_number = rounds.stats.round_number
 	if rounds != null and rounds.has_signal("round_started"):
 		rounds.round_started.connect(start_round)
+	if rounds != null and rounds.has_signal("round_ended"):
+		rounds.round_ended.connect(_on_round_ended)
 	_mode_now()
 
 
@@ -193,6 +234,11 @@ func start_round(number: int) -> void:
 	_forget()
 	if mode == Mode.RUN:
 		_build_round()
+		black_plan = black_arrival(round_number)
+	if mode != Mode.OFF and black_tuning.chance(round_number) > 0.0:
+		prepare_black_sounds()  # once, at the first round it can come in: never a hitch at its arrival
+	round_t = 0.0
+	_flatlined_me = false
 
 
 func _forget() -> void:
@@ -202,6 +248,7 @@ func _forget() -> void:
 
 func _build_round() -> void:
 	_clear_pieces()
+	black_plan = -1.0
 	if mode == Mode.OFF:
 		return
 	for i in WALLS.size():
@@ -296,15 +343,18 @@ func _clear_pieces() -> void:
 	nodes.clear()
 	hunter = null
 	hunter_wait = 0.0
+	black = null
 
 
-## Every piece of ICE now, broken ones included: the walls, the nodes, the hunter.
+## Every piece of ICE now, broken ones included: the walls, the nodes, the hunter, Black ICE.
 func pieces() -> Array:
 	var out: Array = []
 	out.append_array(walls)
 	out.append_array(nodes)
 	if hunter != null and is_instance_valid(hunter):
 		out.append(hunter)
+	if black != null and is_instance_valid(black):
+		out.append(black)
 	return out
 
 
@@ -334,7 +384,10 @@ func _physics_process(delta: float) -> void:
 				_jams.erase(id)
 	if mode == Mode.OFF or daemons == null:
 		return
+	if rounds == null or not rounds.has_method("playing") or rounds.playing():
+		round_t += delta
 	if mode == Mode.RUN:
+		_step_black(delta)
 		for n in nodes:
 			n.step(delta, daemons, self)
 		if hunter != null and is_instance_valid(hunter):
@@ -350,6 +403,226 @@ func _physics_process(delta: float) -> void:
 		n.follow(delta)
 	if hunter != null and is_instance_valid(hunter) and not hunter.broken:
 		hunter.brain.follow(delta, daemons)
+	if black != null and is_instance_valid(black):
+		black.follow(delta, daemons)
+
+
+# --- Black ICE (I3). ---
+
+## Round `number`'s Black ICE: its arrival, seconds into the round's play, or -1 when none comes. Never
+## before the tuning's from_round (never round 1); its chance (BlackIceTuning.chance()) rolled once, and
+## the moment between arrive_first_s and arrive_last_s; both fixed by the round in demo, test and capture
+## runs, new each round in play.
+func black_arrival(number: int) -> float:
+	var chance := black_tuning.chance(number)
+	if chance <= 0.0:
+		return -1.0
+	var roll := RandomNumberGenerator.new()
+	if Dummy.fixed_seeds:
+		roll.seed = DaemonArt.seed_of("black:%d" % number)
+	else:
+		roll.seed = _rng.randi()
+	if roll.randf() >= chance:
+		return -1.0
+	return lerpf(black_tuning.arrive_first_s, black_tuning.arrive_last_s, roll.randf())
+
+
+## Black ICE's sound `word`, made the first time it is asked for (Sfx.black_ice).
+func black_sound(word: String, seconds: float = 6.0) -> AudioStreamWAV:
+	var key := "%s:%.2f" % [word, seconds]
+	if not _black_sounds.has(key):
+		_black_sounds[key] = BlackIce.Sfx.black_ice(word, seconds)
+	return _black_sounds[key]
+
+
+## Every sound Black ICE makes, made now (before it comes; nothing when they are made already).
+func prepare_black_sounds() -> void:
+	black_sound("arrive", black_tuning.tell_s)
+	for word in ["drone", "crack", "break", "mend", "withdraw"]:
+		black_sound(word)
+
+
+## Black ICE arrives now (deciding), at BLACK_SPOTS[`spot`], or with -1 at the one farthest from the
+## nearest intruder, facing the nearest; its seed fixed by the round in demo, test and capture runs. Any
+## other one goes first. The one that came.
+func summon_black(spot: int = -1) -> BlackIce:
+	if mode != Mode.RUN:
+		return null
+	_drop_black()
+	black_plan = -1.0  # at most one a round: this one is the round's
+	var at: Vector3 = BLACK_SPOTS[spot] if spot >= 0 and spot < BLACK_SPOTS.size() else black_spot()
+	var b := _make_black(_seed_for("black%d" % round_number), at, BlackIce.Phase.ARRIVE)
+	var near := _nearest_intruder(b.global_position)
+	if near.is_finite():
+		var way := near - b.global_position
+		b.rotation.y = atan2(-way.x, -way.z)
+	return b
+
+
+func _make_black(seed: int, at: Vector3, phase: int) -> BlackIce:
+	var b := BlackIce.new()
+	b.name = "BlackIce"
+	b.piece_name = "black"
+	b.spawn_seed = seed
+	b.tuning = black_tuning
+	b.director = self
+	b.phase = phase
+	b.position = at
+	b.add_to_group(PIECES)
+	add_child(b)
+	b.broke.connect(_on_black_broke)
+	black = b
+	blacks_made += 1
+	black_arrived.emit()
+	return b
+
+
+## The arrival spot farthest from the nearest living intruder (arena space).
+func black_spot() -> Vector3:
+	var best: Vector3 = BLACK_SPOTS[0]
+	var best_gap := -1.0
+	for spot in BLACK_SPOTS:
+		var gap := INF
+		if daemons != null:
+			for id in daemons.prey_ids():
+				if id > 0 and daemons.prey_valid(id):
+					var p: Vector3 = to_local(daemons.prey_point(id))
+					gap = minf(gap, Vector2(p.x - spot.x, p.z - spot.z).length())
+		if gap > best_gap:
+			best_gap = gap
+			best = spot
+	return best
+
+
+func _nearest_intruder(from: Vector3) -> Vector3:
+	var best := Vector3.INF
+	if daemons == null:
+		return best
+	for id in daemons.prey_ids():
+		if id > 0 and daemons.prey_valid(id):
+			var p: Vector3 = daemons.prey_point(id)
+			if not best.is_finite() or p.distance_to(from) < best.distance_to(from):
+				best = p
+	return best
+
+
+## Each step deciding: this round's Black ICE arriving when its moment comes, stepped, and every
+## intruder's middle judged against its touch.
+func _step_black(delta: float) -> void:
+	if (black == null or not is_instance_valid(black)) and black_plan >= 0.0 and round_t >= black_plan:
+		black_plan = -1.0
+		summon_black()
+	if black == null or not is_instance_valid(black):
+		return
+	black.step(delta, daemons)
+	if black.touching() and daemons != null:
+		for id in daemons.prey_ids():
+			if id > 0 and daemons.prey_attackable(id) and black.touches(daemons.prey_point(id)):
+				flatline(id)
+	if black.finished():
+		_drop_black()
+
+
+## Intruder `id` touched Black ICE: flatlined. Alone the run is over (its life's flatline, which ends the
+## round as a loss); hosting, the session takes it out for the rest of the round.
+func flatline(id: int) -> void:
+	flatlines += 1
+	if id == (session.my_id if _online() else 1):
+		_flatlined_me = true
+	var way := Vector3.FORWARD
+	if black != null and is_instance_valid(black):
+		black.flatlines += 1
+		var p: Vector3 = daemons.prey_point(id) if daemons != null else Vector3.INF
+		if p.is_finite():
+			way = Vector3(p.x - black.global_position.x, 0.0, p.z - black.global_position.z).normalized()
+	if _online():
+		if session.has_method("black_ice_flatline"):
+			session.black_ice_flatline(id, black, way)
+	elif id == 1 and life != null and life.has_method("flatline"):
+		life.flatline(BLACK_NAME, black, way)
+	flatlined.emit(id)
+
+
+func _on_black_broke(_piece: Node3D) -> void:
+	blacks_killed += 1
+
+
+## The round is over (the round HUD's word): no Black ICE comes now, and one still out withdraws.
+func _on_round_ended(_number: int = 0) -> void:
+	black_plan = -1.0
+	if mode == Mode.RUN and black != null and is_instance_valid(black) and black.present_now():
+		black.withdraw_now()
+		blacks_withdrawn += 1
+
+
+func _drop_black() -> void:
+	if black != null and is_instance_valid(black):
+		if daemons != null and black.brain != null:
+			black.brain._release(daemons)
+		black.remove_from_group(PIECES)
+		black.queue_free()
+	black = null
+
+
+## True while Black ICE is in the arena from its arrival's first moment until it is broken or withdrawn:
+## the guide's link shows cut, the warning stands.
+func black_out() -> bool:
+	return black != null and is_instance_valid(black) and black.present_now()
+
+
+## True when Black ICE has flatlined this player this round (on a joiner, the host's word on its death).
+func flatlined_me() -> bool:
+	if _online() and session.has_method("flatlined") and session.flatlined(session.my_id):
+		return true
+	return _flatlined_me
+
+
+## How dark Black ICE makes the arena now, 0 to 1 (scripts/ice/blackout.gd reads it).
+func black_darkness() -> float:
+	return black.darkness() if black != null and is_instance_valid(black) else 0.0
+
+
+## True while intruder `shooter`'s exploit runs (0: this machine's own player): a brute then breaks a
+## seal of Black ICE.
+func exploit_runs(shooter: int) -> bool:
+	if breakers == null or not is_instance_valid(breakers):
+		return false
+	var id: int = shooter if shooter != 0 else breakers.my_id()
+	return float(breakers.exploit_left.get(id, 0.0)) > 0.0
+
+
+## The host's word on Black ICE, for the session to send: its seed and [phase, seconds into it, seals
+## standing, its place (arena space), yaw, its brain's state, seconds into it, SIGSTOP's hold, the hits
+## that flashed it, the seconds before a broken seal mends]; phase none (0) when there is none.
+func black_word() -> Dictionary:
+	var w := PackedFloat32Array()
+	w.resize(BLACK_WORD)
+	if black == null or not is_instance_valid(black):
+		return {"seed": 0, "word": w}
+	var at := to_local(black.global_position)
+	var frozen: bool = daemons != null and daemons.frozen(black.brain.prey)
+	w = PackedFloat32Array([black.phase, minf(black.phase_t, 1000.0), black.seals_left, at.x, at.y, at.z, black.global_rotation.y, black.brain.state, minf(black.brain.state_t, 1000.0), 1.0 if frozen else 0.0, minf(black.flashes, 100000.0), clampf(black.mend_left, 0.0, 1000.0)])
+	return {"seed": black.build_seed, "word": w}
+
+
+## The host's word on Black ICE, on a joiner (the session has checked its shape): it comes (built from
+## the host's seed), follows, breaks or withdraws as the host's does; none, it goes.
+func take_black_word(seed: int, w: PackedFloat32Array) -> void:
+	if mode != Mode.FOLLOW:
+		return
+	var phase := int(w[0])
+	if phase == BlackIce.Phase.NONE:
+		_drop_black()
+		return
+	var at := Vector3(w[3], w[4], w[5])
+	if black == null or not is_instance_valid(black) or black.build_seed != (seed & DaemonArt.SEED_LAST):
+		if phase == BlackIce.Phase.DOWN or phase == BlackIce.Phase.GONE:
+			_drop_black()  # one this screen never saw arrive is not built to go
+			return
+		_make_black(seed, at, phase)
+		black.phase_t = w[1]
+	black.take_word(phase, w[1], int(w[2]), at, w[6], int(w[7]), w[8], w[9] > 0.5, int(w[10]))
+	black.mend_left = w[11]
 
 
 # --- Judging what lands. ---
@@ -561,6 +834,8 @@ func take_word(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array,
 		return
 	if round != round_number:
 		round_number = round
+		if black_tuning.chance(round) > 0.0:
+			prepare_black_sounds()  # once, at the host's first round it can come in
 	if walls.size() != WALLS.size() or nodes.size() != NODES.size():
 		_build_round()
 	for i in walls.size():

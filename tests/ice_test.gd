@@ -99,7 +99,7 @@ func _source_checks() -> void:
 	var told := _body(session, "_ice")
 	var effect := _body(session, "_ice_effect")
 	var fire := _body(session, "_handle_fire")
-	_check("acceptance: in a match the host runs ICE and sends its word: a new state message (the round, each piece's seed, health, word and time, the hunter's place, aim and reach, the adaptation) and a field's effect to the player it reached; the rule message carries the host's ICE setting; joiners' shots and blasts at ICE are the host's to judge; a jammed weapon's shots are refused; protocol 12 (13 since I2's ICEbreakers)", Session.PROTOCOL == 13 and told.contains("seeds: PackedInt32Array") and told.contains("ice.take_word(") and effect.contains("ice.take_effect(") and _body(session, "_rules").contains("ice: bool") and _body(session, "_is_daemon").contains("IceDirector.PIECES") and _body(session, "_blast_daemons").contains("ice.blast(") and fire.contains("ice.jammed(shooter, weapon)") and fire.contains("Combat.DROP_JAM"))
+	_check("acceptance: in a match the host runs ICE and sends its word: a new state message (the round, each piece's seed, health, word and time, the hunter's place, aim and reach, the adaptation) and a field's effect to the player it reached; the rule message carries the host's ICE setting; joiners' shots and blasts at ICE are the host's to judge; a jammed weapon's shots are refused; protocol 12 (13 since I2's ICEbreakers, 14 since I3's Black ICE)", Session.PROTOCOL == 14 and told.contains("seeds: PackedInt32Array") and told.contains("ice.take_word(") and effect.contains("ice.take_effect(") and _body(session, "_rules").contains("ice: bool") and _body(session, "_is_daemon").contains("IceDirector.PIECES") and _body(session, "_blast_daemons").contains("ice.blast(") and fire.contains("ice.jammed(shooter, weapon)") and fire.contains("Combat.DROP_JAM"))
 	var problems := _t.problems() if _t != null else PackedStringArray(["no tuning"])
 	var bad := _t.duplicate() as IceTuning
 	bad.jam_tell_s = 0.5
@@ -522,7 +522,7 @@ func _match_checks() -> void:
 	await _frames(6)
 	var node_follows: bool = ci.node_of("jam").state == IceNode.State.TELL and absf(ci.node_of("jam").state_t - hi.node_of("jam").state_t) < 0.2
 	var hunter_at: float = (ci.hunter.global_position - client["main"].global_position).distance_to(hi.hunter.global_position - host["main"].global_position)
-	_check("the joiner's copy plays the host's word: a node's tell as it tells, the hunter where the host's is", telling >= 0 and node_follows and hunter_at < 1.0, "the hunters %.2f m apart" % hunter_at)
+	_check("the joiner's copy plays the host's word: a node's tell as it tells, the hunter where the host's is", telling >= 0 and node_follows and hunter_at < 1.0, "the hunters %.2f m apart; words %d black %d" % [hunter_at, cs.ice_words, cs.black_words])
 	# The hunter killed (it comes back after its wait), so no lance downs a player in what follows.
 	for i in 3:
 		hi.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "rm_rf_cannon")

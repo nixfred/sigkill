@@ -29,6 +29,13 @@ const BANNER := "[ DEREZZED by %s ]\n\nrespawn in %.1f s"
 ## The banner while the top table (C23) is up above it: one line, smaller, so it stays clear of
 ## the guide's panel below it and the kill feed beside it.
 const BANNER_LINE := "[ DEREZZED by %s ]   respawn in %.1f s"
+## A flatline (I3): touched by Black ICE, no respawn: alone the run is over, in a match out until the
+## round ends (the host's).
+const FLAT_LINE := "FLATLINED by %s   %s"
+const FLAT_BANNER := "[ FLATLINED by %s ]\n\n%s"
+const FLAT_BANNER_LINE := "[ FLATLINED by %s ]   %s"
+const FLAT_SOLO := "the run is over"
+const FLAT_MATCH := "out until the round ends"
 const BANNER_FONT := 26
 const BANNER_LINE_FONT := 18
 const FEED_FIRST := "%s sent by %s"
@@ -292,7 +299,11 @@ func _refresh(fade: float = -1.0) -> void:
 	var me: int = session.my_id
 	var dead: bool = session.dead.get(me, false)
 	var protect: float = session.protect_left.get(me, 0.0)
-	if dead:
+	if dead and session.has_method("flatlined") and session.flatlined(me):
+		var cause: String = session.last_killer_name.get(me, IceDirector.BLACK_NAME)
+		_line.text = FLAT_LINE % [cause, FLAT_MATCH]
+		_banner.text = (FLAT_BANNER_LINE if _banner_top >= 0.0 else FLAT_BANNER) % [cause, FLAT_MATCH]
+	elif dead:
 		var killer: String = session.last_killer_name.get(me, _name(session.last_killer.get(me, 0)))
 		var left: float = session.respawn_left.get(me, 0.0)
 		_line.text = DEAD_LINE % [killer, left]
@@ -320,6 +331,14 @@ func _refresh(fade: float = -1.0) -> void:
 			label.visible = false
 
 
+## True while the round's summary shows a flatline's loss (I3): the death banner gives it the screen.
+func _loss_shown() -> bool:
+	if hud == null or not is_instance_valid(hud) or not hud.has_method("round_hud"):
+		return false
+	var round = hud.round_hud()
+	return round != null and round.get("lost") == true and round.showing_summary()
+
+
 ## The life alone (C27b): the health line or the death line and banner, the flash, the border.
 func _refresh_solo() -> void:
 	entries.clear()
@@ -327,7 +346,12 @@ func _refresh_solo() -> void:
 		label.visible = false
 	var dead: bool = not life.alive()
 	var protect: float = life.protect_left()
-	if dead:
+	if dead and life.get("flatlined_now") == true:
+		# Alone a flatline ends the run: the loss summary says so, and the banner gives it the screen.
+		var cause: String = life.cause if life.cause != "" else IceDirector.BLACK_NAME
+		_line.text = FLAT_LINE % [cause, FLAT_SOLO]
+		_banner.text = (FLAT_BANNER_LINE if _banner_top >= 0.0 else FLAT_BANNER) % [cause, FLAT_SOLO]
+	elif dead:
 		var killer: String = life.cause if life.cause != "" else SOMETHING
 		var left: float = life.respawn_left()
 		_line.text = DEAD_LINE % [killer, left]
@@ -335,7 +359,7 @@ func _refresh_solo() -> void:
 	else:
 		_line.text = HEALTH_LINE % roundi(life.health()) + (PROTECT_LINE % protect if protect > 0.0 else "")
 	_line.add_theme_color_override("font_color", Palette.HOSTILE_AMBER if dead else Palette.MINT)
-	_banner.visible = dead
+	_banner.visible = dead and not _loss_shown()
 	_border.visible = not dead and protect > 0.0
 	var flash_s: float = maxf(life.tuning.damage_flash_s, 0.001)
 	_flash.color = Color(Palette.HOSTILE_RED, FLASH_ALPHA * (_flash_left / flash_s))

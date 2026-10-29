@@ -22,6 +22,9 @@
 // previews in the editor; the driver sets every value at runtime.
 shader_type spatial;
 render_mode specular_disabled;
+// Black ICE (I3) dims it: arena_light, the arena's light level (1 normal, its lights_low while it is out),
+// a shader global set by scripts/ice/blackout.gd.
+global uniform float arena_light;
 
 #include "res://shaders/neon_edge.gdshaderinc"
 
@@ -161,4 +164,5 @@ void fragment() {
 	if (intensity > 0.0) {
 		EMISSION += rain() * (rain_energy * intensity);
 	}
+	EMISSION *= arena_light;
 }

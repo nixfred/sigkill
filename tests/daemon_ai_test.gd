@@ -545,7 +545,7 @@ func _match_checks() -> void:
 	var cs = client["session"]
 	var cid: int = cs.my_id
 	var ruled := await _wait(func(): return cs.host_practice == false and cs.host_difficulty == "normal", 120)
-	_check("acceptance: protocol 13 (10 at C27b, 11 since A5's daemon seeds, 12 since I1's ICE, 13 since I2's ICEbreakers), and the host's rule reaches the joiner: its daemons fight, at normal", joined and Session.PROTOCOL == 13 and ruled >= 0)
+	_check("acceptance: protocol 13 (10 at C27b, 11 since A5's daemon seeds, 12 since I1's ICE, 13 since I2's ICEbreakers, 14 since I3's Black ICE), and the host's rule reaches the joiner: its daemons fight, at normal", joined and Session.PROTOCOL == 14 and ruled >= 0)
 	# The host's own player far off behind the lair's walls; the joiner on open floor; the host's
 	# rogue and one zombie near the joiner, the others parked.
 	host["player"].global_position = host["main"].to_global(Vector3(15.0, 0.95, -15.0))

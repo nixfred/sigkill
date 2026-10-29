@@ -15,11 +15,16 @@ extends Node
 ## health is not shown (the old game), and in a match the session's combat owns every player's
 ## health. A match starting with this player down brings it back at once. The player's own
 ## weapons never hurt it alone (the rm -rf cannon's self-damage stays a match's rule).
+## Black ICE (I3): touching it is a flatline (flatline()): a death that does not come back. The player is
+## held down (no respawn) and the run is over: the round HUD ends the round as a loss and the next run
+## starts at round 1, when a new round's reset brings the player back.
 ## Fiction only: a "death" is a game state.
 
 signal hurt(amount: float, health: float, by: Node)
 signal died(cause: String)
 signal respawned
+## A flatline (I3): touched by Black ICE, held down, the run over.
+signal flatlined(cause: String)
 
 const Combat = preload("res://scripts/net/combat.gd")
 const CombatTuningScript = preload("res://scripts/net/combat_tuning.gd")
@@ -49,6 +54,8 @@ var cause := ""
 var killer: Node = null
 ## Seconds of the damage flash left.
 var flash_left := 0.0
+## True while this player is down by a flatline (I3): no respawn until the next run's first round.
+var flatlined_now := false
 
 
 func _init() -> void:
@@ -85,6 +92,8 @@ func protect_left() -> float:
 
 
 func respawn_left() -> float:
+	if flatlined_now:
+		return 0.0  # held: no countdown, the run is over
 	return combat.states[ME]["respawn_left"] if not alive() else 0.0
 
 
@@ -112,6 +121,24 @@ func damage(amount: float, by: Node, way: Vector3) -> bool:
 	return true
 
 
+## Black ICE's touch (I3): the player flatlined by `by` (named `what`), along `way`: the rest of its health
+## taken through the combat path at once, down and held there (no respawn), the run over. Never through
+## spawn protection; never in practice or in a match. True when it flatlined.
+func flatline(what: String, by: Node, way: Vector3) -> bool:
+	if not shown() or player == null or not is_instance_valid(player) or not player.alive or not alive() or protected():
+		return false
+	var outcome := combat.damage_player(ME, ME, combat.health_of(ME) + tuning.max_health)
+	if outcome.is_empty() or not outcome["killed"]:
+		return false
+	flatlined_now = true
+	combat.states[ME]["respawn_left"] = INF  # held: only a new run brings it back
+	flash_left = tuning.damage_flash_s
+	killer = by
+	_die(what, way)
+	flatlined.emit(what)
+	return true
+
+
 func _physics_process(delta: float) -> void:
 	flash_left = maxf(flash_left - delta, 0.0)
 	if _online():
@@ -120,6 +147,7 @@ func _physics_process(delta: float) -> void:
 			# life now, and it counts this player alive unless its own word says down (Codex
 			# review): hosting adds the host alive, a join adds the joiner alive.
 			combat.respawn(ME)
+			flatlined_now = false
 			if player != null and is_instance_valid(player) and not player.alive and not session.dead.get(session.my_id, false):
 				player.set_alive(true)
 		return
@@ -156,6 +184,7 @@ func _die(what: String, way: Vector3) -> void:
 ## living daemons first (a death's respawn), else it stays where it is.
 func _respawn(move: bool) -> void:
 	combat.respawn(ME)
+	flatlined_now = false
 	if player == null or not is_instance_valid(player):
 		return
 	if move and player.has_method("respawn_at"):

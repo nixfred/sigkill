@@ -48,14 +48,16 @@ const ARSENAL_SHA := "b98ef06f812877af00be320ad1350d3942b35f03fa78c00d355c03b0ab
 ## a field's effect (protocol 12), its numbers unchanged too; ICE's own numbers are resources/ice.tres
 ## (I1_TRES), which joins the files beside dee2482's. Since I2 the session carries the ICEbreakers' ask
 ## and word (protocol 13), its numbers unchanged; the breakers' own are resources/breakers.tres
-## (I2_TRES).
+## (I2_TRES). Since I3 the session carries Black ICE's word and a flatline's cause (protocol 14), its
+## numbers unchanged; Black ICE's own are resources/black_ice.tres (I3_TRES).
 const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
 const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
-const PROTOCOL := 13
+const PROTOCOL := 14
 const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
 const I1_TRES := ["ice.tres"]
 const I2_TRES := ["breakers.tres"]
+const I3_TRES := ["black_ice.tres"]
 const C28_TRES := ["arsenal.tres", "ping_sonar.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may.
 const PARTICLE_BUDGET := 1600
@@ -166,7 +168,7 @@ func _source_checks() -> void:
 	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
 	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
 	tres.sort()
-	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES
+	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
@@ -175,7 +177,7 @@ func _source_checks() -> void:
 	var as_was := arsenal_text.replace("load_steps=11", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace(", ExtResource(\"10_ping\")])", "])")
 	var arsenal := as_was.sha256_text()
 	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---

@@ -13,6 +13,10 @@
 // palette.gd sets every value at runtime and is the single source.
 shader_type spatial;
 
+// Black ICE (I3) dims it: arena_light, the arena's light level (1 normal, its lights_low while it is out),
+// a shader global set by scripts/ice/blackout.gd.
+global uniform float arena_light;
+
 uniform vec4 base_color : source_color = vec4(0.0196, 0.0314, 0.0392, 1.0);
 uniform vec4 minor_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
 uniform vec4 major_color : source_color = vec4(0.490, 1.0, 0.812, 1.0);
@@ -95,4 +99,5 @@ void fragment() {
 	SPECULAR = specular_amount;
 	EMISSION = minor_color.rgb * (minor_energy * minor_line + seam_energy * seam + inset_energy * inset + vent_energy * vent * 0.5 + plate_glow * tone * tone)
 		+ major_color.rgb * (major_energy * major_line);
+	EMISSION *= arena_light;
 }

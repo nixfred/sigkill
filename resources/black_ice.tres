@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="BlackIceTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ice/black_ice_tuning.gd" id="1_black"]
+
+[resource]
+script = ExtResource("1_black")
+from_round = 2
+chance_first = 0.2
+chance_step = 0.1
+chance_most = 0.4
+arrive_first_s = 20.0
+arrive_last_s = 40.0
+tell_s = 6.0
+dim_s = 2.0
+lights_low = 0.1
+restore_s = 1.5
+radius_m = 1.25
+height_m = 4.4
+touch_m = 1.65
+speed = 4.0
+drift_speed = 2.4
+sight_m = 45.0
+lose_s = 6.0
+turn_rate = 1.8
+seals = 2
+seal_mend_s = 12.0
+reel_s = 1.2
+reel_m = 3.0
+withdraw_s = 1.6

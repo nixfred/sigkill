@@ -8,6 +8,9 @@
 // every value at runtime and is the single source.
 shader_type spatial;
 render_mode unshaded;
+// Black ICE (I3) dims it: arena_light, the arena's light level (1 normal, its lights_low while it is out),
+// a shader global set by scripts/ice/blackout.gd.
+global uniform float arena_light;
 
 uniform vec4 body_color : source_color = vec4(0.016, 0.027, 0.039, 1.0);
 uniform vec4 edge_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
@@ -70,5 +73,5 @@ void fragment() {
 	vec3 bw = max(fwidth(bary), vec3(0.00001));
 	vec3 near = smoothstep(bw * (edge_px - 0.5), bw * (edge_px + 0.5), bary);
 	float line = 1.0 - min(min(near.x, near.y), near.z);
-	ALBEDO = rgb + edge_color.rgb * (edge_energy * line);
+	ALBEDO = (rgb + edge_color.rgb * (edge_energy * line)) * arena_light;
 }

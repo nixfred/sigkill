@@ -15,6 +15,9 @@ shader_type spatial;
 render_mode unshaded;
 
 global uniform float arena_clock;
+// Black ICE (I3) dims it: arena_light, the arena's light level (1 normal, its lights_low while it is out),
+// a shader global set by scripts/ice/blackout.gd.
+global uniform float arena_light;
 
 uniform vec4 back_color : source_color = vec4(0.008, 0.024, 0.027, 1.0);
 uniform vec4 text_color : source_color = vec4(0.098, 0.827, 0.773, 1.0);
@@ -119,5 +122,5 @@ vec3 rack(vec2 uv) {
 
 void fragment() {
 	vec2 uv = face_uv();
-	ALBEDO = racks ? rack(uv) : terminal(uv);
+	ALBEDO = (racks ? rack(uv) : terminal(uv)) * arena_light;
 }
