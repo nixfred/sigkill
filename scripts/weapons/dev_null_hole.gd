@@ -23,7 +23,7 @@ extends Node3D
 ## match, every other player (the drag on its own screen, at most player_pull_cap so a run gets out; the
 ## host judges its damage and its discard). A wall of white ICE is never moved: inside the horizon it only
 ## flickers. Black ICE is never pulled, held or hurt, its seals and touch untouched (I3): it flashes once and
-## the readout says "/dev/null: device busy" (scripts/hud/dev_null_hud.gd). The thrower is never pulled or hurt by its own hole.
+## its tag says "/dev/null: device busy". The thrower is never pulled or hurt by its own hole.
 ##
 ## Who decides: an authoritative hole (alone, or the host's in a match) opens on its own and judges; a hole
 ## on a joiner's screen only draws until the host's word opens it at the host's place (open_at()), then
@@ -63,6 +63,9 @@ const REST_OFF_M := 0.3
 const FLICKER_S := 0.45
 ## A discard's burst: this share of the HOLE particle pool's.
 const DISCARD_BURST := 0.4
+## Its tag over the core, written as the command it is, and Black ICE's refusal under it (C29's and C30's style).
+const TAG_LINES := "$ cat * > /dev/null\n%d held  %d discarded"
+const BUSY_LINE := "/dev/null: device busy"
 ## A joiner's copy that flew its whole fuse and more without the host's word ends on its own.
 const WORD_WAIT_S := 1.5
 
@@ -235,6 +238,12 @@ func size_now() -> float:
 	return 0.0
 
 
+## Its tag over the core, the command it is (C31): what it holds and has discarded, and Black ICE's refusal.
+func tag_text() -> String:
+	var text := TAG_LINES % [held_now(), discards]
+	return text + ("\n" + BUSY_LINE if black_refused else "")
+
+
 ## Things it holds now (not yet discarded).
 func held_now() -> int:
 	var n := 0
@@ -264,6 +273,8 @@ func _physics_process(delta: float) -> void:
 func _process(_delta: float) -> void:
 	if _look != null and phase != Phase.DONE:
 		_look.show_state(phase, size_now(), open_age, _pos if phase == Phase.FLYING else core)
+		if is_open():
+			_look.set_tag(tag_text())
 
 
 # --- The throw. ---
@@ -387,8 +398,7 @@ func _hold(body: Node3D, anchored: bool, delta: float, tick: bool, space: Physic
 		_let_go(body)
 		return
 	if not held.has(body):
-		held[body] = {"discarded": false}
-		caught_count += 1
+		_catch(body, anchored)
 	var mine: bool = moves_daemons and not _follows(body)
 	if not anchored:
 		if body.has_method("hold_in_hole"):
@@ -396,6 +406,9 @@ func _hold(body: Node3D, anchored: bool, delta: float, tick: bool, space: Physic
 		_stretch(body, middle, distance)
 		if mine:
 			_drag(body, middle, distance, delta, space)
+		var trail = held[body].get("trail")
+		if trail != null and is_instance_valid(trail):
+			trail.global_position = GrepLock.point_of(body)
 	if not mine or held[body]["discarded"]:
 		return
 	var way := (core - middle).normalized() if middle.distance_to(core) > 0.001 else Vector3.DOWN
@@ -410,7 +423,31 @@ func _hold(body: Node3D, anchored: bool, delta: float, tick: bool, space: Physic
 	# chmod 000's frozen (C29) takes nothing on the way in: it reaches the core whole, and shatters there.
 	var frozen: bool = body.has_method("chmod_frozen") and body.chmod_frozen()
 	if tick and distance < tuning.horizon_m and not frozen and judge_daemon.is_valid():
+		# Quietly: no flash, no recoil each tick (the pull is its look); the discard and the pulse flare as hits do.
+		body.set("quiet", true)
 		judge_daemon.call(body, tuning.dps_at(distance) * tuning.tick_s, middle, way)
+		if is_instance_valid(body):
+			body.set("quiet", false)
+
+
+## `body` caught (once each time it comes into reach): counted, and a dragged one given a trail of sparks in
+## the hole's light, behind it as it is drawn in (a marker riding its middle that a ParticleFx trail follows,
+## when the pool has one free); an anchored node has none.
+func _catch(body: Node3D, anchored: bool) -> void:
+	var entry := {"discarded": false, "trail": null}
+	caught_count += 1
+	if not anchored:
+		var fx := ParticleFx.of(self)
+		if fx != null:
+			var marker := Node3D.new()
+			marker.name = "Trail"
+			add_child(marker)
+			marker.global_position = GrepLock.point_of(body)
+			if fx.follow(marker, light_color):
+				entry["trail"] = marker
+			else:
+				marker.queue_free()
+	held[body] = entry
 
 
 ## The drag on `body` this step: toward the core's axis and swirled round it; walkers kept on their floor,
@@ -445,6 +482,9 @@ func _stretch(body: Node3D, middle: Vector3, distance: float) -> void:
 func _let_go(node: Node) -> void:
 	if not held.has(node):
 		return
+	var trail = held[node].get("trail")
+	if trail != null and is_instance_valid(trail):
+		trail.queue_free()  # its spark trail lets go with it
 	held.erase(node)
 	if is_instance_valid(node):
 		var art = node.call("art_node") if node.has_method("art_node") else node.get("art")

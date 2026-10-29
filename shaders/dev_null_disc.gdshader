@@ -9,7 +9,7 @@ uniform vec4 hot_color : source_color = vec4(1.0, 0.85, 0.96, 1.0);
 uniform vec4 body_color : source_color = vec4(0.67, 0.22, 0.61, 1.0);
 // The ring's inner edge as a share of its outer radius.
 uniform float inner = 0.3;
-uniform float energy = 3.0;
+uniform float energy = 1.5;
 uniform float size_now = 1.0;
 uniform float flow = 0.0;
 // How hard its streams wind and how many arms.
@@ -47,8 +47,8 @@ void fragment() {
 	float streams = 0.55 + 0.45 * sin(a * arms);
 	float grain = vnoise(vec2(a * 4.0, r * 18.0 - flow * 3.0)) * 0.6 + vnoise(vec2(a * 11.0, r * 40.0)) * 0.4;
 	float t = clamp((r - lo) / (1.0 - lo), 0.0, 1.0);
-	vec3 color = mix(hot_color.rgb, body_color.rgb, smoothstep(0.0, 0.35, t));
-	color = mix(color, body_color.rgb * 0.35, smoothstep(0.55, 1.0, t));
+	vec3 color = mix(hot_color.rgb, body_color.rgb, smoothstep(0.0, 0.14, t));
+	color = mix(color, body_color.rgb * 0.3, smoothstep(0.45, 1.0, t));
 	float edge_in = smoothstep(lo * 0.92, lo * 1.02, r);
 	float edge_out = 1.0 - smoothstep(0.6, 1.0, r);
 	// Beaming: matter swinging toward the camera shines brighter.
@@ -56,6 +56,6 @@ void fragment() {
 	vec3 tangent = normalize(vec3(-sin(angle), 0.0, cos(angle)));
 	float toward = dot(tangent, normalize(cam - local_pos));
 	float beam = 1.0 + 0.55 * toward;
-	float glow = edge_in * edge_out * mix(0.35, 1.0, streams) * mix(0.6, 1.2, grain) * beam * (1.6 - t);
+	float glow = edge_in * edge_out * mix(0.2, 1.0, streams) * mix(0.5, 1.25, grain) * beam * (1.5 - t);
 	ALBEDO = color * glow * energy * size_now;
 }

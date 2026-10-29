@@ -37,8 +37,8 @@ func _build() -> void:
 	tube(Part.TRIM, Vector3(0.0, 0.0, -0.047), 0.046, 0.05, 0.003, 12)
 	# The charge cells on top of the collar, lit one per charge.
 	for i in CELLS:
-		var cell := charge_piece(Part.HOT, i)
-		box(cell, Vector3(-0.011 + 0.022 * i, 0.054, -0.03), Vector3(0.014, 0.008, 0.016))
+		var cell := charge_piece(Part.TRIM, i)
+		box(cell, Vector3(-0.011 + 0.022 * i, 0.053, -0.03), Vector3(0.012, 0.005, 0.014))
 		box(Part.PLATE, Vector3(-0.011 + 0.022 * i, 0.049, -0.03), Vector3(0.018, 0.004, 0.02))
 	# The prongs: three arms curving forward round the device, each in three bent segments.
 	for k in 3:

@@ -92,6 +92,9 @@ var _killer := 0
 var frost: Frost
 ## /dev/null (C31): the last physics frame a hole holds it to.
 var _held_until := -1
+## /dev/null (C31): set round a hole's damage over time so it lands quietly: no flash, no recoil, no spray,
+## nothing roused (the hole's own pull is its look); a kill still derezzes as any.
+var quiet := false
 var _frost_look: FrostLook
 ## Its deaths that were shatters (C29), for the checks.
 var shatters := 0
@@ -208,6 +211,8 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	if ice != null:
 		ice.note_damage(source, damage)  # the system learns which weapon hits it hardest (I1)
 	if _health > 0.0:
+		if quiet:
+			return true
 		_pulse(point, direction)
 		var director := DaemonDirector.of(self)
 		if brain != null and director != null:

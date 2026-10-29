@@ -14,7 +14,7 @@ uniform float einstein = 0.3;
 uniform float halo = 0.34;
 uniform vec4 ring_color : source_color = vec4(1.0, 0.85, 0.96, 1.0);
 uniform vec4 halo_color : source_color = vec4(0.67, 0.22, 0.61, 1.0);
-uniform float energy = 4.0;
+uniform float energy = 2.2;
 // 0 to 1: how far the hole has opened (or collapsed); flow: seconds since it opened.
 uniform float size_now = 1.0;
 uniform float flow = 0.0;
@@ -54,7 +54,7 @@ void fragment() {
 	float ring = exp(-pow((r - s * 1.06) / (0.012 + 0.01 * size_now), 2.0));
 	float swirl = noise1(angle * 3.0 + flow * 2.4) * 0.6 + noise1(angle * 9.0 - flow * 5.0) * 0.4;
 	float halo_band = exp(-pow((r - halo * size_now) / (0.035 * size_now + 0.004), 2.0)) * (0.45 + 0.75 * swirl);
-	vec3 color = seen + ring_color.rgb * ring * energy * 1.4 + halo_color.rgb * halo_band * energy;
+	vec3 color = seen + ring_color.rgb * ring * energy * 1.2 + halo_color.rgb * halo_band * energy * 0.7;
 	// The shadow: nothing comes back from it.
 	float black = 1.0 - smoothstep(s * 0.96, s * 1.02, r);
 	color = mix(color, vec3(0.0), black);

@@ -12,18 +12,18 @@ uniform float reach = 9.0;
 uniform float core_r = 0.5;
 uniform float size_now = 1.0;
 uniform float flow = 0.0;
-uniform float energy = 4.0;
-uniform float width = 0.035;
+uniform float energy = 2.2;
+uniform float width = 0.026;
 
 varying float heat;
 varying float fade;
 
 vec3 path(float s, vec4 c) {
-	float r0 = mix(0.35, 1.0, c.r) * reach;
+	float r0 = mix(0.25, 0.62, c.r) * reach;
 	float r = mix(r0, core_r, pow(s, 1.7));
 	float turns = 1.2 + 2.2 * c.a;
 	float angle = c.g * 6.2831853 + turns * 6.2831853 * pow(s, 2.2);
-	float y = (c.b - 0.5) * 2.4 * (1.0 - s) * (1.0 - s);
+	float y = mix(-0.6, 1.6, c.b) * (1.0 - s) * (1.0 - s);  // above the floor, a metre under the core
 	return vec3(cos(angle) * r, y, sin(angle) * r);
 }
 

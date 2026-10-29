@@ -53,6 +53,9 @@ var hits := 0
 var frost: Frost = null
 ## /dev/null (C31): the last physics frame a hole holds it to.
 var _held_until := -1
+## /dev/null (C31): set round a hole's damage over time so it lands quietly: no flash, no recoil, no spray,
+## nothing roused (the hole's own pull is its look); a kill still derezzes as any.
+var quiet := false
 var _frost_look: FrostLook
 
 var _health := 100.0
@@ -135,6 +138,9 @@ func _land(damage: float, point: Vector3, direction: Vector3, source: String, sh
 	hits += 1
 	_health -= taken
 	if _health > 0.0:
+		if quiet:
+			_show_health()
+			return true
 		_hurt(point, direction)
 		return true
 	_health = 0.0

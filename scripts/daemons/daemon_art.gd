@@ -72,9 +72,11 @@ const LOCK_EASE := 10.0
 const CLOCK_WRAP := 3600.0
 ## Where the ground is, in art space.
 const GROUND_Y := -0.9
-## /dev/null (C31): the most a hole draws a body out (1.9 times its length along the pull) and leans it in, metres.
-const STRETCH_MOST := 0.9
-const STRETCH_LEAN_M := 0.25
+## /dev/null (C31): the most a hole draws a body out (2.4 times its length along the pull) and leans it in, metres.
+const STRETCH_MOST := 1.4
+const STRETCH_LEAN_M := 0.3
+## And tipped toward it, radians at the most: it leans into the pull.
+const STRETCH_TIP := 0.45
 ## The shader global every daemon shader reads its time from (project.godot's shader globals).
 const SHADER_CLOCK := &"daemon_clock"
 ## A hit's recoil: how far the body is knocked away from the shot, in metres, and how long it
@@ -281,7 +283,7 @@ func setup(target: Node3D, seed: int = -1) -> void:
 # --- What the daemon tells it. ---
 
 ## /dev/null's pull (C31): the body drawn out toward `way` (world space) by `amount`, 0 (its own shape) to 1:
-## longer along the way, thinner across it (its volume kept), and leaning toward the core a little. Every
+## longer along the way, thinner across it (its volume kept), tipped over toward the core and leaning in. Every
 ## screen draws it from its own copy of the hole; 0 puts its own shape back.
 func stretch_toward(way: Vector3, amount: float) -> void:
 	var now := clampf(amount, 0.0, 1.0) if is_finite(amount) else 0.0
@@ -300,7 +302,9 @@ func stretch_toward(way: Vector3, amount: float) -> void:
 	# across * I + (k - across) * w w^T: k along w, across round it, the volume kept.
 	var along := k - across
 	var pull := Basis(Vector3(across, 0.0, 0.0) + w * w.x * along, Vector3(0.0, across, 0.0) + w * w.y * along, Vector3(0.0, 0.0, across) + w * w.z * along)
-	transform = Transform3D(pull * _unstretched.basis, _unstretched.origin + w * STRETCH_LEAN_M * now)
+	var level := Vector3(w.x, 0.0, w.z)
+	var tip := Basis(Vector3.UP.cross(level).normalized(), STRETCH_TIP * now) if level.length() > 0.001 else Basis.IDENTITY
+	transform = Transform3D(tip * pull * _unstretched.basis, _unstretched.origin + w * STRETCH_LEAN_M * now)
 
 
 ## A hit landed: the parts, the core and the glyphs flare and fade over FLASH_S.

@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29 or c30):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30 or c31):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -40,7 +40,11 @@ extends SceneTree
 ## under the crosshair, the strip's two rows with the pipe drawn cut from that frame and shown three times
 ## the size, a chain through a daemon chmod 000 froze (it conducts, and shatters), a chain stopped by a
 ## wall (the daemon behind it untouched), a chain from a zombie through the hunter (frozen) to a node, and Black ICE
-## refusing it ("pipe: broken pipe"); then it prints what a chain costs. Every other set plays in practice,
+## refusing it ("pipe: broken pipe"); then it prints what a chain costs; c31, /dev/null: a hole mid-pull dragging
+## four daemons in (stretched toward its core, the floor's mark, the readout over the crosshair), the strip's two
+## rows with /dev/null drawn cut from that frame and shown three times the size, the implosion, a knot of daemons
+## the hole drew together chained by pipe |, ICE (the hunter pulled, a node held in place, the gate flickering)
+## and Black ICE refusing it ("/dev/null: device busy"); then it prints what a hole costs. Every other set plays in practice,
 ## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -278,6 +282,25 @@ const C30_ICE_ROGUE := Vector3(-0.5, 0.0, -0.8)
 const C30_ICE_HUNTER := Vector3(-3.0, 0.0, -2.6)
 const C30_BLACK_SPOT := 3
 const C30_BLACK_OFF := Vector3(1.5, 0.95, 8.5)
+## c31 (C31): /dev/null's slot; where the player stands and where the device is dropped (arena space: its core
+## opens a metre over the floor there); the four daemons it drags (rogue.d, the zombie, the runaway, the second
+## zombie), toughened so they stand until the core; the frames after it opens for its still; the frames into the
+## implosion; the knot (the daemons round a second hole, gathered for KNOT_FRAMES, then pipe | fired into them);
+## ICE's (round 2: the hunter, the jam node, the gate); Black ICE's stand.
+const C31_SLOT := 11
+const C31_PIPE := 10
+const C31_PLAYER_AT := Vector3(1.0, 0.95, 14.4)
+const C31_DROP := Vector3(0.0, 0.3, 7.6)
+const C31_CROWD := [Vector3(-4.0, 0.0, 6.6), Vector3(4.2, 0.0, 8.8), Vector3(2.6, 1.0, 4.2), Vector3(-1.8, 0.0, 10.8)]
+const C31_HOLE_FRAMES := 30
+const C31_IMPLODE_FRAMES := 9
+const C31_KNOT_FRAMES := 22
+const C31_KNOT_CHAIN_FRAMES := 30
+const C31_ICE_FROM := Vector3(5.5, 0.95, 4.5)
+const C31_ICE_DROP := Vector3(-1.6, 0.3, -3.6)
+const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
+const C31_ICE_FRAMES := 40
+const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
 
 var _main: Node
 var _player: Node
@@ -344,6 +367,11 @@ func _run() -> void:
 		return
 	if _set == "c30":
 		await _c30()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c31":
+		await _c31()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1602,6 +1630,152 @@ func _c30() -> void:
 	await _frames(C30_CHAIN_FRAMES)
 	print("capture: Black ICE: \"%s\" / \"%s\", seals %d" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), b.seals_left])
 	await _save("c30-black")
+
+
+func _c31() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var hud = _main.get_node("Hud")
+	var life := _main.get_node("SoloLife")
+	var def: Resource = load("res://resources/dev_null.tres")
+	var order := ["DummyA", "DummyB", "DummyD", "DummyC"]
+	# The hole: dropped among four daemons standing (practice), toughened so they stand until the core; the
+	# still a moment into its pull, every one of them held, stretched and on its way in.
+	await _stand(C31_PLAYER_AT, _main.to_global(C31_DROP + Vector3(0.0, 0.9, 0.0)))
+	_player.select_slot(C31_SLOT)
+	await _frames(SETTLE_FRAMES)
+	for i in order.size():
+		var dummy: Node3D = targets.get_node(order[i])
+		_c27b_place(dummy, _main.to_global(C31_CROWD[i]))
+		_c30_tough(dummy)
+	await _frames(20)
+	var hole := await _c31_hole(def, C31_DROP)
+	await _frames(C31_HOLE_FRAMES)
+	print("capture: the hole: its tag \"%s\", %d held, %d discarded; the strip \"%s\" over \"%s\", \"%s\", \"%s\"" % [hole.tag_text().replace("\n", " / "), hole.held_now(), hole.discards, hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
+	var frame := await _grab()
+	frame.save_png(OUT.path_join("c31-hole.png"))
+	_shots += 1
+	var corner := frame.get_region(C30_STRIP_CROP)
+	corner.resize(C30_STRIP_CROP.size.x * C30_STRIP_SCALE, C30_STRIP_CROP.size.y * C30_STRIP_SCALE, Image.INTERPOLATE_NEAREST)
+	corner.save_png(OUT.path_join("c31-strip.png"))
+	_shots += 1
+	await _hole_cost(hole)
+	# The implosion: the daemons taken away, the hole sent to its collapse, the still a few frames after it
+	# implodes (the point of light, the shock rings, "> /dev/null").
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	await _frames(2)
+	if is_instance_valid(hole):
+		hole.open_age = hole.tuning.open_s + hole.tuning.hold_s - 0.01
+		await _frames(int(hole.tuning.collapse_s * 60.0) + 2)
+	await _frames(C31_IMPLODE_FRAMES)
+	await _save("c31-implosion")
+	await _frames(120)
+	# The knot: the daemons the hole drew together, then pipe | fired into them.
+	_player.select_slot(C31_PIPE)
+	await _frames(40)
+	for i in order.size():
+		var dummy: Node3D = targets.get_node(order[i])
+		_c27b_place(dummy, _main.to_global(C31_CROWD[i]))
+		_c30_tough(dummy)
+	await _frames(10)
+	var knot := await _c31_hole(def, C31_DROP)
+	await _frames(C31_KNOT_FRAMES)
+	var nearest: Node3D = null
+	for name in order:
+		var dummy: Node3D = targets.get_node(name)
+		if dummy.is_alive() and knot.core.is_finite() and (nearest == null or dummy.global_position.distance_to(knot.core) < nearest.global_position.distance_to(knot.core)):
+			nearest = dummy
+	if nearest == null:
+		nearest = targets.get_node(order[0])
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to := nearest.global_position + Vector3.UP * 1.1 - cam.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	await _frames(2)
+	await _c30_fire()
+	await _frames(C31_KNOT_CHAIN_FRAMES)
+	print("capture: the knot: \"%s\" / \"%s\"; the hole \"%s\"" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), knot.tag_text().replace("\n", " / ") if is_instance_valid(knot) else ""])
+	await _save("c31-knot")
+	if is_instance_valid(knot):
+		knot.open_age = knot.tuning.life_s() - 0.02
+	await _frames(90)
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	await _frames(60)
+	# ICE: round 2: the hunter pulled in, the jam node held in place but hurt, the gate only flickering.
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	hud.round_hud()._start_round(2)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	life.combat.states[1]["protect_left"] = 1000.0
+	await _stand(C31_ICE_FROM, _main.to_global(C31_ICE_DROP + Vector3(0.0, 1.2, 0.0)))
+	_player.select_slot(C31_SLOT)
+	await _frames(40)
+	if ice.hunter != null:
+		ice.hunter.global_position = _main.to_global(C31_ICE_HUNTER)
+	var ice_hole := await _c31_hole(def, C31_ICE_DROP)
+	await _frames(C31_ICE_FRAMES)
+	print("capture: ICE: \"%s\", %d held, the gate flickered %d times" % [ice_hole.tag_text().replace("\n", " / "), ice_hole.held_now(), ice_hole.walls_flickered])
+	await _save("c31-ice")
+	if is_instance_valid(ice_hole):
+		ice_hole.open_age = ice_hole.tuning.life_s() - 0.02
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	await _frames(90)
+	# Black ICE: round 4, out at its spot; the hole never takes it: "/dev/null: device busy".
+	hud.round_hud()._start_round(4)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var spot_at: Vector3 = IceDirector.BLACK_SPOTS[C30_BLACK_SPOT]
+	await _stand(spot_at + C31_BLACK_OFF, _main.to_global(spot_at + Vector3.UP * 2.2 + Vector3(0.0, 0.0, 3.0)))
+	var b := ice.summon_black(C30_BLACK_SPOT)
+	b.phase_t = b.tuning.tell_s
+	b.step(0.0, ice.daemons)
+	await _frames(20)
+	var black_hole := await _c31_hole(def, spot_at + Vector3(0.0, 0.3, 4.5))
+	await _frames(C31_HOLE_FRAMES)
+	print("capture: Black ICE: \"%s\", seals %d, held %s" % [black_hole.tag_text().replace("\n", " / "), b.seals_left, black_hole.held.has(b)])
+	await _save("c31-black")
+
+
+## A hole of the player's own dropped at `at` (arena space) as if thrown there, open (C31).
+func _c31_hole(def: Resource, at: Vector3) -> Node3D:
+	var hole = DevNullHole.spawn(_main, def.hole_tuning(), _main.to_global(at), Vector3.ZERO, 31, "solo", true, 0, false, def.light_skin, [_player.get_rid()], _player.hole_judge(def))
+	_player.take_hole(hole)
+	for i in 60:
+		if hole.is_open():
+			break
+		await _frames(1)
+	return hole
+
+
+## What a hole costs (C31): the GPU's time with it open and drawn against with its look hidden, twice each in
+## turn, and what one step of its hold takes on this machine.
+func _hole_cost(hole: Node3D) -> void:
+	var look: Node3D = hole.get("_look")
+	var times := []
+	hole.set_physics_process(false)  # held still while it is measured: it neither pulls on nor closes
+	for i in 2:
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		look.visible = false
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		look.visible = true
+	var t0 := Time.get_ticks_usec()
+	hole.call("_hold_everything", 0.0)
+	var step_us := Time.get_ticks_usec() - t0
+	hole.set_physics_process(true)
+	print("capture: a hole costs the GPU %.2f and %.2f ms a frame drawn, %.2f and %.2f hidden; one step of its hold %d microseconds" % [times[0], times[2], times[1], times[3], step_us])
 
 
 ## One click of fire, the pipe drawn (C30).

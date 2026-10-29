@@ -297,18 +297,20 @@ func _strip_checks() -> void:
 					wrong.append("%d: under a panel: %s" % [size.x, label.text])
 		var dh = hud.dev_null_hud()
 		var ph = hud.pipe_hud()
+		p.hole_drag = Vector3(3.0, 0.0, 0.0)  # as if another player's hole dragged it: the warning
+		dh._refresh()
 		var line: Label = dh.get("_line")
 		var rect: Rect2 = line.get_global_rect()
-		if not line.visible or not screen.encloses(rect) or strip.get_global_rect().intersects(rect):
+		if not line.visible or not screen.encloses(rect) or strip.get_global_rect().intersects(rect) or feed.get_global_rect().intersects(rect):
 			wrong.append("%d: readout %s %s" % [size.x, line.text, rect])
 		var pipe_line: Label = ph.get("_line")
 		if pipe_line.visible and pipe_line.get_global_rect().intersects(rect):
-			wrong.append("%d: the readout over the pipe's" % size.x)
-		readout = dh.line_text()
+			wrong.append("%d: the warning over the pipe's readout" % size.x)
+		readout = dh.line_text() + " / tag: " + hole.get("_look").tag().replace("\n", " / ")
 		lines = PackedStringArray([hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
 		await _drop_side(host)
 	root.size = before
-	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, /dev/null in bank 2's (\"%s\" over \"%s\"), with its charges (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and an open hole's readout over the crosshair (\"%s\"), clear of the strip and of a chain's readout under it" % [lines[0], lines[1], lines[2], lines[3], readout], wrong.is_empty() and lines[0] == "Shift+ 1 2 [3 /dev/null]" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "/dev/null  1 left" and lines[3].begins_with("recharge [") and readout.begins_with("$ cat * > /dev/null  "), ", ".join(wrong))
+	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, /dev/null in bank 2's (\"%s\" over \"%s\"), with its charges (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and a dragged player's warning over the crosshair, inside the screen, clear of the strip, the feed and a chain's readout under the crosshair; an open hole's own tag over its core (\"%s\")" % [lines[0], lines[1], lines[2], lines[3], readout], wrong.is_empty() and lines[0] == "Shift+ 1 2 [3 /dev/null]" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "/dev/null  1 left" and lines[3].begins_with("recharge [") and readout.begins_with("> /dev/null: pulling you in  RUN / tag: $ cat * > /dev/null / "), ", ".join(wrong))
 
 
 # --- The throw. ---
@@ -372,7 +374,6 @@ func _practice_checks() -> void:
 	var spots := {"DummyA": Vector3(0.0, 0.0, 7.2), "DummyB": Vector3(5.8, 0.0, 3.0), "DummyC": Vector3(-7.4, 0.0, 3.0), "DummyD": Vector3(2.0, 1.0, 1.0)}
 	var main := await _lab(spots, OPEN, true)
 	var p = main.get_node("Player")
-	var dh = main.get_node("Hud").dev_null_hud()
 	var round_hud = main.get_node("Hud").round_hud()
 	var fx := main.get_tree().get_first_node_in_group(ParticleFx.GROUP) as ParticleFx
 	var bursts: int = fx.fired(ParticleFx.Kind.HOLE) if fx != null else -1
@@ -414,7 +415,7 @@ func _practice_checks() -> void:
 	var parts: Dictionary = hole.get("_look").parts()
 	var shown: bool = parts["lens"].is_visible_in_tree() and parts["disc"].is_visible_in_tree() and parts["debris"].is_visible_in_tree() and parts["floor"].visible and not hole.get("_look").device().visible
 	_check("acceptance: the look: the event horizon and its lensing, the accretion ring, %d streaks of debris spiralling in, its mark on the floor (%.2f m under the core) and a negative light at the core (%.1f) all up while it holds, the device gone; daemons drawn out toward the core, the nearer the more (%.2f against %.2f)" % [parts["debris"].multimesh.instance_count, core.y - parts["floor"].global_position.y, parts["dark"].light_energy, stretch_near, stretch_far], shown and parts["dark"].light_negative and parts["dark"].light_energy > 0.0 and stretch_near > stretch_far and stretch_far > 0.0 and absf(core.y - parts["floor"].global_position.y - _t.core_height_m) < 0.08)
-	var held_line: String = dh.line_text()
+	var held_line: String = hole.get("_look").tag()
 	# Damage over time: frame by frame until rogue.d goes, nothing taken outside the horizon, its rate inside.
 	var hurt_outside := false
 	var first_hurt := INF
@@ -435,17 +436,17 @@ func _practice_checks() -> void:
 			worst_tick = maxf(worst_tick, last_hp - hp)
 		last_hp = hp
 	var outside_hp: float = far.health()
-	_check("acceptance: damage over time inside the horizon only: rogue.d dragged in took nothing outside it and its first hurt %.2f m from the axis, at most %.2f a tick (%.0f to %.0f a second, every %.2f s); the far daemon still whole outside it (%.0f)" % [first_hurt, worst_tick, _t.dps_horizon, _t.dps_core, _t.tick_s, outside_hp], not hurt_outside and first_hurt < _t.horizon_m + 0.2 and worst_tick > 0.0 and worst_tick <= _t.dps_core * _t.tick_s + EPS and held_line == "$ cat * > /dev/null  4 held  0 discarded", held_line)
+	_check("acceptance: damage over time inside the horizon only: rogue.d dragged in took nothing outside it and its first hurt %.2f m from the axis, at most %.2f a tick (%.0f to %.0f a second, every %.2f s); the far daemon still whole outside it (%.0f)" % [first_hurt, worst_tick, _t.dps_horizon, _t.dps_core, _t.tick_s, outside_hp], not hurt_outside and first_hurt < _t.horizon_m + 0.2 and worst_tick > 0.0 and worst_tick <= _t.dps_core * _t.tick_s + EPS and held_line == "$ cat * > /dev/null\n4 held  0 discarded", held_line)
 	# The core discards: each daemon that reaches it dies, its 400 health or not.
 	var said: String = round_hud.last_callout
-	var line: String = dh.line_text()
+	var line: String = hole.get("_look").tag()
 	var burst: int = (fx.fired(ParticleFx.Kind.HOLE) - bursts) if fx != null else -1
-	_check("acceptance: the core discards: rogue.d (%.0f health, %.0f left) gone the moment it reaches the core, the callout \"%s\", the readout \"%s\", a burst of debris drawn in (%d)" % [TOUGH, last_hp, said, line, burst], gone >= 0 and last_hp > 0.0 and said == "> /dev/null" and line.ends_with(" 1 discarded") and burst >= 1 and discards[0] >= 1)
+	_check("acceptance: the core discards: rogue.d (%.0f health, %.0f left) gone the moment it reaches the core, the callout \"%s\", its tag \"%s\", a burst of debris drawn in (%d)" % [TOUGH, last_hp, said, line.replace("\n", " / "), burst], gone >= 0 and last_hp > 0.0 and said == "> /dev/null" and line.ends_with(" 1 discarded") and burst >= 1 and discards[0] >= 1)
 	var all := await _wait(func(): return downs.size() == spots.size(), 300)
 	_check("practice: it pulls the dummies, all four in its reach drawn in and discarded (%d discards)" % discards[0], all >= 0 and discards[0] >= 4, str(downs.keys()) + " " + str(all))
 	var ended := await _wait(func(): return not is_instance_valid(hole) or hole.phase == DevNullHole.Phase.DONE, int(_t.life_s() * 60.0) + 30)
 	await _frames(int(DevNullHole.LookScript.IMPLODE_S * 60.0) + 70)
-	_check("acceptance: it ends in its implosion: a flash, a shock ring and \"%s\" over the core, gone after %.1f s; the readout fades after it (\"%s\")" % [seen["tag"], DevNullHole.LookScript.IMPLODE_S, dh.line_text()], ended >= 0 and seen["count"] == 1 and seen["tag"] == "> /dev/null" and main.find_children("DevNullImplosion", "", true, false).is_empty() and dh.line_text() == "")
+	_check("acceptance: it ends in its implosion: a flash, a shock ring and \"%s\" over the core, gone after %.1f s, the hole and its tag gone with it" % [seen["tag"], DevNullHole.LookScript.IMPLODE_S], ended >= 0 and seen["count"] == 1 and seen["tag"] == "> /dev/null" and main.find_children("DevNullImplosion", "", true, false).is_empty() and main.find_children("DevNull", "", true, false).is_empty())
 	var back := await _wait(func(): return spots.keys().all(func(n): return _dummy(main, n).is_alive()), 600)
 	_check("practice's dummies come back after the hole, as they do after any kill", back >= 0)
 	await _drop(main)
@@ -594,7 +595,6 @@ func _black_checks() -> void:
 	var main := await _lab({}, OPEN, false, true)
 	var ice := _ice(main)
 	var p = main.get_node("Player")
-	var dh = main.get_node("Hud").dev_null_hud()
 	var life := _life(main)
 	ice.start_round(4)
 	var b := ice.summon_black(3)
@@ -609,9 +609,9 @@ func _black_checks() -> void:
 	var hole := _spawn(main, p, main.to_local(b.global_position) + Vector3(0.0, 0.2, 4.5))
 	await _wait(func(): return hole.is_open(), 60)
 	await _frames(40)
-	var small: String = dh.small_text()
+	var small: String = hole.get("_look").tag()
 	await _wait(func(): return not is_instance_valid(hole) or hole.phase == DevNullHole.Phase.DONE, int(_t.life_s() * 60.0) + 30)
-	_check("acceptance: Black ICE in its reach is never pulled or held (%.4f m; the drift of its own hunt aside), never hurt, its seals untouched; it flashes once and the readout refuses (\"%s\")" % [Vector2(b.global_position.x - at.x, 0.0).length(), small], hole.black_refused and small == "/dev/null: device busy" and not b.held_by_hole() and not hole.held.has(b) and b.seals_left == seals and b.health() == health and not b.broken)
+	_check("acceptance: Black ICE in its reach is never pulled or held (%.4f m; the drift of its own hunt aside), never hurt, its seals untouched; it flashes once and the hole's tag refuses it (\"%s\")" % [Vector2(b.global_position.x - at.x, 0.0).length(), small.replace("\n", " / ")], hole.black_refused and small.ends_with("\n/dev/null: device busy") and not b.held_by_hole() and not hole.held.has(b) and b.seals_left == seals and b.health() == health and not b.broken)
 	await _drop(main)
 
 
@@ -683,12 +683,14 @@ func _match_checks() -> void:
 	var host_at: Vector3 = hp.global_position
 	await _frames(30)
 	var dragged: bool = not hp.hole_drag.is_zero_approx()
+	var warned: String = host["hud"].dev_null_hud().line_text()
+	var washed: float = host["hud"].dev_null_hud().wash()
 	var drawn_in: float = Vector2(host_at.x - host_hole.core.x, host_at.z - host_hole.core.z).length() - Vector2(hp.global_position.x - host_hole.core.x, hp.global_position.z - host_hole.core.z).length()
 	var own_drag: bool = cp.hole_drag.is_zero_approx()
 	var discarded := await _wait(func(): return not hs.combat.alive(1), 300)
 	var word: String = hs.last_kill_word.get(1, "")
 	var killer: int = hs.last_killer.get(1, 0)
-	_check("acceptance: the host judges every pull and every hurt: the host's player dragged in on its own screen (%.2f m, at most %.1f m/s), hurt inside the horizon and discarded at the core, the kill the joiner's (%d) by \"%s\"; the thrower never dragged by its own hole" % [drawn_in, _t.player_pull_cap, killer, word], dragged and drawn_in > 0.5 and discarded >= 0 and killer == cid and word == "> /dev/null" and own_drag and hp_health == 100.0)
+	_check("acceptance: the host judges every pull and every hurt: the host's player dragged in on its own screen (%.2f m, at most %.1f m/s), hurt inside the horizon and discarded at the core, the kill the joiner's (%d) by \"%s\"; its screen says so (\"%s\", its edges washed %.2f); the thrower never dragged by its own hole" % [drawn_in, _t.player_pull_cap, killer, word, warned, washed], dragged and warned == "> /dev/null: pulling you in  RUN" and washed > 0.0 and drawn_in > 0.5 and discarded >= 0 and killer == cid and word == "> /dev/null" and own_drag and hp_health == 100.0)
 	await _wait(func(): return host_hole == null or not is_instance_valid(host_hole) or host_hole.phase == DevNullHole.Phase.DONE, int(_t.life_s() * 60.0) + 60)
 	await _wait(func(): return hs.combat.alive(1), 600)
 	# Spawn protection: a protected host is neither dragged nor hurt.
