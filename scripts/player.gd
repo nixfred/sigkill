@@ -306,6 +306,9 @@ var frost: Frost
 ## A test's hold of fire (C29: the beam is held, not clicked).
 var hold_fire := false
 var _fire_held := false
+## True from a fire press made while engaged until fire is let go: the beam never starts from the click
+## that grabbed the mouse (C29).
+var _fire_down := false
 var _freeze_beam: Node3D
 var _beaming := 0.0
 var _rail_heads := {}
@@ -411,6 +414,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_released("code_rain_vision") and vision != null:
 		vision.hold(false)  # let go wherever the mouse is: vision never sticks on
+	if event.is_action_released("fire"):
+		_fire_down = false
 	if event.is_action_pressed("release_mouse"):
 		_release_mouse()
 		get_viewport().set_input_as_handled()
@@ -430,6 +435,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_look((event as InputEventMouseMotion).relative)
 	elif event.is_action_pressed("fire"):
 		_fire_queued = true
+		_fire_down = true
 	elif event.is_action_pressed("reload"):
 		reload_weapon()
 	elif event.is_action_pressed("weapon_last"):
@@ -605,7 +611,7 @@ func _read_player_input() -> void:
 	_move_input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	_jump_pressed = Input.is_action_just_pressed("jump")
 	_slide_pressed = Input.is_action_just_pressed("slide")
-	_fire_held = Input.is_action_pressed("fire")
+	_fire_held = _fire_down and Input.is_action_pressed("fire")
 	_crouching = (not _crouching if Input.is_action_just_pressed("crouch") else _crouching) if _crouch_toggles else Input.is_action_pressed("crouch")
 	_aiming = (not _aiming if Input.is_action_just_pressed("aim") else _aiming) if _aim_toggles else Input.is_action_pressed("aim")
 	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.

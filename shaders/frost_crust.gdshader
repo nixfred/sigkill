@@ -96,7 +96,7 @@ void fragment() {
 	NORMAL = n;
 	float facing = abs(dot(n, normalize(VIEW)));
 	float rim = pow(1.0 - facing, rim_power);
-	float sealed = 0.55 + 0.45 * frozen;
+	float sealed = 0.8 + 0.2 * frozen;
 	ALBEDO = mix(frost.rgb * 0.5, glint.rgb, 0.12 + 0.18 * h);
 	ALPHA = clamp(mix(body_alpha, rim_alpha, rim) + crack * 0.35, 0.0, 1.0) * sealed;
 	ROUGHNESS = 0.06 + 0.14 * h2;
