@@ -1507,11 +1507,22 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript) -> 
 
 
 ## How hard this player's weapons hit right now, alone: root's damage_scale, or 1 as user
-## (C22). In a match always 1: only the host applies root's harder hits, where it judges them.
+## (C22). In a match 1: only the host applies root's harder hits, where it judges them; since
+## C27b the host's own hits on its daemons, in a match where they fight, are such a judgement.
 func _damage_scale() -> float:
-	if match_meter or sudo == null or sudo.state == null:
+	if sudo == null or sudo.state == null:
+		return 1.0
+	if match_meter and not _judges_daemons():
 		return 1.0
 	return sudo.damage_scale()
+
+
+## True while this machine's own hits on its daemons are the match's (C27b): hosting a match whose
+## daemons fight. Root's harder hits then land on them here, as the host lands a joiner's (Codex
+## review); the host's word on root is this player's sudo state.
+func _judges_daemons() -> bool:
+	var director := DaemonDirector.of(self)
+	return director != null and director.mode == DaemonDirector.Mode.RUN
 
 
 ## A daemon of this arena went down: alone, a kill toward a sudo charge (C22).

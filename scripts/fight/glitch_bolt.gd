@@ -16,8 +16,6 @@ extends Node3D
 const Palette = preload("res://scripts/palette.gd")
 ## What a bolt meets of the world: the level and the targets layer (daemons, players' avatars).
 const WORLD_MASK := 1 | 4
-## The meta a player's avatar carries its id in (scripts/net/remote_player.gd).
-const PLAYER_ID_META := "player_id"
 ## The crystal's length and width, the core's share of it, and how bright it burns.
 const LENGTH_M := 0.7
 const WIDTH_M := 0.26
@@ -43,6 +41,8 @@ var end_at := Vector3.INF
 ## The player it met, when it met one, and the one it was thrown at (its SIGSTOP holds it).
 var met := 0
 var target := 0
+## On a joiner, the host's word that SIGSTOP holds this bolt (Codex review).
+var held_word := false
 
 var _director: Node = null
 var _look: Node3D
@@ -80,6 +80,7 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	brain = owner_brain
 	deciding = decide
 	target = at_player
+	held_word = false
 	velocity = dir.normalized() * speed
 	radius = radius_m
 	life_left = life_s
@@ -107,11 +108,16 @@ func _physics_process(delta: float) -> void:
 	var step := velocity * delta
 	var to := from + step
 	var way := velocity.normalized()
-	# The level and the targets layer first (a daemon's body, an avatar's hit volume), past this
-	# bolt's own zombie.
+	# The level and the targets layer first (a daemon's body), past this bolt's own zombie and the
+	# players' avatars: a player is met below where it was last heard, never where its avatar is
+	# drawn a moment behind (Codex review).
 	var query := PhysicsRayQueryParameters3D.create(from, to + way * radius, WORLD_MASK)
+	var skip: Array[RID] = []
+	if _director != null:
+		skip = _director.avatar_rids()
 	if brain != null and is_instance_valid(brain.dummy):
-		query.exclude = [brain.dummy.get_rid()]
+		skip.append(brain.dummy.get_rid())
+	query.exclude = skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	var reach := from.distance_to(hit["position"]) if not hit.is_empty() else INF
 	# Then the players' bodies, a body's radius plus its own round each one's middle.
@@ -138,13 +144,6 @@ func _physics_process(delta: float) -> void:
 	if not hit.is_empty():
 		global_position = hit["position"]
 		var collider = hit["collider"]
-		# A player's avatar in a match: its hit volume is on the targets layer, met before its middle.
-		if is_instance_valid(collider) and collider.has_meta(PLAYER_ID_META) and bodies.has(int(collider.get_meta(PLAYER_ID_META))):
-			met = int(collider.get_meta(PLAYER_ID_META))
-			if deciding:
-				_director.bolt_met(brain, met, way)
-			_end("player")
-			return
 		var daemon: bool = is_instance_valid(collider) and collider.is_in_group(DaemonDirector.TARGET_GROUP)
 		var fx := ParticleFx.of(self)
 		if fx != null:
@@ -179,12 +178,12 @@ func _end(why: String) -> void:
 		_director.bolt_done(self)
 
 
-## SIGSTOP's hold: the player it was thrown at, whatever its zombie does now (Codex review); a
-## joiner's by the host's word on its zombie.
+## SIGSTOP's hold: the player it was thrown at, whatever its zombie does now; a joiner's by the
+## host's word on this bolt (Codex review).
 func _held() -> bool:
 	if deciding:
 		return _director.frozen(target)
-	return brain.word_frozen
+	return held_word
 
 
 ## Jumps sideways a hand's width now and then, for a moment, and flickers.

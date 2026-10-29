@@ -199,9 +199,10 @@ extends Node
 ## brains play it (the tells, lunges, dives and scatters at the host's pace), and each bolt as it
 ## is thrown, _daemon_bolt (daemon, bolt id, from, aim), which the joiner's copy throws to draw
 ## only (a bolt the joiner missed, an R reload's, is thrown from the state word; one the host no
-## longer has is stopped). A joiner whose own shot struck a daemon hears it from the host,
-## _daemon_struck (daemon, killed), for its hit marker and, for a kill, its own kill's credit when
-## the daemon's death comes in the state word. The rule (practice, difficulty) rides
+## longer has is stopped; one that strayed is put where the host's is, and SIGSTOP's hold on each
+## is the host's word). A joiner whose own shot struck a daemon hears it from the host,
+## _daemon_struck (daemon, killed), for its hit marker; a kill's credit is in the state word, which
+## names whose kill each daemon's last death was, with the death itself. The rule (practice, difficulty) rides
 ## the match's rules message, _rules, beside light trails; until it comes a joiner's daemons are
 ## the old dummies. In practice nothing of this is sent and dummies stay each player's own, as
 ## since C14. Four new messages (_daemons, _daemon_bolt, _daemon_hit, _daemon_struck) and a
@@ -3133,6 +3134,7 @@ func _tick_daemons(delta: float) -> void:
 	var times := PackedFloat32Array()
 	var life_words := PackedByteArray()
 	var healths := PackedFloat32Array()
+	var killers := PackedInt32Array()
 	var bolt_ids := PackedInt32Array()
 	var bolt_owners := PackedByteArray()
 	var bolt_places := PackedVector3Array()
@@ -3141,7 +3143,7 @@ func _tick_daemons(delta: float) -> void:
 	for bolt in director.bolts():
 		if bolt.live and bolt.id > 0 and brains.has(bolt.brain):
 			bolt_ids.append(bolt.id)
-			bolt_owners.append(brains.find(bolt.brain))
+			bolt_owners.append(brains.find(bolt.brain) | (0x80 if director.frozen(bolt.target) else 0))  # SIGSTOP's hold in the top bit
 			bolt_places.append(_arena.to_local(bolt.global_position))
 			bolt_ways.append((_arena.global_transform.basis.inverse() * bolt.velocity.normalized()).normalized())
 	for brain in brains:
@@ -3152,22 +3154,25 @@ func _tick_daemons(delta: float) -> void:
 		times.append(minf(brain.state_t, DAEMON_TIME_LAST))
 		life_words.append(int(dummy.state))
 		healths.append(maxf(dummy.health(), 0.0))  # a killing hit leaves it below 0
+		killers.append(dummy.killer if dummy.killer != 0 else my_id)  # whose kill its last death was
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths, bolt_ids, bolt_owners, bolt_places, bolt_ways)
+			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths, killers, bolt_ids, bolt_owners, bolt_places, bolt_ways)
 
 
 ## Every daemon of the host's, at the sync rate (C27b): where it is (arena space), its facing,
 ## its brain's state (SIGSTOP's hold in the top bit) and seconds into it, its life and its
-## health, in the director's order (both screens hold the same arena), and every bolt in the air
-## (its id, its daemon, where, its way). A joiner's copies play it.
+## health, whose kill its last death was (so a death and its credit come in one word, Codex
+## review), in the director's order (both screens hold the same arena), and every bolt in the air
+## (its id, its daemon with SIGSTOP's hold in the top bit, where, its way). A joiner's copies play
+## it.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array, bolt_ids: PackedInt32Array, bolt_owners: PackedByteArray, bolt_places: PackedVector3Array, bolt_ways: PackedVector3Array) -> void:
+func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array, killers: PackedInt32Array, bolt_ids: PackedInt32Array, bolt_owners: PackedByteArray, bolt_places: PackedVector3Array, bolt_ways: PackedVector3Array) -> void:
 	if state != State.JOINED or host_practice or _arena == null or not is_instance_valid(_arena):
 		return
 	var n := places.size()
-	if n > DAEMONS_LAST or yaws.size() != n or words.size() != n or times.size() != n or life_words.size() != n or healths.size() != n:
+	if n > DAEMONS_LAST or yaws.size() != n or words.size() != n or times.size() != n or life_words.size() != n or healths.size() != n or killers.size() != n:
 		return
 	var b := bolt_ids.size()
 	if b > BOLTS_LAST or bolt_owners.size() != b or bolt_places.size() != b or bolt_ways.size() != b:
@@ -3185,13 +3190,14 @@ func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: Packe
 		if (words[i] & 0x7f) > DaemonBrain.State.DOWN or life_words[i] > 2:
 			continue
 		brains[i].take_word(at, yaws[i], words[i] & 0x7f, times[i], (words[i] & 0x80) != 0)
-		brains[i].dummy.follow_life(life_words[i], healths[i])
+		brains[i].dummy.follow_life(life_words[i], healths[i], killers[i] == my_id)
 	var live := {}
 	for k in b:
 		var at := bolt_places[k]
-		if bolt_ids[k] <= 0 or bolt_owners[k] >= brains.size() or not at.is_finite() or at.length() > WORLD_LAST or not Combat.dir_ok(bolt_ways[k]):
+		var owner: int = bolt_owners[k] & 0x7f
+		if bolt_ids[k] <= 0 or owner >= brains.size() or not at.is_finite() or at.length() > WORLD_LAST or not Combat.dir_ok(bolt_ways[k]):
 			continue
-		live[bolt_ids[k]] = [brains[bolt_owners[k]], _arena.to_global(at), (_arena.global_transform.basis * bolt_ways[k]).normalized()]
+		live[bolt_ids[k]] = [brains[owner], _arena.to_global(at), (_arena.global_transform.basis * bolt_ways[k]).normalized(), (bolt_owners[k] & 0x80) != 0]
 	director.follow_bolts(live)
 
 
@@ -3235,7 +3241,8 @@ func _tell_struck(shooter: int, dummy: Node, killed: bool) -> void:
 		_daemon_struck.rpc_id(shooter, index, killed)
 
 
-## This player's own shot struck the host's daemon `index`, from the host, and killed it or not.
+## This player's own shot struck the host's daemon `index`, from the host, and killed it or not:
+## its hit marker (the kill's credit comes with the death in the state word).
 @rpc("authority", "call_remote", "reliable")
 func _daemon_struck(index: int, killed: bool) -> void:
 	if state != State.JOINED or _arena == null or not is_instance_valid(_arena):
@@ -3243,15 +3250,13 @@ func _daemon_struck(index: int, killed: bool) -> void:
 	var director := DaemonDirector.of(_arena)
 	if director == null or index < 0 or index >= director.brains().size():
 		return
-	if killed:
-		director.brains()[index].dummy.credit_next_down()
 	daemon_struck.emit(index, killed)
 
 
 ## A joiner's hit on the host's daemon `dummy` (C27b): landed as another player's (its kill not
 ## the host's), the shooter told. True when it landed.
 func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3) -> bool:
-	var landed: bool = dummy.hit_by_other(damage, point, way) == true
+	var landed: bool = dummy.hit_by_other(damage, point, way, shooter) == true
 	if landed:
 		_tell_struck(shooter, dummy, not dummy.is_alive())
 	return landed

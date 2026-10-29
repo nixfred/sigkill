@@ -94,7 +94,7 @@ var word_yaw := 0.0
 var word_state: State = State.HOME
 var word_t := 0.0
 var word_age := 0.0
-## The host's word that SIGSTOP holds this daemon (its bolts hang too).
+## The host's word that SIGSTOP holds this daemon (its bolts take the host's word each).
 var word_frozen := false
 
 var _look := 0.0

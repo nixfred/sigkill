@@ -501,14 +501,22 @@ func _review_checks() -> void:
 	await _drop(main)
 	# A bolt rounding a corner of cover lands only once nothing of the level is between it and the
 	# body: never from beside the wall.
-	main = await _lab({"DummyC": PARKED + Vector3(6.0, 0.0, 0.0)}, Vector3(-8.7, 0.95, 2.1))
+	# The bolt grazes the wall's south face (z 1.8) flying east; the player stands just past the
+	# wall's east end (x -9): within reach of the bolt while it is still beside the wall, but round
+	# its corner.
+	main = await _lab({"DummyC": PARKED + Vector3(6.0, 0.0, 0.0)}, Vector3(-8.6, 0.95, 2.0))
 	life = main.get_node("SoloLife")
 	director = main.get_node("DaemonDirector")
 	zombie = _dummy(main, "DummyC").brain
 	zombie.prey = 1
-	bolt = director.throw_bolt(zombie, Vector3(-14.0, 0.95, 1.55), Vector3.RIGHT)
+	bolt = director.throw_bolt(zombie, Vector3(-14.0, 0.95, 1.79), Vector3.RIGHT)
 	await _wait(func(): return not bolt.live, 240)
 	_check("acceptance: a bolt passing the corner of cover lands only past it, with nothing of the level between it and the player (it met the player at x %.2f, the wall ends at -9)" % bolt.end_at.x, bolt.ended == "player" and bolt.end_at.is_finite() and bolt.end_at.x > -9.0 and bolt.end_at.x < -8.0 and life.health() < 100.0)
+	# A new round ends a daemon's bolts with it.
+	zombie.prey = 1
+	var round_bolt := director.throw_bolt(zombie, Vector3(0.0, 1.0, 6.0), Vector3.BACK)
+	_dummy(main, "DummyC").reset_for_round()
+	_check("a new round leaves none of a daemon's bolts flying", not round_bolt.live and round_bolt.ended == "stopped")
 	# What a killing hit took is the health that was left.
 	life.damage(life.health() - 4.0, _dummy(main, "DummyC"), Vector3.FORWARD)
 	var heard := [0.0]
@@ -526,7 +534,13 @@ func _match_checks() -> void:
 	var host := _branch("Host", Vector3.ZERO)
 	var client := _branch("Client", CLIENT_OFFSET)
 	await _frames(2)
+	# The host's player derezzed alone just before it hosts: the match counts it alive and so does
+	# its player.
+	var host_life = host["main"].get_node("SoloLife")
+	host_life.damage(1000.0, _dummy(host["main"], "DummyA"), Vector3.FORWARD)
+	var died_alone: bool = not host["player"].alive
 	var joined := await _join(host, client)
+	_check("a match begun with the player derezzed alone has it alive, as the match counts it (no player stuck down)", died_alone and host["player"].alive and host["session"].combat.alive(1))
 	var hs = host["session"]
 	var cs = client["session"]
 	var cid: int = cs.my_id
@@ -619,7 +633,10 @@ func _match_checks() -> void:
 	var hung := held_bolt.global_position
 	_dummy(host["main"], "DummyC").hit(1000.0)
 	await _frames(30)
-	_check("in a match a bolt hangs on its target's SIGSTOP, by the host's count, even with its zombie down", stopped >= 0 and held_bolt.live and held_bolt.global_position == hung and hs.combat.health_of(cid) == 100.0, "moved %.3f m" % held_bolt.global_position.distance_to(hung) if held_bolt.live else held_bolt.ended)
+	var drawn_held := cd.bolt_of(held_bolt.id)
+	var drawn_at: Vector3 = drawn_held.global_position if drawn_held != null else Vector3.INF
+	await _frames(12)
+	_check("in a match a bolt hangs on its target's SIGSTOP, by the host's count, even with its zombie down, and the joiner's drawn copy hangs with it (the host's word on the bolt itself)", stopped >= 0 and held_bolt.live and held_bolt.global_position == hung and hs.combat.health_of(cid) == 100.0 and drawn_held != null and drawn_held.live and drawn_held.global_position.distance_to(drawn_at) < 0.01, "moved %.3f m" % held_bolt.global_position.distance_to(hung) if held_bolt.live else held_bolt.ended)
 	client["player"].sigstop.press()
 	await _wait(func(): return not hs.combat.sigstop_on(cid), 60)
 	await _wait(func(): return not held_bolt.live, 180)
@@ -636,6 +653,37 @@ func _match_checks() -> void:
 	var banner: String = client["combat_hud"].banner_text()
 	var feed: String = " / ".join(client["combat_hud"].feed_text())
 	_check("acceptance: a daemon's kill is the match's death: the joiner derezzed, its banner and the feed name the daemon (%s | %s), no kill credited to anyone" % [banner.replace("\n", " "), feed], killed >= 0 and (banner.contains("by rogue.d") or banner.contains("by <defunct>")) and feed.contains("derezzed by a daemon") and hs.combat.states[1]["kills"] == 0 and hs.combat.states[cid]["kills"] == 0)
+	# The host's own hits on its daemons are the match's: root's scale lands on them there; a
+	# joiner's own game never applies it.
+	var host_sudo = host["player"].sudo
+	host_sudo.state.charges = 1
+	var rooted: bool = host_sudo.state.activate()
+	var host_scale: float = host["player"].call("_damage_scale")
+	var joiner_scale: float = client["player"].call("_damage_scale")
+	host["player"].sudo.end_root()
+	_check("the host's own hits on its daemons take root's scale (%.1f), as a joiner's judged by the host do; a joiner's own game never applies it (%.1f)" % [host_scale, joiner_scale], rooted and host_scale == 1.5 and joiner_scale == 1.0)
+	# A bolt meets a joiner where the host last heard it, not where its avatar is drawn a moment
+	# behind: the joiner steps 6 m aside and a bolt thrown at its drawn avatar passes it.
+	hs.combat.states[cid]["health"] = 100.0
+	await _wait(func(): return not cs.dead.get(cid, false), 240)
+	var avatar = hs.avatars[cid]
+	await _wait(func(): return avatar.visible and not avatar.dead and avatar.global_position.distance_to(host["main"].to_global(avatar.latest_position())) < 0.05, 120)
+	# Drawn two seconds behind for this check: the avatar stays where the joiner was while the host
+	# already hears where it went (in play the lag is the interpolation's 0.1 s).
+	avatar.interp_delay_s = 2.0
+	await _frames(6)
+	var old_at: Vector3 = avatar.global_position
+	client["player"].global_position = client["player"].global_position + Vector3(6.0, 0.0, 0.0)
+	var heard := await _wait(func(): return host["main"].to_global(avatar.latest_position()).distance_to(old_at) > 3.0, 30)
+	var lagging: bool = avatar.global_position.distance_to(old_at) < 0.3
+	var newest: bool = hd.prey_point(cid).distance_to(host["main"].to_global(avatar.latest_position())) < 0.001 and hd.prey_point(cid).distance_to(avatar.global_position) > 3.0
+	var health_before: float = hs.combat.health_of(cid)
+	zombie_host.prey = cid
+	var dodge_from := old_at + Vector3(0.0, 0.0, -1.0)
+	var dodged := hd.throw_bolt(zombie_host, dodge_from, Vector3.BACK)
+	await _wait(func(): return not dodged.live, 120)
+	avatar.interp_delay_s = 0.1
+	_check("acceptance: the host hunts and meets a joiner where it last heard it: with the avatar still drawn where the joiner was (heard after %d frames), the director's place for it is the newest one, and a bolt thrown at the drawn avatar passes it, landing nothing (%s)" % [heard, dodged.ended], heard >= 0 and lagging and newest and dodged.ended != "player" and dodged.met != cid and hs.combat.health_of(cid) == health_before, "drawn %.2f m off the old place" % avatar.global_position.distance_to(old_at))
 	# The host turns practice on: every player's dummies are its own old ones again.
 	GameSettings.current().set_value("gameplay", "practice", true)
 	var rested := await _wait(func(): return cs.host_practice and cd.mode == DaemonDirector.Mode.REST and hd.mode == DaemonDirector.Mode.REST, 120)
@@ -643,6 +691,14 @@ func _match_checks() -> void:
 	var own := _dummy(client["main"], "DummyB")
 	_check("acceptance: the host's practice: the joiner hears it, every director rests, and a joiner's shot derezzes its own dummy locally again, as since C14", rested >= 0 and own.hit(1000.0) and not own.is_alive())
 	GameSettings.current().set_value("gameplay", "practice", false)
+	# The host leaving the match: every bolt thrown in it ends (hosting and alone are both the
+	# brains' own mode, so the match's end is the change).
+	await _wait(func(): return hd.mode == DaemonDirector.Mode.RUN, 60)
+	zombie_host.prey = 1
+	var last := hd.throw_bolt(zombie_host, host["player"].global_position + Vector3(0.0, 0.3, -6.0), Vector3.BACK)
+	hs.leave()
+	await _frames(3)
+	_check("a match ending stops every bolt thrown in it, landing nothing alone", last != null and not last.live and last.ended == "stopped")
 	await _drop_side(client)
 	await _drop_side(host)
 

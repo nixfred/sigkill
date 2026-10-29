@@ -51,6 +51,10 @@ var _arena: Node3D
 var _bolt_id := 0
 var _clock := 0.0
 var _ended := {}
+## Whether a match was on at the last step: a match starting or ending is a mode's change too.
+var _was_online := false
+## A joiner's bolt further than this from the host's word of it is put where the host's is.
+const BOLT_SNAP_M := 0.5
 
 
 static func of(node: Node) -> DaemonDirector:
@@ -155,15 +159,17 @@ func aggression() -> float:
 
 func _mode_now() -> void:
 	var was := mode
+	var was_online := _was_online
+	_was_online = _online()
 	if practice_on():
 		mode = Mode.REST
 	elif _online() and not session.is_hosting():
 		mode = Mode.FOLLOW
 	else:
 		mode = Mode.RUN
-	if mode != was:
+	if mode != was or _was_online != was_online:
 		# Every bolt in the air was thrown under the old mode: practice coming on, a match starting
-		# or ending, none of them lands anything now (Codex review).
+		# or ending (hosting is as RUN as alone is), none of them lands anything now (Codex review).
 		for bolt in _bolts:
 			bolt.stop()
 
@@ -301,6 +307,25 @@ func throw_bolt(brain: DaemonBrain, from: Vector3, dir: Vector3, bolt_id: int = 
 	return null
 
 
+## Every bolt of `brain`'s ends now: its daemon's reset (a new round) leaves nothing of it flying.
+func stop_bolts_of(brain: DaemonBrain) -> void:
+	for bolt in _bolts:
+		if bolt.live and bolt.brain == brain:
+			bolt.stop()
+
+
+## The players' avatars' hit volumes in a match: a bolt passes them and meets each player where it
+## was last heard (bodies()), never where its avatar is drawn a moment behind (Codex review).
+func avatar_rids() -> Array[RID]:
+	var out: Array[RID] = []
+	if _online():
+		for id in session.avatars:
+			var avatar = session.avatars[id]
+			if avatar != null and is_instance_valid(avatar):
+				out.append(avatar.hit_rid())
+	return out
+
+
 ## The bolt in flight with id `bolt_id`, or null.
 func bolt_of(bolt_id: int) -> GlitchBolt:
 	for bolt in _bolts:
@@ -309,19 +334,27 @@ func bolt_of(bolt_id: int) -> GlitchBolt:
 	return null
 
 
-## On a joiner (C27b), the host's bolts in the air now, id -> [brain, where, way] (world space):
-## one this screen does not draw is thrown from where the host's is (a launch word lost to an R
-## reload); one it draws that the host no longer has is stopped once its launch word's grace is
-## over. One that ended here a moment ago is not thrown again.
+## On a joiner (C27b), the host's bolts in the air now, id -> [brain, where, way, held] (world
+## space): one this screen does not draw is thrown from where the host's is (a launch word lost to
+## an R reload); one it draws that the host no longer has is stopped once its launch word's grace
+## is over; one it draws takes the host's word on SIGSTOP's hold and is put where the host's is
+## when it has strayed (Codex review). One that ended here a moment ago is not thrown again.
 func follow_bolts(live: Dictionary) -> void:
 	for bolt in _bolts:
 		if bolt.live and bolt.id > 0 and not live.has(bolt.id) and bolt.age() > BOLT_GRACE_S:
 			bolt.stop()
 	for bolt_id in live:
-		if bolt_of(bolt_id) != null or _clock - float(_ended.get(bolt_id, -INF)) < BOLT_GRACE_S:
-			continue
 		var word: Array = live[bolt_id]
-		throw_bolt(word[0], word[1], word[2], bolt_id)
+		var drawn := bolt_of(bolt_id)
+		if drawn == null:
+			if _clock - float(_ended.get(bolt_id, -INF)) < BOLT_GRACE_S:
+				continue
+			drawn = throw_bolt(word[0], word[1], word[2], bolt_id)
+			if drawn == null:
+				continue
+		drawn.held_word = word[3]
+		if drawn.global_position.distance_to(word[1]) > BOLT_SNAP_M:
+			drawn.global_position = word[1]
 	for bolt_id in _ended.keys():
 		if _clock - float(_ended[bolt_id]) >= BOLT_GRACE_S:
 			_ended.erase(bolt_id)

@@ -13,8 +13,9 @@ extends SceneTree
 ## one view at the low and the high preset side by side (with each preset's GPU time printed), the
 ## same view with both post effects on, and every weapon held at the spawn as a4-weapon-* stills.
 ## The a4 set uses nothing A4 made, so it shoots the same views from a copy from before A4. c27b,
-## the daemons fighting back, in play: a rogue daemon mid-lunge, a zombie's bolt in flight, and
-## the hit's red vignette; every other set plays in practice, the old dummies, as it was shot.
+## the daemons fighting back, in play: a rogue daemon mid-lunge, a zombie's bolt in flight, the
+## hit's red vignette and the death it ends in; every other set plays in practice, the old dummies,
+## as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -102,7 +103,9 @@ const C27B_PLAYER_AT := Vector3(0.0, 0.95, 15.0)
 const C27B_ROGUE_AT := Vector3(0.6, 0.0, 12.45)
 const C27B_LUNGE_SHARE := 0.45
 const C27B_ZOMBIE_AT := Vector3(-3.2, 0.0, 7.4)
-const C27B_BOLT_FRAMES := 26
+const C27B_BOLT_FRAMES := 40
+## Frames after the player's death for its still: the derezz's voxels flying, the banner up.
+const C27B_DOWN_FRAMES := 14
 ## Under the floor: where a daemon a still does not use waits, out of every sight line.
 const C27B_PARKED := Vector3(0.0, -50.0, 0.0)
 
@@ -341,7 +344,8 @@ func _a4() -> void:
 
 
 ## c27b: the daemons fighting back, from the player's own view: a rogue daemon mid-lunge, the hit's
-## vignette as its slash lands, and a zombie's amber bolt in flight. Every daemon a still does not
+## vignette as its slash lands, the player derezzed by its next one (the banner naming it), and a
+## zombie's amber bolt in flight. Every daemon a still does not
 ## use waits under the floor.
 func _c27b() -> void:
 	var targets := _main.get_node("Arena/Targets")
@@ -366,6 +370,15 @@ func _c27b() -> void:
 	await _frames(1)
 	print("capture: its slash landed %d frames later" % waited)
 	await _save("c27b-hit")
+	# Its next slash takes the last of the player's health: the derezz and the banner naming it.
+	life.damage(life.health() - 4.0, rogue, Vector3.FORWARD)
+	waited = 0
+	while life.alive():
+		await _frames(1)
+		waited += 1
+	await _frames(C27B_DOWN_FRAMES)
+	print("capture: derezzed by its next slash %d frames later" % waited)
+	await _save("c27b-down")
 	_c27b_place(rogue, C27B_PARKED)
 	life.reset_for_round()
 	var zombie: Node3D = targets.get_node("DummyC")

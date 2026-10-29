@@ -116,8 +116,13 @@ func _physics_process(delta: float) -> void:
 	flash_left = maxf(flash_left - delta, 0.0)
 	if _online():
 		if not alive():
-			combat.respawn(ME)  # a match owns the player now: nothing of this death carries over,
-		return  # and the match's own flow sets the player alive or down (Codex review)
+			# A match began with the player down alone: that death is over, the match owns the
+			# life now, and it counts this player alive unless its own word says down (Codex
+			# review): hosting adds the host alive, a join adds the joiner alive.
+			combat.respawn(ME)
+			if player != null and is_instance_valid(player) and not player.alive and not session.dead.get(session.my_id, false):
+				player.set_alive(true)
+		return
 	for id in combat.tick(delta):
 		if id == ME:
 			_respawn(true)

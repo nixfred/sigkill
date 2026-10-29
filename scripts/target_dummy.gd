@@ -56,10 +56,13 @@ var _box: CollisionShape3D
 ## host's own shots' kills on the host, a joiner's kills (the host's word, _daemon_struck) on that
 ## joiner. Every death is told (downed); what listens for this player's kills reads this.
 var credited := true
-## The next death's credit: false for a hit another player's shot landed (the host judging a
-## joiner's), and on a joiner true only when the host said the kill was its own.
+## On the host, whose kill its last death was: another player's id, or 0 for this machine's own
+## player (C27b; sent in the state word, so a joiner's copy credits it with the death itself).
+var killer := 0
+## The next death's credit and killer: a hit another player's shot landed (the host judging a
+## joiner's) credits none here and names that player.
 var _credit := true
-var _credit_next := false
+var _killer := 0
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -156,17 +159,13 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 
 ## A hit another player's shot landed (C27b: the host judging a joiner's shot at its daemon): as
 ## hit(), but a kill is not this player's.
-func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> bool:
+func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, shooter: int = 0) -> bool:
 	_credit = false
+	_killer = shooter
 	var landed := hit(damage, point, direction)
 	_credit = true
+	_killer = 0
 	return landed
-
-
-## On a joiner, the host's word that this player's own shot killed this daemon (C27b): its death,
-## when the host's word of it comes, is this player's kill.
-func credit_next_down() -> void:
-	_credit_next = true
 
 
 ## True while this daemon follows the host's word (C27b): a joiner's, in a match where they fight.
@@ -198,6 +197,7 @@ func _physics_process(delta: float) -> void:
 
 func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	credited = _credit
+	killer = 0 if _credit else _killer
 	_go_down()
 	# The voxels get a push along the killing shot: its real direction when the shooter
 	# gives one, otherwise from where it struck toward the body's centre.
@@ -252,18 +252,18 @@ func _finish_respawn() -> void:
 
 
 ## On a joiner in a match where the daemons fight (C27b), the host's word on this daemon's life:
-## down when the host's is (its derezz plays here, counted as nobody's kill on this screen), back
-## when the host's is, and its health, a drop flashing it as a hit does.
-func follow_life(word: int, host_health: float) -> void:
+## down when the host's is (its derezz plays here, this player's kill when `mine`, the host's word
+## of whose kill it was), back when the host's is, and its health, a drop flashing it as a hit does.
+func follow_life(word: int, host_health: float, mine: bool = false) -> void:
 	match word:
 		State.DEREZZING:
 			if state == State.ALIVE:
-				_derezz_on_word()
+				_derezz_on_word(mine)
 			elif state == State.RESPAWNING:
 				_hide_down()  # down again before it was back: hidden, with no second burst
 		State.RESPAWNING:
 			if state == State.ALIVE:
-				_derezz_on_word()
+				_derezz_on_word(mine)
 			if state == State.DEREZZING:
 				_begin_rematerialise()
 		State.ALIVE:
@@ -277,10 +277,9 @@ func follow_life(word: int, host_health: float) -> void:
 		_health = clampf(host_health, 0.0, max_health)
 
 
-## Down on the host's word (C27b): this player's kill only when the host said so.
-func _derezz_on_word() -> void:
-	_credit = _credit_next
-	_credit_next = false
+## Down on the host's word (C27b): this player's kill only when the host's word says so.
+func _derezz_on_word(mine: bool) -> void:
+	_credit = mine
 	_start_derezz(Vector3.INF, Vector3.ZERO)
 	_credit = true
 
@@ -296,6 +295,9 @@ func _hide_down() -> void:
 func reset_for_round() -> void:
 	if _follows():
 		return  # a joiner's copy of the host's daemon: the host's word owns its life (C27b)
+	var director := DaemonDirector.of(self)
+	if director != null and brain != null:
+		director.stop_bolts_of(brain)  # a new round leaves none of its bolts flying (Codex review)
 	if state == State.DEREZZING:
 		_begin_rematerialise()
 	if state == State.RESPAWNING:
