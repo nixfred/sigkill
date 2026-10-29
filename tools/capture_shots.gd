@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3 or c29):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29 or c30):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -36,7 +36,12 @@ extends SceneTree
 ## whole, "PERMISSION DENIED" over it), the strip's two rows in play cut from that frame and shown twice
 ## the size, a zombie half frozen with the meter under the crosshair, a frozen daemon shattering under the
 ## cannon, the hunter frozen, and Black ICE only slowed ("Operation not permitted"); then it prints what
-## the beam and the frost cost. Every other set plays in practice, the old dummies, as it was shot.
+## the beam and the frost cost; c30, pipe |: one chain arcing across four daemons, the chain written out
+## under the crosshair, the strip's two rows with the pipe drawn cut from that frame and shown three times
+## the size, a chain through a daemon chmod 000 froze (it conducts, and shatters), a chain stopped by a
+## wall (the daemon behind it untouched), a chain from a zombie through the hunter (frozen) to a node, and Black ICE
+## refusing it ("pipe: broken pipe"); then it prints what a chain costs. Every other set plays in practice,
+## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -247,6 +252,32 @@ const C29_BLACK_SPOT := 3
 const C29_BLACK_OFF := Vector3(1.5, 0.95, 8.5)
 const C29_BLACK_FRAMES := 50
 const I3_LINEUP_LOOK := Vector3(0.0, 2.1, 10.0)
+## c30 (C30): pipe |'s slot; where the player stands; the four daemons of the chain (arena space: rogue.d
+## first, aimed at, then the zombie, the runaway and the second zombie), toughened so they stand through it;
+## the frames after the shot for its still (every link lit); the strip's corner and its scale; the frozen
+## link's daemons (rogue.d aimed at in the middle, the frozen zombie to its left, the runaway to its right); the
+## wall's (rogue.d before the low wall, the zombie behind it, in reach, its top showing over it); the ICE
+## chain's (round 2: the second zombie, the hunter put over the floor and frozen, the jam node at its post); Black
+## ICE's spot and stand.
+const C30_SLOT := 10
+const C30_PLAYER_AT := Vector3(1.6, 0.95, 16.0)
+const C30_CHAIN := [Vector3(0.6, 0.0, 9.6), Vector3(4.6, 0.0, 7.2), Vector3(1.2, 1.0, 4.2), Vector3(-3.4, 0.0, 6.4)]
+const C30_TOUGH := 400.0
+const C30_CHAIN_FRAMES := 20
+const C30_STRIP_CROP := Rect2i(1580, 935, 340, 120)
+const C30_STRIP_SCALE := 3
+const C30_FROZEN_FROM := Vector3(1.0, 0.95, 16.8)
+const C30_FROZEN := [Vector3(1.0, 0.0, 10.6), Vector3(-2.0, 0.0, 9.8), Vector3(4.8, 1.0, 10.2)]
+const C30_FROZEN_FRAMES := 12
+## Frames for the round's first-kill callout to come and go before the shatter (its own kill shows none).
+const C30_CALLOUT_FRAMES := 180
+const C30_WALL_FROM := Vector3(3.2, 0.95, 9.6)
+const C30_WALL := [Vector3(2.2, 0.0, 4.6), Vector3(-1.0, 0.0, -0.8)]
+const C30_ICE_FROM := Vector3(4.0, 0.95, -0.5)
+const C30_ICE_ROGUE := Vector3(-0.5, 0.0, -0.8)
+const C30_ICE_HUNTER := Vector3(-3.0, 0.0, -2.6)
+const C30_BLACK_SPOT := 3
+const C30_BLACK_OFF := Vector3(1.5, 0.95, 8.5)
 
 var _main: Node
 var _player: Node
@@ -308,6 +339,11 @@ func _run() -> void:
 		return
 	if _set == "c29":
 		await _c29()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c30":
+		await _c30()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1440,6 +1476,173 @@ func _c29() -> void:
 	print("capture: Black ICE slowed %.0f%%, frozen %s, seals %d (\"%s\")" % [b.slow * 100.0, b.chmod_frozen(), b.seals_left, hud.freeze_hud().line_text()])
 	await _save("c29-black")
 	_player.hold_fire = false
+
+
+func _c30() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var hud = _main.get_node("Hud")
+	var life := _main.get_node("SoloLife")
+	var order := ["DummyA", "DummyB", "DummyD", "DummyC"]
+	# The chain: four daemons standing (practice), toughened so every link lands and none derezzes, the
+	# aim on rogue.d; the still once every link is lit.
+	await _stand(C30_PLAYER_AT, _main.to_global(C30_CHAIN[0] + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	_player.select_slot(C30_SLOT)
+	await _frames(SETTLE_FRAMES)
+	for i in order.size():
+		var dummy: Node3D = targets.get_node(order[i])
+		_c27b_place(dummy, _main.to_global(C30_CHAIN[i]))
+		_c30_tough(dummy)
+	await _frames(20)
+	await _c30_fire()
+	await _frames(C30_CHAIN_FRAMES)
+	print("capture: the chain \"%s\" / \"%s\" (%d links lit, %d packets riding it); the strip \"%s\" over \"%s\", \"%s\", \"%s\"" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), _player.pipe_arc().lit(), _player.pipe_arc().packets(), hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
+	var frame := await _grab()
+	frame.save_png(OUT.path_join("c30-chain.png"))
+	_shots += 1
+	var corner := frame.get_region(C30_STRIP_CROP)
+	corner.resize(C30_STRIP_CROP.size.x * C30_STRIP_SCALE, C30_STRIP_CROP.size.y * C30_STRIP_SCALE, Image.INTERPOLATE_NEAREST)
+	corner.save_png(OUT.path_join("c30-strip.png"))
+	_shots += 1
+	await _chain_cost(targets, order)
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	await _frames(60)
+	# Through the frozen: the zombie frozen by chmod 000; the chain from rogue.d conducts through it (and
+	# shatters it) on to the runaway. The round's first kill made first, off screen, so its callout is gone.
+	targets.get_node("DummyC").hit(1000.0)
+	await _frames(C30_CALLOUT_FRAMES)
+	await _stand(C30_FROZEN_FROM, _main.to_global(C30_FROZEN[0] + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	for i in 3:
+		var dummy: Node3D = targets.get_node(order[[0, 1, 2][i]])
+		_c27b_place(dummy, _main.to_global(C30_FROZEN[i]))
+		_c30_tough(dummy)
+	var frozen: Node3D = targets.get_node("DummyB")
+	frozen.max_health = 1.0
+	frozen.set("_health", 1.0)
+	frozen.chill(10.0)
+	hud.round_hud().stats.streak = 0  # no streak callout over the still: this shot is a fresh run of hits
+	await _frames(40)
+	_player.inventory.buffer(C30_SLOT).empty()
+	await _c30_fire()
+	await _frames(C30_FROZEN_FRAMES)
+	print("capture: through the frozen zombie: \"%s\" / \"%s\", %d shatters" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), frozen.shatters])
+	await _save("c30-frozen")
+	for name in order:
+		_c27b_place(targets.get_node(name), C27B_PARKED + Vector3(targets.get_node(name).get_index() * 3.0, 0.0, 0.0))
+	await _frames(90)
+	# The wall: rogue.d in the open, the zombie in reach but behind the low wall: one link.
+	await _stand(C30_WALL_FROM, _main.to_global(C30_WALL[0] + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	var front: Node3D = targets.get_node("DummyA")
+	var behind: Node3D = targets.get_node("DummyB")
+	_c27b_place(front, _main.to_global(C30_WALL[0]))
+	_c27b_place(behind, _main.to_global(C30_WALL[1]))
+	_c30_tough(front)
+	_c30_tough(behind)
+	await _frames(30)
+	_player.inventory.buffer(C30_SLOT).empty()
+	await _c30_fire()
+	await _frames(C30_CHAIN_FRAMES)
+	print("capture: the wall: \"%s\" / \"%s\"; the zombie behind it %.0f of %.0f" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), behind.health(), C30_TOUGH])
+	await _save("c30-wall")
+	_c27b_place(front, C27B_PARKED)
+	_c27b_place(behind, C27B_PARKED + Vector3(3.0, 0.0, 0.0))
+	await _frames(90)
+	# ICE: round 2, a zombie (slow on its feet: the daemons fight here), the hunter (frozen) and the jam node
+	# in one chain.
+	GameSettings.current().set_value("gameplay", "ice", true)
+	GameSettings.current().set_value("gameplay", "practice", false)
+	await _frames(10)
+	var ice: IceDirector = _main.get_node(IceDirector.NODE_NAME)
+	hud.round_hud()._start_round(2)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	life.combat.states[1]["protect_left"] = 1000.0  # out of reach of the hunter's lance while it is set up
+	var rogue: Node3D = targets.get_node("DummyC")
+	await _stand(C30_ICE_FROM, _main.to_global(C30_ICE_ROGUE + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
+	_c27b_place(rogue, _main.to_global(C30_ICE_ROGUE))
+	_c30_tough(rogue)
+	var hunter := ice.hunter
+	if hunter != null:
+		hunter.global_position = _main.to_global(C30_ICE_HUNTER)
+		hunter.chill(10.0)  # frozen by chmod 000: it conducts, and its lance's tell is called off
+	life.combat.states[1]["protect_left"] = 0.0
+	await _frames(3)
+	_player.inventory.buffer(C30_SLOT).empty()
+	await _c30_fire()
+	await _frames(C30_CHAIN_FRAMES)
+	print("capture: the ICE chain \"%s\" / \"%s\"" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text()])
+	await _save("c30-ice")
+	_c27b_place(rogue, C27B_PARKED)
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	await _frames(30)
+	# Black ICE: round 4, out at its spot; the pipe only flashes it: "pipe: broken pipe".
+	hud.round_hud()._start_round(4)
+	await _frames(5)
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	if ice.hunter != null:
+		for i in 3:
+			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
+	var spot_at: Vector3 = IceDirector.BLACK_SPOTS[C30_BLACK_SPOT]
+	await _stand(spot_at + C30_BLACK_OFF, _main.to_global(spot_at + Vector3.UP * 2.6))
+	var b := ice.summon_black(C30_BLACK_SPOT)
+	b.phase_t = b.tuning.tell_s
+	b.step(0.0, ice.daemons)
+	await _frames(20)
+	var to: Vector3 = b.global_position + Vector3.UP * 2.4 - _player.get_node("Head/Camera").global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	_player.inventory.buffer(C30_SLOT).empty()
+	await _c30_fire()
+	await _frames(C30_CHAIN_FRAMES)
+	print("capture: Black ICE: \"%s\" / \"%s\", seals %d" % [hud.pipe_hud().line_text(), hud.pipe_hud().small_text(), b.seals_left])
+	await _save("c30-black")
+
+
+## One click of fire, the pipe drawn (C30).
+func _c30_fire() -> void:
+	await physics_frame
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
+
+
+## A daemon toughened for a still (C30): every link lands on it and it stands.
+func _c30_tough(dummy: Node3D) -> void:
+	dummy.max_health = C30_TOUGH
+	dummy.set("_health", C30_TOUGH)
+
+
+## What a chain costs (C30): the GPU's time with a four-link chain held drawn against with it hidden, twice
+## each in turn, and the time this machine took to build one.
+func _chain_cost(targets: Node, order: Array) -> void:
+	var arc: Node3D = _player.pipe_arc()
+	var times := []
+	for i in 2:
+		_player.inventory.buffer(C30_SLOT).empty()
+		await _c30_fire()
+		await _frames(C30_CHAIN_FRAMES)
+		arc.set("_age", PipeArc.LINK_DELAY_S * 4.0)
+		arc.set_process(false)
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		arc.visible = false
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		arc.visible = true
+		arc.set_process(true)
+	var pool := PipeChain.pool_in(_main)
+	var first := PipeChain.target_of(targets.get_node(order[0]))
+	var tuning: PipeTuning = load("res://resources/pipe_chain.tres").pipe
+	var sight := func(a: Vector3, b: Vector3) -> bool: return _player.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, 1)).is_empty()
+	var t0 := Time.get_ticks_usec()
+	var links: Array = []
+	for i in 100:
+		links = PipeChain.build(first, first["middle"], pool, sight, tuning, 26.0, false)
+	var built := float(Time.get_ticks_usec() - t0) / 100.0
+	print("capture: a chain of %d links builds in %.0f microseconds; the GPU %.2f and %.2f ms a frame with one drawn, %.2f and %.2f without" % [links.size(), built, times[0], times[2], times[1], times[3]])
 
 
 ## What the beam and the frost cost (C29): the beam's nodes, the frost's crust sets, and the GPU's time

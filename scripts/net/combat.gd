@@ -71,6 +71,11 @@ extends RefCounted
 ## the session gives what it meets the tick's seconds of beam, a player through chill_player() (never a
 ## dead or spawn-protected one). A frozen player's shots and throws are dropped ("frozen") until it
 ## thaws. A death and a new life thaw it and refill its tank.
+##
+## pipe | (C30): the host owns every player's pipe buffer too (scripts/weapons/pipe_buffer.gd, a little
+## more lenient than the player's own by the fire-rate tolerance). A chain is a shot of the chain beam:
+## believed only from a buffer that is not blocked (else dropped and counted "buffer"), it writes into it
+## (root writes nothing); the session builds and lands the chain. A new life empties it.
 
 const Tuning = preload("res://scripts/net/combat_tuning.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -108,6 +113,8 @@ const DROP_JAM := "ice_jam"
 ## A freeze weapon's tick from a venting tank, and any shot or throw from a frozen player (C29).
 const DROP_COOLANT := "coolant"
 const DROP_FROZEN := "frozen"
+## A chain from a blocked pipe buffer (C30).
+const DROP_BUFFER := "buffer"
 ## How far a throw's aim may stray from the view the host last had of the thrower, in degrees:
 ## the view lags by a send interval and the network's delay.
 const AIM_TOLERANCE_DEG := 45.0
@@ -152,7 +159,7 @@ func _init(combat_tuning: Tuning, weapon_defs: Array, swap_seconds: float = 0.3,
 
 
 func add_player(id: int) -> void:
-	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning), "frost": Frost.new(Frost.Kind.PLAYER), "coolant": _new_coolant()}
+	states[id] = {"health": tuning.max_health, "dead": false, "respawn_left": 0.0, "protect_left": 0.0, "last_fire": -INF, "last_seq": 0, "kills": 0, "deaths": 0, "drawn": first_weapon, "ready_at": -INF, "reloading": "", "reload_done_at": 0.0, "ammo": _full_ammo(), "meter": 0.0, "stop": SigstopMeter.new(sigstop_tuning), "sudo": SudoState.new(sudo_tuning), "frost": Frost.new(Frost.Kind.PLAYER), "coolant": _new_coolant(), "buffer": _new_buffer()}
 	record.join(id)
 
 
@@ -169,6 +176,26 @@ func freeze_def() -> WeaponDefScript:
 func _new_coolant() -> Coolant:
 	var def := freeze_def()
 	return Coolant.new(def.freeze_tuning(), tuning.fire_rate_tolerance) if def != null else null
+
+
+## The loadout's chain beam (pipe |, C30), or null when it has none.
+func chain_def() -> WeaponDefScript:
+	for id in weapons:
+		if weapons[id].is_chain():
+			return weapons[id]
+	return null
+
+
+## An empty pipe buffer for a new player, by the chain beam's numbers and the fire-rate tolerance; null
+## with no chain beam.
+func _new_buffer() -> PipeBuffer:
+	var def := chain_def()
+	return PipeBuffer.new(def.pipe_tuning(), tuning.fire_rate_tolerance) if def != null else null
+
+
+## `id`'s pipe buffer as the host counts it (C30), or null.
+func buffer_of(id: int) -> PipeBuffer:
+	return states[id]["buffer"] if states.has(id) else null
 
 
 ## chmod 000's beam on player `victim` for `seconds` (C29): its freeze meter builds, never on a dead or
@@ -397,6 +424,8 @@ func tick(delta: float) -> Array:
 		s["frost"].tick(delta)  # chmod 000's freeze meter and the coolant (C29)
 		if s["coolant"] != null:
 			s["coolant"].tick(delta)
+		if s["buffer"] != null:
+			s["buffer"].tick(delta)  # pipe |'s buffer drains (C30)
 		if s["protect_left"] > 0.0:
 			s["protect_left"] = maxf(s["protect_left"] - delta, 0.0)
 		if s["dead"] and s["respawn_left"] > 0.0:
@@ -442,6 +471,8 @@ func validate(shooter: int, seq: int, life: int, weapon: String, origin: Vector3
 		return _drop(DROP_METER)
 	if def.is_freeze() and s["coolant"] != null and not s["sudo"].is_root() and not s["coolant"].ready():
 		return _drop(DROP_COOLANT)  # a venting tank (C29)
+	if def.is_chain() and s["buffer"] != null and not s["sudo"].is_root() and not s["buffer"].ready():
+		return _drop(DROP_BUFFER)  # a blocked buffer (C30)
 	if not origin_ok(origin, eye, tuning.origin_tolerance_m):
 		return _drop(DROP_ORIGIN)
 	return ""
@@ -497,6 +528,8 @@ func accept(shooter: int, seq: int, weapon: String, now: float) -> void:
 		s["meter"] = 0.0  # one full meter, one shot
 	if weapons[weapon].is_freeze() and s["coolant"] != null and not s["sudo"].is_root():
 		s["coolant"].spend(weapons[weapon].fire_cooldown)  # a beam tick's coolant (C29)
+	if weapons[weapon].is_chain() and s["buffer"] != null and not s["sudo"].is_root():
+		s["buffer"].write()  # a chain's write (C30)
 	a["last_fire"] = now
 
 
@@ -609,6 +642,8 @@ func respawn(id: int) -> void:
 	s["frost"].clear()  # thawed, its tank full (C29)
 	if s["coolant"] != null:
 		s["coolant"].refill()
+	if s["buffer"] != null:
+		s["buffer"].empty()  # and its pipe buffer empty (C30)
 	_sudo_changed[id] = true
 	record.respawn(id)  # its time alive starts again (C23)
 

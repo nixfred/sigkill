@@ -96,6 +96,15 @@ extends CharacterBody3D
 ## falls as its meter fills, and frozen it cannot move, jump, slide, fire, throw, draw or reload, only
 ## look round, until it thaws.
 ##
+## pipe | (C30), slot 11 (Shift+2): a click runs one chain while its buffer is not blocked (the inventory's
+## pipe buffer). One ray along the aim to fire_range meets the first target; the chain arcs on from it
+## (scripts/weapons/pipe_chain.gd, over this arena's daemons and ICE and, in a match, the other players'
+## avatars) and is drawn racing link to link (scripts/weapons/pipe_arc.gd). Alone and hosting, this arena's
+## daemons and ICE on it take their links here (a joiner's copies take nothing: the host judges); in a
+## match the intent goes as for any shot, and the host judges the players on it (and a joiner's whole
+## chain). The host's own chain is the one built here (pipe_last()), so its judgement never sees an arena
+## this chain's own hits already changed.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -133,6 +142,9 @@ const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
 const CronMine = preload("res://scripts/weapons/cron_mine.gd")
 const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 const FreezeBeamScript = preload("res://scripts/weapons/freeze_beam.gd")
+const PipeArcScript = preload("res://scripts/weapons/pipe_arc.gd")
+## pipe |'s chain (C30): the level's own layer, which a chain never arcs through.
+const LEVEL_MASK := 1
 ## A daemon's middle, above its feet: where a blast aims at it.
 const DUMMY_MIDDLE_M := 0.9
 ## A throw leaves this far in front of the eyes, or this far short of a wall nearer than that.
@@ -311,6 +323,18 @@ var _fire_held := false
 var _fire_down := false
 var _freeze_beam: Node3D
 var _beaming := 0.0
+## pipe | (C30): chains run, the last one's links (PipeChain's dictionaries: who, where, how hard) and how
+## it ended ("" a chain, "miss", "wall", "black", "protected"; chain_walled when a wall hid the next target
+## in reach), the physics frame it ran in and the seconds since; its look.
+var chains_run := 0
+var last_chain: Array = []
+var chain_end := ""
+var chain_walled := false
+var chain_frame := -1
+var chain_age := INF
+## Seconds since a press was refused for a full buffer (C30), for the HUD's note.
+var blocked_age := INF
+var _pipe_arc: Node3D
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
 
@@ -402,6 +426,8 @@ func _ready() -> void:
 	frost = Frost.new(Frost.Kind.PLAYER)
 	_freeze_beam = FreezeBeamScript.new()
 	add_child(_freeze_beam)
+	_pipe_arc = PipeArcScript.new()
+	add_child(_pipe_arc)
 
 
 func _notification(what: int) -> void:
@@ -1046,12 +1072,19 @@ func _step_weapon(delta: float) -> void:
 				_apply_recoil()
 			elif why == Inventory.BLOCK_EMPTY:
 				reload_started.emit(_w.id)  # fire on an empty magazine started a reload
+			elif why == Inventory.BLOCK_BUFFER:
+				blocked_age = 0.0  # the pipe's buffer is full: the HUD says so (C30)
 	if _throw_pressed and alive:
 		quick_throw()
 	_throw_pressed = false
 	if _w.is_ping():
 		_viewmodel.set_charge(ping_ready())  # the dish's rings relight as the cooldown comes back (C28)
 	_step_beam(delta)
+	chain_age += delta
+	blocked_age += delta
+	if _w.is_chain():
+		var pipe = inventory.buffer(inventory.current)
+		_viewmodel.set_charge(pipe.share() if pipe != null else 0.0)  # the gauge's bars: the buffer's fill (C30)
 	_place_viewmodel(delta)
 
 
@@ -1191,6 +1224,9 @@ func _fire() -> void:
 		return
 	if _w.is_freeze():
 		_fire_freeze()
+		return
+	if _w.is_chain():
+		_fire_pipe()
 		return
 	shots_fired += 1
 	var origin := _camera.global_position
@@ -1463,6 +1499,100 @@ func _fire_freeze() -> void:
 	_beaming = maxf(_beaming, 0.01)
 	_kick()
 	fire_intent.emit(origin, forward, _w.id)
+
+
+## One chain of pipe | (C30): one ray along the aim meets the first target, the chain arcs on from it over
+## everything that could be a link here, and is drawn from the muzzle. Alone and hosting, this arena's
+## daemons and ICE on it take their links now (the frozen-hit rule, exploit's seams and ICE's cap are their
+## own); a joiner's copies take nothing. In a match the intent goes as for any shot: the host judges the
+## players on it (this chain itself when this is the host: pipe_last()).
+func _fire_pipe() -> void:
+	shots_fired += 1
+	chains_run += 1
+	var origin := _camera.global_position
+	var forward := -_camera.global_transform.basis.z
+	var far := origin + forward * _w.fire_range
+	var query := PhysicsRayQueryParameters3D.create(origin, far, _w.hit_mask)
+	query.exclude = _not_me()
+	var result := get_world_3d().direct_space_state.intersect_ray(query)
+	var end: Vector3 = result["position"] if not result.is_empty() else far
+	var first := {}
+	chain_end = "miss"
+	if not result.is_empty():
+		var collider = result["collider"]
+		if is_instance_valid(collider) and collider.has_meta("player_id"):
+			var avatar = collider.get_parent()
+			if avatar is Node3D and GrepLock.alive(avatar) and avatar.get("protected") != true:
+				first = PipeChain.player_target(avatar, int(collider.get_meta("player_id", 0)), String(avatar.get("player_name")))
+			else:
+				chain_end = "protected"
+		else:
+			first = PipeChain.target_of(collider)
+	var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+	var report := {}
+	last_chain = PipeChain.build(first, end, _pipe_pool(), _pipe_sight, _w.pipe_tuning(), _w.damage, root, report)
+	chain_walled = report.get("walled", false) == true
+	chain_frame = Engine.get_physics_frames()
+	chain_age = 0.0
+	if not first.is_empty():
+		chain_end = "wall" if first["kind"] == PipeChain.Kind.WALL else ("black" if first["kind"] == PipeChain.Kind.BLACK else "")
+	var points := PipeChain.points_of(last_chain)
+	_pipe_arc.fire(muzzle_point(), points if not points.is_empty() else PackedVector3Array([end]), last_chain.size())
+	# The links this machine lands: every one that is not a player (whose hits the host judges).
+	var hit_target := false
+	var from := origin
+	for link in last_chain:
+		var point: Vector3 = link["point"]
+		var node = link["node"]
+		if link["kind"] != PipeChain.Kind.PLAYER and is_instance_valid(node) and node.has_method("hit"):
+			var before: float = node.call("health") if node.has_method("health") else 0.0
+			var base: float = link["damage"]
+			var landed: bool = node.call("hit", base * _damage_scale(), point, (point - from).normalized(), _w.id) == true
+			if landed:
+				_meter_from(node, before, base)
+			hit_target = hit_target or landed
+		from = point
+	CannonFx.spawn_muzzle_flash(_muzzle, _w, Palette.HOSTILE_RED if _root_look else Color.TRANSPARENT)
+	_kick()
+	if _shake_on:
+		_shake = maxf(_shake, _w.shake_m)
+	_viewmodel.set("streaming", 1.0)
+	_fire_sfx.play()
+	if hit_target:
+		hits_landed += 1
+		_hit_sfx.play()
+	shot_fired.emit(hit_target)
+	fire_intent.emit(origin, forward, _w.id)
+
+
+## Everything that could be a link of this player's chain now: this arena's living daemons, its hunter and
+## nodes, and in a match the other players' avatars that are shown, alive and out of spawn protection.
+func _pipe_pool() -> Array:
+	var pool := PipeChain.pool_in(get_parent())
+	var session = grep.session if grep != null else null
+	if session != null and is_instance_valid(session) and session.has_method("is_online") and session.is_online():
+		for id in session.avatars:
+			var avatar = session.avatars[id]
+			if avatar is Node3D and GrepLock.alive(avatar) and avatar.get("protected") != true:
+				pool.append(PipeChain.player_target(avatar, int(id), String(avatar.get("player_name"))))
+	return pool
+
+
+## True when nothing of the level lies between `a` and `b`: a chain never arcs through a wall (C30).
+func _pipe_sight(a: Vector3, b: Vector3) -> bool:
+	return get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, LEVEL_MASK)).is_empty()
+
+
+## This player's chain of this physics frame, for the host to judge its own shot by (C30): the same links
+## its look and its own hits came from, never a second chain built after those hits changed the arena.
+## Empty once the frame is over.
+func pipe_last() -> Array:
+	return last_chain if chain_frame == Engine.get_physics_frames() else []
+
+
+## pipe |'s look (C30), for the checks.
+func pipe_arc() -> Node3D:
+	return _pipe_arc
 
 
 ## The freeze beam's ray from `origin` along `forward` (C29): {end, collider}, the collider null for none

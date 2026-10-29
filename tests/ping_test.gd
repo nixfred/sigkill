@@ -128,7 +128,7 @@ func _weapon_checks() -> void:
 		if other.id != d.id:
 			others[other.skin_body()] = true
 			others[other.skin_beam()] = true
-	_check("acceptance: slot 9 (key 9), the last slot: the arsenal holds nine, ping the ninth", arsenal.problems().is_empty() and arsenal.loadout.size() == 10 and arsenal.loadout[SLOT].id == "ping_sonar" and Controls.SLOT_KEYS[SLOT] == KEY_9)
+	_check("acceptance: slot 9 (key 9), the last slot: the arsenal holds nine, ping the ninth (ten since C29's chmod 000, eleven since C30's pipe |)", arsenal.problems().is_empty() and arsenal.loadout.size() == 11 and arsenal.loadout[SLOT].id == "ping_sonar" and Controls.SLOT_KEYS[SLOT] == KEY_9)
 	_check("acceptance: its light colour is its own: neither of lime's colours is any of the eight other weapons', nor hostile red or amber, nor the code rain's green", not others.has(Palette.LIME) and not others.has(Palette.LIME_HI) and not [Palette.HOSTILE_RED, Palette.HOSTILE_AMBER, Palette.MATRIX_GREEN].has(Palette.LIME) and Palette.SKINS["lime"] == [Palette.LIME, Palette.LIME_HI])
 	var cases := [
 		["magazine_size", 6, "cooldown, not ammo"], ["damage", 5.0, "no damage"], ["fire_cooldown", 0.5, "cooldown"],
@@ -436,7 +436,7 @@ func _match_checks() -> void:
 	var cs = client["session"]
 	var cid: int = cs.my_id
 	var rpcs := _code("res://scripts/net/net_session.gd").count("@rpc(")
-	_check("acceptance: the wire: protocol 14 since I3's Black ICE, 15 since C29's chmod 000 (10 at C28, 11 since A5's daemon seeds, 12 since I1's ICE, 13 since I2's ICEbreakers), no new message of ping's own (24 RPCs as C27b left them, 26 since I1's two ICE messages, 28 since I2's two ICEbreaker messages; I3's Black ICE rides ICE's word): a ping is the usual fire intent and the seed message every joiner already draws volleys from", joined and Session.PROTOCOL == 15 and rpcs == 28, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 14 since I3's Black ICE, 15 since C29's chmod 000, 16 since C30's pipe | (10 at C28, 11 since A5's daemon seeds, 12 since I1's ICE, 13 since I2's ICEbreakers), no new message of ping's own (24 RPCs as C27b left them, 26 since I1's two ICE messages, 28 since I2's two ICEbreaker messages; I3's Black ICE rides ICE's word): a ping is the usual fire intent and the seed message every joiner already draws volleys from", joined and Session.PROTOCOL == 16 and rpcs == 28, "%d RPCs" % rpcs)
 	# The host's own player far off behind the lair's walls; the joiner on open floor, ping drawn;
 	# the host's rogue near the joiner, the others parked.
 	host["player"].global_position = host["main"].to_global(Vector3(15.0, 0.95, -15.0))

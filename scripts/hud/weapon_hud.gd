@@ -61,6 +61,10 @@ extends Control
 ## the guide panel beside it. chmod 000 (weapon 10) drawn: its ammo line is its coolant ("chmod  coolant
 ## 72%", "chmod  VENTING"), its third line the tank ("coolant [#######...]" in its frost text colour, or
 ## "venting [###.......]" in amber until it is back to its share).
+##
+## pipe | (weapon 11, C30) is bank 2's second ("Shift+ 1 [2 pipe]"). Drawn, its ammo line is its buffer
+## ("pipe  buffer 24K/64K", "pipe  BLOCKED"), its third line the buffer filling ("buffer [####......]" in
+## its brass text colour, or "blocked [########..]" in amber while it drains back to its share).
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -105,6 +109,11 @@ const COOLANT_AMMO := "%s  coolant %d%%"
 const COOLANT_VENT_AMMO := "%s  VENTING"
 const COOLANT_LINE := "coolant [%s%s]"
 const VENT_LINE := "venting [%s%s]"
+## pipe |'s lines (C30): its buffer.
+const BUFFER_AMMO := "%s  buffer %dK/%dK"
+const BUFFER_BLOCKED_AMMO := "%s  BLOCKED"
+const BUFFER_LINE := "buffer [%s%s]"
+const BLOCKED_LINE := "blocked [%s%s]"
 ## A bank's row while the other is active.
 const BANK_DIM := 0.5
 ## How dim an ult slot is while its meter fills.
@@ -277,6 +286,9 @@ func _refresh() -> void:
 	elif def.is_freeze() and inv.coolant(inv.current) != null:
 		var tank = inv.coolant(inv.current)
 		_ammo.text = (COOLANT_VENT_AMMO % def.short_name) if tank.venting else (COOLANT_AMMO % [def.short_name, roundi(tank.share() * 100.0)])
+	elif def.is_chain() and inv.buffer(inv.current) != null:
+		var pipe = inv.buffer(inv.current)
+		_ammo.text = (BUFFER_BLOCKED_AMMO % def.short_name) if pipe.blocked else (BUFFER_AMMO % [def.short_name, ceili(pipe.fill - 0.001), roundi(pipe.full())])
 	elif not def.has_magazine():
 		_ammo.text = AMMO_ENDLESS % def.short_name
 	else:
@@ -307,6 +319,14 @@ func _refresh() -> void:
 		_state.text = (VENT_LINE if tank.venting else COOLANT_LINE) % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
 		state_color = Palette.HOSTILE_AMBER if tank.venting else Palette.FROST_TEXT
 		if tank.venting:
+			color = Palette.HOSTILE_AMBER
+	elif def.is_chain() and inv.buffer(inv.current) != null:
+		# pipe | (C30): the buffer filling, or blocked while it drains back to its share.
+		var pipe = inv.buffer(inv.current)
+		var lit := clampi(roundi(pipe.share() * BAR_CELLS), 0, BAR_CELLS)
+		_state.text = (BLOCKED_LINE if pipe.blocked else BUFFER_LINE) % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
+		state_color = Palette.HOSTILE_AMBER if pipe.blocked else Palette.PIPE_TEXT
+		if pipe.blocked:
 			color = Palette.HOSTILE_AMBER
 	elif def.is_ping() and player.has_method("ping_ready"):
 		# ping (C28): the sonar coming back, or ready with its reach.

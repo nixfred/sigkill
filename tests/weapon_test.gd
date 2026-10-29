@@ -96,7 +96,8 @@ func _def_checks() -> void:
 	var bad_slots: Array[String] = [""]
 	var cases := [
 		[s, "fire_mode", WeaponDefScript.FireMode.PROJECTILE, "a thrown weapon"],  # built since C19: SIGTERM thrown has no projectile tuning
-		[s, "fire_mode", WeaponDefScript.FireMode.BEAM, "not built yet"],
+		[s, "fire_mode", WeaponDefScript.FireMode.BEAM, "needs a PipeTuning"],  # built since C30: SIGTERM as a chain beam has no pipe tuning
+		[s, "fire_mode", 99, "not a fire mode"],
 		[s, "pellet_count", 1, "pellets must number"],
 		[s, "pellet_count", 40, "pellets must number"],
 		[c, "pellet_count", 3, "exactly 1 pellet"],
@@ -125,14 +126,14 @@ func _def_checks() -> void:
 		var text := ", ".join(d.problems())
 		if not text.contains(case[3]):
 			missed.append("%s=%s gave [%s]" % [case[1], case[2], text])
-	_check("bad weapon values are each refused with the reason: unbuilt modes, pellet counts, spread, magazine, reserve, reload, falloff, an unknown skin, ids, names, fiction, interval, damage, slots (%d cases)" % cases.size(), missed.is_empty(), "; ".join(missed))
+	_check("bad weapon values are each refused with the reason: a mode without its tuning (since C30 every mode is built) or none at all, pellet counts, spread, magazine, reserve, reload, falloff, an unknown skin, ids, names, fiction, interval, damage, slots (%d cases)" % cases.size(), missed.is_empty(), "; ".join(missed))
 
 
 func _arsenal_checks() -> void:
 	var shipped = load(ARSENAL_PATH)
 	# C17 adds the SIGKILL rail as slot 3 (tests/rail_test.gd covers it), C19 the fork bomb as
 	# slot 4 (tests/fork_bomb_test.gd).
-	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, the fork bomb in slot 4, the fork() shotgun in slot 5 (C24), the grep seeker in slot 6 (C25), the rm -rf cannon in slot 7 (C26), cron mines in slot 8 (C27), ping in slot 9 (C28), chmod 000 in slot 10, bank 2's first (C29), a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 10 and shipped.loadout[9].id == "chmod_000" and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.loadout[3].id == "fork_bomb" and shipped.loadout[4].id == "fork_shotgun" and shipped.loadout[5].id == "grep_seeker" and shipped.loadout[6].id == "rm_rf_cannon" and shipped.loadout[7].id == "cron_mines" and shipped.loadout[8].id == "ping_sonar" and shipped.swap_s == 0.3, str(shipped.problems()))
+	_check("the shipped arsenal is valid: the cannon in slot 1, SIGTERM in slot 2, the SIGKILL rail in slot 3, the fork bomb in slot 4, the fork() shotgun in slot 5 (C24), the grep seeker in slot 6 (C25), the rm -rf cannon in slot 7 (C26), cron mines in slot 8 (C27), ping in slot 9 (C28), chmod 000 in slot 10, bank 2's first (C29), pipe | in slot 11, bank 2's second (C30), a 0.3 s swap", shipped is Arsenal and shipped.problems().is_empty() and shipped.loadout.size() == 11 and shipped.loadout[9].id == "chmod_000" and shipped.loadout[10].id == "pipe_chain" and shipped.loadout[0].id == "terminal_cannon" and shipped.loadout[1].id == "sigterm" and shipped.loadout[2].id == "sigkill_rail" and shipped.loadout[3].id == "fork_bomb" and shipped.loadout[4].id == "fork_shotgun" and shipped.loadout[5].id == "grep_seeker" and shipped.loadout[6].id == "rm_rf_cannon" and shipped.loadout[7].id == "cron_mines" and shipped.loadout[8].id == "ping_sonar" and shipped.swap_s == 0.3, str(shipped.problems()))
 	var bad_sig: Resource = _sigterm.duplicate()
 	bad_sig.pellet_count = 0
 	var mixed := Arsenal.new()
@@ -466,9 +467,12 @@ func _solo_checks() -> void:
 	var after_eighth: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_ninth: int = inv.current
-	# C29: ten slots, so the wheel reaches chmod 000 (slot 10, bank 2) before it wraps.
+	# C29: ten slots, so the wheel reaches chmod 000 (slot 10, bank 2) before it wraps; C30: eleven, pipe |
+	# (slot 11) too.
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_tenth: int = inv.current
+	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
+	var after_eleventh: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_DOWN)
 	var after_wrap: int = inv.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
@@ -477,7 +481,7 @@ func _solo_checks() -> void:
 	var after_up: int = inv.current
 	await _key(KEY_9)
 	var after_nine: int = inv.current
-	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slots 3, 4, 5, 6, 7, 8 and 9 (and 10 since C29) and wraps, and 9 draws ping (no such slot before C28)", after_q == 0 and after_q2 == 1 and after_down == 2 and after_fourth == 3 and after_fifth == 4 and after_sixth == 5 and after_seventh == 6 and after_eighth == 7 and after_ninth == 8 and after_tenth == 9 and after_wrap == 0 and after_back == 9 and after_up == 8 and after_nine == 8, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_fourth, after_fifth, after_sixth, after_seventh, after_eighth, after_ninth, after_tenth, after_wrap, after_back, after_up, after_nine])
+	_check("Q swaps to the last weapon and back, the wheel cycles both ways through slots 3, 4, 5, 6, 7, 8 and 9 (and 10 since C29, 11 since C30) and wraps, and 9 draws ping (no such slot before C28)", after_q == 0 and after_q2 == 1 and after_down == 2 and after_fourth == 3 and after_fifth == 4 and after_sixth == 5 and after_seventh == 6 and after_eighth == 7 and after_ninth == 8 and after_tenth == 9 and after_eleventh == 10 and after_wrap == 0 and after_back == 10 and after_up == 9 and after_nine == 8, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d" % [after_q, after_q2, after_down, after_fourth, after_fifth, after_sixth, after_seventh, after_eighth, after_ninth, after_tenth, after_eleventh, after_wrap, after_back, after_up, after_nine])
 	# The swap, timed to the frame: fire is held from the draw on, aimed at the open sky so
 	# no dummy is spent before the point-blank check.
 	await _settle(p, 0.5)
@@ -601,7 +605,7 @@ func _solo_checks() -> void:
 	twin.weapon = _sigterm
 	twin.position = Vector3(0.0, 40.0, -35.0)
 	main.add_child(twin)
-	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail, the fork bomb and, since C24, C25, C26, C27, C28 and C29, the fork() shotgun, the grep seeker, the rm -rf cannon, cron mines, ping and chmod 000), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 9 and twin.inventory.defs[8].id == "chmod_000" and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail" and twin.inventory.defs[2].id == "fork_bomb" and twin.inventory.defs[3].id == "fork_shotgun" and twin.inventory.defs[4].id == "grep_seeker" and twin.inventory.defs[5].id == "rm_rf_cannon" and twin.inventory.defs[6].id == "cron_mines" and twin.inventory.defs[7].id == "ping_sonar", str(twin.inventory.defs.map(func(d): return d.id)))
+	_check("a slot 1 override equal to a later slot leaves one copy: SIGTERM put in slot 1 over the shipped arsenal holds one SIGTERM (and the rail, the fork bomb and, since C24, C25, C26, C27, C28 and C29, the fork() shotgun, the grep seeker, the rm -rf cannon, cron mines, ping and chmod 000, and since C30 pipe |), not two SIGTERMs with their own magazines", twin.inventory.slot_count() == 10 and twin.inventory.defs[8].id == "chmod_000" and twin.inventory.defs[9].id == "pipe_chain" and twin.inventory.defs[0].id == "sigterm" and twin.inventory.defs[1].id == "sigkill_rail" and twin.inventory.defs[2].id == "fork_bomb" and twin.inventory.defs[3].id == "fork_shotgun" and twin.inventory.defs[4].id == "grep_seeker" and twin.inventory.defs[5].id == "rm_rf_cannon" and twin.inventory.defs[6].id == "cron_mines" and twin.inventory.defs[7].id == "ping_sonar", str(twin.inventory.defs.map(func(d): return d.id)))
 	twin.queue_free()
 	await physics_frame
 	# R in solo play: a fresh arena, a fresh inventory.

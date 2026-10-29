@@ -226,6 +226,18 @@ extends Node
 ## joiner's own sent back to it while it has any). Two messages changed and the loadout grew (weapon
 ## 10), so protocol 15, no new message.
 ##
+## pipe | (C30): a chain is an ordinary intent (_fire) of the chain beam. The host believes it by the
+## usual checks and its own (a pipe buffer that is not blocked: the host keeps every player's), builds
+## the chain in its own world (_pipe_judge, scripts/weapons/pipe_chain.gd: the joiner's own aim's ray,
+## then the arcs over the host's daemons and ICE and the players' bodies, never a dead or spawn-protected
+## player), lands every player's link in its combat and, while they fight, a joiner's links on its
+## daemons and ICE (Black ICE only flashed); the host's own chain is the one its player built and drew
+## (its own daemons already took their links there). Every screen draws the chain from the shot message,
+## _shot, as it always carried the shot's ends: here the chain's points in order, link to link (a miss
+## its end twice: no two links of a chain are ever one point), its struck players and their health as
+## any shot's. No new message, no changed one; the loadout grew (weapon 11) and _shot's ends mean a
+## chain for it, which an older build would neither believe nor draw, so protocol 16.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -319,7 +331,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 15
+const PROTOCOL := 16
 ## An avatar's freeze beam starts this far ahead of its eye and this far below it (C29): its emitter.
 const BEAM_AHEAD_M := 0.45
 const BEAM_DROP_M := 0.2
@@ -438,6 +450,10 @@ var _flat_round := {}
 var _frost_told := {}
 var beam_ticks_judged := 0
 var freezes_judged := 0
+## pipe | (C30): chains the host judged, and the links of the last one (who, where, how hard), for the
+## checks.
+var chains_judged := 0
+var last_judged: Array = []
 ## Each player's life number: up by one at every respawn, carried in every state packet,
 ## so a position sent before a respawn and arriving after it is known for what it is.
 var lives := {}
@@ -1965,6 +1981,10 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 		_beam_freeze(shooter, origin, dir, def)
 		_flush_sudo()
 		return
+	if def.is_chain():
+		_pipe_judge(shooter, origin, dir, def)
+		_flush_sudo()
+		return
 	if def.is_ping():
 		# ping (C28): the host sends the ring out from where it last heard the pinger and judges its
 		# own daemons with it (one caught mid-tell staggers); every joiner draws the same ring from
@@ -2085,6 +2105,89 @@ func _beam_freeze(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScr
 		if ray["daemon"].chill(def.fire_cooldown, _arena.to_global(ray["end"]), along, def.id) == true:
 			freezes_judged += 1
 	_broadcast_shot(shooter, def.id, origin, PackedVector3Array([ray["end"]]), PackedInt32Array(), PackedFloat32Array())
+
+
+## A chain of pipe | (C30), believed: the host's own player's is the chain it built and drew this frame
+## (pipe_last(): its own daemons and ICE took their links there); a joiner's is built here from its aim, in
+## the host's world, over the host's daemons and ICE and every other player's body. Every player on it
+## takes its link in the match's combat (never a dead or spawn-protected one: neither is ever a link);
+## while the daemons fight, a joiner's links on them and on ICE land here as its shots do (Black ICE, hit
+## first, only flashed). Told as any shot: the chain's points as the shot's ends, the struck players and
+## their health, then the deaths.
+func _pipe_judge(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> void:
+	if state != State.HOSTING or combat == null:
+		return
+	chains_judged += 1
+	var from: Vector3 = _arena.to_global(origin)
+	var links: Array = []
+	var ray := _raycast(shooter, origin, dir, def)
+	var miss: Vector3 = _arena.to_global(ray["end"])
+	if shooter == 1 and _player_ready() and _player.has_method("pipe_last"):
+		links = _player.pipe_last()
+	else:
+		var first := {}
+		if ray["hit"] != 0:
+			if combat.alive(ray["hit"]) and not combat.protected(ray["hit"]):
+				first = _pipe_player(ray["hit"])
+		elif ray["daemon"] != null:
+			first = PipeChain.target_of(ray["daemon"])
+		var pool := PipeChain.pool_in(_arena)
+		for id in players:
+			if id != shooter and combat.alive(id) and not combat.protected(id):
+				var target := _pipe_player(id)
+				if not target.is_empty():
+					pool.append(target)
+		links = PipeChain.build(first, miss, pool, _pipe_sight, def.pipe_tuning(), def.damage, combat.root(shooter))
+	last_judged = links
+	var at_daemons := shooter != 1 and daemons_fight()
+	var scale := combat.damage_scale(shooter)
+	var ends := PackedVector3Array()
+	var struck := {}
+	var before_point := from
+	for link in links:
+		var point: Vector3 = link["point"]
+		ends.append(_arena.to_local(point))
+		if link["kind"] == PipeChain.Kind.PLAYER:
+			struck[link["id"]] = struck.get(link["id"], 0.0) + float(link["damage"])
+		elif at_daemons and is_instance_valid(link["node"]):
+			_hit_daemon(link["node"], shooter, float(link["damage"]) * scale, point, (point - before_point).normalized(), def.id)
+		before_point = point
+	if ends.is_empty():
+		ends = PackedVector3Array([_arena.to_local(miss), _arena.to_local(miss)])  # a miss: its end, twice
+	var hits := PackedInt32Array()
+	var healths := PackedFloat32Array()
+	var killed := PackedInt32Array()
+	for victim in struck:
+		var before := combat.health_of(victim)
+		var outcome := combat.damage_player(victim, shooter, struck[victim] * scale)
+		if outcome.is_empty():
+			continue
+		hits.append(victim)
+		healths.append(outcome["health"])
+		if outcome["killed"]:
+			killed.append(victim)
+		combat.add_meter(shooter, minf(struck[victim], before) / _ct.max_health, outcome["killed"])
+	_broadcast_shot(shooter, def.id, origin, ends, hits, healths)
+	for victim in killed:
+		_broadcast_death(victim, shooter, dir, def.id)
+	_mirror_from_combat()
+
+
+## Player `id` as a chain's target, by the body the host sees: its own player, or that player's avatar
+## ({} for one not shown).
+func _pipe_player(id: int) -> Dictionary:
+	var name: String = players[id]["name"] if players.has(id) and players[id].has("name") else PLACEHOLDER
+	if id == 1:
+		return PipeChain.player_target(_player, 1, name) if _player_ready() else {}
+	var avatar = avatars.get(id)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.visible:
+		return {}
+	return PipeChain.player_target(avatar, id, name)
+
+
+## True when nothing of the level lies between `a` and `b` (world space): a chain never arcs through a wall.
+func _pipe_sight(a: Vector3, b: Vector3) -> bool:
+	return _player.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, BLAST_SIGHT_MASK)).is_empty()
 
 
 ## The host's word on every player's freeze meter (C29), on its own screen: its own player and every
@@ -2886,7 +2989,8 @@ func _broadcast_shot(shooter: int, weapon: String, origin: Vector3, ends: Packed
 func _shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVector3Array, hits: PackedInt32Array, healths: PackedFloat32Array) -> void:
 	if state != State.JOINED or not players.has(shooter) or not _weapons.has(weapon) or not origin.is_finite():
 		return
-	if ends.is_empty() or ends.size() > _weapons[weapon].pellet_count or hits.size() != healths.size() or hits.size() > players.size():
+	var most: int = _weapons[weapon].pipe_tuning().root_max_links if _weapons[weapon].is_chain() else _weapons[weapon].pellet_count
+	if ends.is_empty() or ends.size() > most or hits.size() != healths.size() or hits.size() > players.size():
 		return
 	for end in ends:
 		if not end.is_finite():
@@ -2910,7 +3014,9 @@ func _apply_shot(shooter: int, weapon: String, origin: Vector3, ends: PackedVect
 		if mine and hits[i] != my_id:
 			# Root's harder hit fills it no faster (C22): the share at user's strength, as the host's.
 			_player.add_meter(_player.meter_gain(maxf(before - healths[i], 0.0) / _ct.max_health / _root_scale(shooter), false))
-	if shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_volley():
+	if _weapons[weapon].is_chain():
+		_draw_chain(shooter, origin, ends)  # pipe | (C30): the stream link to link
+	elif shooter != my_id and _arena != null and is_instance_valid(_arena) and not _weapons[weapon].is_volley():
 		for end in ends:
 			CannonFx.spawn_beam(_arena, _arena.to_global(origin), _arena.to_global(end), _weapons[weapon])
 	if hits.is_empty():
@@ -2933,6 +3039,24 @@ func _draw_beam_tick(shooter: int, origin: Vector3, end: Vector3) -> void:
 	var eye: Vector3 = _arena.to_global(origin)
 	var way := (to - eye).normalized() if to.distance_to(eye) > 0.01 else Vector3.FORWARD
 	avatar.beam_to(eye + way * BEAM_AHEAD_M + Vector3.DOWN * BEAM_DROP_M, to, false)
+
+
+## Another player's chain of pipe | (C30), on this screen: its avatar's stream from just ahead of its eye
+## through the chain's points (arena space), link to link; a miss (its end twice) drawn to its end alone,
+## with no link. This player's own is drawn by its player.
+func _draw_chain(shooter: int, origin: Vector3, ends: PackedVector3Array) -> void:
+	if shooter == my_id or _arena == null or not is_instance_valid(_arena):
+		return
+	var avatar = avatars.get(shooter)
+	if avatar == null or not is_instance_valid(avatar) or not avatar.has_method("pipe_to"):
+		return
+	var points := PackedVector3Array()
+	for end in ends:
+		points.append(_arena.to_global(end))
+	var missed := points.size() == 2 and points[0].is_equal_approx(points[1])
+	var eye: Vector3 = _arena.to_global(origin)
+	var way := (points[0] - eye).normalized() if points[0].distance_to(eye) > 0.01 else Vector3.FORWARD
+	avatar.pipe_to(eye + way * BEAM_AHEAD_M + Vector3.DOWN * BEAM_DROP_M, points.slice(0, 1) if missed else points, 0 if missed else points.size())
 
 
 # --- Root vs user and sudo overcharge (C22). ---

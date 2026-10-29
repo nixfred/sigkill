@@ -29,9 +29,15 @@ extends RefCounted
 ## each beam tick (each try_fire()) spends its fire interval's seconds of coolant, the tank refills on its
 ## own after a rest, drawn or not, and a tank run dry vents ("coolant") until it has refilled to its share.
 ## Root's free ammo spends none. A new life refills it.
+##
+## pipe |'s buffer (C30): the chain beam has no magazine but the pipe's buffer (scripts/weapons/pipe_buffer.gd):
+## each chain (each try_fire()) writes into it, it drains on its own after a rest, drawn or not, and a full
+## one blocks ("buffer") until it has drained to its share. Root's free ammo writes nothing. A new life
+## empties it.
 
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const CoolantScript = preload("res://scripts/weapons/coolant.gd")
+const PipeBufferScript = preload("res://scripts/weapons/pipe_buffer.gd")
 
 ## Why try_fire() did not fire.
 const BLOCK_SWAP := "swap"
@@ -43,6 +49,8 @@ const BLOCK_METER := "meter"
 const BLOCK_JAMMED := "jammed"
 ## A freeze weapon's tank is venting or dry (C29).
 const BLOCK_COOLANT := "coolant"
+## The chain beam's buffer is full and blocks (C30).
+const BLOCK_BUFFER := "buffer"
 ## A meter this close below full counts as full: sums of float shares (a joiner adds a hit
 ## and its kill bonus in two steps where the host adds them in one) must never leave it a
 ## hair short.
@@ -75,6 +83,8 @@ var free_ammo := false
 var jams: Array[float] = []
 ## Each slot's coolant tank (C29): a Coolant for a freeze weapon, null for every other.
 var coolants: Array = []
+## Each slot's pipe buffer (C30): a PipeBuffer for the chain beam, null for every other.
+var buffers: Array = []
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -87,6 +97,7 @@ func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float
 		cooldowns.append(0.0)
 		jams.append(0.0)
 		coolants.append(CoolantScript.new(def.freeze_tuning()) if def.is_freeze() else null)
+		buffers.append(PipeBufferScript.new(def.pipe_tuning()) if def.is_chain() else null)
 
 
 func slot_count() -> int:
@@ -267,6 +278,8 @@ func try_fire() -> String:
 		meter = 0.0
 	if coolants[current] != null and not free_ammo:
 		coolants[current].spend(d.fire_cooldown)  # a beam tick's coolant (C29)
+	if buffers[current] != null and not free_ammo:
+		buffers[current].write()  # a chain's write into the pipe's buffer (C30)
 	cooldowns[current] = d.fire_cooldown
 	return ""
 
@@ -289,6 +302,8 @@ func fire_block() -> String:
 		return BLOCK_METER
 	if coolants[current] != null and not free_ammo and not coolants[current].ready():
 		return BLOCK_COOLANT
+	if buffers[current] != null and not free_ammo and not buffers[current].ready():
+		return BLOCK_BUFFER
 	return ""
 
 
@@ -304,6 +319,9 @@ func tick(delta: float) -> void:
 	for tank in coolants:
 		if tank != null:
 			tank.tick(delta)
+	for pipe in buffers:
+		if pipe != null:
+			pipe.tick(delta)
 	if reload_left > 0.0:
 		reload_left -= delta
 		if reload_left <= 0.0:
@@ -318,6 +336,19 @@ func tick(delta: float) -> void:
 ## Slot `slot`'s coolant tank (C29), or null when its weapon has none.
 func coolant(slot: int) -> CoolantScript:
 	return coolants[slot] if slot >= 0 and slot < coolants.size() else null
+
+
+## Slot `slot`'s pipe buffer (C30), or null when its weapon has none.
+func buffer(slot: int) -> PipeBufferScript:
+	return buffers[slot] if slot >= 0 and slot < buffers.size() else null
+
+
+## The slot of the loadout's chain beam (pipe |, C30), or -1 when it has none.
+func chain_slot() -> int:
+	for i in defs.size():
+		if defs[i].is_chain():
+			return i
+	return -1
 
 
 ## The slot of the loadout's freeze weapon (chmod 000, C29), or -1 when it has none.
@@ -351,6 +382,8 @@ func refill() -> void:
 		jams[i] = 0.0
 		if coolants[i] != null:
 			coolants[i].refill()
+		if buffers[i] != null:
+			buffers[i].empty()
 	swap_left = 0.0
 	reload_left = 0.0
 	block_left = 0.0

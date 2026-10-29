@@ -146,6 +146,41 @@ const HISS_S := 0.5
 const HISS_GAIN := 0.5
 
 
+## pipe |'s crackle (C30): a chain's stream snapping from link to link, made once per shooter: a bright
+## electric crackle (bursts of noise, each a little later and weaker, PACKETS of them as the stream reaches
+## each link) over a quick chirp of data stepping down in pitch, packet by packet, dying fast.
+static func pipe_crackle() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(CRACKLE_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED
+	var phase := 0.0
+	var low := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var packet := mini(int(t / CRACKLE_STEP_S), CRACKLE_PACKETS - 1)
+		var into := t - packet * CRACKLE_STEP_S
+		var hz := CRACKLE_START_HZ * pow(CRACKLE_FALL, packet)
+		phase = fmod(phase + TAU * hz / rate, TAU)
+		var chirp := (1.0 if sin(phase) >= 0.0 else -1.0) * 0.22 * exp(-into * 40.0) * pow(0.8, packet)
+		var n := rng.randf_range(-1.0, 1.0)
+		low = lerpf(low, n, 0.55)
+		var snap := (n - low) * exp(-into * 26.0) * pow(0.82, packet) if rng.randf() < 0.6 else 0.0
+		var tail := exp(-t * 7.0)
+		data.encode_s16(i * 2, int(clampf((chirp + snap * 0.8) * tail * CRACKLE_GAIN, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+const CRACKLE_S := 0.38
+const CRACKLE_STEP_S := 0.045
+const CRACKLE_PACKETS := 6
+const CRACKLE_START_HZ := 1900.0
+const CRACKLE_FALL := 0.78
+const CRACKLE_GAIN := 0.8
+
+
 ## The arena's hum (I3): a low, steady server-room drone, a loop of HUM_S seconds (every tone a whole
 ## number of cycles in it, so the loop has no seam): a mains hum and its octave and fifth, swelling slowly,
 ## with a breath of air. It plays under everything on the Music bus until Black ICE takes it away.

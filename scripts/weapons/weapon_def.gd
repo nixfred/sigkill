@@ -85,10 +85,18 @@ extends "res://scripts/weapon_tuning.gd"
 ## meter freezes it (scripts/weapons/frost.gd). No damage (damage 0) and no magazine: its ammo is the
 ## coolant (scripts/weapons/coolant.gd), and every number of the freeze is the FreezeTuning it names in
 ## freeze (inside the same .tres). The Freeze slot is empty for every other weapon.
+##
+## pipe | (C30, resources/pipe_chain.tres): fire_mode BEAM, the chain beam C29 kept the mode for. One
+## chain a shot: its ray meets the first target within fire_range (the first link, damage), and the stream
+## arcs on from target to target (scripts/weapons/pipe_chain.gd), each link a share of the one before. No
+## magazine: its ammo is the pipe's buffer (scripts/weapons/pipe_buffer.gd), which each chain writes into
+## and which drains on its own; every number of the chain and the buffer is the PipeTuning it names in pipe
+## (inside the same .tres). The Pipe slot is empty for every other weapon.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 const FreezeTuningScript = preload("res://scripts/weapons/freeze_tuning.gd")
+const PipeTuningScript = preload("res://scripts/weapons/pipe_tuning.gd")
 
 enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING, FREEZE }
 
@@ -96,9 +104,9 @@ enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS,
 const INFINITE := -1
 ## The fire modes built so far: projectile since C19 (the fork bomb), fork pellets since C24
 ## (fork()), seeker darts since C25 (grep), the slug since C26 (rm -rf), mines since C27 (cron),
-## the sonar ring since C28 (ping), the freeze beam since C29 (chmod 000). Beam (the pipe's chain beam)
-## comes later.
-const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE, FireMode.PING, FireMode.FREEZE]
+## the sonar ring since C28 (ping), the freeze beam since C29 (chmod 000), the chain beam since C30 (pipe |):
+## every mode is built.
+const BUILT_MODES := [FireMode.HITSCAN_SINGLE, FireMode.HITSCAN_PELLETS, FireMode.PROJECTILE, FireMode.BEAM, FireMode.FORK_PELLETS, FireMode.SEEKER, FireMode.SLUG, FireMode.MINE, FireMode.PING, FireMode.FREEZE]
 const ID_LAST := 32
 const NAME_LAST := 32
 const SHORT_LAST := 12
@@ -178,6 +186,9 @@ const PING_COOLDOWN_FIRST_S := 1.0
 const FREEZE_TICK_FIRST_S := 0.03
 const FREEZE_TICK_LAST_S := 0.25
 const FREEZE_RANGE_LAST_M := 60.0
+## pipe | (C30): one chain at most this often, in seconds, its aim reaching at most this far.
+const CHAIN_COOLDOWN_FIRST_S := 0.15
+const CHAIN_RANGE_LAST_M := 60.0
 
 @export_group("Identity")
 ## Stable id: lowercase letters, digits and underscores. Fire intents carry it (C16).
@@ -199,8 +210,8 @@ const FREEZE_RANGE_LAST_M := 60.0
 @export var charge_prompt: String = ""
 
 @export_group("Mode")
-## How a shot travels. Hitscan single, hitscan pellets and projectile (thrown, C19) are
-## built; beam is reserved for a later weapon and refused until then.
+## How a shot travels: a ray, pellets, a throw (C19), the chain beam (C30), fork pellets, seeker darts, a
+## slug, a mine, a sonar ring or the freeze beam.
 @export var fire_mode: FireMode = FireMode.HITSCAN_SINGLE
 ## Pellets per shot: 1 for a single shot, 2 or more for pellets. The first pellet flies
 ## straight along the aim, the others scatter inside the cone.
@@ -365,6 +376,11 @@ const FREEZE_RANGE_LAST_M := 60.0
 ## resources/chmod_000.tres). Empty for every other weapon.
 @export var freeze: Resource = null
 
+@export_group("Pipe")
+## pipe | (C30): every number of the chain and the buffer, a PipeTuning (inside resources/pipe_chain.tres).
+## Empty for every other weapon.
+@export var pipe: Resource = null
+
 @export_group("Slots")
 ## Mod slots: empty data for now (unlocks and mods are C33).
 @export var mod_slots: Array[String] = []
@@ -382,7 +398,7 @@ func problems() -> PackedStringArray:
 		if not _is_line(text, pair[1]):
 			out.append("%s must be 1 to %d printable characters" % pair)
 	if not BUILT_MODES.has(fire_mode):
-		out.append("fire_mode %d is not built yet: only hitscan single, hitscan pellets, projectile, fork pellets, seeker, slug, mine, ping and freeze" % fire_mode)
+		out.append("fire_mode %d is not a fire mode" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
 		if not (projectile is ForkBombTuning):
 			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
@@ -402,6 +418,8 @@ func problems() -> PackedStringArray:
 		out.append_array(_ping_problems())
 	elif fire_mode == FireMode.FREEZE:
 		out.append_array(_freeze_problems())
+	elif fire_mode == FireMode.BEAM:
+		out.append_array(_pipe_problems())
 	elif projectile != null:
 		out.append("only a thrown weapon (fire_mode projectile) names a projectile tuning")
 	elif fire_mode == FireMode.HITSCAN_SINGLE and pellet_count != 1:
@@ -426,6 +444,8 @@ func problems() -> PackedStringArray:
 		out.append("only ping (fire_mode ping) fills the ping group")
 	if fire_mode != FireMode.FREEZE and freeze != null:
 		out.append("only chmod 000 (fire_mode freeze) names a freeze tuning")
+	if fire_mode != FireMode.BEAM and pipe != null:
+		out.append("only pipe | (fire_mode beam) names a pipe tuning")
 	if fire_cooldown <= 0.0:
 		out.append("fire_cooldown, the fire interval, must be above 0")
 	if magazine_size == INFINITE:
@@ -523,6 +543,16 @@ func is_freeze() -> bool:
 ## The freeze ray's numbers (C29), or null for any other weapon.
 func freeze_tuning() -> FreezeTuningScript:
 	return freeze as FreezeTuningScript if is_freeze() else null
+
+
+## True for pipe | (C30): one chain a shot, arcing from target to target; its ammo the pipe's buffer.
+func is_chain() -> bool:
+	return fire_mode == FireMode.BEAM
+
+
+## pipe |'s chain and buffer numbers (C30), or null for every other weapon.
+func pipe_tuning() -> PipeTuningScript:
+	return pipe as PipeTuningScript if is_chain() else null
 
 
 ## Runs of a mine placed as user, or with `root` (C22's "root crontab") root_extra_runs more.
@@ -804,6 +834,25 @@ func _freeze_problems() -> PackedStringArray:
 		out.append("chmod 000 (fire_mode freeze) needs a FreezeTuning in freeze")
 	elif not freeze.problems().is_empty():
 		out.append("chmod 000's freeze tuning is refused: %s" % freeze.problems()[0])
+	return out
+
+
+func _pipe_problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	if pellet_count != 1:
+		out.append("pipe | runs one chain a shot: pellet_count stays 1")
+	if projectile != null or has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
+		out.append("pipe | writes to its buffer, not a magazine: no magazine (-1), no projectile tuning, pierce, charge or ult")
+	if not is_finite(damage) or damage <= 0.0:
+		out.append("pipe |'s damage, its first link's, must be above 0")
+	if not is_finite(fire_cooldown) or fire_cooldown < CHAIN_COOLDOWN_FIRST_S:
+		out.append("pipe |'s fire_cooldown must be at least %s" % CHAIN_COOLDOWN_FIRST_S)
+	if not is_finite(fire_range) or fire_range <= 0.0 or fire_range > CHAIN_RANGE_LAST_M:
+		out.append("pipe |'s fire_range, its aim's reach, must be above 0 and at most %s" % CHAIN_RANGE_LAST_M)
+	if not (pipe is PipeTuningScript):
+		out.append("pipe | (fire_mode beam) needs a PipeTuning in pipe")
+	elif not pipe.problems().is_empty():
+		out.append("pipe |'s tuning is refused: %s" % pipe.problems()[0])
 	return out
 
 

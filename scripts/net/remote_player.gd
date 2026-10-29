@@ -18,6 +18,9 @@ extends Node3D
 ## creeping up the body, whole and bright with "PERMISSION DENIED" over it while frozen
 ## (scripts/fx/frost_look.gd); its freeze beam, when it runs one, is drawn from its body along its aim to
 ## where the host's beam ticks end (beam_to(), scripts/weapons/freeze_beam.gd).
+##
+## pipe | (C30): its chains, when it runs any, are drawn from its body along its aim, link to link through
+## the points the host's shot message gives (pipe_to(), scripts/weapons/pipe_arc.gd), made once.
 
 const Palette = preload("res://scripts/palette.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
@@ -95,6 +98,7 @@ var _hit_shape: CollisionShape3D
 var frost: Frost
 var _frost_look: FrostLook
 var _beam: Node3D
+var _pipe: PipeArc
 
 
 func _ready() -> void:
@@ -152,6 +156,8 @@ func _ready() -> void:
 	# Its freeze beam made now, not at its first tick (its hiss is synthesised once, C29).
 	_beam = FreezeBeam.new()
 	add_child(_beam)
+	_pipe = PipeArc.new()
+	add_child(_pipe)
 	visible = false
 
 
@@ -177,6 +183,17 @@ func frost_look() -> FrostLook:
 ## judging nothing.
 func beam_to(from: Vector3, to: Vector3, struck: bool) -> void:
 	_beam.aim(from, to, struck)
+
+
+## One of its chains from `from` through `points` (world space), the first `linked` of them links (C30):
+## drawn on this screen, judging nothing.
+func pipe_to(from: Vector3, points: PackedVector3Array, linked: int) -> void:
+	_pipe.fire(from, points, linked)
+
+
+## Its chains' look (C30), for the checks.
+func pipe_arc() -> PipeArc:
+	return _pipe
 
 
 ## A received position: `seq` orders them; an older one, or one too far ahead, is dropped.
