@@ -514,9 +514,12 @@ func _match_checks() -> void:
 	var learned := await _wait(func(): return ci.adapt_weapon == hi.adapt_weapon and ci.adapt_percent() == hi.adapt_percent() and hi.adapt_percent() > 0, 60)
 	await _frames(4)
 	var same_line: bool = client["main"].get_node("Hud").ice_hud().adapt_line() == host["main"].get_node("Hud").ice_hud().adapt_line() and client["main"].get_node("Hud").ice_hud().adapt_line() != ""
-	var tint: bool = ci.hunter.shield_color.is_equal_approx(hi.hunter.shield_color)
+	# Read null-safe (C30): one of C30's gates found a hunter missing here once and the script error hid the
+	# rest of the match's checks; a missing hunter still fails this check, and is named.
+	var hunters := "host %s, joiner %s" % ["present" if hi.hunter != null and is_instance_valid(hi.hunter) else "missing", "present" if ci.hunter != null and is_instance_valid(ci.hunter) else "missing"]
+	var tint: bool = hunters == "host present, joiner present" and ci.hunter.shield_color.is_equal_approx(hi.hunter.shield_color)
 	print("ICE match: joined %s, builds the host's %s, the joiner's own shot refused %s, the host's judging landed %s, cracks followed in %d frames, the break in %d, adaptation (%s %d%%) in %d" % [joined, builds, refused, judged, cracked, broke, hi.adapt_weapon, hi.adapt_percent(), learned])
-	_check("acceptance: host-authoritative in a match: the joiner's pieces are the host's builds (the hunter's too), a joiner's own shot lands nothing on its copy while the host's judging of a joiner's hit lands, and the joiner's copy follows the host's word: the wall's cracks and its break, the adaptation, its HUD line and the hunter's colour", joined and builds and refused and judged and cracked >= 0 and broke >= 0 and learned >= 0 and same_line and tint)
+	_check("acceptance: host-authoritative in a match: the joiner's pieces are the host's builds (the hunter's too), a joiner's own shot lands nothing on its copy while the host's judging of a joiner's hit lands, and the joiner's copy follows the host's word: the wall's cracks and its break, the adaptation, its HUD line and the hunter's colour", joined and builds and refused and judged and cracked >= 0 and broke >= 0 and learned >= 0 and same_line and tint, "hunters: " + hunters)
 	# The hunter's place and state, and a node's tell, on both screens.
 	host["player"].global_position = host["main"].to_global(Vector3(-4.5, 0.95, 0.5))
 	var telling := await _wait(func(): return hi.node_of("jam").state == IceNode.State.TELL, 200)
