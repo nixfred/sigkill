@@ -496,6 +496,7 @@ func _match_checks() -> void:
 	Dummy.fixed_seeds = false
 	hi.start_round(2)
 	Dummy.fixed_seeds = true
+	hi.black_plan = -1.0  # a random roll may plan Black ICE (I3) for this round: step 42 tests it, not this
 	await _wait(func(): return ci.hunter != null and is_instance_valid(ci.hunter) and hi.hunter != null and ci.hunter.build_seed == hi.hunter.build_seed, 120)
 	await _frames(10)
 	var builds := ci.mode == IceDirector.Mode.FOLLOW and hi.mode == IceDirector.Mode.RUN

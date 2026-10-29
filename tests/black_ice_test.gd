@@ -363,6 +363,16 @@ func _weapon_checks() -> void:
 	await _drop(main)
 
 
+## True (and a failed check `label`, the arena dropped) when Black ICE `b` is gone before a check could
+## read it: a flatline ended the round and withdrew it, or it broke. A check never just vanishes.
+func _gone(b, main: Node, label: String, detail: String) -> bool:  # untyped: `b` may be freed
+	if is_instance_valid(b) and not b.is_queued_for_deletion():
+		return false
+	_check(label, false, "Black ICE gone before the check (%s)" % detail)
+	await _drop(main)
+	return true
+
+
 ## Round's Black ICE out now at BLACK_SPOTS[`spot`], its tell skipped.
 func _out_now(ice: IceDirector, spot: int) -> BlackIce:
 	var b := ice.summon_black(spot)
@@ -390,6 +400,8 @@ func _combo_checks() -> void:
 	br.press_run()
 	var pinned := await _wait(func(): return is_instance_valid(b) and b.brain.prey < 0, 200)
 	await _frames(90)
+	if await _gone(b, main, "acceptance: the kill combo takes a plan: a decoy pins it, exploit runs, then the brutes", "pinned %d" % pinned):
+		return
 	var decoy: Decoy = br.calling()[0] if not br.calling().is_empty() else null
 	var near_decoy: bool = decoy != null and Vector2(b.global_position.x - decoy.global_position.x, b.global_position.z - decoy.global_position.z).length() < 1.2
 	player.global_position = b.global_position + (player.global_position - b.global_position).normalized() * 3.1
@@ -453,8 +465,12 @@ func _decoy_checks() -> void:
 	br.mine.loaded = D
 	br.press_run()
 	var pulled := await _wait(func(): return is_instance_valid(b) and b.brain.prey < 0, 200)
+	if await _gone(b, main, "acceptance: a decoy pulls it off the player", "pulled %d" % pulled):
+		return
 	player.global_position = b.global_position + Vector3(0.0, 0.95, 4.0)
 	await _frames(int(_bt.decoy_s * 60.0 * 0.6))
+	if await _gone(b, main, "acceptance: a decoy pulls it off the player and the player beside it is never touched", "pulled %d" % pulled):
+		return
 	var gap := Vector2(player.global_position.x - b.global_position.x, player.global_position.z - b.global_position.z).length()
 	_check("acceptance: it hunts the player at %.1f m/s (slower than a running player's 7) and a decoy pulls it off: it goes after the decoy and the player beside it is never touched while the decoy calls (%.1f m apart)" % [pace, gap], hunting >= 0 and pace <= _kt.speed + 0.2 and pace < 7.0 and pulled >= 0 and life.alive() and ice.flatlines == 0, "hunting %d pulled %d prey %d" % [hunting, pulled, b.brain.prey])
 	await _drop(main)
