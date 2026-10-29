@@ -142,6 +142,8 @@ func _palette_checks() -> void:
 		var key := m.get_string(1)
 		if key.begins_with("BLACK_ICE"):
 			continue
+		if key.begins_with("SKIN_"):
+			continue  # the earned light skins (C33) are alternates, guarded against the hostile lights (tests/unlocks_test.gd)
 		var c: Color = consts[key]
 		if maxf(c.r, maxf(c.g, c.b)) <= 0.5:
 			continue  # the dark bases, armour and glass: nothing bright to confuse it with

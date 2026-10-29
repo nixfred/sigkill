@@ -53,6 +53,9 @@ var _arenas: Array = []
 var _branches: Array = []
 var _defs: Array = []
 var _p: Progress
+## What this test listens to the run's progress with: let go before it quits (the progress is the run's own,
+## static, and outlives this script).
+var _listeners: Array[Callable] = []
 
 
 func _initialize() -> void:
@@ -120,6 +123,16 @@ func _source_checks() -> void:
 		if all.to_lower().contains(word):
 			shop.append(word)
 	_check("no store, no money, no account: nothing in it sells, buys or signs in", shop.is_empty(), ", ".join(shop))
+	var game := ""
+	for dir in ["res://scripts/", "res://scripts/weapons/", "res://scripts/fight/", "res://scripts/ice/", "res://scripts/net/"]:
+		for name in DirAccess.get_files_at(dir):
+			if name.ends_with(".gd") and name != "progress.gd":
+				game += _code(dir + name)
+	var uncounted := PackedStringArray()
+	for feat in Progress.SPECIAL_FEATS:
+		if not game.contains("_feat(self, \"%s\")" % feat) and not game.contains("match_feat(\"%s\")" % feat):
+			uncounted.append(feat)
+	_check("every feat a kit names can be earned: each is counted somewhere in the game (a kill by its weapon's id; %d others each by name)" % Progress.SPECIAL_FEATS.size(), uncounted.is_empty() and game.contains("Progress.judged_feat(self, \"kills_\" + weapon)") and game.contains("Progress.match_feat(\"kills_\" + weapon)"), ", ".join(uncounted))
 	_check("the dev and test flag --unlock-all is read once, from the game's own arguments, and never saved", progress.contains("OS.get_cmdline_user_args().has(UNLOCK_ALL_FLAG)") and Progress.UNLOCK_ALL_FLAG == "--unlock-all" and not _body(progress, "save").contains("all_unlocked"))
 
 
@@ -333,7 +346,9 @@ func _solo_checks() -> void:
 	_p.clear()
 	_p.count("kills_terminal_cannon", 9)
 	var told: Array = []
-	_p.unlocked.connect(func(_w: String, item: String, _t: String): told.append(item))
+	var listen := func(_w: String, item: String, _t: String): told.append(item)
+	_listeners.append(listen)
+	_p.unlocked.connect(listen)
 	var main := await _lab({"DummyA": Vector3(0.0, 0.0, 9.0)}, OPEN)
 	var player = main.get_node("Player")
 	var a := _dummy(main, "DummyA")
@@ -746,6 +761,9 @@ func _cleanup() -> void:
 	for branch in _branches.duplicate():
 		if is_instance_valid(branch):
 			branch.free()
+	for listen in _listeners:
+		if _p.unlocked.is_connected(listen):
+			_p.unlocked.disconnect(listen)
 	_p.clear()
 	_p.all_unlocked = false
 	_p.path = ""

@@ -172,6 +172,8 @@ func _palette_checks() -> void:
 		var key := m.get_string(1)
 		if key.begins_with("DEV_NULL"):
 			continue
+		if key.begins_with("SKIN_"):
+			continue  # the earned light skins (C33) are alternates, guarded against the hostile lights (tests/unlocks_test.gd)
 		var c: Color = consts[key]
 		if maxf(c.r, maxf(c.g, c.b)) <= 0.5:
 			continue  # the dark bases, armour and glass: nothing bright to confuse it with
@@ -188,7 +190,7 @@ func _palette_checks() -> void:
 		named[key] = _oklab(Palette.DEV_NULL).distance_to(_oklab(consts[key]))
 	var ice_least: float = named.values().min()
 	var text_l := _oklab(Palette.DEV_NULL_TEXT).x
-	_check("acceptance: the hole's own colour, a plum #%s (the accretion ring's: the hole itself is black), reads apart: at least %.3f (OKLab) from every bright colour of the palette (nearest %s, %.3f: chmod's frost opal, then the breakers' ultraviolet and the runaway's hot magenta at %.3f and %.3f), %.2f from ICE's glacier (%.3f), the hunter's cobalt (%.3f), Black ICE's slate (%.3f) and the pipe's brass (%.3f), so its core never reads as Black ICE; its HUD text #%s legible on black (lightness %.2f; %.3f from the nearest, %s)" % [Palette.DEV_NULL.to_html(false), APART, near, least, _oklab(Palette.DEV_NULL).distance_to(_oklab(Palette.BREAKER)), _oklab(Palette.DEV_NULL).distance_to(_oklab(Palette.HOT_MAGENTA)), APART_ICE, named["GLACIER"], named["HUNTER_COBALT"], named["BLACK_ICE"], named["PIPE"], Palette.DEV_NULL_TEXT.to_html(false), text_l, text_least, text_near], least >= APART and ice_least >= APART_ICE and text_least >= APART_TEXT and text_l >= 0.75 and Palette.DEV_NULL.to_html(false) == "ab389b" and Palette.SKINS.get("plum") == [Palette.DEV_NULL, Palette.DEV_NULL_TEXT])
+	_check("acceptance: the hole's own colour, a plum #%s (the accretion ring's: the hole itself is black), reads apart: at least %.3f (OKLab) from every bright colour of the palette (nearest %s, %.3f: chmod's frost opal, then the breakers' ultraviolet and the runaway's hot magenta at %.3f and %.3f), %.2f from ICE's glacier (%.3f), the hunter's cobalt (%.3f), Black ICE's slate (%.3f) and the pipe's brass (%.3f), so its core never reads as Black ICE; its HUD text #%s legible on black (lightness %.2f; %.3f from the nearest, %s)" % [Palette.DEV_NULL.to_html(false), APART, near, least, _oklab(Palette.DEV_NULL).distance_to(_oklab(Palette.BREAKER)), _oklab(Palette.DEV_NULL).distance_to(_oklab(Palette.HOT_MAGENTA)), APART_ICE, named["GLACIER"], named["HUNTER_COBALT"], named["BLACK_ICE"], named["PIPE"], Palette.DEV_NULL_TEXT.to_html(false), text_l, text_least, text_near], least >= APART and ice_least >= APART_ICE and text_least >= APART_TEXT and text_l >= 0.75 and Palette.DEV_NULL.to_html(false) == "ab389b" and Palette.SKINS.get("plum").slice(0, 2) == [Palette.DEV_NULL, Palette.DEV_NULL_TEXT] and Palette.skin_hot("plum") == Palette.DEV_NULL_HI)
 
 
 # --- The hole's rules on their own. ---

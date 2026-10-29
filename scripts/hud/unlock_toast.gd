@@ -45,6 +45,12 @@ func _ready() -> void:
 		_progress.unlocked.connect(show_unlock)
 
 
+func _exit_tree() -> void:
+	# The run's progress outlives this HUD (it is static): let go of it as the HUD goes.
+	if _progress != null and _progress.unlocked.is_connected(show_unlock):
+		_progress.unlocked.disconnect(show_unlock)
+
+
 ## Earned: `weapon`'s skin or mod `item`, called `title`. Shown now, or after the ones already waiting.
 func show_unlock(weapon: String, item: String, title: String) -> void:
 	_queue.append([weapon, item, title])

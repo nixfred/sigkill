@@ -350,7 +350,10 @@ func hurt_daemon(mark: Node, amount: float, brain: DaemonBrain, way: Vector3) ->
 	var by: int = brain.hup_by if brain != null else 0
 	if _online() and by != 0 and by != session.my_id:
 		return mark.hit_by_other(amount, point, way, by, "")
-	return mark.hit(amount, point, way, "")
+	var landed: bool = mark.hit(amount, point, way, "")
+	if landed and not mark.is_alive():
+		Progress.judged_feat(self, "lash_kills")  # this player's hangup made a daemon kill another (C33)
+	return landed
 
 
 ## A deciding lash bolt of `brain`'s met the daemon `mark` (C32): `scale` of the bolt's damage on it.

@@ -187,6 +187,8 @@ func _palette_checks() -> void:
 		var key := m.get_string(1)
 		if key.begins_with("PIPE"):
 			continue
+		if key.begins_with("SKIN_"):
+			continue  # the earned light skins (C33) are alternates, guarded against the hostile lights (tests/unlocks_test.gd)
 		var c: Color = consts[key]
 		if maxf(c.r, maxf(c.g, c.b)) <= 0.5:
 			continue  # the dark bases, armour and glass: nothing bright to confuse it with
@@ -202,7 +204,7 @@ func _palette_checks() -> void:
 	for key in ["GLACIER", "HUNTER_COBALT", "HUNTER_TEXT", "BLACK_ICE", "BLACK_ICE_TEXT", "BREAKER", "BREAKER_TEXT"]:
 		ice_least = minf(ice_least, _oklab(Palette.PIPE).distance_to(_oklab(consts[key])))
 	var text_l := _oklab(Palette.PIPE_TEXT).x
-	_check("acceptance: the pipe's own colour, a brass #%s, reads apart: at least %.2f (OKLab) from every bright colour of the palette (nearest %s, %.3f), %.2f from chmod's frost opal and its texts (it and its text, %.3f) and %.2f from ICE's glacier, the hunter's cobalt, Black ICE's slate and the breakers' ultraviolet and their texts (%.3f); its HUD text #%s legible on black (lightness %.2f)" % [Palette.PIPE.to_html(false), APART, near, least, APART_FROST, frost_least, APART_ICE, ice_least, Palette.PIPE_TEXT.to_html(false), text_l], least >= APART and frost_least >= APART_FROST and ice_least >= APART_ICE and Palette.PIPE.to_html(false) == "a79300" and text_l >= 0.7 and Palette.SKINS.get("brass") == [Palette.PIPE, Palette.PIPE_TEXT])
+	_check("acceptance: the pipe's own colour, a brass #%s, reads apart: at least %.2f (OKLab) from every bright colour of the palette (nearest %s, %.3f), %.2f from chmod's frost opal and its texts (it and its text, %.3f) and %.2f from ICE's glacier, the hunter's cobalt, Black ICE's slate and the breakers' ultraviolet and their texts (%.3f); its HUD text #%s legible on black (lightness %.2f)" % [Palette.PIPE.to_html(false), APART, near, least, APART_FROST, frost_least, APART_ICE, ice_least, Palette.PIPE_TEXT.to_html(false), text_l], least >= APART and frost_least >= APART_FROST and ice_least >= APART_ICE and Palette.PIPE.to_html(false) == "a79300" and text_l >= 0.7 and Palette.SKINS.get("brass").slice(0, 2) == [Palette.PIPE, Palette.PIPE_TEXT] and Palette.skin_hot("brass") == Palette.PIPE_HI)
 
 
 # --- The chain's rules on their own. ---

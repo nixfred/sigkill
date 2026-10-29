@@ -34,7 +34,11 @@ const HEAD := 15
 const NAME_FONT := 22
 const ROW_W := 196
 const CARD_W := 300
+## The turntable's size: its least (at 960x540 and under), and its share of a bigger window up to its most, so
+## on a big screen the weapon is the hero of it.
 const STAGE := Vector2(420, 300)
+const STAGE_SHARE := Vector2(0.42, 0.54)
+const STAGE_LAST := Vector2(860, 600)
 const SWATCH := Vector2(14, 40)
 const BAR_CELLS := 10
 const MARGIN := 14
@@ -64,6 +68,7 @@ var _skin_cards: Array[PanelContainer] = []
 var _mod_card: PanelContainer
 var _note: Label
 var _mods_note: Label
+var _frame: SubViewportContainer
 var _hover := -1
 
 
@@ -368,14 +373,14 @@ func _build_stage(parent: Control) -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 3)
 	parent.add_child(col)
-	var frame := SubViewportContainer.new()
-	frame.stretch = true
-	frame.custom_minimum_size = STAGE
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_frame = SubViewportContainer.new()
+	_frame.stretch = true
+	_frame.custom_minimum_size = STAGE
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stage = LoadoutStage.new()
 	stage.name = "Stage"
-	frame.add_child(stage)
-	col.add_child(frame)
+	_frame.add_child(stage)
+	col.add_child(_frame)
 	_name = _label(col, "", NAME_FONT, Palette.FLASH)
 	_fiction = _label(col, "", FONT, Palette.TEAL)
 	_worn_line = _label(col, "", FONT, Palette.MINT)
@@ -468,6 +473,7 @@ func _fit() -> void:
 	if _center == null:
 		return
 	var screen := get_viewport_rect().size
+	_frame.custom_minimum_size = (screen * STAGE_SHARE).clamp(STAGE, STAGE_LAST).floor()
 	var need: Vector2 = _panel.get_combined_minimum_size()
 	var k := 1.0
 	if need.x > 0.0 and need.y > 0.0:

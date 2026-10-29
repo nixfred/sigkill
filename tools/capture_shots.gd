@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31 or c32):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32 or c33):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -50,7 +50,12 @@ extends SceneTree
 ## three times the size, a crowd of fighting daemons confused (their "?", their seams cycling) turning on each
 ## other (a lash caught mid-strike), a caught player's own screen (the glitch, the drifting crosshair, the link
 ## hung up), ICE (the hunter confused, a node reloading, the gate untouched) and Black ICE refusing it
-## ("SIGHUP: ignored (nohup)"); then it prints what a burst costs. Every other set plays in practice,
+## ("SIGHUP: ignored (nohup)"); then it prints what a burst costs; c33, unlocks, mods and light skins, on demo progress
+## (counts a few sessions might leave): the loadout screen from the Esc menu with the cannon on its turntable in
+## Dracula's purple and green, its overclock fitted; the same screen on SIGHUP with a locked skin (dial tone) under
+## the pointer lighting the handset while its card says how it is earned; a line-up of weapons in earned skins on
+## the open floor, each on a plinth with its skin's name; and the toast in play, "UNLOCKED: Catppuccin" over a
+## SIGTERM shot in its ^C cyan; then it prints what the turntable costs. Every other set plays in practice,
 ## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -318,6 +323,21 @@ const C32_LASH_WAIT := 330
 const C32_KNOT_FROM := Vector3(0.8, 0.95, 12.0)
 const C32_ICE_FROM := Vector3(5.5, 0.95, 4.0)
 const C32_ICE_DROP := Vector3(-2.6, 0.2, -3.4)
+## c33 (C33): the demo progress the stills are shot on (a few sessions' worth: the cannon's every unlock, SIGTERM's
+## ^C, the rail's blacklight); the line-up (each weapon in an earned skin), where it stands on the open floor and
+## how far apart, how much bigger than in the hand, how it is turned to the camera; the camera; the turntable's
+## frames before a still (a three-quarter view); where the toast's shot is taken from and at.
+const C33_PROGRESS := {"kills_terminal_cannon": 82, "kills_sigterm": 27, "rail_heads": 4, "kills_fork_bomb": 9, "pings": 12, "discards": 3, "hups": 4, "freezes": 6, "shatters": 1, "grep_marks": 8}
+const C33_LINEUP := [["terminal_cannon", "tty1"], ["sigkill_rail", "blacklight"], ["rm_rf_cannon", "preserve_root"], ["sighup", "dial_tone"], ["fork_bomb", "exponential"], ["dev_null", "dev_random"], ["chmod_000", "chmod_755"], ["terminal_cannon", "dracula"]]
+const C33_LINEUP_Z := 7.6
+const C33_LINEUP_GAP := 1.45
+const C33_LINEUP_SCALE := 2.3
+const C33_LINEUP_TURN := -1.15
+const C33_CAM_AT := Vector3(0.0, 1.7, 12.9)
+const C33_CAM_LOOK := Vector3(0.0, 0.7, 7.6)
+const C33_TURN_FRAMES := 150
+const C33_SHOT_FROM := Vector3(0.8, 0.95, 14.4)
+const C33_SHOT_AT := Vector3(0.0, 0.0, 8.8)
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -397,6 +417,11 @@ func _run() -> void:
 		return
 	if _set == "c32":
 		await _c32()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c33":
+		await _c33()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1889,6 +1914,148 @@ func _c32() -> void:
 	await _frames(C32_WAVE_FRAMES + 12)
 	print("capture: Black ICE: \"%s\", seals %d, confused %s" % [black_burst.tag_text().replace("\n", " / "), b.seals_left, b.brain.hup_name()])
 	await _save("c32-black")
+
+
+func _c33() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var hud = _main.get_node("Hud")
+	var p := Progress.current()
+	_c33_progress(p)
+	p.choose_skin("terminal_cannon", "dracula")
+	p.choose_mod("terminal_cannon", true)
+	p.choose_skin("sigterm", "ctrl_c")
+	_player.wear(_player.chosen_look())
+	await _stand(C33_SHOT_FROM, _main.to_global(Vector3(0.0, 1.2, 4.0)))
+	_player.select_slot(0)
+	await _frames(SETTLE_FRAMES)
+	# The loadout screen: the cannon on its turntable in Dracula, its overclock fitted.
+	var menu = hud.pause_menu()
+	menu.open_loadout()
+	var screen: LoadoutScreen = menu.loadout_screen()
+	screen.select(0)
+	await _frames(C33_TURN_FRAMES)
+	print("capture: the loadout: fit %.2f, the stage %s, the panel %s; \"%s\"" % [screen.fit_scale(), str(screen.stage.size), str(screen.panel_rect()), " | ".join(screen.texts()).left(400)])
+	await _save("c33-loadout")
+	await _c33_cost(screen)
+	# A locked skin under the pointer: SIGHUP's dial tone lighting the handset while its card says how it is earned.
+	screen.select(12)
+	await _frames(20)
+	screen.preview(1)
+	await _frames(C33_TURN_FRAMES - 40)
+	print("capture: locked: %s" % " | ".join(screen.texts()).left(400))
+	await _save("c33-locked")
+	screen.preview(-1)
+	screen.close()
+	menu.close()
+	await _frames(20)
+	# The line-up: weapons in earned skins on the open floor.
+	var lineup := _c33_lineup()
+	await _free_view("c33-skins", C33_CAM_AT, C33_CAM_LOOK)
+	await _frames(40)
+	lineup.queue_free()
+	await _frames(10)
+	# The toast in play: a SIGTERM shot in its ^C cyan at a daemon, and the unlock dropping in.
+	var a: Node3D = targets.get_node("DummyA")
+	_c27b_place(a, _main.to_global(C33_SHOT_AT))
+	_c30_tough(a)
+	var b: Node3D = targets.get_node("DummyB")
+	_c27b_place(b, _main.to_global(C33_SHOT_AT + Vector3(2.6, 0.0, -2.2)))
+	await _stand(C33_SHOT_FROM, a.global_position + Vector3.UP * 1.0)
+	_player.select_slot(1)
+	await _frames(SETTLE_FRAMES)
+	_player.drive_input(Vector2.ZERO, false, false, true)
+	await physics_frame
+	_player.drive_input(Vector2.ZERO, false, false, false)
+	p.count("kills_sigterm", 50 - p.count_of("kills_sigterm"))
+	await _frames(14)
+	print("capture: the toast \"%s\", the strip \"%s\"" % [hud.unlock_toast().text(), hud.weapon_hud().ammo_text() if hud.weapon_hud().has_method("ammo_text") else ""])
+	await _save("c33-unlock")
+
+
+## Demo progress for the stills (C33_PROGRESS), everything its counts have earned held, nothing told.
+func _c33_progress(p: Progress) -> void:
+	p.clear()
+	for feat in C33_PROGRESS:
+		p.feats[feat] = C33_PROGRESS[feat]
+	for def in WeaponKit.shipped_defs():
+		var kit := WeaponKit.of(def.id)
+		var items: Array = kit.skins.slice(1)
+		items.append(kit.mod)
+		for item in items:
+			if p.count_of(item.feat) >= item.need:
+				p.held[Progress.key_of(def.id, item.skin if item is WeaponSkin else item.id)] = true
+
+
+## Each weapon of C33_LINEUP in its skin, scaled up on a plinth on the open floor, its skin's name under it.
+func _c33_lineup() -> Node3D:
+	var row := Node3D.new()
+	row.name = "SkinLineup"
+	_main.add_child(row)
+	var shipped := {}
+	for def in WeaponKit.shipped_defs():
+		shipped[def.id] = def
+	var n := C33_LINEUP.size()
+	for i in n:
+		var def: Resource = shipped[C33_LINEUP[i][0]]
+		var kit := WeaponKit.of(def.id)
+		var index := kit.skin_index(C33_LINEUP[i][1])
+		var worn := Loadout.apply(def, index, false)
+		var at := Vector3((i - (n - 1) * 0.5) * C33_LINEUP_GAP, 0.0, C33_LINEUP_Z)
+		var spot := Node3D.new()
+		row.add_child(spot)
+		spot.global_position = _main.to_global(at)
+		var plinth := MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = 0.5
+		disc.bottom_radius = 0.54
+		disc.height = 0.06
+		disc.radial_segments = 40
+		plinth.mesh = disc
+		plinth.material_override = Palette.viewmodel_metal(Palette.GUNMETAL, Palette.skin_body(worn.light_skin), true, true)
+		plinth.position.y = 0.03
+		spot.add_child(plinth)
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.47
+		torus.outer_radius = 0.485
+		torus.rings = 48
+		ring.mesh = torus
+		ring.material_override = Palette.unlit_glow(Palette.skin_body(worn.light_skin), 3.0)
+		ring.position.y = 0.065
+		spot.add_child(ring)
+		var model := Viewmodel.make(worn)
+		model.visible = true
+		model.scale = Vector3.ONE * C33_LINEUP_SCALE
+		model.rotation.y = C33_LINEUP_TURN
+		model.position = Vector3(0.0, 0.62, 0.0)
+		model.set_look(Palette.skin_body(worn.light_skin), Palette.skin_beam(worn.light_skin), worn.viewmodel_glow_energy * 1.3)
+		spot.add_child(model)
+		var tag := Label3D.new()
+		tag.text = "%s\n%s" % [kit.skins[index].display_name, def.short_name]
+		tag.font = Palette.mono_font()
+		tag.font_size = 44
+		tag.pixel_size = 0.004
+		tag.outline_size = 10
+		tag.modulate = Palette.skin_beam(worn.light_skin)
+		tag.outline_modulate = Palette.VOID
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.shaded = false
+		tag.position = Vector3(0.0, 1.45, 0.0)
+		spot.add_child(tag)
+	return row
+
+
+## What the loadout screen costs (C33): the GPU's time with it open (its turntable drawing) against closed, twice.
+func _c33_cost(screen: LoadoutScreen) -> void:
+	var times := []
+	for i in 2:
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		screen.visible = false
+		times.append(await _gpu_ms(A4_GPU_FRAMES))
+		screen.visible = true
+	print("capture: the loadout screen costs the GPU %.2f and %.2f ms a frame open, %.2f and %.2f closed" % [times[0], times[2], times[1], times[3]])
 
 
 ## A burst of the player's own dropped at `at` (arena space) as if thrown there, gone off (C32).

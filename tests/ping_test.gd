@@ -116,7 +116,7 @@ func _source_checks() -> void:
 	for word in [".new(", "instantiate(", "duplicate(", "Mesh(", "Material("]:
 		if each.contains(word):
 			made.append(word)
-	_check("acceptance: nothing is made while a ring flies or an outline holds: what runs each frame (the ring's step and meeting, the reveal's step and lighting) makes no node, mesh or material; the ring's meshes and materials are made once for every ping, and a daemon's outline once, the first time a ping meets it (PingReveal.of), then kept", made.is_empty() and each.length() > 1500 and pulse.contains("if _floor_mesh == null") and pulse.contains("if _floor_material == null") and lit.contains("if _material == null"), ", ".join(made))
+	_check("acceptance: nothing is made while a ring flies or an outline holds: what runs each frame (the ring's step and meeting, the reveal's step and lighting) makes no node, mesh or material; the ring's meshes are made once for every ping and its materials once a light skin (C33: one look per skin, kept), and a daemon's outline once, the first time a ping meets it (PingReveal.of), then kept", made.is_empty() and each.length() > 1500 and pulse.contains("if _floor_mesh == null") and pulse.contains("if not _materials.has(key)") and lit.contains("if _material == null"), ", ".join(made))
 
 
 func _weapon_checks() -> void:
