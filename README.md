@@ -8,7 +8,7 @@
   <img alt="Vulkan renderer" src="https://img.shields.io/badge/Vulkan-renderer-19d3c5?logo=vulkan&amp;logoColor=7dffcf&amp;labelColor=05080a">
   <img alt="Native Linux" src="https://img.shields.io/badge/Linux-native-19d3c5?logo=linux&amp;logoColor=7dffcf&amp;labelColor=05080a">
   <img alt="Omarchy / Hyprland" src="https://img.shields.io/badge/Omarchy-Hyprland-19d3c5?logo=hyprland&amp;logoColor=7dffcf&amp;labelColor=05080a">
-  <img alt="License: TBD" src="https://img.shields.io/badge/license-TBD-ffb000?labelColor=05080a">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-19d3c5?labelColor=05080a"></a>
   <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-ff3355?labelColor=05080a">
 </p>
 
@@ -1169,7 +1169,7 @@ Runs from source today. Packaged builds (AppImage, AUR) are planned and not avai
 
 ```bash
 sudo pacman -S --needed godot git
-git clone https://github.com/nixfred/sigkill.git   # private for now, ask for access
+git clone https://github.com/nixfred/sigkill.git
 cd sigkill
 scripts/play.sh
 ```
@@ -1329,7 +1329,7 @@ These rules apply to every chunk, from PRD section 6, in plain language:
 - **The daemons are fiction.** The daemons that hunt you (C27b) are game objects in the arena: their names, attacks and deaths touch no real process, and nothing in the fight code signals, inspects or runs anything on your machine (the daemon AI test scans it).
 - **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc and the window's close button always work. A one-line content note and an opt-in come first, and saying no gives you the same opener on fake data.
 - **Original art and audio.** Today's sounds are synthesised in code, and the repository contains no audio files. Concept art is always labelled as concept art.
-- **Private until Fred says otherwise.** Local commits and pushes to a private repository only. Nothing goes public without Fred's yes, and every chunk reports real command output.
+- **Public repository under the MIT license since 2026-10-28; nothing else goes public (releases, packages, store pages, the relay) without Fred's yes.** Every chunk reports real command output.
 
 ## Roadmap
 
@@ -1337,7 +1337,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 
 | Milestone | Chunks | Status |
 |---|---|---|
-| M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 private repository (`e57697a`) | ✅ Done |
+| M0 Foundations | C1 Godot installed, clean headless import (`823de8b`) · C2 quality gate and first Codex bug run (`c26061f`) · C3 GitHub repository, private at first (`e57697a`; public under MIT since 2026-10-28) | ✅ Done |
 | M1 Look and feel | C4 Tron environment (`de7c203`) · C4b README graphics (`52383f3`) · C5 movement feel (`c223950`) · C6 terminal cannon feel (`6403dbd`) · C6b this README · C7 derezz deaths on the dummies (`238d3ac`) · C8 code-rain walls (`3ee66b1`) | ✅ Done |
 | M2 Your AI | C9 AI source detector (`1bd17b2`) · C9b agent adapters (`f9cf9b4`) · C10 boot sequence (`3184454`) · C11 guide HUD (`be2f220`) · C11b local model-load consent (`1fc87b7`) · C12 coaching and roasts (`e72c644`) | ✅ Done |
 | M3 Multiplayer | C13 LAN and tailnet (`6a83ae0`) · C14 synced combat (`19a4781`) · C15 room codes and invite links, client side and relay design (`5c1a8d3`) · C16c the relay itself, local only (`b5a2f42`) · C16d WebSocket relay mode, tested on 127.0.0.1, hosted nowhere yet (`3c78dc3`), relay hosting waits on Fred | ✅ Done, relay hosting waits on Fred |
@@ -1530,6 +1530,10 @@ Real in-game captures, demo data only (A1, A2b, A3, A4, C27b and C28). The game 
 
 
 Everything else on this page is concept art or a mockup and is labelled that way; the badges and the hexagon are brand marks.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Fred Nix. The original art and audio in the repository are under the same MIT license. SIGKILL is still pre-alpha.
 
 <p align="center">
   <img src="docs/media/nixfred-icon.svg" alt="nixfred" width="64" height="64"><br>

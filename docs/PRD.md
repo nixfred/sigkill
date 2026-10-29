@@ -104,7 +104,7 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
 - The ONE exception to "never execute" (Fred, 2026-10-25): the game may launch the player's own Omarchy default agent CLI in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never via omarchy-agent, and with only game stats and the player's typed text in the prompt. The SECOND and last exception (producer, 2026-10-26): an optional query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader` for HUD GPU stats, never with control flags; prefer /sys reads, and hide GPU stats if neither works. Nothing else is ever executed.
 - Nothing private (real paths, hostnames, process lists, model lists) in the repo, screenshots or trailers. Demo-data mode for anything public.
 - No Ctrl+Alt hotkeys. Mouse captured only while focused, released on Esc/focus loss. No focus stealing. No GPU use when not running.
-- Local commits and private pushes only. Nothing public without Fred's yes.
+- Commits and pushes go to the public repository (MIT, since 2026-10-28). Nothing else public (releases, packages, store pages, the relay) without Fred's yes.
 - Never invent results: every chunk reports real command output.
 
 ## 7. How Larry builds it
@@ -116,7 +116,7 @@ Every chunk ends with a Codex bug run (Fred, 2026-10-25): after Larry's own chec
 M0 Foundations
 - C1 Install Godot 4.7.2 (pacman, approved). Headless import of the project with zero errors. Fix only what breaks import.
 - C2 Add scripts/check.sh (gdparse + headless import + headless 300-frame run, nonzero on any error), first Codex bug run over everything so far, sync PRD and DESIGN.md.
-- C3 Private GitHub repo nixfred/sigkill, push main. (Private only.)
+- C3 GitHub repo nixfred/sigkill, push main. (Private at first; public under the MIT license since 2026-10-28.)
 M1 Look and feel (the "Rockstar" pass on the greybox)
 - C4 Tron environment: black void, glowing floor grid shader, neon edge shader on blocks, WorldEnvironment glow + fog.
 - C5 Movement feel: accel/decel curves, air control, slide, head bob, FOV kick, all tunables in one resource.
