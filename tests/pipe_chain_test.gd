@@ -288,7 +288,7 @@ func _key_checks() -> void:
 	var wheel_wrap: int = p.inventory.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
 	var wheel_back: int = p.inventory.current
-	_check("acceptance: Shift+2 draws weapon 11, pipe | (\"%s\" on the strip, bank 2 lit), 2 draws SIGTERM, Q swaps back to the pipe, and the wheel reaches it from chmod 000, goes on (to the cannon, the wrap, until C31; to /dev/null, weapon 12, since: its charges on the strip, 3(2)) and comes back" % strip_two, shift_two == SLOT and strip_two == "Shift+ 1 [2 pipe] 3(2)" and lit_two == 1 and two == 1 and q_back == SLOT and wheel_on == SLOT and wheel_wrap == SLOT + 1 and wheel_back == SLOT and p.weapon_tuning().id == "pipe_chain", "%d %d %d %d %d %d" % [shift_two, two, q_back, wheel_on, wheel_wrap, wheel_back])
+	_check("acceptance: Shift+2 draws weapon 11, pipe | (\"%s\" on the strip, bank 2 lit), 2 draws SIGTERM, Q swaps back to the pipe, and the wheel reaches it from chmod 000, goes on (to the cannon, the wrap, until C31; to /dev/null, weapon 12, since: its charges on the strip, 3(2); SIGHUP's beside them, 4(2), since C32) and comes back" % strip_two, shift_two == SLOT and strip_two == "Shift+ 1 [2 pipe] 3(2) 4(2)" and lit_two == 1 and two == 1 and q_back == SLOT and wheel_on == SLOT and wheel_wrap == SLOT + 1 and wheel_back == SLOT and p.weapon_tuning().id == "pipe_chain", "%d %d %d %d %d %d" % [shift_two, two, q_back, wheel_on, wheel_wrap, wheel_back])
 	await _drop(main)
 
 
@@ -346,7 +346,7 @@ func _strip_checks() -> void:
 		lines = PackedStringArray([hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
 		await _drop_side(host)
 	root.size = before
-	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, the pipe in bank 2's (\"%s\" over \"%s\"), with its buffer (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and a root's longest chain of the longest names (24 characters) fits as one row under the crosshair, drawn smaller and its names cut (\"%s\")" % [lines[0], lines[1], lines[2], lines[3], row], wrong.is_empty() and lines[0] == "Shift+ 1 [2 pipe] 3(2)" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "pipe  buffer 0K/64K" and lines[3] == "buffer [..........]" and row.contains("(000)") and row.contains("~") and row.ends_with("6 links"), ", ".join(wrong))
+	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, the pipe in bank 2's (\"%s\" over \"%s\"), with its buffer (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and a root's longest chain of the longest names (24 characters) fits as one row under the crosshair, drawn smaller and its names cut (\"%s\")" % [lines[0], lines[1], lines[2], lines[3], row], wrong.is_empty() and lines[0] == "Shift+ 1 [2 pipe] 3(2) 4(2)" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "pipe  buffer 0K/64K" and lines[3] == "buffer [..........]" and row.contains("(000)") and row.contains("~") and row.ends_with("6 links"), ", ".join(wrong))
 
 
 # --- In practice: a chain across the dummies. ---
@@ -610,7 +610,7 @@ func _match_checks() -> void:
 	var cid: int = cs.my_id
 	var session_code := _code("res://scripts/net/net_session.gd")
 	var rpcs := session_code.count("@rpc(")
-	_check("acceptance: the wire: protocol 17 (15 at C29, 16 at C30), no new message (28 RPCs, as I2 left them) and no changed one: a chain is the usual fire intent, told as the usual shot message (its ends the chain's points)", joined and Session.PROTOCOL == 17 and rpcs == 28 and _body(session_code, "_handle_fire").contains("_pipe_judge(shooter, origin, dir, def)") and _body(session_code, "_shot").contains("pipe_tuning().root_max_links"), "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 18 (15 at C29, 16 at C30, 17 at C31, 18 at C32), no new message (28 RPCs, as I2 left them) and no changed one: a chain is the usual fire intent, told as the usual shot message (its ends the chain's points)", joined and Session.PROTOCOL == 18 and rpcs == 28 and _body(session_code, "_handle_fire").contains("_pipe_judge(shooter, origin, dir, def)") and _body(session_code, "_shot").contains("pipe_tuning().root_max_links"), "%d RPCs" % rpcs)
 	var hp = host["player"]
 	var cp = client["player"]
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:

@@ -8,6 +8,9 @@ extends Node3D
 ## is made after that: while lit it holds, eases out over the reveal's last fade and goes dark, and
 ## a derezz ends it at once.
 ##
+## SIGHUP (C32): a daemon confused when the ping shows it is outlined in the carrier green instead, its scan
+## bands climbing faster, and its tag says it is hung up; it goes back to lime once it is itself again.
+##
 ## Cosmetic: it reads the art's own MultiMeshes and the daemon's name; nothing is judged here.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -21,8 +24,14 @@ const TAG_PIXEL := 0.0009
 const TAG_OUTLINE := 8
 const TAG_EVERY_S := 0.2
 const TAG_LINE := "%s  %dm"
+const HUP_LINE := "%s  %dm  hung up"
+## A confused daemon's outline's scan, this many times as fast as the lime's (C32).
+const HUP_SCAN := 2.5
+## The lime outline's own scan speed (the shader's, which material() leaves as it is).
+const SCAN_SPEED := 1.6
 
 static var _material: ShaderMaterial
+static var _hup_material: ShaderMaterial
 
 var _ghosts: Array[MultiMeshInstance3D] = []
 var _tag: Label3D
@@ -33,6 +42,7 @@ var _fade := 0.0
 var _strength := 0.0
 var _sent := -1.0
 var _tag_wait := 0.0
+var _confused := false
 
 
 ## The reveal of `art`'s daemon, made under it the first time (its name `daemon_name` on the tag).
@@ -62,6 +72,22 @@ static func material() -> ShaderMaterial:
 		_material.set_shader_parameter("scan_color", Palette.LIME_HI)
 		_material.render_priority = Material.RENDER_PRIORITY_MAX
 	return _material
+
+
+## A confused daemon's outline (C32): the carrier green, its scan quicker. Made once.
+static func hup_material() -> ShaderMaterial:
+	if _hup_material == null:
+		_hup_material = material().duplicate()
+		_hup_material.set_shader_parameter("color", Palette.SIGHUP)
+		_hup_material.set_shader_parameter("scan_color", Palette.SIGHUP_HI)
+		var scan = _hup_material.get_shader_parameter("scan_speed")
+		_hup_material.set_shader_parameter("scan_speed", (scan if scan is float else SCAN_SPEED) * HUP_SCAN)
+	return _hup_material
+
+
+## True while it outlines the daemon as confused (C32).
+func confused() -> bool:
+	return _confused
 
 
 func _setup(art: DaemonArt, daemon_name: String) -> void:
@@ -156,9 +182,16 @@ func _step(delta: float) -> void:
 		_tag.modulate.a = _strength
 		_tag.outline_modulate.a = _strength
 		_sent = _strength
+	var confused_now := visible and _art != null and is_instance_valid(_art) and _art.hup_phase != 0
+	if confused_now != _confused:
+		_confused = confused_now
+		for ghost in _ghosts:
+			ghost.material_override = hup_material() if _confused else material()
+		_tag.modulate = Color(Palette.SIGHUP_TEXT if _confused else Palette.LIME_HI, _strength)
+		_tag_wait = 0.0
 	_tag_wait -= delta
 	if visible and _tag_wait <= 0.0:
 		_tag_wait = TAG_EVERY_S
 		var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
 		var far := camera.global_position.distance_to(global_position) if camera != null else 0.0
-		_tag.text = TAG_LINE % [_name, roundi(far)]
+		_tag.text = (HUP_LINE if _confused else TAG_LINE) % [_name, roundi(far)]

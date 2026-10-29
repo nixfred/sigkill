@@ -41,6 +41,10 @@ extends Control
 ## CUT" in Black ICE's colour, flickering, the latency and GPU lines go dark and the status line reads "NO
 ## CARRIER". Cosmetic only: no call is made or cancelled because of it, T still asks and an answer still
 ## shows; it comes back when Black ICE is gone.
+##
+## SIGHUP (C32): while another player's SIGHUP has this player confused (its hup_left), the link shows hung
+## up the same way: the badge "HUNG UP" in the carrier's colour, flickering, the latency and GPU lines dark,
+## the status line a redial. Black ICE's cut wins when both hold. Cosmetic only, as the cut is.
 
 const HudTuningScript = preload("res://scripts/hud/hud_tuning.gd")
 const Link = preload("res://scripts/guide/guide_link.gd")
@@ -90,6 +94,9 @@ const DEMO_PICK := "Demo mode: %s"
 const CUT_BADGE := "your AI: LINK CUT"
 const CUT_STATUS := "NO CARRIER   Black ICE on the line"
 const CUT_FLICKER_HZ := 9.0
+## The link hung up by SIGHUP (C32): the badge and the status line.
+const HUP_BADGE := "your AI: HUNG UP"
+const HUP_STATUS := "SIGHUP   the line hung up, redialling..."
 const SPINNER := ["|", "/", "-", "\\"]
 const WEAPON := "terminal_cannon"
 const MODE := "practice"
@@ -335,6 +342,14 @@ func note_kill() -> void:
 ## True while Black ICE has the guide's link cut (I3): from its arrival until it is gone.
 func link_cut() -> bool:
 	return ice != null and is_instance_valid(ice) and ice.has_method("black_out") and ice.black_out()
+
+
+## True while another player's SIGHUP has this player confused (C32): the link shows hung up.
+func link_hung_up() -> bool:
+	if player == null or not is_instance_valid(player):
+		return false
+	var left = player.get("hup_left")
+	return left is float and left > 0.0
 
 
 func set_targets_left(remaining: int) -> void:
@@ -776,7 +791,14 @@ func _refresh() -> void:
 		_gpu.visible = false
 		if not (_typing or _consent_prompt or _load_ui == "prompt"):
 			_status.text = CUT_STATUS
-	_badge.modulate.a = (0.35 if fmod(_cut_clock * CUT_FLICKER_HZ, 1.0) < 0.3 else 1.0) if link_cut() else 1.0
+	elif link_hung_up():
+		_badge.text = HUP_BADGE
+		_badge.add_theme_color_override("font_color", Palette.SIGHUP_TEXT)
+		_latency.visible = false
+		_gpu.visible = false
+		if not (_typing or _consent_prompt or _load_ui == "prompt"):
+			_status.text = HUP_STATUS
+	_badge.modulate.a = (0.35 if fmod(_cut_clock * CUT_FLICKER_HZ, 1.0) < 0.3 else 1.0) if link_cut() or link_hung_up() else 1.0
 	_panel.visible = _typing or _consent_prompt or _load_ui != "" or (_answer_ms_left > 0.0 and not hold_answer) or _notice_ms_left > 0.0
 
 

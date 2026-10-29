@@ -311,11 +311,11 @@ func _refresh() -> void:
 		state_color = def.skin_beam()
 	elif inv.fiction_left > 0.0:
 		_state.text = def.fiction
-	elif def.is_hole() and mag < def.magazine_size:
-		# /dev/null (C31): its next charge coming back; amber with none left.
+	elif def.charges_tuning() != null and mag < def.magazine_size:
+		# /dev/null (C31), SIGHUP (C32): its next charge coming back; amber with none left.
 		var lit := clampi(roundi(inv.recharge_share(inv.current) * BAR_CELLS), 0, BAR_CELLS)
 		_state.text = RECHARGE_LINE % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
-		state_color = Palette.HOSTILE_AMBER if mag <= 0 else Palette.DEV_NULL_TEXT
+		state_color = Palette.HOSTILE_AMBER if mag <= 0 else def.skin_beam()
 		if mag <= 0:
 			color = Palette.HOSTILE_AMBER
 	elif def.has_magazine() and mag <= 0:

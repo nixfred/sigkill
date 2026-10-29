@@ -25,6 +25,11 @@ extends Node
 ## is without sight (it calls), and what lands on it only flashes it (hurt()). Bolts meet decoys as
 ## they meet players (bodies()).
 ##
+## SIGHUP (C32): a confused daemon's lash at another daemon lands here too (hurt_daemon()): only while the
+## brains decide, on a living daemon of this arena (never a player, never ICE), as a hit on it with no
+## weapon's name (the hunter adapts to weapons, not to a daemon's claws); its kill is the hangup's
+## thrower's (alone this player's; in a match that player's, as any hit the host judges for a joiner).
+##
 ## Fiction only: nothing here touches a real process, file or the system.
 
 const GROUP := &"daemon_director"
@@ -331,6 +336,27 @@ func hurt(id: int, base: float, brain: DaemonBrain, way: Vector3) -> bool:
 	if life == null or id != 1:
 		return false
 	return life.damage(amount, brain.dummy, way)
+
+
+## `amount` of a confused daemon's lash (C32) from `brain` on the daemon `mark`, along `way`: landed as a hit
+## on it (no difficulty scale: that is for players), credited to the hangup's thrower. Only while the brains
+## decide here, on a living daemon of this arena. True when it landed.
+func hurt_daemon(mark: Node, amount: float, brain: DaemonBrain, way: Vector3) -> bool:
+	if mode != Mode.RUN or not is_finite(amount) or amount <= 0.0 or mark == null or not is_instance_valid(mark):
+		return false
+	if mark is IcePiece or mark.get("brain") == null or not brains().has(mark.brain) or not mark.is_alive():
+		return false
+	var point: Vector3 = (mark as Node3D).global_position + Vector3.UP * DaemonBrain.MIDDLE_M
+	var by: int = brain.hup_by if brain != null else 0
+	if _online() and by != 0 and by != session.my_id:
+		return mark.hit_by_other(amount, point, way, by, "")
+	return mark.hit(amount, point, way, "")
+
+
+## A deciding lash bolt of `brain`'s met the daemon `mark` (C32): `scale` of the bolt's damage on it.
+func lash_met(brain: DaemonBrain, mark: Node, way: Vector3, scale: float) -> void:
+	if brain != null and hurt_daemon(mark, tuning.zombie_bolt_damage * scale, brain, way):
+		brain.lash_bolt_landed()
 
 
 ## A zombie's bolt from `from` along `dir` (world space): deciding here when the brains run, else

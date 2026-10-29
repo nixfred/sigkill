@@ -179,9 +179,14 @@ func pulse_at(distance: float) -> float:
 ## and the match's host count the same way, the host `slack` (a share) quicker, so it is never stricter than
 ## an honest player's game.
 func step_charges(mag: int, most: int, left: float, delta: float, slack: float = 0.0) -> Array:
+	return charges_after(mag, most, left, delta, recharge_s, slack)
+
+
+## step_charges() for any thrown weapon's charges that come back every `recharge` seconds (SIGHUP's too, C32).
+static func charges_after(mag: int, most: int, left: float, delta: float, recharge: float, slack: float = 0.0) -> Array:
 	if mag >= most:
 		return [mag, 0.0]
-	var wait := recharge_s * (1.0 - clampf(slack, 0.0, 0.5))
+	var wait := recharge * (1.0 - clampf(slack, 0.0, 0.5))
 	if left <= 0.0:
 		left = wait
 	left -= delta

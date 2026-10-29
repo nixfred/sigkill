@@ -8,8 +8,8 @@
 // offsets it by its own seed, so no two glitch in step. Nothing is sent per daemon per frame.
 //
 // The instance uniforms are pinned to the same slots in every daemon shader (hit 0, locked 1,
-// unstable 2, seed 3, core_color 4, gutter 5, edge_color 6), so a part drawn with more than one
-// of them (a shell and its split pass) never reads another's slot.
+// unstable 2, seed 3, core_color 4, gutter 5, edge_color 6, hup 7: SIGHUP's confusion, C32), so a part
+// drawn with more than one of them (a shell and its split pass) never reads another's slot.
 //
 // The glitch, heavier than A2's: on a few ticks a second some horizontal bands of a daemon jump
 // sideways; thin scanline bands tear across the screen; now and then a whole part snaps off its
@@ -23,6 +23,8 @@ instance uniform float hit : instance_index(0) = 0.0;
 instance uniform float locked : instance_index(1) = 0.0;
 instance uniform float unstable : instance_index(2) = 0.0;
 instance uniform float seed : instance_index(3) = 0.0;
+// SIGHUP (C32): 0 not confused, 1 reloading its config, 2 wandering confused.
+instance uniform float hup : instance_index(7) = 0.0;
 
 uniform float glitch_rate : hint_range(1.0, 60.0) = 9.0;
 uniform float glitch_share : hint_range(0.0, 1.0) = 0.08;

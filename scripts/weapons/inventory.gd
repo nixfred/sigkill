@@ -329,9 +329,9 @@ func tick(delta: float) -> void:
 		if pipe != null:
 			pipe.tick(delta)
 	for i in defs.size():
-		var hole = defs[i].hole_tuning()
-		if hole != null:
-			var now: Array = hole.step_charges(mags[i], defs[i].magazine_size, recharges[i], delta)  # /dev/null's charges (C31)
+		var charges = defs[i].charges_tuning()
+		if charges != null:
+			var now: Array = charges.step_charges(mags[i], defs[i].magazine_size, recharges[i], delta)  # /dev/null's charges (C31), SIGHUP's (C32)
 			mags[i] = now[0]
 			recharges[i] = now[1]
 	if reload_left > 0.0:
@@ -355,11 +355,12 @@ func buffer(slot: int) -> PipeBufferScript:
 	return buffers[slot] if slot >= 0 and slot < buffers.size() else null
 
 
-## How far slot `slot`'s next /dev/null charge has come back (C31), 0 just spent to 1; 1 when none is coming.
+## How far slot `slot`'s next charge has come back (/dev/null's, C31; SIGHUP's, C32), 0 just spent to 1; 1
+## when none is coming.
 func recharge_share(slot: int) -> float:
-	if slot < 0 or slot >= defs.size() or defs[slot].hole_tuning() == null or recharges[slot] <= 0.0:
+	if slot < 0 or slot >= defs.size() or defs[slot].charges_tuning() == null or recharges[slot] <= 0.0:
 		return 1.0
-	return clampf(1.0 - recharges[slot] / defs[slot].hole_tuning().recharge_s, 0.0, 1.0)
+	return clampf(1.0 - recharges[slot] / defs[slot].charges_tuning().recharge_s, 0.0, 1.0)
 
 
 ## The slot of the loadout's freeze weapon (chmod 000, C29), or -1 when it has none.

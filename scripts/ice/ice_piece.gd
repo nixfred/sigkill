@@ -21,6 +21,11 @@ extends StaticBody3D
 ## called off, and the next hit thaws it and lands the freeze tuning's frozen_hit_scale times harder
 ## (after the hit cap, as exploit's bonus); ICE never shatters (the cap holds). Walls ignore the beam (no
 ## frost: "read-only file system"), and Black ICE is only ever slowed (scripts/ice/black_ice.gd).
+##
+## SIGHUP (C32): a hangup reaches a piece through take_hup(): the hunter is confused as a daemon is and
+## forgets what it learned (scripts/ice/hunter_ice.gd), a node reloads and drops its field for a while
+## (scripts/ice/ice_node.gd); a wall is not touched and Black ICE ignores it (it runs under nohup), both
+## the false this base gives. Its look (scripts/fx/hup_look.gd) follows hup_phase() each frame.
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -57,6 +62,7 @@ var _held_until := -1
 ## nothing roused (the hole's own pull is its look); a kill still derezzes as any.
 var quiet := false
 var _frost_look: FrostLook
+var _hup_look: HupLook
 
 var _health := 100.0
 var _holder: Node3D
@@ -110,6 +116,41 @@ func hold_in_hole(seconds: float) -> void:
 ## True while a hole holds it.
 func held_by_hole() -> bool:
 	return Engine.get_physics_frames() <= _held_until and is_alive()
+
+
+## SIGHUP's hangup (C32) from player `by` (0 alone) with numbers `t`: true when it took it. A wall and
+## Black ICE never do (this base); the hunter and the nodes have their own.
+func take_hup(_t: SighupTuning, _by: int = 0) -> bool:
+	return false
+
+
+## Its confusion now for its look (C32): 0 none, 1 reloading, 2 wandering; and how far through it, 0 to 1.
+func hup_phase() -> int:
+	return 0
+
+
+func hup_share() -> float:
+	return 0.0
+
+
+## How many times as hard a /dev/null hole drags it now (the hunter confused, C32).
+func hole_pull_scale() -> float:
+	return 1.0
+
+
+## SIGHUP's look on it (C32), or null before it was ever hung up.
+func hup_look() -> HupLook:
+	return _hup_look
+
+
+## Its look follows its confusion: made the first time it has one, then told each frame.
+func _show_hup() -> void:
+	var phase := hup_phase() if not broken else 0
+	if _hup_look == null:
+		if phase == 0 or art == null:
+			return
+		_hup_look = HupLook.of(art)
+	_hup_look.show_phase(phase, hup_share())
 
 
 ## Called by a shot through its ray, a pellet, a dart or a blast, as a daemon's hit(). True when it

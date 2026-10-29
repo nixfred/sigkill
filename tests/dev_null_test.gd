@@ -20,7 +20,7 @@ extends SceneTree
 ## over ENet on 127.0.0.1 (the joiner's arena 1000 m off): the host runs and judges the joiner's hole (its
 ## charges counted, its opening told, the host dragged and hurt and discarded with the joiner credited),
 ## spawn protection holds, the host's hole drags the joiner on its own screen, the thrower is never dragged,
-## a joiner's hole drags the host's daemons; protocol 17, no new message. And the fiction rule for the hole's
+## a joiner's hole drags the host's daemons; protocol 17 (18 since C32), no new message. And the fiction rule for the hole's
 ## code, and nothing made while a hole holds. Deterministic: frames counted, only counts and outcomes printed.
 
 const Session = preload("res://scripts/net/net_session.gd")
@@ -148,7 +148,7 @@ func _weapon_checks() -> void:
 		refusals += 0 if bad.problems().is_empty() else 1
 	var none: WeaponDefScript = _def.duplicate()
 	none.projectile = null
-	refusals += 1 if ", ".join(none.problems()).contains("needs a ForkBombTuning or a DevNullTuning") else 0
+	refusals += 1 if ", ".join(none.problems()).contains("needs a ForkBombTuning, a DevNullTuning") else 0
 	var cannon: WeaponDefScript = load("res://resources/terminal_cannon.tres").duplicate()
 	cannon.projectile = t
 	refusals += 1 if ", ".join(cannon.problems()).contains("only a thrown weapon") else 0
@@ -240,7 +240,7 @@ func _key_checks() -> void:
 	var wheel_wrap: int = p.inventory.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
 	var wheel_back: int = p.inventory.current
-	_check("acceptance: Shift+3 draws weapon 12, /dev/null (\"%s\" on the strip, bank 2 lit), 3 draws the rail, Q swaps back to /dev/null, and the wheel reaches it from the pipe, wraps on to the cannon and comes back" % strip_three, shift_three == SLOT and strip_three == "Shift+ 1 2 [3 /dev/null]" and lit == 1 and three == RAIL and q_back == SLOT and wheel_on == SLOT and wheel_wrap == 0 and wheel_back == SLOT and p.weapon_tuning().id == "dev_null", "%d %d %d %d %d %d" % [shift_three, three, q_back, wheel_on, wheel_wrap, wheel_back])
+	_check("acceptance: Shift+3 draws weapon 12, /dev/null (\"%s\" on the strip, bank 2 lit), 3 draws the rail, Q swaps back to /dev/null, and the wheel reaches it from the pipe, goes on (to the cannon, the wrap, until C32; to SIGHUP, weapon 13, since: its charges on the strip, 4(2)) and comes back" % strip_three, shift_three == SLOT and strip_three == "Shift+ 1 2 [3 /dev/null] 4(2)" and lit == 1 and three == RAIL and q_back == SLOT and wheel_on == SLOT and wheel_wrap == SLOT + 1 and wheel_back == SLOT and p.weapon_tuning().id == "dev_null", "%d %d %d %d %d %d" % [shift_three, three, q_back, wheel_on, wheel_wrap, wheel_back])
 	await _drop(main)
 
 
@@ -310,7 +310,7 @@ func _strip_checks() -> void:
 		lines = PackedStringArray([hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
 		await _drop_side(host)
 	root.size = before
-	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, /dev/null in bank 2's (\"%s\" over \"%s\"), with its charges (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and a dragged player's warning over the crosshair, inside the screen, clear of the strip, the feed and a chain's readout under the crosshair; an open hole's own tag over its core (\"%s\")" % [lines[0], lines[1], lines[2], lines[3], readout], wrong.is_empty() and lines[0] == "Shift+ 1 2 [3 /dev/null]" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "/dev/null  1 left" and lines[3].begins_with("recharge [") and readout.begins_with("> /dev/null: pulling you in  RUN / tag: $ cat * > /dev/null / "), ", ".join(wrong))
+	_check("acceptance: at 960x540 (and 1280x720) the strip keeps its two rows in its own column, /dev/null in bank 2's (\"%s\" over \"%s\"), with its charges (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice; and a dragged player's warning over the crosshair, inside the screen, clear of the strip, the feed and a chain's readout under the crosshair; an open hole's own tag over its core (\"%s\")" % [lines[0], lines[1], lines[2], lines[3], readout], wrong.is_empty() and lines[0] == "Shift+ 1 2 [3 /dev/null] 4(2)" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "/dev/null  1 left" and lines[3].begins_with("recharge [") and readout.begins_with("> /dev/null: pulling you in  RUN / tag: $ cat * > /dev/null / "), ", ".join(wrong))
 
 
 # --- The throw. ---
@@ -661,7 +661,7 @@ func _match_checks() -> void:
 	var cid: int = cs.my_id
 	var src := FileAccess.get_file_as_string("res://scripts/net/net_session.gd")
 	var rpcs := src.count("@rpc(")
-	_check("acceptance: the wire: protocol 17 (16 since C30's pipe |), no new message (28 RPCs): a throw is the usual _throw, the hole's opening, collapse and discards ride _blast, its root the seed's sign", joined and Session.PROTOCOL == 17 and rpcs == 28, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 18 (16 since C30's pipe |, 17 at C31, 18 since C32's SIGHUP), no new message (28 RPCs): a throw is the usual _throw, the hole's opening, collapse and discards ride _blast, its root the seed's sign", joined and Session.PROTOCOL == 18 and rpcs == 28, "%d RPCs" % rpcs)
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:
 		_park(_dummy(host["main"], name))
 		_park(_dummy(client["main"], name))

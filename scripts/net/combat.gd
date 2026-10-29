@@ -430,10 +430,10 @@ func tick(delta: float) -> Array:
 		if s["buffer"] != null:
 			s["buffer"].tick(delta)  # pipe |'s buffer drains (C30)
 		for weapon in weapons:
-			var hole = weapons[weapon].hole_tuning()
-			if hole != null:
+			var charges = weapons[weapon].charges_tuning()
+			if charges != null:
 				var a: Dictionary = s["ammo"][weapon]
-				var now: Array = hole.step_charges(a["mag"], weapons[weapon].magazine_size, a["recharge"], delta, tuning.fire_rate_tolerance)  # /dev/null's charges (C31)
+				var now: Array = charges.step_charges(a["mag"], weapons[weapon].magazine_size, a["recharge"], delta, tuning.fire_rate_tolerance)  # /dev/null's charges (C31), SIGHUP's (C32)
 				a["mag"] = now[0]
 				a["recharge"] = now[1]
 		if s["protect_left"] > 0.0:

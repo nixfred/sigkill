@@ -60,7 +60,7 @@ const PER_FRAME := {
 }
 const MADE := ["SurfaceTool", "ArrayMesh", "MultiMesh.new", ".new(", "add_child", "duplicate(", "Material", "append(", "resize(", "Array(", "Dictionary(", "{", "str(", "\" %"]
 ## The instance uniforms' slots every daemon shader shares.
-const SLOTS := {"hit": 0, "locked": 1, "unstable": 2, "seed": 3, "core_color": 4, "gutter": 5, "edge_color": 6}
+const SLOTS := {"hit": 0, "locked": 1, "unstable": 2, "seed": 3, "core_color": 4, "gutter": 5, "edge_color": 6, "hup": 7}
 const SHADERS := ["daemon_glitch.gdshaderinc", "daemon_shell.gdshader", "daemon_split.gdshader", "daemon_core.gdshader", "daemon_trail.gdshader", "daemon_glyphs.gdshader", "daemon_armor.gdshader"]
 ## Frames each type is watched for, and how far a planted foot may slide, in metres.
 const WATCH_FRAMES := 240
@@ -155,7 +155,7 @@ func _source_checks() -> void:
 	var glitch := _shader_code("res://shaders/daemon_glitch.gdshaderinc")
 	var project := FileAccess.get_file_as_string("res://project.godot")
 	timed = timed and glitch.contains("global uniform float daemon_clock;") and _shader_code("res://shaders/daemon_glyphs.gdshader").contains("global uniform float daemon_clock;") and project.contains("[shader_globals]") and project.contains("daemon_clock={\n\"type\": \"float\"")
-	_check("acceptance: A2's open issue fixed: every instance uniform of every daemon shader is pinned (hit 0, locked 1, unstable 2, seed 3, core_color 4, gutter 5, edge_color 6), the same name always the same slot; the time is the one shader global daemon_clock, never TIME", slots_wrong.is_empty() and declared >= 11 and timed, "%d declared; %s" % [declared, "; ".join(slots_wrong)])
+	_check("acceptance: A2's open issue fixed: every instance uniform of every daemon shader is pinned (hit 0, locked 1, unstable 2, seed 3, core_color 4, gutter 5, edge_color 6; hup 7 since C32's SIGHUP), the same name always the same slot; the time is the one shader global daemon_clock, never TIME", slots_wrong.is_empty() and declared >= 11 and timed, "%d declared; %s" % [declared, "; ".join(slots_wrong)])
 	var hashes_ok := true
 	for path in SCENE_SHA:
 		hashes_ok = hashes_ok and FileAccess.get_sha256(path) == SCENE_SHA[path]

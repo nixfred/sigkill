@@ -232,6 +232,52 @@ static func void_implosion() -> AudioStreamWAV:
 	return _stream(data, rate)
 
 
+## SIGHUP's hangup (C32): the handset slammed down (a hard plastic click over a thump), a modem's screech as
+## the carrier drops (its tones flipping between a mark and a space, falling, in a hiss), then two beeps of a
+## busy line, quieter.
+static func hangup() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(HANGUP_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 2
+	var phase := 0.0
+	var hiss := 0.0
+	var tone := 1.0
+	var flip := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var n := rng.randf_range(-1.0, 1.0)
+		var click := (n * 0.8 + sin(TAU * 170.0 * t) * 0.9) * exp(-t * 90.0)
+		var screech := 0.0
+		if t >= HANGUP_CLICK_S and t < HANGUP_SCREECH_S:
+			var into := t - HANGUP_CLICK_S
+			flip -= 1.0 / rate
+			if flip <= 0.0:
+				flip = rng.randf_range(0.006, 0.016)
+				tone = 1.8 if tone < 1.5 else 1.0
+			var hz := (1150.0 * tone) * (1.0 - 0.35 * into / (HANGUP_SCREECH_S - HANGUP_CLICK_S))
+			phase = fmod(phase + TAU * hz / rate, TAU)
+			hiss = lerpf(hiss, n, 0.6)
+			screech = (sign(sin(phase)) * 0.35 + sin(phase) * 0.4 + hiss * 0.35) * exp(-into * 3.0)
+		var busy := 0.0
+		for start: float in HANGUP_BEEPS:
+			if t >= start and t < start + HANGUP_BEEP_S:
+				var u := t - start
+				busy = (sin(TAU * 480.0 * u) + sin(TAU * 620.0 * u)) * 0.22 * smoothstep(0.0, 0.01, u) * (1.0 - smoothstep(HANGUP_BEEP_S - 0.02, HANGUP_BEEP_S, u))
+		data.encode_s16(i * 2, int(clampf((click + screech + busy) * HANGUP_GAIN, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+const HANGUP_S := 1.45
+const HANGUP_CLICK_S := 0.03
+const HANGUP_SCREECH_S := 0.55
+const HANGUP_BEEPS := [0.68, 1.12]
+const HANGUP_BEEP_S := 0.26
+const HANGUP_GAIN := 0.5
+
+
 const VOID_HUM_S := 2.0
 const IMPLOSION_S := 1.2
 const IMPLOSION_RUSH_S := 0.14

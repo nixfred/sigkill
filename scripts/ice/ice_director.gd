@@ -20,7 +20,8 @@ extends Node3D
 ## ICE), so a rail's 1000 counts as 100. The hunter resists the weapon with the most, adapt_max times
 ## its share of adapt_full_damage (never more than adapt_max: never immunity), and its shields shift
 ## toward that weapon's colour; the HUD shows "HUNTER ADAPTED: <weapon> -NN%". In a match it learns
-## from every intruder's hits together (the host judges them all). A new round forgets it.
+## from every intruder's hits together (the host judges them all). A new round forgets it, and so does a
+## SIGHUP that confuses the hunter (C32, forget_learning()).
 ##
 ## Fields: a node's field reaches the intruders inside its dome when its tell ends (scripts/ice/
 ## ice_node.gd). Alone, this player; hosting, each player in it: the host's own here, a joiner's by
@@ -76,6 +77,8 @@ const HUNTER_FACES := Vector3(0.0, 0.0, 5.0)
 const PIECE_COUNT := 4 + 1
 ## A hunter's word when there is none.
 const NO_HUNTER := 0xFF
+## The hunter's place in the host's word: its place, yaw, aim, reach, and (C32) its confusion.
+const HUNTER_WORD := 9
 ## The brute ICEbreaker's hits (I2, scripts/ice/breaker_director.gd): past the hit cap (its own tuning
 ## caps it), a wall taking brute_wall_scale times them, never resisted, never noted for the adaptation.
 const BRUTE := "breaker:brute"
@@ -125,6 +128,8 @@ var hunters_killed := 0
 var ledger := {}
 var adapt_weapon := ""
 var adapt := 0.0
+## Times SIGHUP made the hunter forget what it learned this run (C32), for the checks.
+var forgets := 0
 ## This player's HUD corruption: seconds left; and the effects that reached this player.
 var corrupt_left := 0.0
 var jams_on_me := 0
@@ -691,6 +696,16 @@ func _set_adapt(weapon: String, amount: float) -> void:
 		hunter.tint_to(adapt_color())
 
 
+## SIGHUP (C32): the hunter, hung up, forgets what it learned: the round's ledger wiped, its adaptation and
+## its shields' tint gone (the HUD's line with them). Deciding only; a joiner takes the host's word.
+func forget_learning() -> void:
+	if mode != Mode.RUN:
+		return
+	ledger.clear()
+	forgets += 1
+	_set_adapt("", 0.0)
+
+
 ## The hunter's resistance to a hit from `source` now: its adaptation when that is its weapon.
 func resist_for(source: String) -> float:
 	return adapt if source != "" and source == adapt_weapon else 0.0
@@ -798,8 +813,8 @@ func clear_effects() -> void:
 
 ## The host's word on every piece, for the session to send: the round, each piece's seed, health,
 ## word (a wall 1 broken; a node its state; the hunter its brain's state, SIGSTOP's hold in the top bit,
-## NO_HUNTER for none) and seconds into it; the hunter's place and yaw, its aim (arena space) and how
-## far its trace or lance reaches; the adaptation's weapon and percent.
+## NO_HUNTER for none) and seconds into it; the hunter's place and yaw, its aim (arena space), how far its
+## trace or lance reaches and (C32) its confusion; the adaptation's weapon and percent.
 func word() -> Dictionary:
 	var seeds := PackedInt32Array()
 	var healths := PackedFloat32Array()
@@ -815,7 +830,7 @@ func word() -> Dictionary:
 		healths.append(n.health())
 		words.append(int(n.state) | n.frost.bits())  # chmod 000's meter beside its state (C29)
 		times.append(minf(n.state_t, 1000.0))
-	var place := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0])
+	var place := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0])
 	if hunter != null and is_instance_valid(hunter):
 		seeds.append(hunter.build_seed)
 		healths.append(hunter.health())
@@ -825,7 +840,7 @@ func word() -> Dictionary:
 		times.append(minf(hunter.brain.state_t, 1000.0))
 		var at := to_local(hunter.global_position)
 		var aim := (global_transform.basis.inverse() * hunter.brain.aim).normalized()
-		place = PackedFloat32Array([at.x, at.y, at.z, hunter.global_rotation.y, aim.x, aim.y, aim.z, hunter.reach_now])
+		place = PackedFloat32Array([at.x, at.y, at.z, hunter.global_rotation.y, aim.x, aim.y, aim.z, hunter.reach_now, float(hunter.brain.hup)])
 	else:
 		seeds.append(0)
 		healths.append(0.0)
@@ -871,6 +886,7 @@ func take_word(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array,
 		hunter.follow_frost(words[h] & Frost.BITS)
 		hunter.brain.take_aim((global_transform.basis * Vector3(place[4], place[5], place[6])).normalized())
 		hunter.reach_now = place[7]
+		hunter.brain.take_hup_word(int(place[8]))  # SIGHUP's confusion (C32)
 		hunter.take_health(healths[h], state == DaemonBrain.State.DOWN)
 	adapt_weapon = weapon
 	adapt = clampf(percent / 100.0, 0.0, tuning.adapt_max)

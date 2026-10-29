@@ -8,6 +8,10 @@
 // Since A5 it is also every daemon's seams, joints and weak points (rogue.d crimson, the zombie
 // amber, the runaway hot magenta): the light in its armour's gaps.
 //
+// SIGHUP (C32, the glitch include's hup slot): reloading its config, its light dims and thin bands of the
+// carrier green climb it, a scan running up through its seams; wandering confused, each part cycles in
+// turn between its own colour and the carrier's, dropping out between, so its seams never settle.
+//
 // Every part is one instance of a daemon's MultiMesh; its custom data: x its salt, y its
 // brightness, z its presence (below 1 it breaks up cell by cell, as the shell does), w how damaged
 // a seam is (A5: 0 steady, more and it drops out more often, a battle-damaged flicker). It moves with
@@ -27,6 +31,10 @@ uniform float flash_energy : hint_range(0.0, 32.0) = 10.0;
 uniform vec4 flash_color : source_color = vec4(1.0, 0.95, 0.85, 1.0);
 uniform float cells_per_m : hint_range(1.0, 100.0) = 28.0;
 uniform float flicker_hz : hint_range(0.0, 60.0) = 9.0;
+uniform vec4 hup_color : source_color = vec4(0.0, 0.749, 0.0, 1.0);
+uniform float hup_bands_per_m : hint_range(0.5, 20.0) = 1.8;
+uniform float hup_climb : hint_range(0.0, 8.0) = 1.9;
+uniform float hup_cycle_hz : hint_range(0.0, 8.0) = 1.4;
 
 instance uniform vec4 core_color : source_color, instance_index(4) = vec4(1.0, 0.2, 0.333, 1.0);
 instance uniform float gutter : instance_index(5) = 0.0;
@@ -56,5 +64,13 @@ void fragment() {
 	float flick = step(part.w * 0.75, hash2(flick_tick + int(part.x * 613.0), int(seed * 997.0) + 29));
 	dim *= mix(1.0, 0.08 + 0.92 * flick, step(0.001, part.w));
 	vec3 col = core_color.rgb * energy * wave * dim * part.y;
+	// SIGHUP (C32): reloading, dimmed under a climbing scan of carrier green; wandering, cycling.
+	float reloading = step(0.5, hup) * (1.0 - step(1.5, hup));
+	float wandering = step(1.5, hup);
+	float scan = smoothstep(0.72, 1.0, fract(world_pos.y * hup_bands_per_m - t * hup_climb));
+	vec3 carrier = hup_color.rgb * energy * 1.3 * part.y;
+	col = mix(col, mix(col * 0.2, carrier, scan), reloading);
+	float cycle = fract(part.x * 5.0 + t * hup_cycle_hz);
+	col = mix(col, mix(col, carrier, step(0.62, cycle)) * step(0.3, cycle), wandering);
 	ALBEDO = mix(col, flash_color.rgb * flash_energy, hit);
 }

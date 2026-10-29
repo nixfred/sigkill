@@ -249,6 +249,19 @@ extends Node
 ## the host's. No new message, no changed one; the loadout grew (weapon 12) and _bomb and _blast mean a
 ## hole for it, which an older build would neither draw nor feel, so protocol 17.
 ##
+## SIGHUP (C32): a throw like the fork bomb's again (_throw, the host's checks and its count of each player's
+## charges coming back), its live cap two devices in the air a player. The host runs the burst (_spawn_hup,
+## scripts/weapons/sighup_burst.gd): it confuses the daemons and ICE it reaches while they fight, and judges
+## every player its wave reaches (_judge_hup: never the thrower, a dead or a spawn-protected player; each
+## once a burst; no damage, so no damage site). Joiners get the throw's seed on _bomb (its sign the thrower's
+## root: a wider reach) and on _blast where it went off (HUP_WENT), the count it has confused so far
+## (HUP_CAUGHT, for the thrower's callout and the tag) and, to the one player caught alone, its confusion
+## (HUP_PLAYER, the index that player's id): that screen's own glitch and drift. A daemon's confusion rides
+## the state word beside its life (two bits, DaemonBrain.HUP_SHIFT), the hunter's in ICE's word (its place's
+## ninth number); a node's reload is a node state like any other. No new message; the loadout grew (weapon
+## 13), _bomb and _blast mean a burst for it and the state words carry the confusion, which an older build
+## would neither draw nor believe, so protocol 18.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -285,6 +298,7 @@ const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
 const DevNullHoleScript = preload("res://scripts/weapons/dev_null_hole.gd")
+const SighupBurstScript = preload("res://scripts/weapons/sighup_burst.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
@@ -299,6 +313,11 @@ const MINE_GONE := -3
 const HOLE_OPENED := 0
 const HOLE_COLLAPSED := 1
 const HOLE_DISCARDED := 2
+## SIGHUP's words on _blast (C32): where it went off, the count it has confused, a player it caught (only to
+## that player, its id the index).
+const HUP_WENT := 0
+const HUP_CAUGHT := 1
+const HUP_PLAYER := 2
 ## From a player's middle down to its feet: where a mine placed at the feet looks for the floor.
 const FEET_M := 0.9
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
@@ -347,7 +366,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 17
+const PROTOCOL := 18
 ## An avatar's freeze beam starts this far ahead of its eye and this far below it (C29): its emitter.
 const BEAM_AHEAD_M := 0.45
 const BEAM_DROP_M := 0.2
@@ -550,6 +569,9 @@ var _throws := 0
 var _chains := {}
 ## /dev/null's holes in this arena (C31), throw id -> hole.
 var _holes := {}
+## SIGHUP's bursts in this arena (C32), throw id -> burst; host: players its bursts have confused.
+var _hups := {}
+var hups_judged := 0
 ## The fork() volleys this arena runs or draws (C24), shot id -> volley; their ids share the
 ## throws' count.
 var _volleys := {}
@@ -2296,7 +2318,11 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 		combat.drop_after(Combat.DROP_ORIGIN)  # a throw from behind the cover it stands against
 		return
 	var thrown = _weapons.get(weapon)
-	var live := DevNullHoleScript.live_of(_arena, _bomb_key(id)) if thrown != null and thrown.is_hole() else ForkBomb.live_of(_arena, _bomb_key(id))
+	var live := ForkBomb.live_of(_arena, _bomb_key(id))
+	if thrown != null and thrown.is_hole():
+		live = DevNullHoleScript.live_of(_arena, _bomb_key(id))
+	elif thrown != null and thrown.is_hup():
+		live = SighupBurstScript.live_of(_arena, _bomb_key(id))
 	if combat.throw(id, life, weapon, origin, dir, eye, _view_of(id), lives.get(id, 0), _clock, live) != "":
 		return
 	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
@@ -2304,9 +2330,9 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 		breakers.fired(id)  # a throw ends the thrower's cloak (I2)
 	_throws += 1
 	var seed := _seeds.randi()
-	if thrown.is_hole():
+	if thrown.is_hole() or thrown.is_hup():
 		seed = (seed & 0x3fffffff) + 1
-		seed = -seed if combat.root(id) else seed  # /dev/null (C31): a root's wider hole, told in the seed's sign
+		seed = -seed if combat.root(id) else seed  # /dev/null (C31), SIGHUP (C32): a root's wider reach, told in the seed's sign
 	_spawn_chain(_throws, id, weapon, seed, origin, dir, true)
 	_tell_seed(_throws, id, weapon, seed, origin, dir)
 
@@ -2328,7 +2354,7 @@ func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: 
 func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks: PackedInt32Array) -> void:
 	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley() or _weapons[weapon].is_ping()):
 		return
-	if throw_id < 1 or _chains.has(throw_id) or _holes.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
+	if throw_id < 1 or _chains.has(throw_id) or _holes.has(throw_id) or _hups.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
 	# A believed mark of a player who has left since flies its dart straight (_mark_point), so
 	# the darts stay as many as the host's and fan the same.
@@ -2361,6 +2387,9 @@ func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
 	if _holes.has(throw_id):
 		_hole_word(throw_id, gen, at)  # /dev/null's opening, collapse or discard (C31)
 		return
+	if _hups.has(throw_id):
+		_hup_word(throw_id, gen, index, at)  # SIGHUP's burst, its count, a player it caught (C32)
+		return
 	if _volleys.has(throw_id):
 		# The blast of an rm -rf slug (C26): its slug here goes off at the host's place.
 		var slug = _volleys[throw_id]
@@ -2382,6 +2411,9 @@ func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin
 	var def: WeaponDefScript = _weapons[weapon]
 	if def.is_hole():
 		_spawn_hole(throw_id, thrower, weapon, seed, origin, dir, deciding)  # /dev/null (C31): its own throw
+		return
+	if def.is_hup():
+		_spawn_hup(throw_id, thrower, weapon, seed, origin, dir, deciding)  # SIGHUP (C32): its own throw
 		return
 	var never: Array[RID] = []
 	if thrower == my_id and _player != null and is_instance_valid(_player):
@@ -2510,6 +2542,83 @@ func _judge_hole(hole: Node, what: String, throw_id: int, thrower: int, weapon: 
 	_flush_sudo()
 
 
+## SIGHUP's burst in this arena (C32): the host's decides (it goes off, confuses the daemons and ICE it reaches
+## while they fight, judges every player its wave reaches) and tells where it went off and the count it has
+## confused; a joiner's draws, goes off at the host's place and takes the host's word for the rest. The
+## seed's sign is the thrower's root (a wider reach). The thrower's own screen confuses its own idle dummies
+## in a match whose daemons do not fight, as pipe | and /dev/null land on them (C30, C31).
+func _spawn_hup(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
+	var def: WeaponDefScript = _weapons[weapon]
+	var never: Array[RID] = []
+	if thrower == my_id and _player != null and is_instance_valid(_player):
+		never.append(_player.get_rid())
+	var avatar = avatars.get(thrower)
+	if avatar != null and is_instance_valid(avatar):
+		never.append(avatar.hit_rid())
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var own: bool = thrower == my_id and _player_ready()
+	var daemons: bool = own or (deciding and daemons_fight())
+	var judge_players := _judge_hup.bind(throw_id, thrower) if deciding else Callable()
+	var tuning: SighupTuning = def.hup_tuning()
+	var burst := SighupBurstScript.spawn(_arena, tuning, _arena.to_global(origin), SighupBurstScript.throw_velocity(tuning, along), absi(seed), _bomb_key(thrower), deciding, thrower, seed < 0, def.light_skin, never, judge_players, daemons)
+	burst.target_mask = PLAYER_LAYER_MASK | RemotePlayer.HIT_LAYER
+	_hups[throw_id] = burst
+	burst.finished.connect(func(): _hups.erase(throw_id))
+	if deciding:
+		burst.went_off.connect(func(at: Vector3): _tell_blast(throw_id, HUP_WENT, 0, _arena.to_local(at)))
+		burst.caught.connect(func(_what: Node, at: Vector3): _tell_blast(throw_id, HUP_CAUGHT, burst.caught_count, _arena.to_local(at)))
+	if own and _player.has_method("take_hup_burst"):
+		_player.take_hup_burst(burst)
+
+
+## The host's word of burst `id` (C32): it went off at `at` (arena space), it has confused `index` things,
+## or it caught player `index` (only ever sent to that player).
+func _hup_word(id: int, gen: int, index: int, at: Vector3) -> void:
+	var burst = _hups[id]
+	if not is_instance_valid(burst):
+		return
+	match gen:
+		HUP_WENT:
+			burst.go_off_at(_arena.to_global(at))
+		HUP_CAUGHT:
+			if index > burst.caught_count and index <= SighupBurstScript.COUNT_LAST:
+				burst.told_caught(index, _arena.to_global(at))
+		HUP_PLAYER:
+			if index == my_id and _player_ready() and _player.has_method("take_hup"):
+				_player.take_hup(burst.tuning.player_s, burst.tuning.player_drift_px)
+
+
+## The host's judgement of burst `burst` of `thrower`'s for every player its wave has reached (C32), each
+## frame of the wave: each once a burst, never the thrower, a dead or a spawn-protected player (one the front
+## reached protected is spared, as one behind a wall is). One caught is confused on its own screen: the host's
+## own here, a joiner's by the word to it alone. No damage: nothing to tell everyone.
+func _judge_hup(burst: Node, throw_id: int, thrower: int) -> void:
+	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player) or not is_instance_valid(burst):
+		return
+	var t: SighupTuning = burst.tuning
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	for id in players:
+		if id == thrower or burst.players_caught.has(id) or not combat.alive(id):
+			continue
+		var middle := Vector3.INF
+		if id == 1:
+			middle = _player.global_position
+		else:
+			var avatar = avatars.get(id)
+			if avatar != null and is_instance_valid(avatar) and avatar.visible:
+				middle = _arena.to_global(avatar.latest_position())
+		if not middle.is_finite() or not burst.reaches(middle, space):
+			continue
+		burst.players_caught[id] = not combat.protected(id)  # decided once, as the front passed it
+		if combat.protected(id):
+			continue
+		hups_judged += 1
+		if id == my_id:
+			_player.take_hup(t.player_s, t.player_drift_px)
+		else:
+			_tell_blast(throw_id, HUP_PLAYER, id, _arena.to_local(burst.center), id)  # to that player alone
+
+
 ## A blast of a chain the host runs, to every joiner; the thrower's callout when it is the
 ## host's own first.
 func _on_chain_blasted(gen: int, index: int, at: Vector3, throw_id: int, thrower: int) -> void:
@@ -2520,10 +2629,10 @@ func _on_chain_blasted(gen: int, index: int, at: Vector3, throw_id: int, thrower
 
 ## A blast the host's world saw, to every joiner: a fork bomb's (its generation and index) or an
 ## rm -rf slug's (C26, generation 0, index 0), `local` in arena space.
-func _tell_blast(throw_id: int, gen: int, index: int, local: Vector3) -> void:
+func _tell_blast(throw_id: int, gen: int, index: int, local: Vector3, only := 0) -> void:
 	var connected := multiplayer.get_peers()
 	for peer in players:
-		if peer != 1 and connected.has(peer):
+		if peer != 1 and connected.has(peer) and (only == 0 or peer == only):
 			_blast.rpc_id(peer, throw_id, gen, index, local)
 
 
@@ -3620,7 +3729,7 @@ func _tick_daemons(delta: float) -> void:
 		var chmod: int = dummy.frost.bits() if dummy.get("frost") != null and dummy.is_alive() else 0  # chmod 000's meter (C29)
 		words.append(int(brain.state) | chmod | (0x80 if director.frozen(brain.prey) else 0))
 		times.append(minf(brain.state_t, DAEMON_TIME_LAST))
-		life_words.append(int(dummy.state))
+		life_words.append(int(dummy.state) | (int(brain.hup) << DaemonBrain.HUP_SHIFT))  # SIGHUP's confusion beside its life (C32)
 		healths.append(maxf(dummy.health(), 0.0))  # a killing hit leaves it below 0
 		killers.append(dummy.killer if dummy.killer != 0 else my_id)  # whose kill its last death was
 		seeds.append(dummy.build_seed())  # what it is built from (A5)
@@ -3656,11 +3765,13 @@ func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: Packe
 			continue
 		if not is_finite(times[i]) or times[i] < 0.0 or times[i] > DAEMON_TIME_LAST or not is_finite(healths[i]) or healths[i] < 0.0:
 			continue
-		if (words[i] & IceDirector.STATE_BITS) > DaemonBrain.State.DOWN or life_words[i] > 2 or seeds[i] < 0:
+		var hup := (life_words[i] & DaemonBrain.HUP_MASK) >> DaemonBrain.HUP_SHIFT
+		if (words[i] & IceDirector.STATE_BITS) > DaemonBrain.State.DOWN or (life_words[i] & 0x03) > 2 or (life_words[i] & ~(0x03 | DaemonBrain.HUP_MASK)) != 0 or hup > DaemonBrain.Hup.WANDER or seeds[i] < 0:
 			continue
 		brains[i].dummy.follow_seed(seeds[i])  # the host's build first (A5)
 		brains[i].take_word(at, yaws[i], words[i] & IceDirector.STATE_BITS, times[i], (words[i] & 0x80) != 0)
-		brains[i].dummy.follow_life(life_words[i], healths[i], killers[i] == my_id)
+		brains[i].dummy.follow_life(life_words[i] & 0x03, healths[i], killers[i] == my_id)
+		brains[i].take_hup_word(hup)  # SIGHUP's confusion (C32)
 		if brains[i].dummy.has_method("follow_frost"):
 			brains[i].dummy.follow_frost(words[i] & Frost.BITS)  # chmod 000's meter (C29)
 	var live := {}
@@ -3888,7 +3999,7 @@ func _ice(round: int, seeds: PackedInt32Array, healths: PackedFloat32Array, word
 	if state != State.JOINED or host_practice or not host_ice or _arena == null or not is_instance_valid(_arena):
 		return
 	var n := IceDirector.PIECE_COUNT
-	if round < 1 or round > IceTuning.ROUND_LAST or seeds.size() != n or healths.size() != n or words.size() != n or times.size() != n or hunter.size() != 8:
+	if round < 1 or round > IceTuning.ROUND_LAST or seeds.size() != n or healths.size() != n or words.size() != n or times.size() != n or hunter.size() != IceDirector.HUNTER_WORD:
 		return
 	if percent < 0 or percent > 100 or weapon.length() > WEAPON_ID_LAST or (weapon != "" and not _weapons.has(weapon)):
 		return

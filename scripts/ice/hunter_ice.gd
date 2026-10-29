@@ -11,6 +11,9 @@ extends IcePiece
 ## hull, moved by its brain like a daemon's; nothing walks into it. A ping meeting it mid-tell
 ## staggers it, as it does a daemon; chmod 000 freezes it as it does a daemon (C29: its lance's tell called
 ## off, nothing moved till it thaws). On a joiner it plays the host's word.
+## SIGHUP (C32): a hangup confuses its brain as it confuses a daemon's (it reloads, then wanders, never
+## lashing) and it forgets what it learned: its director's ledger for the round is wiped, its adaptation
+## gone, its shields cobalt again (take_hup()).
 
 const HunterArt = preload("res://scripts/ice/hunter_art.gd")
 
@@ -44,6 +47,7 @@ func _prepare(a) -> void:  # untyped: the hunter's own art script
 
 
 func _physics_process(_delta: float) -> void:
+	_show_hup()
 	if broken or brain == null:
 		return
 	var look := art as HunterArt
@@ -65,6 +69,30 @@ func _hurt(point: Vector3, direction: Vector3) -> void:
 	super(point, direction)
 	if director != null and director.daemons != null:
 		brain.on_hit(point, director.daemons)
+
+
+## SIGHUP's hangup (C32): its brain confused as a daemon's is, and, when it took it, what it learned
+## forgotten (the director's ledger wiped). Only where its director decides.
+func take_hup(t: SighupTuning, by: int = 0) -> bool:
+	if broken or brain == null or director == null or not director.decides():
+		return false
+	if not brain.hangup(t, by, director.daemons):
+		return false
+	director.forget_learning()
+	_show_hup()
+	return true
+
+
+func hup_phase() -> int:
+	return brain.hup if brain != null else 0
+
+
+func hup_share() -> float:
+	return brain.hup_share() if brain != null else 0.0
+
+
+func hole_pull_scale() -> float:
+	return brain.hole_pull_scale() if brain != null else 1.0
 
 
 ## Its shields' colour (the director's word when it adapts): only when it changes.

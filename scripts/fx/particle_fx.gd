@@ -6,7 +6,8 @@ extends Node3D
 ## front, and chmod 000's frost (C29): chips of frost thrown off a body as the freeze takes it, a few as it
 ## thaws, a storm of them as a frozen daemon shatters, and pipe |'s packets (C30): a spill of data streaks
 ## flung on from each link of a chain, the way the stream was going, and /dev/null's debris (C31): streaks drawn in from
-## all round to the core, at a discard and at its implosion. Cosmetic only: no collision, no ray, nothing outside the
+## all round to the core, at a discard and at its implosion, and SIGHUP's static (C32): streaks of the carrier
+## flung out flat from its burst, and a few off each daemon it hangs up. Cosmetic only: no collision, no ray, nothing outside the
 ## game.
 ##
 ## Everything is made once. The arena (scripts/main.gd) makes this node, which holds a fixed pool of
@@ -37,7 +38,7 @@ const MUZZLE_GROUP := &"particle_muzzle_burst"
 ## A beam that ends this short of its weapon's range met something; one that reaches it hit the sky.
 const BEAM_OPEN_M := 1.0
 
-enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING, FROST, PIPE, HOLE }
+enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING, FROST, PIPE, HOLE, HUP }
 ## Each pool: [emitters, particles each, lifetime in seconds, how far its particles may fly, metres].
 const POOLS := {
 	Kind.SPARK: [12, 24, 0.45, 4.0],
@@ -49,6 +50,7 @@ const POOLS := {
 	Kind.FROST: [2, 32, 0.9, 6.0],
 	Kind.PIPE: [4, 24, 0.35, 6.0],
 	Kind.HOLE: [2, 48, 0.45, 8.0],
+	Kind.HUP: [2, 48, 0.6, 10.0],
 }
 ## The particle level: [the share of each effect's particles shown, trails on].
 const LEVELS := {"low": [0.25, false], "medium": [0.5, true], "high": [1.0, true]}
@@ -113,7 +115,7 @@ func _ready() -> void:
 	for pair in Palette.SKINS.values():
 		_draw_material(pair[0])
 		_draw_material(pair[1])
-	for color in [Palette.HOSTILE_AMBER, Palette.HOSTILE_RED, Palette.FLASH, Palette.MINT, Palette.TEAL, Palette.PIPE_HI, Palette.DEV_NULL_HI]:
+	for color in [Palette.HOSTILE_AMBER, Palette.HOSTILE_RED, Palette.FLASH, Palette.MINT, Palette.TEAL, Palette.PIPE_HI, Palette.DEV_NULL_HI, Palette.SIGHUP_HI]:
 		_draw_material(color)
 	for kind in POOLS:
 		var spec: Array = POOLS[kind]
@@ -124,7 +126,7 @@ func _ready() -> void:
 			p.name = "%s%d" % [Kind.keys()[kind].capitalize().replace(" ", ""), i]
 			# A world-space effect: its particles stay where they were thrown as the emitter moves.
 			p.local_coords = false
-			if kind == Kind.SPARK or kind == Kind.BLAST or kind == Kind.PING or kind == Kind.PIPE or kind == Kind.HOLE:
+			if kind == Kind.SPARK or kind == Kind.BLAST or kind == Kind.PING or kind == Kind.PIPE or kind == Kind.HOLE or kind == Kind.HUP:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
 			elif trail:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
@@ -244,6 +246,12 @@ func pipe(point: Vector3, way: Vector3, share_of: float = 1.0) -> void:
 ## discard a share, the implosion all).
 func hole(point: Vector3, share_of: float = 1.0) -> void:
 	_fire(Kind.HOLE, Transform3D(Basis.IDENTITY, point), Palette.DEV_NULL_HI, share_of)
+
+
+## SIGHUP's static at `point` (C32): streaks of the carrier flung out flat all round, `share_of` of the pool's
+## (its burst all of them, a daemon it hangs up a share).
+func hup(point: Vector3, share_of: float = 1.0) -> void:
+	_fire(Kind.HUP, Transform3D(Basis.IDENTITY, point), Palette.SIGHUP_HI, share_of)
 
 
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
@@ -510,6 +518,21 @@ static func _process_material(kind: Kind) -> ParticleProcessMaterial:
 			m.gravity = Vector3.ZERO
 			m.scale_min = 1.0
 			m.scale_max = 2.2
+		Kind.HUP:
+			# Static off a hangup: streaks flung out near level all round from a small sphere, quick and
+			# ragged (each its own speed), slowing, drifting up a little as a carrier's noise does.
+			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+			m.emission_sphere_radius = 0.25
+			m.direction = Vector3.RIGHT
+			m.spread = 180.0
+			m.flatness = 0.75
+			m.initial_velocity_min = 4.0
+			m.initial_velocity_max = 13.0
+			m.gravity = Vector3.UP * 0.8
+			m.damping_min = 3.0
+			m.damping_max = 6.0
+			m.scale_min = 0.8
+			m.scale_max = 2.0
 		Kind.TRAIL, Kind.HEAVY_TRAIL:
 			var heavy := kind == Kind.HEAVY_TRAIL
 			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE

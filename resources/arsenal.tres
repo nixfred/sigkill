@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ArsenalTuning" load_steps=14 format=3]
+[gd_resource type="Resource" script_class="ArsenalTuning" load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/arsenal_tuning.gd" id="1_arsenal"]
 [ext_resource type="Resource" path="res://resources/terminal_cannon.tres" id="2_cannon"]
@@ -13,10 +13,11 @@
 [ext_resource type="Resource" path="res://resources/chmod_000.tres" id="11_chmod"]
 [ext_resource type="Resource" path="res://resources/pipe_chain.tres" id="12_pipe"]
 [ext_resource type="Resource" path="res://resources/dev_null.tres" id="13_dev_null"]
+[ext_resource type="Resource" path="res://resources/sighup.tres" id="14_sighup"]
 
 [resource]
 script = ExtResource("1_arsenal")
-loadout = Array[Resource]([ExtResource("2_cannon"), ExtResource("3_sigterm"), ExtResource("4_rail"), ExtResource("5_fork"), ExtResource("6_fork_shotgun"), ExtResource("7_grep"), ExtResource("8_rm_rf"), ExtResource("9_cron"), ExtResource("10_ping"), ExtResource("11_chmod"), ExtResource("12_pipe"), ExtResource("13_dev_null")])
+loadout = Array[Resource]([ExtResource("2_cannon"), ExtResource("3_sigterm"), ExtResource("4_rail"), ExtResource("5_fork"), ExtResource("6_fork_shotgun"), ExtResource("7_grep"), ExtResource("8_rm_rf"), ExtResource("9_cron"), ExtResource("10_ping"), ExtResource("11_chmod"), ExtResource("12_pipe"), ExtResource("13_dev_null"), ExtResource("14_sighup")])
 swap_s = 0.3
 swap_drop_m = 0.25
 reload_tilt_degrees = 25.0

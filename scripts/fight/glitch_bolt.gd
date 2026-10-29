@@ -8,6 +8,8 @@ extends Node3D
 ## within its radius, or when its life runs out. A deciding bolt (alone, or the host's) lands its
 ## damage on the player it meets through the director, the combat path; a joiner's only draws
 ## the host's and judges nothing. SIGSTOP holds it in the air while its zombie is frozen.
+## SIGHUP (C32): a confused zombie's lash throws one at another daemon (lash_scale above 0): a deciding one
+## lands lash_scale of its damage on the daemon it meets, through the director.
 ##
 ## Its look: a cut amber crystal, a white-hot core inside, both made once and shared by every
 ## bolt; it glitches sideways a hand's width now and then and flickers. Nothing is made per frame.
@@ -43,6 +45,8 @@ var met := 0
 var target := 0
 ## On a joiner, the host's word that SIGSTOP holds this bolt (Codex review).
 var held_word := false
+## A lash's share of its damage on the daemon it meets (C32); 0 for every other bolt, which only stops there.
+var lash_scale := 0.0
 
 var _director: Node = null
 var _look: Node3D
@@ -86,6 +90,7 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	life_left = life_s
 	ended = ""
 	met = 0
+	lash_scale = 0.0
 	_age = 0.0
 	global_position = from
 	look_at_from_position(from, from + velocity, Vector3.UP if absf(dir.normalized().y) < 0.99 else Vector3.RIGHT)
@@ -145,6 +150,8 @@ func _physics_process(delta: float) -> void:
 		global_position = hit["position"]
 		var collider = hit["collider"]
 		var daemon: bool = is_instance_valid(collider) and collider.is_in_group(DaemonDirector.TARGET_GROUP)
+		if daemon and deciding and lash_scale > 0.0 and _director != null:
+			_director.lash_met(brain, collider, way, lash_scale)  # a confused zombie's lash (C32)
 		var fx := ParticleFx.of(self)
 		if fx != null:
 			fx.impact(hit["position"], hit["normal"], true, Palette.HOSTILE_AMBER)

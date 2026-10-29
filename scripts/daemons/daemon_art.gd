@@ -56,6 +56,12 @@ extends Node3D
 ##
 ## Weak points (A5): a type marks the parts a later ICEbreaker aims at (its seams, a visor, a core)
 ## with weak(); weak_points() says where they are now. Nothing aims at them yet.
+##
+## SIGHUP (C32): confused (hup_phase, its HupLook's word: 1 reloading its config, 2 wandering), its seams
+## take the carrier green (the core shader's hup slot: a band of it climbing them while it reloads, each
+## seam cycling between its own colour and the carrier's and dropping out between while it wanders), its
+## glitch twitches, and its pose stutters: held still for a share of each beat (most of it while it
+## reloads, a stall), then jumping on.
 
 const Palette = preload("res://scripts/palette.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
@@ -98,6 +104,13 @@ const STAGGER_GLITCH := 0.6
 const ELITE_RATE := 1.0 / 12.0
 ## The seeds a build can have (A5): 0 to this, so one fits the wire's 32-bit integers.
 const SEED_LAST := 0x7fffffff
+## SIGHUP's stutter (C32): beats a second, and the share of each its pose holds still, reloading and
+## wandering; its glitch's floor and its spikes while confused, and how often a spike may come.
+const HUP_STUTTER_HZ := 7.0
+const HUP_HOLD := [0.0, 0.8, 0.4]
+const HUP_GLITCH := [0.0, 0.3, 0.12]
+const HUP_SPIKE := 0.55
+const HUP_SPIKE_HZ := 11.0
 
 ## A part's unit shape: SHARD a six-sided crystal from its base (the origin) to its tip (+Y 1), a
 ## unit across; GEM a cut gem centred on the origin, a unit across and tall; CUBE a unit voxel;
@@ -165,6 +178,10 @@ var act: int = Act.IDLE
 var act_u := 0.0
 ## chmod 000 (C29): true while its daemon is frozen: it holds its pose, nothing moves.
 var frozen := false
+## SIGHUP (C32): 0 not confused, 1 reloading, 2 wandering (its HupLook's word).
+var hup_phase := 0
+var _hup_glitch := 0.0
+var _sent_hup := -1.0
 ## /dev/null (C31): how far its body is drawn out toward a hole's core now, 0 (its own shape) to 1, and its
 ## transform before the hole took it, put back when it lets go.
 var stretched := 0.0
@@ -572,7 +589,15 @@ func _process(delta: float) -> void:
 	_drive = move_toward(_drive, 0.0 if act == Act.IDLE else 1.0, DRIVE_EASE * delta)
 	_shudder = STAGGER_GLITCH * staggered()
 	_step_carry()
-	_pose(_clock, delta)
+	_hup_glitch = 0.0
+	var held := false
+	if hup_phase > 0 and hup_phase < HUP_HOLD.size():
+		# SIGHUP (C32): its glitch twitching, its pose stuttering.
+		var tick := int(_clock * HUP_SPIKE_HZ)
+		_hup_glitch = HUP_SPIKE if roll_of(build_seed, tick, 17) > 0.78 else HUP_GLITCH[hup_phase]
+		held = fposmod(_clock * HUP_STUTTER_HZ + _seed, 1.0) < HUP_HOLD[hup_phase]
+	if not held:
+		_pose(_clock, delta)
 	if _spray_live:
 		_pose_spray()
 	if _glyphs != null:
@@ -615,9 +640,10 @@ func _marked() -> bool:
 func _send(all: bool) -> void:
 	var hit := all or _hit != _sent_hit
 	var locked := all or _locked != _sent_locked
-	var glitch := maxf(_unstable, _shudder)
+	var glitch := maxf(maxf(_unstable, _shudder), _hup_glitch)
 	var unstable := all or glitch != _sent_unstable
-	if not (hit or locked or unstable):
+	var hup_now := all or float(hup_phase) != _sent_hup
+	if not (hit or locked or unstable or hup_now):
 		return
 	for node in _drawn:
 		if hit:
@@ -626,9 +652,12 @@ func _send(all: bool) -> void:
 			node.set_instance_shader_parameter(&"locked", _locked)
 		if unstable:
 			node.set_instance_shader_parameter(&"unstable", glitch)
+		if hup_now:
+			node.set_instance_shader_parameter(&"hup", float(hup_phase))
 	_sent_hit = _hit
 	_sent_locked = _locked
 	_sent_unstable = glitch
+	_sent_hup = float(hup_phase)
 
 
 # --- What a type gives. ---

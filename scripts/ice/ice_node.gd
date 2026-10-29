@@ -22,13 +22,17 @@ extends IcePiece
 ## chmod 000 (C29): frozen, its field is paused: a tell it was in, or the dome of one just fired, is
 ## called off into its cooldown ("frozen" noted), and its clock and every timer are held until it thaws;
 ## then it waits out the cooldown before it looks again, as a daemon waits its attack's own wait.
+## SIGHUP (C32): a hangup makes it reload its config (take_hup()): its field drops (a tell it was in, or the
+## dome of one just fired, called off) for the tuning's node_reload_s, then it looks again, guarded for
+## immune_s against the next hangup. Frozen when caught, it reloads once it thaws. On a joiner the RELOAD
+## state is the host's word as any other.
 
 const NodeArt = preload("res://scripts/ice/node_art.gd")
 const Sfx = preload("res://scripts/sfx_synth.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
-enum State { IDLE, TELL, FIELD, COOLDOWN }
-const STATE_NAMES := ["idle", "tell", "field", "cooldown"]
+enum State { IDLE, TELL, FIELD, COOLDOWN, RELOAD }
+const STATE_NAMES := ["idle", "tell", "field", "cooldown", "reload"]
 ## The two kinds.
 const JAM := "jam"
 const HUD := "hud"
@@ -55,8 +59,16 @@ var fires := 0
 var struck := 0
 ## Fields a decoy took instead (I2).
 var lured := 0
-## [its clock, a word, ...]: "tell", "field", "abort", "lured" (a decoy took it, I2) for the checks.
+## [its clock, a word, ...]: "tell", "field", "abort", "lured" (a decoy took it, I2), "reload" (C32) for
+## the checks.
 var events: Array = []
+## SIGHUP (C32): how long its reload lasts (the hangup's, or the shipped tuning's on a joiner), the guard
+## after one, a hangup taken frozen waiting for the thaw, and the reloads so far.
+var reload_s := 5.0
+var hup_guard := 0.0
+var reloads := 0
+var _hup_immune := 6.0
+var _hup_pending := false
 
 var _clock := 0.0
 var _look := 0.0
@@ -150,8 +162,12 @@ func step(delta: float, d, ice) -> void:
 	if chmod_frozen():
 		_show()
 		return  # paused by chmod 000 (C29): its clock and every timer held
+	if _hup_pending:
+		_reload()  # SIGHUP taken frozen (C32): thawed, it reloads now
 	_clock += delta
 	state_t += delta
+	if state != State.RELOAD:
+		hup_guard = maxf(hup_guard - delta, 0.0)
 	match state:
 		State.IDLE:
 			_look -= delta
@@ -178,6 +194,12 @@ func step(delta: float, d, ice) -> void:
 				_enter(State.COOLDOWN)
 		State.COOLDOWN:
 			if state_t >= cooldown_s() / maxf(d.aggression(), 0.01):
+				_enter(State.IDLE)
+		State.RELOAD:
+			if state_t >= reload_s:
+				hup_guard = _hup_immune
+				_look = 0.0
+				_note("reloaded")
 				_enter(State.IDLE)
 	_show()
 
@@ -207,6 +229,39 @@ func _reached(d) -> Array:
 	return out
 
 
+## SIGHUP's hangup (C32): it reloads its config, its field dropped for the tuning's node_reload_s. Refused
+## while it reloads already, while its guard holds, broken, or where its director does not decide. True
+## when it took it.
+func take_hup(t: SighupTuning, _by: int = 0) -> bool:
+	if broken or t == null or director == null or not director.decides() or state == State.RELOAD or _hup_pending or hup_guard > 0.0:
+		return false
+	reload_s = t.node_reload_s
+	_hup_immune = t.immune_s
+	if chmod_frozen():
+		_hup_pending = true
+		return true
+	_reload()
+	return true
+
+
+func _reload() -> void:
+	_hup_pending = false
+	if state == State.TELL:
+		_note("abort")
+	reloads += 1
+	_note("reload")
+	_enter(State.RELOAD)
+	_show()
+
+
+func hup_phase() -> int:
+	return 1 if state == State.RELOAD and not broken else 0
+
+
+func hup_share() -> float:
+	return clampf(state_t / maxf(reload_s, 0.001), 0.0, 1.0) if state == State.RELOAD else 0.0
+
+
 ## A freeze took it (C29): a tell, or the dome of a field just fired, called off into its cooldown.
 func _on_frozen() -> void:
 	if state == State.TELL or state == State.FIELD:
@@ -222,9 +277,13 @@ func _on_frozen() -> void:
 func take_word(word: int, seconds: float) -> void:
 	if broken:
 		return
-	var next: State = clampi(word, 0, State.COOLDOWN) as State
+	var next: State = clampi(word, 0, State.RELOAD) as State
 	if next != state:
 		state = next
+		if next == State.RELOAD:
+			reload_s = SighupTuning.shipped().node_reload_s  # the host's word carries no length (C32)
+			reloads += 1
+			_note("reload")
 		if next == State.TELL:
 			_note("tell")
 		elif next == State.FIELD:
@@ -276,6 +335,7 @@ func _show() -> void:
 			_dome.visible = false
 			if _swell.playing:
 				_swell.stop()
+	_show_hup()  # SIGHUP's reload (C32): its tag and its seams
 
 
 ## How bright its field's dome is now: its warning through the tell, its flash as it fires.

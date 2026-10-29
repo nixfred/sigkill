@@ -33,6 +33,11 @@ extends StaticBody3D
 ## shatters it whatever its health; every kill of a frozen daemon is a shatter: it derezzes in the frost
 ## opal in a storm of frost. In practice the beam freezes the old dummy too. On a joiner in a match where
 ## they fight its meter is the host's word (follow_frost()).
+##
+## SIGHUP (C32): a hangup burst catching it confuses its brain (take_hup(): its reload, then its wander;
+## scripts/fight/daemon_brain.gd) and its look shows it (scripts/fx/hup_look.gd: the "reloading config" tag,
+## then the "?", its seams cycling in the carrier green, its pose stuttering). In practice the old dummy
+## reloads and wanders too. On a joiner its confusion is the host's word, carried beside its life.
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -98,6 +103,8 @@ var quiet := false
 var _frost_look: FrostLook
 ## Its deaths that were shatters (C29), for the checks.
 var shatters := 0
+## SIGHUP's look on it (C32), made the first time it is hung up.
+var _hup_look: HupLook
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -183,6 +190,39 @@ func hold_in_hole(seconds: float) -> void:
 ## True while a hole holds it.
 func held_by_hole() -> bool:
 	return Engine.get_physics_frames() <= _held_until and is_alive()
+
+
+## How many times as hard a /dev/null hole drags it now: harder while SIGHUP has it confused (C32).
+func hole_pull_scale() -> float:
+	return brain.hole_pull_scale() if brain != null else 1.0
+
+
+## SIGHUP's hangup (C32) from player `by` (0 alone) with numbers `t`: its brain is confused (see
+## scripts/fight/daemon_brain.gd hangup()). True when it took it; never on a joiner's copy of the host's
+## daemon (the host judges) or while it is down.
+func take_hup(t: SighupTuning, by: int = 0) -> bool:
+	if state != State.ALIVE or brain == null or _follows():
+		return false
+	var took := brain.hangup(t, by, DaemonDirector.of(self))
+	_show_hup()
+	return took
+
+
+## SIGHUP's look on it now (C32), or null before it was ever hung up.
+func hup_look() -> HupLook:
+	return _hup_look
+
+
+## Its look follows its brain's confusion: made the first time it is confused, then told each frame.
+func _show_hup() -> void:
+	if brain == null:
+		return
+	var phase: int = brain.hup if is_alive() else 0
+	if _hup_look == null:
+		if phase == 0:
+			return
+		_hup_look = HupLook.of(_art)
+	_hup_look.show_phase(phase, brain.hup_share())
 
 
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,
@@ -279,6 +319,7 @@ func _follows() -> bool:
 
 func _physics_process(delta: float) -> void:
 	_fit_box()
+	_show_hup()
 	if state == State.ALIVE:
 		if frost != null and frost.tick(delta):
 			_art.frozen = false  # thawed (C29)

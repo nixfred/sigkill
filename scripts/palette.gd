@@ -112,6 +112,18 @@ const PIPE_TEXT := Color(0.705882353, 0.62745098, 0.098039216)  # #b4a019 its li
 const DEV_NULL := Color(0.670588235, 0.219607843, 0.607843137)  # #ab389b /dev/null's body and light, the accretion ring, the debris
 const DEV_NULL_HI := Color(1.0, 0.850980392, 0.964705882)  # #ffd9f6 the ring's inner edge, the photon ring, the implosion
 const DEV_NULL_TEXT := Color(0.937254902, 0.560784314, 0.890196078)  # #ef8fe3 its light skin's beam colour, its strip lines and readout
+# SIGHUP, the confusion grenade (C32): the line hung up. Its colour is an old modem's carrier light, a
+# phosphor green: the bright palette holds every hue band, so a search of all of sRGB (lightness 0.55 to
+# 0.9, chroma over 0.11) for the farthest point (OKLab) from every bright colour above found it here, 0.164
+# from the pipe's text and 0.170 from its brass, the nearest, 0.176 from the code rain's green and 0.188
+# from the player's teal; far from ICE's (glacier 0.302, the hunter's cobalt 0.511, Black ICE's slate
+# 0.302), the breakers' ultraviolet (0.530), chmod's frost opal (0.297), /dev/null's plum (0.449) and the
+# daemons' (crimson 0.423, amber 0.257, hot magenta 0.487). Its HUD text a light tint of it, legible on
+# black (lightness 0.79; 0.135 from the nearest, the pipe's text); its highlight, the wave's front and the
+# confused seams' scan, a near-white tint of it.
+const SIGHUP := Color(0.0, 0.749019608, 0.0)  # #00bf00 SIGHUP's body and light, its carrier wave, a confused daemon's seams
+const SIGHUP_HI := Color(0.8, 1.0, 0.760784314)  # #ccffc2 the wave's front, the burst's flash, the scan up a confused daemon
+const SIGHUP_TEXT := Color(0.529411765, 0.82745098, 0.360784314)  # #87d35c its light skin's beam colour, its strip lines, the "?" and "reloading config" tags
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -126,7 +138,7 @@ const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT], "brass": [PIPE, PIPE_TEXT], "plum": [DEV_NULL, DEV_NULL_TEXT]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT], "brass": [PIPE, PIPE_TEXT], "plum": [DEV_NULL, DEV_NULL_TEXT], "carrier": [SIGHUP, SIGHUP_TEXT]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff
@@ -546,6 +558,7 @@ static func daemon_core_material() -> ShaderMaterial:
 	mat.set_shader_parameter("flash_energy", DAEMON_CORE_FLASH_ENERGY)
 	mat.set_shader_parameter("flash_color", FLASH)
 	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	mat.set_shader_parameter("hup_color", SIGHUP)  # a confused daemon's seams (C32)
 	mat.set_shader_parameter("flicker_hz", DAEMON_SEAM_FLICKER_HZ)
 	_daemon_glitch(mat)
 	return mat

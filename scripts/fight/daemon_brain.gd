@@ -52,6 +52,21 @@ extends RefCounted
 ## strike it was in is called off, as a freeze calls one off, and once let go it hunts again after its
 ## attack's own wait or walks home from where it was left.
 ##
+## SIGHUP (C32): a hangup burst catching it (hangup()) tells it its terminal hung up: a tell, a strike or a
+## recovery it was in is called off, it drops its prey (it no longer knows where anyone is) and stalls for the
+## tuning's reload_s, "reloading config" (posed as a recovery), then wanders confused for wander_s: a random
+## walk in short legs at a share of its own speed, stopping between them to look round (its facing swept in
+## snaps), its motion stuttering. Where the daemons fight, a confused one with another daemon near it in
+## sight lashes at that one with its own attack (its tell first: the rogue's lunge and slash, the zombie's
+## bolt, the swarm's dive), at a share of the damage, a few times a confusion: a crowd turns on itself a
+## little. Then it is itself again (it goes home, and hunts what it sees) and is guarded for immune_s: a
+## hangup then is refused, so no daemon is held confused for ever. Frozen by chmod 000 when caught, it takes
+## the hangup and starts confused when it thaws; a /dev/null hole drags it as any held daemon (harder:
+## the hole's own rule); SIGSTOP and a freeze hold its confusion's clock, a hole does not. In practice the
+## old dummies reload and wander too, never lashing. On a joiner the host's word carries which of the two it
+## is in (take_hup_word()), so every screen draws it confused. Hunter ICE's brain is this one: it is
+## confused the same way, and never lashes.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -79,6 +94,17 @@ const FOLLOW_RATE := 12.0
 const EVENTS_LAST := 256
 ## A walker's stagger after a ping (C28) knocks it back over this share of it; then it holds still.
 const KNOCK_SHARE := 0.3
+## SIGHUP (C32): not confused, reloading its config, or wandering confused; and where the host's word
+## carries it, two bits over the daemon's life (scripts/net/net_session.gd).
+enum Hup { NONE, RELOAD, WANDER }
+const HUP_NAMES := ["none", "reload", "wander"]
+const HUP_SHIFT := 2
+const HUP_MASK := 0x0C
+## How fast a confused daemon's facing snaps round as it looks about, radians a second, and how often.
+const LOOK_SNAP_RATE := 9.0
+const LOOK_SNAP_S := 0.22
+## A wander leg past this share of its leash turns back toward home.
+const WANDER_LEASH := 0.8
 
 var dummy: Node3D
 var art: DaemonArt
@@ -92,6 +118,20 @@ var staggers := 0
 var frozen_offs := 0
 ## Attacks a /dev/null hole called off since it was made (C31).
 var pulled_offs := 0
+## SIGHUP (C32): its confusion now and seconds into it; the guard after one (seconds a hangup is refused);
+## who threw it (a player's id in a match, 0 alone: a lash's kill is theirs) and its numbers; a hangup taken
+## while frozen, waiting for the thaw. Hangups taken, attacks they called off, lashes thrown at other
+## daemons and those that landed, for the checks.
+var hup: Hup = Hup.NONE
+var hup_t := 0.0
+var hup_guard := 0.0
+var hup_by := 0
+var hup_tuning: SighupTuning = null
+var hup_pending := false
+var hups := 0
+var hup_offs := 0
+var lashes := 0
+var lash_hits := 0
 ## The player hunted (0 none), the last place it saw it, and for how long it has not.
 var prey := 0
 var last_seen := Vector3.INF
@@ -136,6 +176,19 @@ var _dive_mark := Vector3.ZERO
 var _dive_hit := false
 var _flee_from := Vector3.ZERO
 var _thrown := false
+## SIGHUP's wander (C32): the lashes left this confusion and the wait to the next, the daemon lashed at now;
+## the leg or the look it is in and how long it has left, the way it wanders, the facing it looks round from
+## and snaps to; its own dice, seeded by its name and its hangups so a run's walk is the same every time.
+var _lash_left := 0
+var _lash_wait := 0.0
+var _lash_mark: Node3D = null
+var _leg_left := 0.0
+var _looking := false
+var _wander_way := Vector3.FORWARD
+var _look_from := 0.0
+var _look_to := 0.0
+var _look_snap := 0.0
+var _hup_rng := RandomNumberGenerator.new()
 
 
 func _init(owner: Node3D, daemon_art: DaemonArt) -> void:
@@ -172,14 +225,22 @@ func step(delta: float, d) -> void:
 		state_t = 0.0
 	if _held_by_chmod(d):
 		return  # chmod 000: frozen, its clock and every timer held
+	if hup_pending:
+		_start_hup(d)  # SIGHUP taken frozen (C32): thawed, it starts confused now
+	var stopped: bool = d.frozen(prey)
+	if not stopped:
+		_tick_hup(delta, d)  # SIGHUP's clock (C32): a hole does not hold it, SIGSTOP does
 	if _held_by_hole(d):
 		return  # /dev/null: the hole drags it, it does nothing of its own
-	if d.frozen(prey):
+	if stopped:
 		velocity = Vector3.ZERO
 		return  # SIGSTOP: frozen whole, its clock and every timer held
 	clock += delta
 	state_t += delta
 	cooldown = maxf(cooldown - delta, 0.0)
+	if hup != Hup.NONE:
+		_step_confused(delta, d, d.runs() and kind != "hunter")  # SIGHUP (C32): no prey, no lure, its own wander
+		return
 	var lure: int = d.lure_for(self)
 	if lure != 0 and lure != prey:
 		_take_lure(lure, d)
@@ -212,8 +273,15 @@ func rest(delta: float, d) -> void:
 		return
 	if _held_by_chmod(d):
 		return  # frozen in practice too (C29): it stands where the beam caught it
+	if hup_pending:
+		_start_hup(d)
+	_tick_hup(delta, d)
 	if _held_by_hole(d):
 		return  # dragged in practice too (C31); it walks home once the hole lets go
+	if hup != Hup.NONE:
+		state_t += delta
+		_step_confused(delta, d, false)  # SIGHUP in practice too (C32): it reloads and wanders, never lashing
+		return
 	if moved and has_home and _flat(dummy.global_position - home.origin).length() > HOME_M:
 		state = State.RETURN
 		_walk(home.origin, _speed(d), delta, d)
@@ -232,8 +300,8 @@ func rest(delta: float, d) -> void:
 ## A hit that did not kill it, from `point` (world space): the swarm scatters (any dive off, its
 ## burst over); anything at home or going home is roused and hunts whoever is nearest in sight.
 func on_hit(point: Vector3, d) -> void:
-	if d == null or not d.runs() or state == State.DOWN:
-		return
+	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE:
+		return  # a confused daemon (C32) is too busy reloading to be roused
 	if kind == "swarm":
 		_release(d)
 		burst_left = 0
@@ -252,8 +320,8 @@ func on_hit(point: Vector3, d) -> void:
 ## scattering), then hunts again; anything else it is doing goes on. Only where the brains decide.
 ## True when it staggered.
 func pinged(from: Vector3, d) -> bool:
-	if d == null or not d.runs() or state != State.TELL:
-		return false
+	if d == null or not d.runs() or state != State.TELL or hup != Hup.NONE:
+		return false  # a confused daemon's lash (C32) is no attack on a player: a ping leaves it
 	_release(d)
 	burst_left = 0
 	staggers += 1
@@ -515,6 +583,323 @@ func bolt_landed() -> void:
 	_note("hit")
 
 
+# --- SIGHUP (C32): the hangup, the reload and the confused wander. ---
+
+## A hangup burst caught it, thrown by player `by` (0 alone) with numbers `t`: true when it took it. Refused
+## while it is confused already (a second hangup never makes it longer), while its guard after the last one
+## holds, and while it is down. Frozen by chmod 000 it takes it and starts confused when it thaws.
+func hangup(t: SighupTuning, by: int, d) -> bool:
+	if t == null or hup != Hup.NONE or hup_pending or hup_guard > 0.0 or dummy == null or not dummy.is_alive():
+		return false
+	hup_tuning = t
+	hup_by = by
+	hups += 1
+	if dummy.has_method("chmod_frozen") and dummy.chmod_frozen():
+		hup_pending = true
+		_note("hup")
+		return true
+	_start_hup(d)
+	return true
+
+
+## True while it is confused: reloading or wandering.
+func confused() -> bool:
+	return hup != Hup.NONE
+
+
+## Its confusion's name now ("none", "reload", "wander").
+func hup_name() -> String:
+	return HUP_NAMES[hup]
+
+
+## How far through its reload or its wander it is, 0 to 1 (0 when not confused).
+func hup_share() -> float:
+	if hup == Hup.NONE or hup_tuning == null:
+		return 0.0
+	return clampf(hup_t / (hup_tuning.reload_s if hup == Hup.RELOAD else hup_tuning.wander_s), 0.0, 1.0)
+
+
+## How many times as hard a /dev/null hole drags it now (C31's rule for the confused, C32).
+func hole_pull_scale() -> float:
+	return hup_tuning.hole_pull_scale if hup != Hup.NONE and hup_tuning != null else 1.0
+
+
+## A joiner's copy: the host's word on its confusion (a Hup), carried beside its life.
+func take_hup_word(word: int) -> void:
+	var next: Hup = clampi(word, 0, Hup.WANDER) as Hup
+	if next != hup:
+		hup = next
+		hup_t = 0.0
+
+
+func _start_hup(d) -> void:
+	hup_pending = false
+	if state == State.TELL or state == State.STRIKE:
+		hup_offs += 1
+		_note("abort")
+	_release(d)
+	burst_left = 0
+	prey = 0
+	last_seen = Vector3.INF
+	unseen_t = 0.0
+	velocity = Vector3.ZERO
+	hup = Hup.RELOAD
+	hup_t = 0.0
+	_lash_left = hup_tuning.lash_most if hup_tuning != null else 0
+	_lash_mark = null
+	_hup_rng.seed = hash([String(dummy.name), hups, kind])
+	_note("hup")
+	_enter(State.RECOVER)  # the stall, posed as its recovery (the state word carries it so)
+
+
+## Its confusion's clock: the reload over, it wanders; the wander over (never in the middle of a lash's tell
+## or strike), it is itself again, guarded. Not confused, the guard runs down.
+func _tick_hup(delta: float, d) -> void:
+	if hup == Hup.NONE:
+		hup_guard = maxf(hup_guard - delta, 0.0)
+		return
+	hup_t += delta
+	if hup == Hup.RELOAD and hup_t >= hup_tuning.reload_s:
+		hup = Hup.WANDER
+		hup_t = 0.0
+		_lash_wait = hup_tuning.lash_first_s
+		_leg_left = 0.0
+		_looking = true  # its first leg starts at once
+		_note("wander")
+		_enter(State.RETURN)
+	elif hup == Hup.WANDER and hup_t >= hup_tuning.wander_s and not (_lash_mark != null and (state == State.TELL or state == State.STRIKE)):
+		_end_hup(d)
+
+
+func _end_hup(d) -> void:
+	hup_guard = hup_tuning.immune_s if hup_tuning != null else 0.0
+	hup = Hup.NONE
+	hup_t = 0.0
+	_lash_mark = null
+	_release(d)
+	cooldown = maxf(cooldown, _attack_wait(d)) if d != null else cooldown
+	_look = 0.0
+	moved = true
+	_note("clear")
+	_enter(State.RETURN)  # home, or a hunt of whatever it sees on the way
+
+
+## Every trace of a confusion gone (its death: a new life is a new daemon).
+func _clear_hup() -> void:
+	hup = Hup.NONE
+	hup_t = 0.0
+	hup_guard = 0.0
+	hup_pending = false
+	_lash_mark = null
+
+
+## One step confused: the reload's stall, or the wander (and, where `lash_ok`, its lashes).
+func _step_confused(delta: float, d, lash_ok: bool) -> void:
+	art.displays = false
+	if hup == Hup.RELOAD:
+		velocity = Vector3.ZERO
+		art.drive(DaemonArt.Act.RECOVER, hup_share())
+		return
+	if _lash_mark != null:
+		if state == State.TELL or state == State.STRIKE or state == State.RECOVER:
+			_step_lash(delta, d)
+			return
+		_lash_mark = null  # called off (a freeze, a hole): back to its wander
+	if lash_ok and _lash_left > 0:
+		_lash_wait -= delta
+		if _lash_wait <= 0.0:
+			var mark := _lash_target(d)
+			if mark != null:
+				_begin_lash(mark)
+				return
+			_lash_wait = LOOK_SNAP_S  # none near: it looks again in a moment
+	_wander(delta, d)
+
+
+## The confused walk: legs at a share of its speed the way its dice say, stuttering, each followed by a look
+## round (its facing swept in snaps); a leg that would take it far past its leash turns back toward home.
+func _wander(delta: float, d) -> void:
+	var t := hup_tuning
+	_leg_left -= delta
+	if _leg_left <= 0.0:
+		_looking = not _looking
+		if _looking:
+			_leg_left = t.look_s * _hup_rng.randf_range(0.7, 1.3)
+			_look_from = dummy.global_rotation.y
+			_look_to = _look_from
+			_look_snap = 0.0
+		else:
+			_leg_left = t.leg_s * _hup_rng.randf_range(0.7, 1.3)
+			_wander_way = _pick_way(d)
+	if _looking:
+		velocity = Vector3.ZERO
+		if state != State.HOME:
+			_enter(State.HOME)
+		art.drive(DaemonArt.Act.IDLE)
+		_look_snap -= delta
+		if _look_snap <= 0.0:
+			_look_snap = LOOK_SNAP_S * _hup_rng.randf_range(0.7, 1.3)
+			_look_to = _look_from + _hup_rng.randf_range(-t.look_sweep, t.look_sweep)
+		var yaw := rotate_toward(dummy.global_rotation.y, _look_to, LOOK_SNAP_RATE * delta)
+		dummy.global_rotation = Vector3(0.0, yaw, 0.0)
+		return
+	if state != State.RETURN:
+		_enter(State.RETURN)
+	art.drive(DaemonArt.Act.MOVE)
+	# Its motion stutters: still for stutter_share of each beat.
+	if fposmod(hup_t * t.stutter_hz, 1.0) < t.stutter_share:
+		velocity = Vector3.ZERO
+		return
+	var goal := dummy.global_position + _wander_way * 2.0
+	if kind == "swarm":
+		goal.y = home.origin.y if has_home else dummy.global_position.y
+	_walk(goal, _speed(d) * t.wander_share, delta, d)
+	_face_way(delta, d)
+
+
+## A wander leg's way: any way its dice say, but back toward home (within 60 degrees of it) once it has
+## gone most of its leash.
+func _pick_way(d) -> Vector3:
+	var angle := _hup_rng.randf_range(-PI, PI)
+	var way := Vector3(sin(angle), 0.0, cos(angle))
+	if has_home and d != null and _from_home() > d.tuning.leash_m * WANDER_LEASH:
+		var back := _flat(home.origin - dummy.global_position)
+		if back.length_squared() > 0.0001:
+			way = back.normalized().rotated(Vector3.UP, _hup_rng.randf_range(-PI / 3.0, PI / 3.0))
+	return way
+
+
+## The nearest other living daemon within lash_range_m of it, in sight of its eye: what it lashes at, or null.
+func _lash_target(d) -> Node3D:
+	var best: Node3D = null
+	var best_d := hup_tuning.lash_range_m
+	var here := dummy.global_position
+	for other in d.brains():
+		if other == self or other.dummy == null or not is_instance_valid(other.dummy) or not other.dummy.is_alive():
+			continue
+		var gap := _flat(other.dummy.global_position - here).length()
+		if gap > best_d or not d.clear(_eye(d), other.dummy.global_position + Vector3.UP * MIDDLE_M):
+			continue
+		best = other.dummy
+		best_d = gap
+	return best
+
+
+func _begin_lash(mark: Node3D) -> void:
+	_lash_mark = mark
+	_lash_left -= 1
+	lashes += 1
+	_note("lash")
+	_enter(State.TELL)
+
+
+## A lash at another daemon: its own tell, its own strike at that daemon, its own recovery; then it wanders
+## on, lash_gap_s before the next.
+func _step_lash(delta: float, d) -> void:
+	var mark := _lash_mark
+	var at := mark.global_position + Vector3.UP * MIDDLE_M if is_instance_valid(mark) and mark.is_alive() else Vector3.INF
+	match state:
+		State.TELL:
+			var tell_s := _tell_s(d)
+			art.drive(DaemonArt.Act.TELL, state_t / tell_s)
+			velocity = Vector3.ZERO
+			if at.is_finite():
+				_face(at, delta, d)
+			if state_t < tell_s:
+				return
+			if at.is_finite() and _sees(at, d):
+				_lash_strike(at, d)
+			else:
+				_note("abort")
+				_enter(State.RECOVER)
+		State.STRIKE:
+			_step_lash_strike(delta, at, d)
+		_:
+			var recover_s := _recover_s(d)
+			art.drive(DaemonArt.Act.RECOVER, state_t / recover_s)
+			velocity = Vector3.ZERO
+			if state_t >= recover_s:
+				_lash_mark = null
+				_lash_wait = hup_tuning.lash_gap_s
+				_leg_left = 0.0
+				_looking = true
+				_enter(State.RETURN)
+
+
+func _lash_strike(at: Vector3, d) -> void:
+	_enter(State.STRIKE)
+	_thrown = false
+	_dive_hit = false
+	var face := _flat(at - dummy.global_position)
+	_strike_dir = face.normalized() if face.length_squared() > 0.0001 else -dummy.global_transform.basis.z
+	_lunge = clampf(face.length() + SCYTHES.z, 0.0, d.tuning.rogue_lunge_m)
+	if kind == "swarm":
+		var nest: Vector3 = dummy.global_position + Vector3.UP * MIDDLE_M
+		_dive_from = nest
+		_dive_mark = at
+		var way := at - nest
+		_strike_dir = way.normalized() if way.length_squared() > 0.0001 else _strike_dir
+	elif kind == "zombie":
+		var from: Vector3 = _claw()
+		if d.clear(from, at):
+			var bolt = d.throw_bolt(self, from, (at - from).normalized())
+			if bolt != null:
+				bolt.lash_scale = hup_tuning.lash_scale  # it lands on the daemon it meets (glitch_bolt.gd)
+				_thrown = true
+		else:
+			_note("miss")
+
+
+func _step_lash_strike(delta: float, at: Vector3, d) -> void:
+	var t: DaemonAiTuning = d.tuning
+	match kind:
+		"rogue":
+			art.drive(DaemonArt.Act.STRIKE, state_t / t.rogue_strike_s)
+			_shove(_strike_dir * (_lunge / t.rogue_strike_s) * delta, d)
+			if state_t >= t.rogue_strike_s:
+				var point := dummy.global_transform * SCYTHES
+				var middle := dummy.global_position + Vector3.UP * MIDDLE_M
+				if at.is_finite() and at.distance_to(point) <= t.rogue_slash_m and d.clear(middle, at):
+					_lash_land(t.rogue_damage, _strike_dir, d)
+				else:
+					_note("miss")
+				_enter(State.RECOVER)
+		"zombie":
+			art.drive(DaemonArt.Act.STRIKE, state_t / t.zombie_throw_s)
+			velocity = Vector3.ZERO
+			if state_t >= t.zombie_throw_s:
+				_enter(State.RECOVER)
+		"swarm":
+			art.drive(DaemonArt.Act.STRIKE, state_t / t.swarm_dive_s)
+			var went := _shove(_strike_dir * t.swarm_dive_speed * delta, d, true)
+			var nest: Vector3 = dummy.global_position + Vector3.UP * MIDDLE_M
+			if not _dive_hit and at.is_finite() and nest.distance_to(at) <= t.swarm_hit_m and d.clear(nest, at):
+				_dive_hit = true
+				_lash_land(t.swarm_damage, _strike_dir, d)
+			var past := (nest - _dive_from).dot(_strike_dir) > _dive_from.distance_to(_dive_mark) + t.swarm_dive_past_m
+			if state_t >= t.swarm_dive_s or past or not went:
+				if not _dive_hit:
+					_note("miss")
+				_enter(State.RECOVER)
+		_:
+			_enter(State.RECOVER)
+
+
+## `base` damage of its own attack, at the lash's share, on the daemon it lashed at (the director lands it).
+func _lash_land(base: float, way: Vector3, d) -> void:
+	if d.hurt_daemon(_lash_mark, base * hup_tuning.lash_scale, self, way):
+		lash_hits += 1
+		_note("lashed")
+	else:
+		_note("miss")
+
+
+## A lash's bolt of this zombie's met a daemon and landed (the director's word, C32).
+func lash_bolt_landed() -> void:
+	lash_hits += 1
+	_note("lashed")
+
+
 # --- A joiner's copy: the host's word, played. ---
 
 ## The host's word for this daemon: where (arena space), facing, in which state and how far in.
@@ -534,6 +919,8 @@ func follow(delta: float, d) -> void:
 	_release(d)
 	if not word_frozen:
 		word_age += delta
+		if hup != Hup.NONE:
+			hup_t += delta  # this screen's own clock of the host's word on its confusion (C32)
 	if not word_at.is_finite() or not dummy.is_alive():
 		art.drive(DaemonArt.Act.IDLE)
 		return
@@ -569,6 +956,7 @@ func _down(d) -> void:
 		_release(d)
 		prey = 0
 		burst_left = 0
+		_clear_hup()  # a new life is a new daemon: no confusion, no guard (C32)
 		_enter(State.DOWN)
 	velocity = Vector3.ZERO
 	art.drive(DaemonArt.Act.IDLE)

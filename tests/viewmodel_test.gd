@@ -93,7 +93,7 @@ func _resource_checks() -> void:
 			wrong.append(def.id)
 		else:
 			paths[script.resource_path] = true
-	_check("acceptance: every weapon of the arsenal (8 at A1, 9 since C28's ping, 10 since C29's chmod 000, 11 since C30's pipe |, 12 since C31's /dev/null) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 12 and paths.size() == 12 and wrong.is_empty(), ", ".join(wrong))
+	_check("acceptance: every weapon of the arsenal (8 at A1, 9 since C28's ping, 10 since C29's chmod 000, 11 since C30's pipe |, 12 since C31's /dev/null, 13 since C32's SIGHUP) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 13 and paths.size() == 13 and wrong.is_empty(), ", ".join(wrong))
 	var bad = _defs[0].duplicate()
 	bad.viewmodel_model = load("res://scripts/palette.gd")
 	var none = _defs[0].duplicate()
@@ -208,11 +208,11 @@ func _model_checks() -> void:
 		shapes["%d %d %d %d" % [roundi(box.size.x * 100.0), roundi(box.size.y * 100.0), roundi(box.size.z * 100.0), tris]] = def.id
 	_check("acceptance: every model is built: a Muzzle marker of its own, a Body mesh of 2 to 4 surfaces each with its material (body, plates, polymer, hot parts), the trim its own mesh, the script its weapon names", built.is_empty(), ", ".join(built))
 	_check("acceptance: every model's trim glows in its weapon's own light skin at the weapon's own energy, its base darkened under it as the old box's was", glow.is_empty(), ", ".join(glow))
-	_check("acceptance: low poly: every model between %d and %d triangles (all twelve %d, eight at A1, nine at C28, ten at C29, eleven at C30), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
+	_check("acceptance: low poly: every model between %d and %d triangles (all thirteen %d, eight at A1, nine at C28, ten at C29, eleven at C30, twelve at C31), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
 	_check("acceptance: every Muzzle marker is at its model's front, on the barrel's tip, so effects come out of the barrel", front.is_empty(), ", ".join(front))
 	_check("acceptance: every muzzle sits in front of the camera, %.1f m at least, and in view at the arena's %d degree field of view, at 16:9 and at 4:3" % [MUZZLE_NEAREST_M, cam.fov], view.is_empty(), ", ".join(view))
 	_check("no model reaches within %d degrees of the crosshair" % CROSSHAIR_CLEAR_DEGREES, clear.is_empty(), ", ".join(clear))
-	_check("acceptance: nine different shapes (eight at A1, ping's since C28; ten since C29's chmod 000, eleven since C30's pipe |, twelve since C31's /dev/null): no two models share their size and triangle count", shapes.size() == 12, str(shapes.size()))
+	_check("acceptance: nine different shapes (eight at A1, ping's since C28; ten since C29's chmod 000, eleven since C30's pipe |, twelve since C31's /dev/null, thirteen since C32's SIGHUP): no two models share their size and triangle count", shapes.size() == 13, str(shapes.size()))
 	await _look_checks(models)
 	_placeholder_checks(cam)
 

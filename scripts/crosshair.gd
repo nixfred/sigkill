@@ -2,6 +2,8 @@ extends Control
 ## Crosshair drawn in code. Pops briefly (arms spread, colour brightens) when a shot lands.
 ## Its style and colour are settings (C16b): a cross, a dot, a circle or a cross with a dot,
 ## in one of palette.gd's crosshair colours.
+## SIGHUP (C32): while the player is confused the HUD drifts it off the middle (set_drift()); the aim never
+## moves, so a faint dot stays at the true middle the whole time.
 
 const Palette = preload("res://scripts/palette.gd")
 const DOT := 1.6
@@ -17,6 +19,11 @@ var _ping := 0.0
 
 var _style := "cross"
 var _color: Color = Palette.MINT
+## SIGHUP's drift (C32): pixels off the middle the crosshair is drawn now.
+var _drift := Vector2.ZERO
+## The true middle's faint dot while it drifts.
+const TRUE_DOT := 1.4
+const TRUE_ALPHA := 0.4
 
 
 func _ready() -> void:
@@ -40,6 +47,18 @@ func _on_setting_changed(section: String, _key: String) -> void:
 	queue_redraw()
 
 
+## SIGHUP (C32): draw it `offset` pixels off the middle (ZERO: back on it). The aim is never touched.
+func set_drift(offset: Vector2) -> void:
+	if offset != _drift:
+		_drift = offset
+		queue_redraw()
+
+
+## Pixels off the middle it is drawn now (C32).
+func drift() -> Vector2:
+	return _drift
+
+
 func ping() -> void:
 	_ping = PING_SECONDS
 	set_process(true)
@@ -53,7 +72,9 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var center := size * 0.5
+	var center := size * 0.5 + _drift
+	if _drift != Vector2.ZERO:
+		draw_circle(size * 0.5, TRUE_DOT, Color(_color, TRUE_ALPHA))  # the aim, where it always is
 	var t := _ping / PING_SECONDS
 	var col := _color.lerp(Palette.FLASH, t)
 	var inner := GAP + 5.0 * t

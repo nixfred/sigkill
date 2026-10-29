@@ -23,7 +23,8 @@ extends Node3D
 ## match, every other player (the drag on its own screen, at most player_pull_cap so a run gets out; the
 ## host judges its damage and its discard). A wall of white ICE is never moved: inside the horizon it only
 ## flickers. Black ICE is never pulled, held or hurt, its seals and touch untouched (I3): it flashes once and
-## its tag says "/dev/null: device busy". The thrower is never pulled or hurt by its own hole.
+## its tag says "/dev/null: device busy". The thrower is never pulled or hurt by its own hole. A daemon or the
+## hunter that SIGHUP has confused (C32) is dragged harder, the SIGHUP tuning's hole_pull_scale times.
 ##
 ## Who decides: an authoritative hole (alone, or the host's in a match) opens on its own and judges; a hole
 ## on a joiner's screen only draws until the host's word opens it at the host's place (open_at()), then
@@ -455,6 +456,8 @@ func _catch(body: Node3D, anchored: bool) -> void:
 ## a low wall: they come in over it); never into the level.
 func _drag(body: Node3D, middle: Vector3, distance: float, delta: float, space: PhysicsDirectSpaceState3D) -> void:
 	var speed := tuning.pull_at(distance, reach, open_age) * (1.0 + 1.5 * (1.0 - size_now()) * float(phase == Phase.COLLAPSING))
+	if body.has_method("hole_pull_scale"):
+		speed *= body.hole_pull_scale()  # SIGHUP's confused (C32): it does not brace, so it comes in harder
 	var inward := Vector3(core.x - middle.x, 0.0, core.z - middle.z)
 	inward = inward.normalized() if inward.length() > 0.0001 else Vector3.ZERO
 	var step := minf(speed * delta, distance)

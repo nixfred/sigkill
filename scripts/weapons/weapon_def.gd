@@ -99,12 +99,18 @@ extends "res://scripts/weapon_tuning.gd"
 ## drags what it reaches toward its core, hurts what it holds inside its horizon, discards what reaches the
 ## core and ends in an implosion. Its magazine is its charges; a spent one comes back after the tuning's
 ## recharge_s (scripts/weapons/inventory.gd, the host's combat alike). damage is unused, as the fork bomb's.
+##
+## SIGHUP (C32, resources/sighup.tres): thrown the same way again, its projectile slot a SighupTuning: the
+## device goes off where it lands in a hangup burst (scripts/weapons/sighup_burst.gd) that confuses what it
+## catches (daemons reload and wander, ICE's nodes reload, a player's screen glitches). Its magazine is its
+## charges, coming back as /dev/null's do (charges_tuning()). damage is unused: it does none.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 const FreezeTuningScript = preload("res://scripts/weapons/freeze_tuning.gd")
 const PipeTuningScript = preload("res://scripts/weapons/pipe_tuning.gd")
 const DevNullTuningScript = preload("res://scripts/weapons/dev_null_tuning.gd")
+const SighupTuningScript = preload("res://scripts/weapons/sighup_tuning.gd")
 
 enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING, FREEZE }
 
@@ -275,7 +281,8 @@ const CHAIN_RANGE_LAST_M := 60.0
 
 @export_group("Projectile")
 ## A thrown weapon's chain, a ForkBombTuning (C19): resources/fork_bomb.tres for the fork bomb; or its
-## hole, a DevNullTuning (C31, inside resources/dev_null.tres). Empty for every other weapon.
+## hole, a DevNullTuning (C31, inside resources/dev_null.tres); or its hangup, a SighupTuning (C32, inside
+## resources/sighup.tres). Empty for every other weapon.
 @export var projectile: Resource = null
 
 @export_group("Fork")
@@ -408,8 +415,8 @@ func problems() -> PackedStringArray:
 	if not BUILT_MODES.has(fire_mode):
 		out.append("fire_mode %d is not a fire mode" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
-		if not (projectile is ForkBombTuning or projectile is DevNullTuningScript):
-			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning or a DevNullTuning in projectile")
+		if not (projectile is ForkBombTuning or projectile is DevNullTuningScript or projectile is SighupTuningScript):
+			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning, a DevNullTuning or a SighupTuning in projectile")
 		elif not projectile.problems().is_empty():
 			out.append("a thrown weapon's projectile tuning is refused: %s" % projectile.problems()[0])
 		if pellet_count != 1 or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
@@ -507,7 +514,7 @@ func is_ult() -> bool:
 	return ult_meter > 0.0
 
 
-## True for a thrown weapon (C19): the fork bomb, and /dev/null (C31).
+## True for a thrown weapon (C19): the fork bomb, /dev/null (C31) and SIGHUP (C32).
 func is_thrown() -> bool:
 	return fire_mode == FireMode.PROJECTILE
 
@@ -520,6 +527,22 @@ func is_hole() -> bool:
 ## /dev/null's numbers (C31), or null for every other weapon.
 func hole_tuning() -> DevNullTuningScript:
 	return projectile as DevNullTuningScript if is_hole() else null
+
+
+## True for SIGHUP (C32): a thrown weapon whose device goes off in a hangup burst.
+func is_hup() -> bool:
+	return is_thrown() and projectile is SighupTuningScript
+
+
+## SIGHUP's numbers (C32), or null for every other weapon.
+func hup_tuning() -> SighupTuningScript:
+	return projectile as SighupTuningScript if is_hup() else null
+
+
+## The numbers of a thrown weapon whose magazine is charges that come back on their own (/dev/null's, C31;
+## SIGHUP's, C32): their recharge_s and step_charges(). Null for every other weapon.
+func charges_tuning() -> Resource:
+	return projectile if is_hole() or is_hup() else null
 
 
 ## True for fork() pellets (C24): projectiles that fork mid-flight.

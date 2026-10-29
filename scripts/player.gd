@@ -111,6 +111,13 @@ extends CharacterBody3D
 ## match the intent goes as any throw does and the host runs it. Every other player's open hole drags this
 ## player toward its core (_drag_by_holes(): level, under a run, never its own, never spawn-protected).
 ##
+## SIGHUP (C32), slot 13 (Shift+4): a click throws the device the same way (one charge spent); alone its burst
+## runs here (scripts/weapons/sighup_burst.gd), its catches the round HUD's "kill -HUP" callout; in a match
+## the intent goes as any throw does and the host runs it. Another player's burst catching this player (the
+## host's word) confuses it on this screen alone for a moment (take_hup(): hup_left, the HUD's glitch, the
+## crosshair as drawn drifting, the AI link "hung up"). It never inverts, slows or takes away a control and
+## never moves the aim: only what is drawn is confused.
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -150,6 +157,7 @@ const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 const FreezeBeamScript = preload("res://scripts/weapons/freeze_beam.gd")
 const PipeArcScript = preload("res://scripts/weapons/pipe_arc.gd")
 const DevNullHoleScript = preload("res://scripts/weapons/dev_null_hole.gd")
+const SighupBurstScript = preload("res://scripts/weapons/sighup_burst.gd")
 ## pipe |'s chain (C30): the level's own layer, which a chain never arcs through.
 const LEVEL_MASK := 1
 ## A daemon's middle, above its feet: where a blast aims at it.
@@ -200,6 +208,8 @@ signal cron_ran
 ## Something reached the core of this player's /dev/null and was discarded (C31): the round HUD's
 ## "> /dev/null".
 signal hole_discarded
+## This player's SIGHUP confused something (C32): the round HUD's "kill -HUP" callout.
+signal hup_caught
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -348,6 +358,13 @@ var blocked_age := INF
 ## (metres a second, level).
 var last_hole: Node3D
 var hole_drag := Vector3.ZERO
+## SIGHUP (C32): this player's last burst, and its own confusion on this screen (seconds left of it, its
+## whole length and how far the drawn crosshair may drift); hangups taken, for the checks.
+var last_hup: Node3D
+var hup_left := 0.0
+var hup_s := 0.0
+var hup_drift_px := 0.0
+var hups_taken := 0
 var _pipe_arc: Node3D
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
@@ -878,6 +895,7 @@ func set_alive(on: bool) -> void:
 	if not on:
 		_slow_left = 0.0  # the rm -rf cannon's weight goes with the life (C26)
 		_stop_beam()  # the freeze beam lets go (C29)
+		hup_left = 0.0  # SIGHUP's confusion goes with the life (C32)
 	if frost != null:
 		frost.clear()  # a death and a new life thaw this player (C29)
 	alive = on
@@ -1100,8 +1118,9 @@ func _step_weapon(delta: float) -> void:
 	if _w.is_chain():
 		var pipe = inventory.buffer(inventory.current)
 		_viewmodel.set_charge(pipe.share() if pipe != null else 0.0)  # the gauge's bars: the buffer's fill (C30)
-	if _w.is_hole():
-		_viewmodel.set_charge(float(inventory.mags[inventory.current]) / maxf(float(_w.magazine_size), 1.0))  # /dev/null's cells: the charges left (C31)
+	if _w.is_hole() or _w.is_hup():
+		_viewmodel.set_charge(float(inventory.mags[inventory.current]) / maxf(float(_w.magazine_size), 1.0))  # /dev/null's cells (C31), SIGHUP's carrier lights (C32): the charges left
+	hup_left = maxf(hup_left - delta, 0.0)
 	_place_viewmodel(delta)
 
 
@@ -1612,6 +1631,37 @@ func _on_hole_discarded(_what: Node, _at: Vector3) -> void:
 	hole_discarded.emit()
 
 
+## This player's SIGHUP burst (C32): kept, its catches the round HUD's callout (once a burst).
+func take_hup_burst(burst: Node3D) -> void:
+	last_hup = burst
+	if burst != null and burst.has_signal("caught") and not burst.caught.is_connected(_on_hup_caught):
+		burst.caught.connect(_on_hup_caught.bind(burst))
+
+
+func _on_hup_caught(_what: Node, _at: Vector3, burst: Node3D) -> void:
+	if is_instance_valid(burst) and burst.get("caught_count") == 1:
+		hup_caught.emit()
+
+
+## Another player's SIGHUP caught this player (C32, the host's word in a match): confused on this screen alone
+## for `seconds`, the drawn crosshair drifting by up to `drift_px`. Never while dead; a second one while
+## confused starts it over, never longer. No control is touched.
+func take_hup(seconds: float, drift_px: float) -> void:
+	if not alive or not is_finite(seconds) or seconds <= 0.0:
+		return
+	hups_taken += 1
+	hup_s = minf(seconds, 6.0)
+	hup_left = hup_s
+	hup_drift_px = clampf(drift_px, 0.0, 80.0) if is_finite(drift_px) else 0.0
+
+
+## How confused this player's screen is now, 0 to 1 (C32): 1 as it is caught, easing out over its last third.
+func hup_amount() -> float:
+	if hup_left <= 0.0 or hup_s <= 0.0:
+		return 0.0
+	return clampf(hup_left / (hup_s / 3.0), 0.0, 1.0)
+
+
 ## How this player's own hole lands its damage on a daemon or a piece of ICE it holds (C31): `def`'s hit at
 ## this player's strength (root's harder, C22), the ult meter filled solo as the other weapons fill it.
 func hole_judge(def: WeaponDefScript) -> Callable:
@@ -1892,6 +1942,8 @@ func _bombs_full(slot: int) -> bool:
 		return false
 	if inventory.defs[slot].is_hole():
 		return DevNullHoleScript.live_of(_fx_root(), "solo") >= tuning.live_cap  # /dev/null's own holes (C31)
+	if inventory.defs[slot].is_hup():
+		return SighupBurstScript.live_of(_fx_root(), "solo") >= tuning.live_cap  # SIGHUP's devices in the air (C32)
 	return ForkBomb.live_of(_fx_root(), "solo") >= tuning.live_cap
 
 
@@ -1921,6 +1973,12 @@ func _throw_from(slot: int) -> void:
 		var root: bool = sudo != null and sudo.state != null and sudo.is_root()
 		var hole := DevNullHoleScript.spawn(_fx_root(), def.hole_tuning(), origin, DevNullHoleScript.throw_velocity(def.hole_tuning(), forward), _bomb_rng.randi(), "solo", true, 0, root, def.light_skin, never, hole_judge(def))
 		take_hole(hole)
+		return
+	if def.is_hup():
+		# SIGHUP (C32): alone its burst runs here and confuses what it reaches.
+		var root_on: bool = sudo != null and sudo.state != null and sudo.is_root()
+		var burst := SighupBurstScript.spawn(_fx_root(), def.hup_tuning(), origin, SighupBurstScript.throw_velocity(def.hup_tuning(), forward), _bomb_rng.randi(), "solo", true, 0, root_on, def.light_skin, never)
+		take_hup_burst(burst)
 		return
 	var chain := ForkBomb.spawn(_fx_root(), def.projectile, origin, ForkBomb.throw_velocity(def.projectile, forward), _bomb_rng.randi(), "solo", true, def.light_skin, never, _judge_blast.bind(def))
 	chain.blasted.connect(_on_bomb_blasted)
