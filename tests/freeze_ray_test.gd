@@ -655,6 +655,8 @@ func _match_checks() -> void:
 	hp.hold_fire = true
 	var joiner_frozen := await _wait(func(): return cp.frozen_now(), 150)
 	hp.hold_fire = false
+	# The HUD redraws in its own frame: read it once it has (C30's final gate caught this read racing it).
+	await _wait(func(): return client["hud"].freeze_hud().frozen_text().size() == 2, 10)
 	var hud_lines: PackedStringArray = client["hud"].freeze_hud().frozen_text()
 	var asks_refused: int = hs.breaker_refused
 	cs._breaker.rpc_id(1, cs.lives.get(cid, 0), 0, Vector3.FORWARD)

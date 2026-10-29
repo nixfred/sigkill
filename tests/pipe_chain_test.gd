@@ -31,6 +31,7 @@ const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
 const Arsenal = preload("res://scripts/weapons/arsenal_tuning.gd")
+const CronMine = preload("res://scripts/weapons/cron_mine.gd")
 const PIPE_PATH := "res://resources/pipe_chain.tres"
 const ARSENAL_PATH := "res://resources/arsenal.tres"
 const PIPE_CODE := ["res://scripts/weapons/pipe_chain.gd", "res://scripts/weapons/pipe_buffer.gd", "res://scripts/weapons/pipe_tuning.gd", "res://scripts/weapons/pipe_arc.gd", "res://scripts/hud/pipe_hud.gd", "res://scripts/viewmodels/pipe_chain.gd"]
@@ -40,9 +41,10 @@ const CLIENT_OFFSET := Vector3(1000.0, 0.0, 0.0)
 const OPEN := Vector3(0.0, 0.95, 15.0)
 ## Where a daemon a check does not use waits: under the floor, out of every sight line.
 const PARKED := Vector3(0.0, -50.0, 0.0)
-## pipe |'s slot (slot 11: bank 2's second), and chmod 000's before it.
+## pipe |'s slot (slot 11: bank 2's second), chmod 000's before it, and cron's.
 const SLOT := 10
 const CHMOD := 9
+const CRON := 7
 ## The four daemons of the practice chain (arena space): rogue.d aimed at, then the zombie, the runaway and
 ## the second zombie, each the nearest of the rest to the one before, every jump in reach and in sight.
 const CHAIN := {"DummyA": Vector3(0.0, 0.0, 9.0), "DummyB": Vector3(4.0, 0.0, 7.5), "DummyD": Vector3(6.0, 1.0, 3.0), "DummyC": Vector3(2.0, 0.0, 0.0)}
@@ -360,8 +362,9 @@ func _practice_checks() -> void:
 	var drawn := await _draw(p)
 	_aim(p, _dummy(main, "DummyA").global_position + Vector3(0.0, 1.1, 0.0))
 	var model: Node3D = p.get("_viewmodels")[SLOT]
-	var turned_before: float = model.coupling_angle()
+	var rest := await _turn(model)
 	await _fire(p)
+	var rush := await _turn(model)
 	var links: Array = p.last_chain
 	var took := PackedFloat32Array()
 	for name in CHAIN:
@@ -379,8 +382,7 @@ func _practice_checks() -> void:
 	var lit_later: int = arc.lit()
 	var packets: int = arc.packets()
 	var spilled: int = (fx.fired(ParticleFx.Kind.PIPE) - spills) if fx != null else -1
-	var turned: float = absf(model.coupling_angle() - turned_before)
-	_check("acceptance: the look: the stream drawn from the muzzle link to link (%d lit at the shot, %d nine frames on), %d packets riding it, a spill of packets at each link (%d), the model's couplings spun by the rush" % [first_lit, lit_later, packets, spilled], arc.on() and first_lit < lit_later and lit_later == 4 and arc.points().size() == 5 and packets >= 12 and spilled == 4 and turned > 0.05)
+	_check("acceptance: the look: the stream drawn from the muzzle link to link (%d lit at the shot, %d nine frames on), %d packets riding it, a spill of packets at each link (%d), the model's couplings spun by the rush (%.3f rad a frame against %.3f at rest)" % [first_lit, lit_later, packets, spilled, rush, rest], arc.on() and first_lit < lit_later and lit_later == 4 and arc.points().size() == 5 and packets >= 12 and spilled == 4 and rush > rest * 5.0 and rest > 0.0)
 	await _frames(30)
 	var stays: bool = ph.line_text() != "" and arc.strength() <= 1.0
 	await _frames(int((PipeArc.HOLD_S + PipeArc.FADE_S) * 60.0) + 60)
@@ -662,11 +664,20 @@ func _match_checks() -> void:
 	await _wait(func(): return hs.combat.drawn_by(1) == "pipe_chain" and hp.inventory.fire_block() == "", 120)
 	await _wait(func(): return hs.avatars.has(cid) and hs.avatars[cid].global_position.distance_to(host["main"].to_global(Vector3(0.0, 0.95, 9.0))) < 0.3, 60)
 	_aim(hp, host["main"].to_global(Vector3(0.0, 0.95, 9.0)))
+	# Two plain daemons in reach beyond the joiner: the host's own hits take them down before its session
+	# judges the chain, so a chain built again then would end at the joiner.
+	var zombie := _dummy(host["main"], "DummyB")
+	for pair in [[rogue, Vector3(3.5, 0.0, 9.0)], [zombie, Vector3(7.0, 0.0, 9.0)]]:
+		_toughen(pair[0], 1.0)
+		_place(pair[0], host["main"].to_global(pair[1]))
 	var joiner_health: float = hs.combat.health_of(cid)
 	var host_avatar_fired: int = cs.avatars[1].pipe_arc().fired() if cs.avatars.has(1) else -1
 	await _fire(hp)
 	var seen := await _wait(func(): return cs.avatars.has(1) and cs.avatars[1].pipe_arc().fired() > host_avatar_fired, 60)
-	_check("acceptance: the host's own chain is the one its player built (pipe_last()): it lands on the joiner (%.0f off its health) and the joiner's screen draws it from the host's avatar" % (joiner_health - hs.combat.health_of(cid)), absf(joiner_health - hs.combat.health_of(cid) - 26.0) < EPS and seen >= 0 and hs.last_judged.size() == 1 and hs.last_judged[0]["id"] == cid)
+	var own := PackedStringArray()
+	for link in hs.last_judged:
+		own.append("player %d" % link["id"] if link["kind"] == PipeChain.Kind.PLAYER else String(link["name"]))
+	_check("acceptance: the host's own chain is the one its player built (pipe_last(), \"%s\"): it lands on the joiner (%.0f off its health) and on to the two daemons beyond, which its own hits took down before its session judged it; the joiner's screen draws it from the host's avatar" % [", ".join(own), joiner_health - hs.combat.health_of(cid)], absf(joiner_health - hs.combat.health_of(cid) - 26.0) < EPS and seen >= 0 and own == PackedStringArray(["player %d" % cid, "rogue.d", "zombie"]) and not rogue.is_alive() and not zombie.is_alive())
 	# A miss: the stream into the open, drawn on the host's screen to its end alone, no link lit.
 	await _frames(int(_def.fire_cooldown * 60.0) + 4)
 	cp.get_node("Head").rotation.x = 1.2
@@ -677,6 +688,24 @@ func _match_checks() -> void:
 	var miss_arc = hs.avatars[cid].pipe_arc()
 	await _frames(12)
 	_check("a miss is told as its end twice and drawn as the stream into the open alone: no link judged, none lit on the other screen", hs.last_judged.is_empty() and miss_arc.fired() > miss_fired and miss_arc.points().size() == 2 and miss_arc.lit() == 0)
+	# The aim's ray shoots off a cron mine on its way, as any shot does (C27): the host's mine on the floor.
+	hp.select_slot(CRON)
+	await _wait(func(): return hs.combat.drawn_by(1) == "cron_mines" and hp.inventory.fire_block() == "", 120)
+	_aim(hp, host["main"].to_global(Vector3(2.0, 0.0, 13.0)))
+	var mines: Dictionary = hs.get("_mines")
+	var placed_before := mines.size()
+	await _fire(hp)
+	var placed := await _wait(func(): return mines.size() > placed_before, 60)
+	var mine: Node3D = null
+	for id in mines:
+		mine = mines[id]
+	var removed := -1
+	if placed >= 0 and mine != null:
+		await _frames(int(_def.fire_cooldown * 60.0) + 4)
+		_aim(cp, client["main"].to_global(host["main"].to_local(mine.global_position)))
+		await _fire(cp)
+		removed = await _wait(func(): return not is_instance_valid(mine) or mine.get("why") == CronMine.SHOT, 90)
+	_check("a chain's aim shoots off a cron mine on its way, as any shot does (the host's mine, removed by the joiner's chain)", placed >= 0 and removed >= 0)
 	# A blocked buffer is refused, whatever the joiner's screen says.
 	var pipe: PipeBuffer = hs.combat.buffer_of(cid)
 	pipe.fill = pipe.full()
@@ -698,6 +727,13 @@ func _draw(p: Node) -> bool:
 	p.select_slot(SLOT)
 	await _frames(30)
 	return p.weapon_tuning().id == "pipe_chain" and p.inventory.fire_block() == ""
+
+
+## How far `model`'s first coupling turns in one physics frame, in radians.
+func _turn(model: Node3D) -> float:
+	var before: float = model.coupling_angle()
+	await physics_frame
+	return absf(wrapf(model.coupling_angle() - before, -PI, PI))
 
 
 ## One click of fire, and the frame it fires in.

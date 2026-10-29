@@ -343,14 +343,6 @@ func buffer(slot: int) -> PipeBufferScript:
 	return buffers[slot] if slot >= 0 and slot < buffers.size() else null
 
 
-## The slot of the loadout's chain beam (pipe |, C30), or -1 when it has none.
-func chain_slot() -> int:
-	for i in defs.size():
-		if defs[i].is_chain():
-			return i
-	return -1
-
-
 ## The slot of the loadout's freeze weapon (chmod 000, C29), or -1 when it has none.
 func freeze_slot() -> int:
 	for i in defs.size():

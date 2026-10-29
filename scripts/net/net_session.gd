@@ -2112,8 +2112,9 @@ func _beam_freeze(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScr
 ## the host's world, over the host's daemons and ICE and every other player's body. Every player on it
 ## takes its link in the match's combat (never a dead or spawn-protected one: neither is ever a link);
 ## while the daemons fight, a joiner's links on them and on ICE land here as its shots do (Black ICE, hit
-## first, only flashed). Told as any shot: the chain's points as the shot's ends, the struck players and
-## their health, then the deaths.
+## first, only flashed). The aim's ray removes the first cron mine on its way, as any shot's does (C27). Told
+## as any shot: the chain's points as the shot's ends, the struck players and their health, then the
+## deaths.
 func _pipe_judge(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScript) -> void:
 	if state != State.HOSTING or combat == null:
 		return
@@ -2122,6 +2123,7 @@ func _pipe_judge(shooter: int, origin: Vector3, dir: Vector3, def: WeaponDefScri
 	var links: Array = []
 	var ray := _raycast(shooter, origin, dir, def)
 	var miss: Vector3 = _arena.to_global(ray["end"])
+	_shoot_mines(shooter, origin, ray["end"], false)  # the first mine on the aim's way, as a shot's (C27)
 	if shooter == 1 and _player_ready() and _player.has_method("pipe_last"):
 		links = _player.pipe_last()
 	else:
