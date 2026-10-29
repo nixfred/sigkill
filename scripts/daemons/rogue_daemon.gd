@@ -1,7 +1,7 @@
 extends DaemonArt
 ## The rogue daemon (A2b, armoured in A5; the "rogue.d" dummy): a black mantis-scorpion. A solid body
-## of near-black armour: a thorax under overlapping dorsal plates, a scorpion's segmented tail curling
-## up over its back to a stinger, a low wedge of a head with one horizontal visor slit, two scythe
+## of near-black armour: a flat hexagonal thorax under overlapping dorsal plates, a scorpion's tail of
+## ribbed hex segments curling up over its back to a stinger, a low wedge of a head with one horizontal visor slit, two scythe
 ## arms folded in front, six thick jointed legs. Its light is crimson and only in its seams: a band
 ## between each tail segment, the knees, the elbows and wrists, the visor, the stinger's bulb (its
 ## weak points, weak()). Faceless: the visor is a slit of light, no eye.
@@ -33,11 +33,11 @@ const LEGS := 6
 ## Each walking leg's hip on the thorax and its foot's home on the ground round the body (body
 ## space: +X right, -Z ahead, metres), and its tripod: legs of one tripod step together.
 const HIPS := [Vector3(-0.22, -0.02, -0.22), Vector3(0.22, -0.02, -0.22), Vector3(-0.27, -0.04, 0.0), Vector3(0.27, -0.04, 0.0), Vector3(-0.22, -0.02, 0.22), Vector3(0.22, -0.02, 0.22)]
-const HOMES := [Vector2(-0.95, -0.95), Vector2(0.95, -0.95), Vector2(-1.3, 0.05), Vector2(1.3, 0.05), Vector2(-1.0, 1.0), Vector2(1.0, 1.0)]
+const HOMES := [Vector2(-0.84, -0.84), Vector2(0.84, -0.84), Vector2(-1.14, 0.05), Vector2(1.14, 0.05), Vector2(-0.88, 0.88), Vector2(0.88, 0.88)]
 const TRIPOD := [0, 1, 1, 0, 0, 1]
 ## The leg's upper and lower lengths, in metres.
-const FEMUR := 0.85
-const TIBIA := 1.1
+const FEMUR := 0.8
+const TIBIA := 1.0
 ## The thorax's height above the ground (low: it crouches), and how far the body glides from its
 ## spot (x, z), in metres; how hard the skitter darts and pauses (0 steady, 1 stopping dead) and its
 ## period.
@@ -74,10 +74,10 @@ const STRIKE_AT := Vector3(0.0, -0.35, -1.25)
 ## The thorax plate (across, thick, long), the dorsal plates' run along the back, and the tail: the
 ## first segment's size (across, thick, long), how much smaller each next one is, how far each turns
 ## up from the one before (radians), more as it rears.
-const THORAX := Vector3(0.78, 0.36, 0.86)
+const THORAX := Vector3(0.86, 0.4, 0.92)
 const DORSAL_FROM := -0.34
 const DORSAL_TO := 0.3
-const TAIL_FIRST := Vector3(0.34, 0.24, 0.27)
+const TAIL_FIRST := Vector3(0.42, 0.3, 0.3)
 const TAIL_SHRINK := 0.09
 const TAIL_CURL := 0.44
 const TAIL_CURL_REAR := 0.14
@@ -177,13 +177,13 @@ func _build() -> void:
 	if elite:
 		_plates = 4
 		_segments = 7
-	_thorax = part(Shape.PLATE, Look.ARMOR)
+	_thorax = part(Shape.HEX, Look.ARMOR)
 	for i in _plates:
 		_dorsal.append(part(Shape.PLATE, Look.ARMOR))
 	if elite:
 		_spine_seam = weak(seam(part(Shape.CUBE, Look.CORE)))
 	for i in _segments:
-		_tail.append(part(Shape.PLATE, Look.ARMOR))
+		_tail.append(part(Shape.HEX, Look.ARMOR))
 		_tail_seam.append(weak(seam(part(Shape.RING, Look.CORE))))
 	_sting = part(Shape.SHARD, Look.ARMOR)
 	_bulb = weak(part(Shape.GEM, Look.CORE))
@@ -257,7 +257,7 @@ func _pose(t: float, delta: float) -> void:
 		var z := lerpf(DORSAL_FROM, DORSAL_TO, u)
 		var w := THORAX.x * lerpf(0.82, 0.62, u)
 		var tilt := Basis(Vector3.RIGHT, -0.16 + 0.05 * sin(2.0 * t + i))
-		lay(_dorsal[i], xf * Vector3(0.0, 0.18 + 0.02 * i, z), body * tilt * Basis.from_scale(Vector3(w, 0.1, (DORSAL_TO - DORSAL_FROM) / _plates * 1.35)))
+		lay(_dorsal[i], xf * Vector3(0.0, 0.2 + 0.02 * i, z), body * tilt * Basis.from_scale(Vector3(w, 0.14, (DORSAL_TO - DORSAL_FROM) / _plates * 1.35)))
 	if _spine_seam >= 0:
 		lay(_spine_seam, xf * Vector3(0.0, 0.25 + 0.02 * _plates, (DORSAL_FROM + DORSAL_TO) * 0.5), body * Basis.from_scale(Vector3(0.025, 0.02, DORSAL_TO - DORSAL_FROM)))
 	_pose_tail(t, xf, body, rear)
@@ -296,8 +296,9 @@ func _pose_tail(t: float, xf: Transform3D, body: Basis, rear: float) -> void:
 		var way := Vector3(sin(sway * (k + 1) * 0.3), sin(angle), cos(angle)).normalized()
 		var mid := at + way * size.z * 0.5
 		var up := way.cross(Vector3.RIGHT).normalized()
-		var frame := Basis(Vector3.RIGHT, up, way).orthonormalized()
-		lay(_tail[k], xf * mid, body * frame * Basis.from_scale(size))
+		# A ribbed hex segment, its axis along the tail (right-handed: across, along, under).
+		var frame := Basis(Vector3.RIGHT, way, -up).orthonormalized()
+		lay(_tail[k], xf * mid, body * frame * Basis.from_scale(Vector3(size.x, size.z, size.y)))
 		orient(_tail_seam[k], xf * (at + way * 0.01), body * way, 0.05, size.x * 0.82)
 		at = mid + way * (size.z * 0.5 + 0.035)
 		size *= 1.0 - TAIL_SHRINK
@@ -393,9 +394,9 @@ func _pose_legs(t: float, delta: float, xf: Transform3D, turn: Basis, centre: Ve
 		out.y = 0.0
 		var reached := hip + (foot - hip).limit_length(FEMUR + TIBIA - 0.002)
 		var knee := _knee_at(hip, reached, Vector3.UP + out.normalized() * 0.35)
-		bone(_femur[i], hip, knee, 0.15 * _leg_w)
-		bone(_tibia[i], knee, reached, 0.12 * _leg_w)
-		orient(_knee[i], knee, knee - hip, 0.06, 0.15 * _leg_w)
+		bone(_femur[i], hip, knee, 0.19 * _leg_w)
+		bone(_tibia[i], knee, reached, 0.15 * _leg_w)
+		orient(_knee[i], knee, knee - hip, 0.06, 0.19 * _leg_w)
 
 
 func _on_hit() -> void:

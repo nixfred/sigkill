@@ -38,7 +38,7 @@ enum Plate { PELVIS, BELLY, CHEST, HEAD, PAULDRON }
 ## The limbs: right upper arm, the cannon, both thighs and shins.
 enum Limb { UPPER_R, CANNON, THIGH_L, THIGH_R, SHIN_L, SHIN_R }
 ## Its pelvis's height above the ground, its legs' lengths, its upper arm's, and the cannon's.
-const HIP_H := 0.88
+const HIP_H := 0.92
 const THIGH := 0.46
 const SHIN := 0.46
 const UPPER := 0.46
@@ -140,9 +140,9 @@ func _build() -> void:
 	tag_height = 2.55
 	budget_triangles = 3400
 	budget_draw_calls = 14
-	size_low = 0.94
+	size_low = 0.95
 	size_high = 1.05
-	elite_size = 1.1
+	elite_size = 1.08
 	for i in 5:
 		_p.append(TAU * dice(i, 1))
 	# The build's rolls (A5).
@@ -249,8 +249,8 @@ func _pose(t: float, delta: float) -> void:
 	# The head: low, heavy and faceless, sunk between the shoulders and hanging forward, an amber
 	# band round its neck; it snaps round in a twitch.
 	var head_side := 0.8 * amp * sign if kind == 0 else 0.0
-	var neck := chest + chest_frame * Vector3(0.0, 0.2, -0.2)
-	var head_way := (body * Vector3(sin(head_side) * 0.6, -0.55, -1.0)).normalized()
+	var neck := chest + chest_frame * Vector3(0.0, 0.32, -0.18)
+	var head_way := (body * Vector3(sin(head_side) * 0.6, -0.35, -1.0)).normalized()
 	var head_at := neck + head_way * 0.16
 	_head = head_at
 	orient(_neck, neck, head_way, 0.06, 0.18)
@@ -279,7 +279,7 @@ func _pose(t: float, delta: float) -> void:
 		orient(_bands[k], elbow + body * fore * (CANNON_L * u), body * fore, 0.05, 0.29 * _bulk)
 		brighten(_bands[k], 0.25 + 2.2 * clampf(charge * BANDS - k, 0.0, 1.0))
 	orient(_muzzle_glow, _mouth, body * fore, 0.1 * (1.0 + 1.2 * charge), 0.1 * (1.0 + 1.2 * charge))
-	brighten(_muzzle_glow, 0.5 + 3.0 * charge + (2.0 if act == Act.STRIKE else 0.0))
+	brighten(_muzzle_glow, 0.5 + 1.8 * charge + (1.5 if act == Act.STRIKE else 0.0))
 	# The right flank's own plates.
 	for i in _flank.size():
 		var at := chest + chest_frame * Vector3(0.36 * _bulk, -0.14 - 0.16 * i, -0.02)

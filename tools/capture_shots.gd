@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b or c28):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28 or a5):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -16,8 +16,14 @@ extends SceneTree
 ## the daemons fighting back, in play: a rogue daemon mid-lunge, a zombie's bolt in flight, the
 ## hit's red vignette and the death it ends in; c28, ping: its ring going out across the floor seen
 ## from above and behind, daemons outlined through the west cover wall with their tags, and rogue.d
-## caught mid-tell by a ping, reeling; every other set plays in practice, the old dummies, as it was
-## shot.
+## caught mid-tell by a ping, reeling; a5, the armoured daemons (A5): rogue.d in its tell, rearing
+## tall at the player, its visor flared; a zombie's cannon charging at the player, its bands lit; the
+## runaway's drones round their core; a line-up of three of each type built from other seeds, no two
+## alike (each creature's own art, standing, facing the camera, one row a type, the rows stacked);
+## the three elites in their tells; and the runaway's core killed, its drones scattering; then it
+## prints what daemons cost: each one's posing timed alone, and the GPU's time and the frame's
+## processing with nine drawn and with them hidden. Every
+## other set plays in practice, the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
 ##
@@ -125,6 +131,33 @@ const C28_REVEAL_FRAMES := 36
 const C28_STAGGER_FRAMES := 26
 ## Ping's slot (weapon 9).
 const C28_SLOT := 8
+## a5 (A5): rogue.d put where it hunts the player and shot in its tell (this far in, then its
+## camera beside the player, this far toward the player, out to the side and up); the zombie's
+## charge, the player and the zombie where c27b put them, the still this far through its tell, its
+## free camera and look (arena space); the runaway's; the line-up's rows (type, name, places, the
+## share of its size range each seed rolls), its camera and look, and the band of each row's still
+## kept; the elites' places, camera and look; the scatter's camera, its frames after the kill; and
+## how many frames the cost is averaged over.
+const A5_ROGUE_AT := Vector3(0.5, 0.0, 10.5)
+const A5_ROGUE_TELL_S := 0.25
+const A5_ROGUE_FRAMES := 8
+const A5_ROGUE_CAM := Vector3(1.7, 1.15, 3.0)
+const A5_ZOMBIE_CAM := Vector3(-0.4, 1.35, 9.2)
+const A5_ZOMBIE_LOOK := Vector3(-3.2, 1.15, 7.4)
+const A5_CHARGE_SHARE := 0.8
+const A5_SWARM_CAM := Vector3(-4.9, 2.3, 15.9)
+const A5_SWARM_LOOK := Vector3(-8.0, 1.8, 12.0)
+const A5_ROWS := [["rogue_daemon", "rogue.d", [Vector3(-4.3, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(4.3, 0.0, 10.0)], [0.95, 0.1, 0.55]], ["zombie_process", "zombie", [Vector3(-3.4, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(3.4, 0.0, 10.0)], [0.55, 0.95, 0.1]], ["runaway_swarm", "runaway", [Vector3(-4.6, 0.0, 10.0), Vector3(0.0, 0.0, 10.0), Vector3(4.6, 0.0, 10.0)], [0.1, 0.55, 0.95]]]
+const A5_LINEUP_CAM := Vector3(0.0, 1.5, 16.8)
+const A5_LINEUP_LOOK := Vector3(0.0, 1.1, 10.0)
+const A5_LINEUP_BAND := Rect2i(0, 270, 1920, 500)
+const A5_ELITES := [["rogue_daemon", "rogue.d", Vector3(-4.6, 0.0, 10.5)], ["zombie_process", "zombie", Vector3(0.0, 0.0, 10.5)], ["runaway_swarm", "runaway", Vector3(4.6, 0.0, 10.5)]]
+const A5_ELITE_CAM := Vector3(0.0, 1.5, 17.5)
+const A5_ELITE_LOOK := Vector3(0.0, 1.2, 10.5)
+const A5_SCATTER_CAM := Vector3(-4.4, 2.6, 16.2)
+const A5_SCATTER_LOOK := Vector3(-8.0, 1.6, 12.0)
+const A5_SCATTER_FRAMES := 12
+const A5_COST_FRAMES := 120
 
 var _main: Node
 var _player: Node
@@ -161,6 +194,11 @@ func _run() -> void:
 	await _frames(90)  # shaders compiled, the code rain running
 	if _set == "c27b":
 		await _c27b()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "a5":
+		await _a5()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -464,6 +502,188 @@ func _c28() -> void:
 	await _frames(C28_STAGGER_FRAMES)
 	print("capture: rogue.d's tell after %d frames, staggered %d, reeling %.2f" % [waited, rogue.brain.staggers, rogue.art_node().staggered()])
 	await _save("c28-stagger")
+
+
+## a5: the armoured daemons (A5), each type's hero, the line-up, the elites, the scatter, the cost.
+func _a5() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	var rogue: Node3D = targets.get_node("DummyA")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	# rogue.d in its tell: rearing tall at the player, its visor flared, from beside the player.
+	await _stand(C27B_PLAYER_AT, _main.to_global(A5_ROGUE_AT + DUMMY_MIDDLE))
+	_c27b_place(rogue, _main.to_global(A5_ROGUE_AT))
+	GameSettings.current().set_value("gameplay", "practice", false)
+	var waited := 0
+	while not (rogue.brain.state == DaemonBrain.State.TELL and rogue.brain.state_t >= A5_ROGUE_TELL_S) and waited < 900:
+		await _frames(1)
+		waited += 1
+	var at: Vector3 = _main.to_local(rogue.global_position)
+	var face: Vector3 = _main.to_local(_player.global_position) - at
+	face.y = 0.0
+	face = face.normalized()
+	var side: Vector3 = face.cross(Vector3.UP)
+	var cam := _free_camera(at + face * A5_ROGUE_CAM.z + side * A5_ROGUE_CAM.x + Vector3.UP * A5_ROGUE_CAM.y, at + Vector3.UP * 1.25, A2B_FOV)
+	await _frames(A5_ROGUE_FRAMES)
+	print("capture: rogue.d (seed %d, size %.2f) in its tell after %d frames, rearing %.2f, its visor at %.2f" % [rogue.build_seed(), rogue.art_node().size_scale, waited, rogue.art_node().rear(), rogue.art_node().visor_glow()])
+	await _save("a5-rogue")
+	_free_camera_done(cam)
+	GameSettings.current().set_value("gameplay", "practice", true)
+	_c27b_place(rogue, C27B_PARKED)
+	await _frames(10)
+	# A zombie's cannon charging at the player, its bands lighting.
+	var zombie: Node3D = targets.get_node("DummyC")
+	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ZOMBIE_AT + DUMMY_MIDDLE))
+	_c27b_place(zombie, _main.to_global(C27B_ZOMBIE_AT))
+	GameSettings.current().set_value("gameplay", "practice", false)
+	var tell_s: float = (load("res://resources/daemon_ai.tres") as DaemonAiTuning).zombie_tell_s
+	cam = _free_camera(A5_ZOMBIE_CAM, A5_ZOMBIE_LOOK, A2B_FOV)
+	waited = 0
+	while not (zombie.brain.state == DaemonBrain.State.TELL and zombie.brain.state_t >= A5_CHARGE_SHARE * tell_s) and waited < 900:
+		await _frames(1)
+		waited += 1
+	print("capture: the zombie (seed %d) charging after %d frames, its bands %s" % [zombie.build_seed(), waited, zombie.art_node().band_glow()])
+	await _save("a5-zombie")
+	_free_camera_done(cam)
+	GameSettings.current().set_value("gameplay", "practice", true)
+	_c27b_place(zombie, _main.to_global(Vector3(-17.5, 0.0, 5.0)))
+	await _frames(30)
+	# The runaway on its platform, its drones round the core.
+	var swarm: Node3D = targets.get_node("DummyD")
+	_c27b_place(swarm, _main.to_global(Vector3(-8.0, 1.0, 12.0)))
+	cam = _free_camera(A5_SWARM_CAM, A5_SWARM_LOOK, A2B_FOV)
+	await _frames(60)
+	await _save("a5-runaway")
+	_free_camera_done(cam)
+	# The line-up: three of each type, each from its own seed. The arena's own wait under the floor.
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	# One row a type, each row three of it side by side, the rows stacked in one still: each
+	# creature's own art from its seed, standing driven (its idle wander off) and facing the camera,
+	# so builds compare like for like.
+	cam = _free_camera(A5_LINEUP_CAM, A5_LINEUP_LOOK, A2B_FOV)
+	var rows: Array[Image] = []
+	var made := 0
+	for row in A5_ROWS:
+		var three: Array[DaemonArt] = []
+		for k in 3:
+			three.append(_a5_art(row[0], row[2][k], _a5_seed(row[0], row[3][k], 600 + made * 50), DaemonArt.Act.MOVE, 0.0))
+			made += 1
+		await _frames(70)
+		var built := PackedStringArray()
+		for art in three:
+			built.append("%d %.2f %d parts" % [art.build_seed, art.size_scale, art.part_count()])
+		print("capture: the line-up's %s: %s" % [row[1], "; ".join(built)])
+		rows.append(await _grab())
+		for art in three:
+			art.get_parent().queue_free()
+	var sheet := Image.create(A5_LINEUP_BAND.size.x, A5_LINEUP_BAND.size.y * rows.size(), false, Image.FORMAT_RGBA8)
+	for i in rows.size():
+		sheet.blit_rect(rows[i], A5_LINEUP_BAND, Vector2i(0, A5_LINEUP_BAND.size.y * i))
+	sheet.save_png(OUT.path_join("a5-lineup.png"))
+	_shots += 1
+	print("capture: a5-lineup, %d rows stacked" % rows.size())
+	# What daemons cost: the nine of the line-up at once, three rows deep, drawn, then hidden.
+	await _frames(5)
+	var costed: Array[DaemonArt] = []
+	for k in 9:
+		var row: Array = A5_ROWS[k / 3]
+		costed.append(_a5_art(row[0], row[2][k % 3] + Vector3(0.0, 0.0, -3.5 * (k / 3)), _a5_seed(row[0], row[3][k % 3], 600 + k * 50), DaemonArt.Act.MOVE, 0.0))
+	await _frames(70)
+	await _a5_cost(costed)
+	for art in costed:
+		art.get_parent().queue_free()
+	_free_camera_done(cam)
+	# The three elites, in their tells: rogue.d rearing, its visor flared; the zombie's cannon raised
+	# and charging; the swarm pulled tight round its core.
+	var elites: Array[DaemonArt] = []
+	for e in A5_ELITES:
+		elites.append(_a5_art(e[0], e[2], _a5_elite_seed(e[0], 4000 + elites.size() * 1000), DaemonArt.Act.TELL, 0.8))
+	cam = _free_camera(A5_ELITE_CAM, A5_ELITE_LOOK, A2B_FOV)
+	await _frames(70)
+	var big := PackedStringArray()
+	for art in elites:
+		big.append("%s %d elite %s %.2f, %d parts" % [art.ai_kind, art.build_seed, art.elite, art.size_scale, art.part_count()])
+	print("capture: the elites: " + "; ".join(big))
+	await _save("a5-elite")
+	_free_camera_done(cam)
+	for art in elites:
+		art.get_parent().queue_free()
+	# The runaway's core killed: its drones scatter.
+	_c27b_place(swarm, _main.to_global(Vector3(-8.0, 1.0, 12.0)))
+	cam = _free_camera(A5_SCATTER_CAM, A5_SCATTER_LOOK, A2B_FOV)
+	await _frames(60)
+	swarm.hit(1000.0, swarm.global_position + Vector3(0.0, 0.9, 0.0), Vector3(-0.5, 0.0, -1.0).normalized())
+	await _frames(A5_SCATTER_FRAMES)
+	await _save("a5-scatter")
+	_free_camera_done(cam)
+
+
+## A creature of `type` alone (its art, no daemon round it) at `at` (arena space), built from `seed`,
+## facing south to the a5 cameras, doing `act` `u` of the way through (A5).
+func _a5_art(type: String, at: Vector3, seed: int, act: int, u: float) -> DaemonArt:
+	var holder := Node3D.new()
+	_main.add_child(holder)
+	holder.position = at + Vector3(0.0, 0.9, 0.0)  # the body's centre over the ground, as a dummy's is
+	holder.rotation.y = PI
+	var art := DaemonArt.make(load("res://scripts/daemons/%s.gd" % type), null, seed)
+	holder.add_child(art)
+	art.drive(act, u)
+	return art
+
+
+## A seed of `type` that is no elite and rolls about `share` of its size range, searched from `from`.
+func _a5_seed(_type: String, share: float, from: int) -> int:
+	var best := from
+	for seed in range(from, from + 400):
+		if DaemonArt.elite_of(seed):
+			continue
+		if absf(DaemonArt.roll_of(seed, 9002, 3) - share) < absf(DaemonArt.roll_of(best, 9002, 3) - share):
+			best = seed
+	return best
+
+
+## The first elite seed from `from`.
+func _a5_elite_seed(_type: String, from: int) -> int:
+	for seed in range(from, from + 5000):
+		if DaemonArt.elite_of(seed):
+			return seed
+	return from
+
+
+## What the line-up costs: the GPU's time a frame and the frame's processing (Performance's process
+## time, the daemons' posing in it) with all nine drawn and with them hidden (a hidden daemon poses
+## nothing), what the GPU drew each way, and each daemon's own posing timed on its own.
+func _a5_cost(lineup: Array[DaemonArt]) -> void:
+	for round in 3:
+		var usec := 0
+		for i in A5_COST_FRAMES:
+			for art in lineup:
+				var t0 := Time.get_ticks_usec()
+				art._process(1.0 / 60.0)
+				usec += Time.get_ticks_usec() - t0
+			await _frames(1)
+		print("capture: a5 cost, posing round %d: %.1f us a daemon a frame (%d daemons, %d frames, its whole _process)" % [round + 1, float(usec) / (A5_COST_FRAMES * lineup.size()), lineup.size(), A5_COST_FRAMES])
+	var drawn := await _a5_measure()
+	for art in lineup:
+		art.visible = false
+	await _frames(10)
+	var hidden := await _a5_measure()
+	for art in lineup:
+		art.visible = true
+	await _frames(10)
+	print("capture: a5 cost, the nine drawn: GPU %.3f ms, process %.3f ms, %d draw calls, %d primitives; hidden: GPU %.3f ms, process %.3f ms, %d draw calls, %d primitives; the nine cost %.3f ms of GPU and %.3f ms of process a frame (%.3f and %.3f each)" % [drawn[0], drawn[1], drawn[2], drawn[3], hidden[0], hidden[1], hidden[2], hidden[3], drawn[0] - hidden[0], drawn[1] - hidden[1], (drawn[0] - hidden[0]) / lineup.size(), (drawn[1] - hidden[1]) / lineup.size()])
+
+
+## The GPU's time a frame, the process time a frame (milliseconds, averaged over A5_COST_FRAMES),
+## and the last frame's draw calls and primitives.
+func _a5_measure() -> Array:
+	var gpu := await _gpu_ms(A5_COST_FRAMES)
+	var process := 0.0
+	for i in A5_COST_FRAMES:
+		await _frames(1)
+		process += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	return [gpu, process / A5_COST_FRAMES, root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), root.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)]
 
 
 ## Sends a ping: fire for one frame.
