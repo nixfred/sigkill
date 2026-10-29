@@ -283,13 +283,16 @@ func _strip_checks() -> void:
 					wrong.append("%d: under a panel: %s" % [size.x, label.text])
 		var sh = hud.sighup_hud()
 		var dh = hud.dev_null_hud()
+		p.hole_drag = Vector3(3.0, 0.0, 0.0)  # its physics step clears the drag each frame: both lines drawn now
+		dh._refresh()
+		sh._refresh()
 		var line: Label = sh.get("_line")
 		var rect: Rect2 = line.get_global_rect()
 		if not line.visible or not screen.encloses(rect) or strip.get_global_rect().intersects(rect) or feed.get_global_rect().intersects(rect):
 			wrong.append("%d: line %s %s" % [size.x, line.text, rect])
 		var hole_line: Label = dh.get("_line")
-		if hole_line.visible and hole_line.get_global_rect().intersects(rect):
-			wrong.append("%d: over /dev/null's warning" % size.x)
+		if not hole_line.visible or hole_line.get_global_rect().intersects(rect):
+			wrong.append("%d: over /dev/null's warning (or it was not drawn)" % size.x)
 		said = sh.line_text()
 		lines = PackedStringArray([hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
 		await _drop_side(host)
@@ -616,6 +619,7 @@ func _ice_checks() -> void:
 	var burst := _spawn(main, p, Vector3(1.0, 0.2, -3.0))
 	await _wait(func(): return burst.went() and burst.wave_age > burst.wave_s(), 90)
 	var gate_reached: bool = burst.get("_passed").has(gate)
+	var refused_any: int = burst.refused + burst.spared
 	var forgot_count: int = burst.hunters_forgot
 	var burst_at: Vector3 = burst.center
 	var forgot: bool = ice.adapt_percent() == 0 and ice.adapt_weapon == "" and ice.ledger.is_empty() and ice.adapt_text() == "" and hunter.shield_color == Palette.HUNTER_COBALT and ice.forgets == 1
@@ -625,7 +629,7 @@ func _ice_checks() -> void:
 	await _frames(int(_t.wander_s * 60.0) - 20)
 	var wandered: float = hunter.global_position.distance_to(at)
 	_check("acceptance: against ICE: the hunter is confused as a daemon is (%s, then wandering %.1f m) and forgets what it learned about your favourite weapon (%s at %d%% before, nothing now: its ledger wiped, its shields cobalt, the HUD's line gone); its look the same tag (\"%s\")" % [confused, wandered, weapon, learned, hunter.hup_look().tag_text() if hunter.hup_look() != null else ""], learned > 0 and weapon == "sigkill_rail" and forgot and confused == "reload" and wandered > 0.5 and forgot_count == 1 and hunter.hup_look() != null and hunter.hup_look().tag_text() == "?")
-	_check("acceptance: ICE walls are not affected: the gate %.1f m off, inside its reach, untouched (%.0f of %.0f, %.4f m moved), never caught" % [gate.aim_point().distance_to(burst_at), gate.health(), gate_hp, gate.global_position.distance_to(gate_at)], gate.health() == gate_hp and gate.global_position.distance_to(gate_at) < 0.0001 and gate_reached and gate.aim_point().distance_to(burst_at) < _t.radius_m and gate.hup_look() == null)
+	_check("acceptance: ICE walls are not affected: the gate %.1f m off, inside its reach, untouched (%.0f of %.0f, %.4f m moved), never caught nor even asked (%d refused or spared)" % [gate.aim_point().distance_to(burst_at), gate.health(), gate_hp, gate.global_position.distance_to(gate_at), refused_any], gate.health() == gate_hp and gate.global_position.distance_to(gate_at) < 0.0001 and gate_reached and refused_any == 0 and gate.aim_point().distance_to(burst_at) < _t.radius_m and gate.hup_look() == null)
 	await _drop(main)
 	# A node: in its tell, a burst makes it reload: its field dropped (nothing reaches the player standing in
 	# it) for node_reload_s, then it looks again.
