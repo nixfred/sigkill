@@ -97,13 +97,15 @@ func max_health() -> float:
 func damage(amount: float, by: Node, way: Vector3) -> bool:
 	if not shown() or player == null or not is_instance_valid(player) or not player.alive:
 		return false
+	var before := combat.health_of(ME)
 	var outcome := combat.damage_player(ME, ME, amount)
 	if outcome.is_empty():
 		return false
+	var taken: float = before - outcome["health"]  # what it actually took, never past 0 (Codex review)
 	flash_left = tuning.damage_flash_s
 	if player.has_method("take_hit"):
-		player.take_hit(amount)
-	hurt.emit(amount, outcome["health"], by)
+		player.take_hit(taken)
+	hurt.emit(taken, outcome["health"], by)
 	if outcome["killed"]:
 		killer = by
 		_die(String(by.get("tag_text")) if by != null else "", way)
@@ -114,15 +116,18 @@ func _physics_process(delta: float) -> void:
 	flash_left = maxf(flash_left - delta, 0.0)
 	if _online():
 		if not alive():
-			_respawn(false)  # a match owns the player now: nothing of this death carries over
-		return
+			combat.respawn(ME)  # a match owns the player now: nothing of this death carries over,
+		return  # and the match's own flow sets the player alive or down (Codex review)
 	for id in combat.tick(delta):
 		if id == ME:
 			_respawn(true)
 
 
-## A new round alone: full health at once (a player down comes back now).
+## A new round alone: full health at once (a player down comes back now). In a match the
+## session owns the player's life and the round leaves it alone (Codex review).
 func reset_for_round() -> void:
+	if _online():
+		return
 	_respawn(not alive())
 
 

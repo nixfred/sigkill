@@ -316,8 +316,8 @@ func _on_shot(hit: bool) -> void:
 		_callout(stats.on_shot(hit))
 
 
-func _on_downed(_dummy: Node3D) -> void:
-	if phase == Phase.ROUND:
+func _on_downed(dummy: Node3D) -> void:
+	if phase == Phase.ROUND and dummy.get("credited") != false:  # this player's own kill (C27b)
 		_callout(stats.on_derezz())
 
 

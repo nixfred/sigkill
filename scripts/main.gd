@@ -131,10 +131,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().reload_current_scene()
 
 
-func _on_target_downed(_dummy: Node3D) -> void:
-	_player.on_dummy_downed()  # alone, a kill toward a sudo charge (C22)
+func _on_target_downed(dummy: Node3D) -> void:
+	# Every daemon down counts on the screen; only this player's kills count as its own (C27b: in
+	# a match where they fight, another player's kill of the host's daemon is not).
+	if dummy.get("credited") != false:
+		_player.on_dummy_downed()  # alone, a kill toward a sudo charge (C22)
+		_hud.note_kill()
 	_remaining -= 1
-	_hud.note_kill()
 	_hud.set_targets(_remaining, _total)
 
 

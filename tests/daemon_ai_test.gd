@@ -81,6 +81,7 @@ func _run() -> void:
 	await _leash_checks()
 	await _life_checks()
 	await _volume_checks()
+	await _review_checks()
 	await _match_checks()
 	await _cleanup()
 	for name in DirAccess.get_files_at(_tmp):
@@ -212,6 +213,25 @@ func _wall_checks() -> void:
 	var zombie: DaemonBrain = _dummy(main, "DummyC").brain
 	await _frames(360)
 	_check("acceptance: no attack through a wall: a rogue 2.3 m off and a zombie 5 m off behind cover never see the player, never tell, never hurt it (6 s)", life.health() == 100.0 and rogue.tells == 0 and zombie.tells == 0 and rogue.state == DaemonBrain.State.HOME, "%s %s" % [_events(rogue), _events(zombie)])
+	await _drop(main)
+	# Breaking sight during a tell calls the strike off: the rogue starts its tell on a player in the
+	# open beside the wall's end, the player steps behind the wall (still in reach), and the tell
+	# ends with nothing thrown.
+	main = await _lab({"DummyA": Vector3(-10.0, 0.0, 3.8)}, Vector3(-8.0, 0.95, 3.0))
+	life = main.get_node("SoloLife")
+	director = main.get_node("DaemonDirector")
+	rogue = _dummy(main, "DummyA").brain
+	var telling := await _wait(func(): return rogue.state == DaemonBrain.State.TELL and rogue.state_t > 0.1, 300)
+	var struck_before := rogue.attacks
+	main.get_node("Player").global_position = Vector3(-10.5, 0.95, 1.2)
+	await _frames(60)
+	_check("acceptance: breaking line of sight during a tell calls the strike off: the player steps behind the wall mid-tell (still within reach) and the tell ends with nothing thrown", telling >= 0 and rogue.attacks == struck_before and _first(rogue, "abort") >= 0 and life.health() == 100.0, _events(rogue))
+	await _drop(main)
+	main = await _lab({"DummyA": Vector3(WALL_X, 0.0, 3.2), "DummyC": Vector3(WALL_X + 1.0, 0.0, 6.0)}, Vector3(WALL_X, 0.95, 0.9))
+	life = main.get_node("SoloLife")
+	director = main.get_node("DaemonDirector")
+	rogue = _dummy(main, "DummyA").brain
+	zombie = _dummy(main, "DummyC").brain
 	# The slash's own check: the scythes come down within reach of the player, the wall between.
 	_aim_daemon(_dummy(main, "DummyA"), Vector3(WALL_X, 0.0, 0.0))
 	rogue.prey = 1
@@ -435,6 +455,69 @@ func _volume_checks() -> void:
 	await _drop(main)
 
 
+## What the Codex review found, alone: each now held.
+func _review_checks() -> void:
+	# A hunt whose prey is gone from sight before it was ever seen moving: no step at an unknown
+	# point, nothing turned to NaN.
+	var main := await _lab({"DummyA": Vector3(WALL_X, 0.0, 3.4)}, Vector3(WALL_X, 0.95, 0.9))
+	var rogue: DaemonBrain = _dummy(main, "DummyA").brain
+	rogue._hunt(1, Vector3.INF)
+	await _frames(30)
+	var at: Vector3 = rogue.dummy.global_position
+	_check("a hunt with no place seen yet stays put rather than steering at an unknown point: the daemon's place stays a real one", at.is_finite() and at.distance_to(Vector3(WALL_X, 0.0, 3.4)) < 0.5, str(at))
+	await _drop(main)
+	# Practice coming on with a bolt in the air: the bolt ends, landing nothing.
+	main = await _lab({"DummyC": PARKED + Vector3(6.0, 0.0, 0.0)}, OPEN)
+	var life = main.get_node("SoloLife")
+	var director: DaemonDirector = main.get_node("DaemonDirector")
+	var zombie: DaemonBrain = _dummy(main, "DummyC").brain
+	zombie.prey = 1
+	var from := Vector3(0.0, 1.0, 9.0)
+	var bolt := director.throw_bolt(zombie, from, (OPEN - from).normalized())
+	await _frames(10)
+	GameSettings.current().set_value("gameplay", "practice", true)
+	await _frames(60)
+	var rested_hurt := director.hurt(1, 10.0, zombie, Vector3.FORWARD)
+	var stopped := not bolt.live and bolt.ended == "stopped"
+	var untouched: bool = life.health() == 100.0
+	GameSettings.current().set_value("gameplay", "practice", false)
+	_check("practice coming on mid-flight stops every bolt, landing nothing (%s), and no daemon hit lands while the brains rest" % bolt.ended, stopped and untouched and not rested_hurt)
+	# A bolt's SIGSTOP hold is its target's: its zombie going down frees nothing.
+	await _frames(5)
+	var player = main.get_node("Player")
+	player.refill_sigstop()
+	player.sigstop.press()
+	await _wait(func(): return player.sigstop.is_on(), 10)
+	zombie.prey = 1
+	bolt = director.throw_bolt(zombie, from, (OPEN - from).normalized())
+	await _frames(3)
+	var held := bolt.global_position
+	_dummy(main, "DummyC").hit(1000.0)
+	await _frames(30)
+	_check("a bolt's SIGSTOP hold is the player it was thrown at: its zombie derezzing (its prey dropped) leaves it hanging", bolt.live and bolt.global_position == held and life.health() == 100.0, "moved %.3f m" % bolt.global_position.distance_to(held))
+	player.sigstop.press()
+	await _wait(func(): return not player.sigstop.is_on(), 30)
+	await _wait(func(): return not bolt.live, 240)
+	await _drop(main)
+	# A bolt rounding a corner of cover lands only once nothing of the level is between it and the
+	# body: never from beside the wall.
+	main = await _lab({"DummyC": PARKED + Vector3(6.0, 0.0, 0.0)}, Vector3(-8.7, 0.95, 2.1))
+	life = main.get_node("SoloLife")
+	director = main.get_node("DaemonDirector")
+	zombie = _dummy(main, "DummyC").brain
+	zombie.prey = 1
+	bolt = director.throw_bolt(zombie, Vector3(-14.0, 0.95, 1.55), Vector3.RIGHT)
+	await _wait(func(): return not bolt.live, 240)
+	_check("acceptance: a bolt passing the corner of cover lands only past it, with nothing of the level between it and the player (it met the player at x %.2f, the wall ends at -9)" % bolt.end_at.x, bolt.ended == "player" and bolt.end_at.is_finite() and bolt.end_at.x > -9.0 and bolt.end_at.x < -8.0 and life.health() < 100.0)
+	# What a killing hit took is the health that was left.
+	life.damage(life.health() - 4.0, _dummy(main, "DummyC"), Vector3.FORWARD)
+	var heard := [0.0]
+	life.hurt.connect(func(amount: float, _h: float, _by: Node): heard[0] = amount)
+	life.damage(12.0, _dummy(main, "DummyC"), Vector3.FORWARD)
+	_check("a hit counts the health it took: 12 on a player with 4 left took 4 (the top table's damage and share)", heard[0] == 4.0 and not life.alive(), str(heard[0]))
+	await _drop(main)
+
+
 # --- A match. ---
 
 func _match_checks() -> void:
@@ -497,11 +580,50 @@ func _match_checks() -> void:
 	var copy_health: float = copy.health()
 	var local: bool = copy.hit(0.4, copy.global_position + Vector3.UP * 0.9, Vector3.FORWARD)
 	_check("acceptance: the joiner's copy of a daemon takes nothing from the joiner's own shots: the host judges every shot at it", not local and copy.is_alive() and copy.health() == copy_health)
+	_check("the host hunts a joiner where the joiner is, its newest place heard, not the avatar drawn a little behind", hd.prey_point(cid).distance_to(host["main"].to_global(hs.avatars[cid].latest_position())) < 0.001)
+	var host_downs: int = host["hud"].round_hud().stats.derezzes
+	var client_downs: int = client["hud"].round_hud().stats.derezzes
 	_aim(client["player"], copy.global_position + Vector3.UP * 0.9)
 	var shot := await _shoot(client["player"], host, client)
 	var down := await _wait(func(): return not host_rogue.is_alive(), 60)
+	var marked := await _wait(func(): return client["hud"].hit_marker_alpha() > 0.0, 30)
 	var followed := await _wait(func(): return not copy.is_alive(), 60)
 	_check("acceptance: a joiner's shot at the host's daemon lands through the host: the cannon's hit derezzes the host's rogue, and the joiner's copy goes down on the host's word", shot and down >= 0 and followed >= 0, "shot %s down %d followed %d" % [shot, down, followed])
+	_check("the joiner's kill is the joiner's: its hit marker shows, its round counts the process down and the copy's death is credited to it; the host's round does not count it, nor the host's rogue credit it", marked >= 0 and copy.credited and not host_rogue.credited and client["hud"].round_hud().stats.derezzes == client_downs + 1 and host["hud"].round_hud().stats.derezzes == host_downs, "marker %d, joiner %d -> %d, host %d -> %d" % [marked, client_downs, client["hud"].round_hud().stats.derezzes, host_downs, host["hud"].round_hud().stats.derezzes])
+	host_rogue.reset_for_round()
+	var back := await _wait(func(): return copy.is_alive(), 30)
+	_check("a joiner's copy follows the host's life exactly: the host's daemon back at once (a round's reset) brings the copy back in %d frames, not on its own respawn clock" % back, back >= 0 and back < 20)
+	# A bolt the joiner lost (an R reload's) is drawn again from the host's word; one the host no
+	# longer has is stopped.
+	var zombie_host: DaemonBrain = _dummy(host["main"], "DummyC").brain
+	zombie_host.prey = cid
+	var far: Vector3 = hs.avatars[cid].global_position + Vector3(9.0, 0.3, 0.0)
+	var long_bolt := hd.throw_bolt(zombie_host, far, (hs.avatars[cid].global_position - far).normalized())
+	await _wait(func(): return cd.bolt_of(long_bolt.id) != null, 30)
+	var lost := cd.bolt_of(long_bolt.id)
+	if lost != null:
+		lost.stop()
+	var redrawn := await _wait(func(): return cd.bolt_of(long_bolt.id) != null, 45)
+	var stray := cd.throw_bolt(_dummy(client["main"], "DummyC").brain, client["main"].to_global(Vector3(0.0, 1.0, 0.0)), Vector3.FORWARD, 1999999999)
+	var dropped := await _wait(func(): return not stray.live, 45)
+	_check("acceptance: bolts look right on joiners: one the joiner lost is drawn again from the host's word (in %d frames), and one the host has not is stopped (in %d)" % [redrawn, dropped], lost != null and redrawn >= 0 and dropped >= 0 and stray.ended == "stopped")
+	await _wait(func(): return not long_bolt.live, 180)
+	# The joiner's SIGSTOP (the host's count) holds a bolt thrown at it, and its zombie going down
+	# frees nothing: the hold is the bolt's target's.
+	client["player"].sigstop.press()
+	var stopped := await _wait(func(): return hs.combat.sigstop_on(cid), 60)
+	hs.combat.states[cid]["health"] = 100.0
+	zombie_host.prey = cid
+	var held_bolt := hd.throw_bolt(zombie_host, far, (hs.avatars[cid].global_position - far).normalized())
+	await _frames(3)
+	var hung := held_bolt.global_position
+	_dummy(host["main"], "DummyC").hit(1000.0)
+	await _frames(30)
+	_check("in a match a bolt hangs on its target's SIGSTOP, by the host's count, even with its zombie down", stopped >= 0 and held_bolt.live and held_bolt.global_position == hung and hs.combat.health_of(cid) == 100.0, "moved %.3f m" % held_bolt.global_position.distance_to(hung) if held_bolt.live else held_bolt.ended)
+	client["player"].sigstop.press()
+	await _wait(func(): return not hs.combat.sigstop_on(cid), 60)
+	await _wait(func(): return not held_bolt.live, 180)
+	_dummy(host["main"], "DummyC").reset_for_round()
 	# A daemon's kill names the daemon on the joiner's banner and in the feed.
 	hs.combat.states[cid]["health"] = 1.0
 	_place(_dummy(host["main"], "DummyA"), host["main"].to_global(Vector3(0.0, 0.0, 12.0)))
@@ -509,6 +631,8 @@ func _match_checks() -> void:
 		host_rogue.reset_for_round()
 	var killed := await _wait(func(): return cs.dead.get(cid, false), 900)
 	await _frames(2)
+	client["main"].get_node("SoloLife").reset_for_round()
+	_check("a new round on a joiner leaves the match's death alone: the player stays down until the host's respawn", killed >= 0 and not client["player"].alive and cs.dead.get(cid, false))
 	var banner: String = client["combat_hud"].banner_text()
 	var feed: String = " / ".join(client["combat_hud"].feed_text())
 	_check("acceptance: a daemon's kill is the match's death: the joiner derezzed, its banner and the feed name the daemon (%s | %s), no kill credited to anyone" % [banner.replace("\n", " "), feed], killed >= 0 and (banner.contains("by rogue.d") or banner.contains("by <defunct>")) and feed.contains("derezzed by a daemon") and hs.combat.states[1]["kills"] == 0 and hs.combat.states[cid]["kills"] == 0)

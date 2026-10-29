@@ -28,18 +28,21 @@ const GLITCH_HZ := 9.0
 const GLITCH_M := 0.12
 const GLITCH_S := 0.04
 
-## In flight now.
+## In flight now, and its id (the host's count, in a match; 0 alone).
 var live := false
+var id := 0
 ## Its own judge (alone, or the host's): lands its damage. A joiner's only draws.
 var deciding := false
 var brain: DaemonBrain = null
 var velocity := Vector3.ZERO
 var radius := 0.3
 var life_left := 0.0
-## Why it ended: "", "level", "player", "daemon", "life", "stopped".
+## Why it ended: "", "level", "player", "daemon", "life", "stopped"; and where (world space).
 var ended := ""
-## The player it met, when it met one.
+var end_at := Vector3.INF
+## The player it met, when it met one, and the one it was thrown at (its SIGSTOP holds it).
 var met := 0
+var target := 0
 
 var _director: Node = null
 var _look: Node3D
@@ -72,10 +75,11 @@ func _init() -> void:
 
 
 ## Thrown from `from` along `dir` (world space) at `speed`, living `life_s`, `radius_m` round.
-func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector3, speed: float, life_s: float, radius_m: float, decide: bool) -> void:
+func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector3, speed: float, life_s: float, radius_m: float, decide: bool, at_player: int = 0) -> void:
 	_director = director
 	brain = owner_brain
 	deciding = decide
+	target = at_player
 	velocity = dir.normalized() * speed
 	radius = radius_m
 	life_left = life_s
@@ -119,7 +123,9 @@ func _physics_process(delta: float) -> void:
 		if along >= reach:
 			continue
 		var closest: Vector3 = from + way * along
-		if closest.distance_to(bodies[id]) <= radius + DaemonDirector.BODY_RADIUS_M and along < nearest_at:
+		# Within reach of the body, and nothing of the level between the bolt and it: never round
+		# a corner of cover (Codex review).
+		if closest.distance_to(bodies[id]) <= radius + DaemonDirector.BODY_RADIUS_M and along < nearest_at and _director.clear(closest, bodies[id]):
 			nearest = id
 			nearest_at = along
 	if nearest != 0:
@@ -152,7 +158,12 @@ func _physics_process(delta: float) -> void:
 	_glitch()
 
 
-## Ends it now, nothing landed (a round's reset, the arena going).
+## Seconds it has flown.
+func age() -> float:
+	return _age
+
+
+## Ends it now, nothing landed (a round's reset, the arena going, the director's mode changing).
 func stop() -> void:
 	if live:
 		_end("stopped")
@@ -160,6 +171,7 @@ func stop() -> void:
 
 func _end(why: String) -> void:
 	ended = why
+	end_at = global_position
 	live = false
 	visible = false
 	set_physics_process(false)
@@ -167,9 +179,11 @@ func _end(why: String) -> void:
 		_director.bolt_done(self)
 
 
+## SIGSTOP's hold: the player it was thrown at, whatever its zombie does now (Codex review); a
+## joiner's by the host's word on its zombie.
 func _held() -> bool:
 	if deciding:
-		return _director.frozen(brain.prey)
+		return _director.frozen(target)
 	return brain.word_frozen
 
 

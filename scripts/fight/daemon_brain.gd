@@ -203,7 +203,7 @@ func on_hit(point: Vector3, d) -> void:
 	if state == State.HOME or state == State.RETURN:
 		var near: int = d.nearest_prey(dummy.global_position, _eye(d))
 		if near != 0:
-			_hunt(near)
+			_hunt(near, d.prey_point(near))
 
 
 func _step_home(delta: float, d) -> void:
@@ -219,7 +219,7 @@ func _step_home(delta: float, d) -> void:
 	_look = d.tuning.look_every_s
 	var spotted := _spot(d)
 	if spotted != 0:
-		_hunt(spotted)
+		_hunt(spotted, d.prey_point(spotted))
 
 
 func _step_hunt(delta: float, d) -> void:
@@ -237,7 +237,11 @@ func _step_hunt(delta: float, d) -> void:
 	if unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m:
 		_go_home()
 		return
-	var goal := _hunt_goal(target if sees else last_seen, delta, d)
+	var chase: Vector3 = target if sees else last_seen
+	if not chase.is_finite():
+		velocity = Vector3.ZERO  # never seen yet this hunt: nowhere to go (Codex review)
+		return
+	var goal := _hunt_goal(chase, delta, d)
 	_walk(goal, _speed(d), delta, d)
 	_face(target if sees else goal, delta, d)
 	if sees and cooldown <= 0.0 and _in_range(target, d) and d.prey_attackable(prey) and d.take_slot(self, prey):
@@ -359,7 +363,7 @@ func _step_return(delta: float, d) -> void:
 		_look = d.tuning.look_every_s
 		var spotted := _spot(d)
 		if spotted != 0:
-			_hunt(spotted)
+			_hunt(spotted, d.prey_point(spotted))
 
 
 func _step_scatter(delta: float, d) -> void:
@@ -464,10 +468,11 @@ func _down(d) -> void:
 	art.drive(DaemonArt.Act.IDLE)
 
 
-func _hunt(id: int) -> void:
+## Hunts player `id`, last seen at `seen` (where it was spotted).
+func _hunt(id: int, seen: Vector3) -> void:
 	prey = id
 	unseen_t = 0.0
-	last_seen = Vector3.INF
+	last_seen = seen
 	_enter(State.HUNT)
 
 

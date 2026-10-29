@@ -101,6 +101,8 @@ func set_session(s: Node) -> void:
 	s.player_died.connect(_on_death)
 	if s.has_signal("job_removed"):
 		s.job_removed.connect(_on_job_removed)
+	if s.has_signal("daemon_struck"):
+		s.daemon_struck.connect(_on_daemon_struck)
 	s.player_respawned.connect(_on_respawn)
 	s.combat_changed.connect(_refresh)
 	s.changed.connect(_refresh)
@@ -136,7 +138,7 @@ func _exit_tree() -> void:
 func _unhook() -> void:
 	if session == null or not is_instance_valid(session):
 		return
-	for pair in [["shot_confirmed", _on_shot], ["player_died", _on_death], ["player_respawned", _on_respawn], ["combat_changed", _refresh], ["changed", _refresh], ["job_removed", _on_job_removed]]:
+	for pair in [["shot_confirmed", _on_shot], ["player_died", _on_death], ["player_respawned", _on_respawn], ["combat_changed", _refresh], ["changed", _refresh], ["job_removed", _on_job_removed], ["daemon_struck", _on_daemon_struck]]:
 		if session.has_signal(pair[0]) and session.is_connected(pair[0], pair[1]):
 			session.disconnect(pair[0], pair[1])
 
@@ -234,6 +236,12 @@ func _on_death(victim: int, killer: int) -> void:
 	while entries.size() > session.combat_tuning_in_use().kill_feed_length:
 		entries.pop_back()
 	_refresh()
+
+
+## The host says this player's shot struck one of its daemons (C27b): the C6 hit marker.
+func _on_daemon_struck(_index: int, _killed: bool) -> void:
+	if hud != null and is_instance_valid(hud):
+		hud.confirm_hit()
 
 
 ## A player's shot removed another player's cron mine (C27): a feed line, as a kill's.

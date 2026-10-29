@@ -195,13 +195,18 @@ extends Node
 ## hitscan ray, the rail's line, a pellet or dart, a blast), the host's own included, and a
 ## joiner's own copy of a daemon takes nothing from its local shots. Joiners only draw: the host
 ## sends every joiner the daemons at the sync rate, _daemons (each one's place, facing, state and
-## seconds into it, SIGSTOP's hold, its life and health), whose brains play it (the tells, lunges,
-## dives and scatters at the host's pace), and each bolt as it is thrown, _daemon_bolt (daemon,
-## from, aim), which the joiner's copy throws to draw only. The rule (practice, difficulty) rides
+## seconds into it, SIGSTOP's hold, its life and health, and every bolt in the air by its id), whose
+## brains play it (the tells, lunges, dives and scatters at the host's pace), and each bolt as it
+## is thrown, _daemon_bolt (daemon, bolt id, from, aim), which the joiner's copy throws to draw
+## only (a bolt the joiner missed, an R reload's, is thrown from the state word; one the host no
+## longer has is stopped). A joiner whose own shot struck a daemon hears it from the host,
+## _daemon_struck (daemon, killed), for its hit marker and, for a kill, its own kill's credit when
+## the daemon's death comes in the state word. The rule (practice, difficulty) rides
 ## the match's rules message, _rules, beside light trails; until it comes a joiner's daemons are
 ## the old dummies. In practice nothing of this is sent and dummies stay each player's own, as
-## since C14. Three new messages and a changed one, so protocol 10: no older message carried a
-## daemon's place or state, each machine's dummies having been its own.
+## since C14. Four new messages (_daemons, _daemon_bolt, _daemon_hit, _daemon_struck) and a
+## changed one (_rules), so protocol 10: no older message carried a daemon's place or state, each
+## machine's dummies having been its own.
 ##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
@@ -260,8 +265,9 @@ const LIGHT_TRAIL_WORD := "light trail"
 ## second line for it.
 const DAEMON_CAUSE := "daemon:"
 const DAEMON_WORD := "derezzed by a daemon"
-## The most daemons the state word may carry.
+## The most daemons, and bolts, the state word may carry.
 const DAEMONS_LAST := 64
+const BOLTS_LAST := 64
 const DAEMON_TIME_LAST := 3600.0
 ## The command-line flag that turns light-trail mode on for this run's hosting.
 const LIGHT_TRAILS_FLAG := "--light-trails"
@@ -340,6 +346,8 @@ signal player_died(victim: int, killer: int)
 signal player_respawned(id: int)
 ## A player's shot removed another player's cron mine (C27): the feed's "crontab -r" line.
 signal job_removed(remover: int, owner: int, word: String)
+## The host says this player's own shot struck daemon `index` (C27b), and whether it killed it.
+signal daemon_struck(index: int, killed: bool)
 
 # Set these before the node enters the tree.
 ## NetTuning; null for resources/net.tres.
@@ -1924,7 +1932,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 			struck[victim] = def.damage
 		if at_daemons:
 			for pair in line["daemons"]:
-				pair[0].hit(def.damage_at(from_world.distance_to(pair[1])) * scale, pair[1], (_arena.global_transform.basis * dir).normalized())
+				_hit_daemon(pair[0], shooter, def.damage_at(from_world.distance_to(pair[1])) * scale, pair[1], (_arena.global_transform.basis * dir).normalized())
 	else:
 		# While the host says the shooter's SIGSTOP is on, every pellet flies straight (C18).
 		var steady := combat.sigstop_on(shooter)
@@ -1935,7 +1943,7 @@ func _handle_fire(shooter: int, seq: int, life: int, weapon: String, origin: Vec
 			if ray["hit"] != 0:
 				struck[ray["hit"]] = struck.get(ray["hit"], 0.0) + def.damage_at(ray["distance"])
 			elif at_daemons and ray["daemon"] != null:
-				ray["daemon"].hit(def.damage_at(ray["distance"]) * scale, _arena.to_global(ray["end"]), (_arena.global_transform.basis * pellet).normalized())
+				_hit_daemon(ray["daemon"], shooter, def.damage_at(ray["distance"]) * scale, _arena.to_global(ray["end"]), (_arena.global_transform.basis * pellet).normalized())
 	var hits := PackedInt32Array()
 	var healths := PackedFloat32Array()
 	var killed := PackedInt32Array()
@@ -2497,7 +2505,7 @@ func _judge_pellet(collider: Object, gen: int, at: Vector3, dir: Vector3, shoote
 	var def: WeaponDefScript = _weapons[weapon]
 	if victim == 0:
 		if shooter != my_id and daemons_fight() and _is_daemon(collider):
-			return collider.hit(def.fork_damage(gen) * combat.damage_scale(shooter), at, dir) == true  # a joiner's pellet on the host's daemon (C27b)
+			return _hit_daemon(collider, shooter, def.fork_damage(gen) * combat.damage_scale(shooter), at, dir)  # a joiner's pellet on the host's daemon (C27b)
 		return shooter == my_id and _player_ready() and _player.fork_hit(collider, gen, at, dir, def)
 	var base := def.fork_damage(gen)
 	var before := combat.health_of(victim)
@@ -3125,7 +3133,18 @@ func _tick_daemons(delta: float) -> void:
 	var times := PackedFloat32Array()
 	var life_words := PackedByteArray()
 	var healths := PackedFloat32Array()
-	for brain in director.brains():
+	var bolt_ids := PackedInt32Array()
+	var bolt_owners := PackedByteArray()
+	var bolt_places := PackedVector3Array()
+	var bolt_ways := PackedVector3Array()
+	var brains := director.brains()
+	for bolt in director.bolts():
+		if bolt.live and bolt.id > 0 and brains.has(bolt.brain):
+			bolt_ids.append(bolt.id)
+			bolt_owners.append(brains.find(bolt.brain))
+			bolt_places.append(_arena.to_local(bolt.global_position))
+			bolt_ways.append((_arena.global_transform.basis.inverse() * bolt.velocity.normalized()).normalized())
+	for brain in brains:
 		var dummy: Node3D = brain.dummy
 		places.append(_arena.to_local(dummy.global_position))
 		yaws.append(dummy.global_rotation.y)
@@ -3136,18 +3155,22 @@ func _tick_daemons(delta: float) -> void:
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths)
+			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths, bolt_ids, bolt_owners, bolt_places, bolt_ways)
 
 
 ## Every daemon of the host's, at the sync rate (C27b): where it is (arena space), its facing,
 ## its brain's state (SIGSTOP's hold in the top bit) and seconds into it, its life and its
-## health, in the director's order (both screens hold the same arena). A joiner's copies play it.
+## health, in the director's order (both screens hold the same arena), and every bolt in the air
+## (its id, its daemon, where, its way). A joiner's copies play it.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array) -> void:
+func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array, bolt_ids: PackedInt32Array, bolt_owners: PackedByteArray, bolt_places: PackedVector3Array, bolt_ways: PackedVector3Array) -> void:
 	if state != State.JOINED or host_practice or _arena == null or not is_instance_valid(_arena):
 		return
 	var n := places.size()
 	if n > DAEMONS_LAST or yaws.size() != n or words.size() != n or times.size() != n or life_words.size() != n or healths.size() != n:
+		return
+	var b := bolt_ids.size()
+	if b > BOLTS_LAST or bolt_owners.size() != b or bolt_places.size() != b or bolt_ways.size() != b:
 		return
 	var director := DaemonDirector.of(_arena)
 	if director == null:
@@ -3163,11 +3186,18 @@ func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: Packe
 			continue
 		brains[i].take_word(at, yaws[i], words[i] & 0x7f, times[i], (words[i] & 0x80) != 0)
 		brains[i].dummy.follow_life(life_words[i], healths[i])
+	var live := {}
+	for k in b:
+		var at := bolt_places[k]
+		if bolt_ids[k] <= 0 or bolt_owners[k] >= brains.size() or not at.is_finite() or at.length() > WORLD_LAST or not Combat.dir_ok(bolt_ways[k]):
+			continue
+		live[bolt_ids[k]] = [brains[bolt_owners[k]], _arena.to_global(at), (_arena.global_transform.basis * bolt_ways[k]).normalized()]
+	director.follow_bolts(live)
 
 
 ## A host's zombie threw a bolt from `from` along `dir` (world space, C27b): every joiner's copy
 ## throws the same one, to draw.
-func daemon_bolt(dummy: Node3D, from: Vector3, dir: Vector3) -> void:
+func daemon_bolt(dummy: Node3D, bolt_id: int, from: Vector3, dir: Vector3) -> void:
 	if state != State.HOSTING or _arena == null or not is_instance_valid(_arena):
 		return
 	var index := _daemon_index(dummy)
@@ -3178,21 +3208,53 @@ func daemon_bolt(dummy: Node3D, from: Vector3, dir: Vector3) -> void:
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_daemon_bolt.rpc_id(id, index, local_from, local_dir)
+			_daemon_bolt.rpc_id(id, index, bolt_id, local_from, local_dir)
 
 
-## A bolt the host's daemon `index` threw, from `from` along `dir` (arena space): drawn here,
-## judging nothing.
+## A bolt the host's daemon `index` threw, its id `bolt_id`, from `from` along `dir` (arena
+## space): drawn here, judging nothing; one already drawn from the state word is not thrown twice.
 @rpc("authority", "call_remote", "reliable")
-func _daemon_bolt(index: int, from: Vector3, dir: Vector3) -> void:
+func _daemon_bolt(index: int, bolt_id: int, from: Vector3, dir: Vector3) -> void:
 	if state != State.JOINED or host_practice or _arena == null or not is_instance_valid(_arena):
 		return
-	if not from.is_finite() or from.length() > WORLD_LAST or not Combat.dir_ok(dir):
+	if bolt_id <= 0 or not from.is_finite() or from.length() > WORLD_LAST or not Combat.dir_ok(dir):
+		return
+	var director := DaemonDirector.of(_arena)
+	if director == null or index < 0 or index >= director.brains().size() or director.bolt_of(bolt_id) != null:
+		return
+	director.throw_bolt(director.brains()[index], _arena.to_global(from), (_arena.global_transform.basis * dir).normalized(), bolt_id)
+
+
+## The host's word to the shooter that its shot struck daemon `dummy` (C27b): its hit marker, and
+## a kill's credit. Nothing for the host's own shots, which land on its own arena.
+func _tell_struck(shooter: int, dummy: Node, killed: bool) -> void:
+	if shooter == 1 or not multiplayer.get_peers().has(shooter):
+		return
+	var index := _daemon_index(dummy)
+	if index >= 0:
+		_daemon_struck.rpc_id(shooter, index, killed)
+
+
+## This player's own shot struck the host's daemon `index`, from the host, and killed it or not.
+@rpc("authority", "call_remote", "reliable")
+func _daemon_struck(index: int, killed: bool) -> void:
+	if state != State.JOINED or _arena == null or not is_instance_valid(_arena):
 		return
 	var director := DaemonDirector.of(_arena)
 	if director == null or index < 0 or index >= director.brains().size():
 		return
-	director.throw_bolt(director.brains()[index], _arena.to_global(from), (_arena.global_transform.basis * dir).normalized())
+	if killed:
+		director.brains()[index].dummy.credit_next_down()
+	daemon_struck.emit(index, killed)
+
+
+## A joiner's hit on the host's daemon `dummy` (C27b): landed as another player's (its kill not
+## the host's), the shooter told. True when it landed.
+func _hit_daemon(dummy: Node, shooter: int, damage: float, point: Vector3, way: Vector3) -> bool:
+	var landed: bool = dummy.hit_by_other(damage, point, way) == true
+	if landed:
+		_tell_struck(shooter, dummy, not dummy.is_alive())
+	return landed
 
 
 ## `amount` of a daemon's damage on player `victim` (C27b, the host's director's word): judged
@@ -3294,7 +3356,10 @@ func _blast_daemons(at: Vector3, shooter: int, base_at: Callable) -> int:
 			continue
 		if not space.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3.UP * ForkBomb.SIGHT_LIFT_M, middle, BLAST_SIGHT_MASK)).is_empty():
 			continue  # a wall between: the blast does not reach
-		if dummy.hit(base * combat.damage_scale(shooter), middle, (middle - at).normalized()) == true:
+		var amount: float = base * combat.damage_scale(shooter)
+		var way: Vector3 = (middle - at).normalized()
+		# The host's own blast lands as its own; another player's as theirs (its kill told to them).
+		if (dummy.hit(amount, middle, way) == true) if shooter == 1 else _hit_daemon(dummy, shooter, amount, middle, way):
 			hurt += 1
 	return hurt
 

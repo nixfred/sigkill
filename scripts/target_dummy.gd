@@ -52,9 +52,14 @@ var _d: Derezz
 ## Its brain (C27b), and the box round its body when its art gives one.
 var brain: DaemonBrain
 var _box: CollisionShape3D
-## True while down on the host's word on a joiner (C27b): not this player's kill, so neither its
-## down nor its return is told.
-var _mirrored := false
+## Whether this daemon's last death was this player's kill (C27b): alone always; in a match the
+## host's own shots' kills on the host, a joiner's kills (the host's word, _daemon_struck) on that
+## joiner. Every death is told (downed); what listens for this player's kills reads this.
+var credited := true
+## The next death's credit: false for a hit another player's shot landed (the host judging a
+## joiner's), and on a joiner true only when the host said the kill was its own.
+var _credit := true
+var _credit_next := false
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -149,6 +154,21 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	return true
 
 
+## A hit another player's shot landed (C27b: the host judging a joiner's shot at its daemon): as
+## hit(), but a kill is not this player's.
+func hit_by_other(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> bool:
+	_credit = false
+	var landed := hit(damage, point, direction)
+	_credit = true
+	return landed
+
+
+## On a joiner, the host's word that this player's own shot killed this daemon (C27b): its death,
+## when the host's word of it comes, is this player's kill.
+func credit_next_down() -> void:
+	_credit_next = true
+
+
 ## True while this daemon follows the host's word (C27b): a joiner's, in a match where they fight.
 func _follows() -> bool:
 	var director := DaemonDirector.of(self)
@@ -160,8 +180,11 @@ func _physics_process(delta: float) -> void:
 	if state == State.ALIVE:
 		return
 	_state_time += delta
+	# A joiner's copy of the host's daemon (C27b) changes state only on the host's word: it never
+	# comes back on its own clock, and it waits grown for the host's "alive".
+	var own := not _follows()
 	if state == State.DEREZZING:
-		if _state_time >= _d.respawn_delay:
+		if own and _state_time >= _d.respawn_delay:
 			_begin_rematerialise()
 	elif state == State.RESPAWNING:
 		var grown := 1.0
@@ -169,18 +192,13 @@ func _physics_process(delta: float) -> void:
 			grown = clampf(_state_time / _d.rematerialise_seconds, 0.0, 1.0)
 		_body.scale = Vector3.ONE * maxf(grown, MIN_BODY_SCALE)
 		_art.set_unstable(1.0 - grown)  # it glitches as it comes back (A2)
-		if grown >= 1.0:
+		if grown >= 1.0 and own:
 			_finish_respawn()
 
 
 func _start_derezz(point: Vector3, direction: Vector3) -> void:
-	state = State.DEREZZING
-	_state_time = 0.0
-	_shape.set_deferred("disabled", true)
-	if _box != null:
-		_box.set_deferred("disabled", true)
-	_body.visible = false
-	_tag.visible = false
+	credited = _credit
+	_go_down()
 	# The voxels get a push along the killing shot: its real direction when the shooter
 	# gives one, otherwise from where it struck toward the body's centre.
 	var shot := Vector3(direction.x, 0.0, direction.z)
@@ -192,8 +210,18 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	_fx_root().add_child(fx)
 	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
-	if not _mirrored:
-		downed.emit(self)
+	downed.emit(self)
+
+
+## Down: derezzing, its collision off, hidden.
+func _go_down() -> void:
+	state = State.DEREZZING
+	_state_time = 0.0
+	_shape.set_deferred("disabled", true)
+	if _box != null:
+		_box.set_deferred("disabled", true)
+	_body.visible = false
+	_tag.visible = false
 
 
 ## Where world-space effects live: the running scene, or the dummy's parent in tests.
@@ -220,25 +248,47 @@ func _finish_respawn() -> void:
 	_shape.set_deferred("disabled", false)
 	if _box != null:
 		_box.set_deferred("disabled", false)
-	if _mirrored:
-		_mirrored = false
-	else:
-		respawned.emit(self)
+	respawned.emit(self)
 
 
 ## On a joiner in a match where the daemons fight (C27b), the host's word on this daemon's life:
 ## down when the host's is (its derezz plays here, counted as nobody's kill on this screen), back
 ## when the host's is, and its health, a drop flashing it as a hit does.
 func follow_life(word: int, host_health: float) -> void:
-	if word == State.DEREZZING and state == State.ALIVE:
-		_mirrored = true
-		_start_derezz(Vector3.INF, Vector3.ZERO)
-	elif word != State.DEREZZING and state == State.DEREZZING:
-		_begin_rematerialise()
+	match word:
+		State.DEREZZING:
+			if state == State.ALIVE:
+				_derezz_on_word()
+			elif state == State.RESPAWNING:
+				_hide_down()  # down again before it was back: hidden, with no second burst
+		State.RESPAWNING:
+			if state == State.ALIVE:
+				_derezz_on_word()
+			if state == State.DEREZZING:
+				_begin_rematerialise()
+		State.ALIVE:
+			if state == State.DEREZZING:
+				_begin_rematerialise()
+			if state == State.RESPAWNING:
+				_finish_respawn()
 	if state == State.ALIVE:
 		if host_health < _health - 0.001:
 			_pulse()
 		_health = clampf(host_health, 0.0, max_health)
+
+
+## Down on the host's word (C27b): this player's kill only when the host said so.
+func _derezz_on_word() -> void:
+	_credit = _credit_next
+	_credit_next = false
+	_start_derezz(Vector3.INF, Vector3.ZERO)
+	_credit = true
+
+
+## Down, hidden and out of reach, with no effect: a joiner's copy the host's word put down again.
+func _hide_down() -> void:
+	_go_down()
+
 
 
 ## A new round: back at once, alive, hittable and at full health. A dummy that was down

@@ -30,6 +30,9 @@ const BOLTS := 8
 const LEVEL_MASK := 1
 ## A player's body round its middle, for a bolt passing it.
 const BODY_RADIUS_M := 0.4
+## On a joiner, how long a bolt of its own may fly before the host's word must list it, and how
+## long after one of its bolts ended the host's word may not throw it again (its own channel).
+const BOLT_GRACE_S := 0.3
 
 ## A DaemonAiTuning; null for resources/daemon_ai.tres. Set before the node enters the tree.
 var tuning: DaemonAiTuning
@@ -44,6 +47,10 @@ var _brains: Array = []
 var _slots := {}
 var _bolts: Array[GlitchBolt] = []
 var _arena: Node3D
+## The host's last bolt id, this director's clock, and on a joiner when each bolt id last ended.
+var _bolt_id := 0
+var _clock := 0.0
+var _ended := {}
 
 
 static func of(node: Node) -> DaemonDirector:
@@ -89,6 +96,7 @@ func _notification(what: int) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_clock += delta
 	_mode_now()
 	for brain in brains():
 		match mode:
@@ -146,12 +154,18 @@ func aggression() -> float:
 
 
 func _mode_now() -> void:
+	var was := mode
 	if practice_on():
 		mode = Mode.REST
 	elif _online() and not session.is_hosting():
 		mode = Mode.FOLLOW
 	else:
 		mode = Mode.RUN
+	if mode != was:
+		# Every bolt in the air was thrown under the old mode: practice coming on, a match starting
+		# or ending, none of them lands anything now (Codex review).
+		for bolt in _bolts:
+			bolt.stop()
 
 
 func _online() -> bool:
@@ -177,7 +191,9 @@ func prey_point(id: int) -> Vector3:
 		var avatar = session.avatars.get(id)
 		if avatar == null or not is_instance_valid(avatar) or not avatar.visible or avatar.dead:
 			return Vector3.INF
-		return avatar.global_position
+		# Its newest received place, not the drawn one a little behind it: a joiner's dodge counts
+		# as soon as the host hears of it (Codex review), as the host's own blasts judge it.
+		return to_world(avatar.latest_position())
 	return player.global_position if id == 1 and _player_up() else Vector3.INF
 
 
@@ -256,8 +272,8 @@ func attackers(id: int) -> int:
 ## landed through the combat path. True when it took health.
 func hurt(id: int, base: float, brain: DaemonBrain, way: Vector3) -> bool:
 	var amount := base * damage_scale()
-	if amount <= 0.0 or not prey_attackable(id):
-		return false
+	if mode != Mode.RUN or amount <= 0.0 or not prey_attackable(id):
+		return false  # only while the brains decide here: never in practice or on a joiner
 	if _online():
 		return session.daemon_hurt(id, amount, brain.dummy, way)
 	if life == null or id != 1:
@@ -266,18 +282,49 @@ func hurt(id: int, base: float, brain: DaemonBrain, way: Vector3) -> bool:
 
 
 ## A zombie's bolt from `from` along `dir` (world space): deciding here when the brains run, else
-## only drawn. Null when every bolt of the pool is in flight.
-func throw_bolt(brain: DaemonBrain, from: Vector3, dir: Vector3) -> GlitchBolt:
+## only drawn, as the host's bolt `bolt_id`. Null when every bolt of the pool is in flight.
+func throw_bolt(brain: DaemonBrain, from: Vector3, dir: Vector3, bolt_id: int = 0) -> GlitchBolt:
 	for bolt in _bolts:
 		if bolt.live:
 			continue
 		if not bolt.is_inside_tree():
 			add_child(bolt)
-		bolt.launch(self, brain, from, dir, tuning.zombie_bolt_speed, tuning.zombie_bolt_life_s, tuning.zombie_bolt_radius_m, mode == Mode.RUN)
-		if mode == Mode.RUN and _online():
-			session.daemon_bolt(brain.dummy, from, dir)
+		bolt.launch(self, brain, from, dir, tuning.zombie_bolt_speed, tuning.zombie_bolt_life_s, tuning.zombie_bolt_radius_m, mode == Mode.RUN, brain.prey)
+		if mode == Mode.RUN:
+			_bolt_id = _bolt_id % 2000000000 + 1
+			bolt.id = _bolt_id
+			if _online():
+				session.daemon_bolt(brain.dummy, bolt.id, from, dir)
+		else:
+			bolt.id = bolt_id
 		return bolt
 	return null
+
+
+## The bolt in flight with id `bolt_id`, or null.
+func bolt_of(bolt_id: int) -> GlitchBolt:
+	for bolt in _bolts:
+		if bolt.live and bolt.id == bolt_id:
+			return bolt
+	return null
+
+
+## On a joiner (C27b), the host's bolts in the air now, id -> [brain, where, way] (world space):
+## one this screen does not draw is thrown from where the host's is (a launch word lost to an R
+## reload); one it draws that the host no longer has is stopped once its launch word's grace is
+## over. One that ended here a moment ago is not thrown again.
+func follow_bolts(live: Dictionary) -> void:
+	for bolt in _bolts:
+		if bolt.live and bolt.id > 0 and not live.has(bolt.id) and bolt.age() > BOLT_GRACE_S:
+			bolt.stop()
+	for bolt_id in live:
+		if bolt_of(bolt_id) != null or _clock - float(_ended.get(bolt_id, -INF)) < BOLT_GRACE_S:
+			continue
+		var word: Array = live[bolt_id]
+		throw_bolt(word[0], word[1], word[2], bolt_id)
+	for bolt_id in _ended.keys():
+		if _clock - float(_ended[bolt_id]) >= BOLT_GRACE_S:
+			_ended.erase(bolt_id)
 
 
 ## A deciding bolt of `brain`'s passed player `id`: its damage, through the combat path.
@@ -291,6 +338,8 @@ func bolt_met(brain: DaemonBrain, id: int, way: Vector3) -> void:
 ## A bolt is done: out of the tree once this frame is over, so its trail lets go (unless it was
 ## thrown again meanwhile).
 func bolt_done(bolt: GlitchBolt) -> void:
+	if bolt.id > 0 and mode == Mode.FOLLOW:
+		_ended[bolt.id] = _clock
 	_put_away.call_deferred(bolt)
 
 

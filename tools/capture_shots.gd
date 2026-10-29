@@ -99,7 +99,7 @@ const A4_GPU_FRAMES := 90
 ## c27b (C27b): where the player stands and where each daemon is put, facing it, in arena space;
 ## where the still is taken: the lunge this far through its strike, the bolt this long in flight.
 const C27B_PLAYER_AT := Vector3(0.0, 0.95, 15.0)
-const C27B_ROGUE_AT := Vector3(0.6, 0.0, 12.9)
+const C27B_ROGUE_AT := Vector3(0.6, 0.0, 12.45)
 const C27B_LUNGE_SHARE := 0.45
 const C27B_ZOMBIE_AT := Vector3(-3.2, 0.0, 7.4)
 const C27B_BOLT_FRAMES := 26
@@ -135,8 +135,9 @@ func _run() -> void:
 	_player = _main.get_node("Player")
 	_player.assume_captured = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	# Every set but c27b is shot as it was: practice, the old dummies (C27b).
-	GameSettings.current().set_value("gameplay", "practice", _set != "c27b")
+	# Every set is shot as it was: practice, the old dummies (C27b); c27b turns them loose once its
+	# daemons are placed.
+	GameSettings.current().set_value("gameplay", "practice", true)
 	await _frames(90)  # shaders compiled, the code rain running
 	if _set == "c27b":
 		await _c27b()
@@ -350,13 +351,20 @@ func _c27b() -> void:
 	var rogue: Node3D = targets.get_node("DummyA")
 	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ROGUE_AT + DUMMY_MIDDLE + Vector3(0.0, 0.25, 0.0)))
 	_c27b_place(rogue, _main.to_global(C27B_ROGUE_AT))
+	GameSettings.current().set_value("gameplay", "practice", false)  # the daemons fight back from here
 	var strike_s: float = (load("res://resources/daemon_ai.tres") as DaemonAiTuning).rogue_strike_s
+	var waited := 0
 	while not (rogue.brain.state == DaemonBrain.State.STRIKE and rogue.brain.state_t >= C27B_LUNGE_SHARE * strike_s):
 		await _frames(1)
+		waited += 1
+	print("capture: the rogue's strike after %d frames, the player at %.0f health" % [waited, life.health()])
 	await _save("c27b-lunge")
+	waited = 0
 	while life.health() >= 100.0:
 		await _frames(1)
+		waited += 1
 	await _frames(1)
+	print("capture: its slash landed %d frames later" % waited)
 	await _save("c27b-hit")
 	_c27b_place(rogue, C27B_PARKED)
 	life.reset_for_round()
@@ -364,8 +372,11 @@ func _c27b() -> void:
 	await _stand(C27B_PLAYER_AT, _main.to_global(C27B_ZOMBIE_AT + DUMMY_MIDDLE + Vector3(0.0, 0.3, 0.0)))
 	_c27b_place(zombie, _main.to_global(C27B_ZOMBIE_AT))
 	var director: DaemonDirector = _main.get_node("DaemonDirector")
+	waited = 0
 	while director.bolts_live() == 0:
 		await _frames(1)
+		waited += 1
+	print("capture: the zombie's bolt after %d frames" % waited)
 	await _frames(C27B_BOLT_FRAMES)
 	await _save("c27b-bolt")
 
@@ -373,7 +384,7 @@ func _c27b() -> void:
 ## Daemon `dummy` put at `at` (world space), facing the player, at home there.
 func _c27b_place(dummy: Node3D, at: Vector3) -> void:
 	dummy.global_position = at
-	var way := _player.global_position - at
+	var way: Vector3 = _player.global_position - at
 	dummy.global_rotation = Vector3(0.0, atan2(-way.x, -way.z), 0.0)
 	dummy.brain.take_home()
 	dummy.brain.moved = false
