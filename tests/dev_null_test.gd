@@ -436,7 +436,12 @@ func _practice_checks() -> void:
 			worst_tick = maxf(worst_tick, last_hp - hp)
 		last_hp = hp
 	var outside_hp: float = far.health()
-	_check("acceptance: damage over time inside the horizon only: rogue.d dragged in took nothing outside it and its first hurt %.2f m from the axis, at most %.2f a tick (%.0f to %.0f a second, every %.2f s); the far daemon still whole outside it (%.0f)" % [first_hurt, worst_tick, _t.dps_horizon, _t.dps_core, _t.tick_s, outside_hp], not hurt_outside and first_hurt < _t.horizon_m + 0.2 and worst_tick > 0.0 and worst_tick <= _t.dps_core * _t.tick_s + EPS and held_line == "$ cat * > /dev/null\n4 held  0 discarded", held_line)
+	# Its full strength now: a player 0.4 m from its axis is still never dragged faster than the cap.
+	var near_axis: Vector3 = hole.core + Vector3(0.4, -0.5, 0.0)
+	var inward_way := Vector3(hole.core.x - near_axis.x, 0.0, hole.core.z - near_axis.z).normalized()
+	var player_pull: float = hole.player_drag(near_axis, main.get_world_3d().direct_space_state).dot(inward_way)
+	var daemon_pull: float = _t.pull_at(0.4, _t.radius_m, hole.open_age)
+	_check("acceptance: damage over time inside the horizon only: rogue.d dragged in took nothing outside it and its first hurt %.2f m from the axis, at most %.2f a tick (%.0f to %.0f a second, every %.2f s); the far daemon still whole outside it (%.0f); at full strength a player 0.4 m from its axis is dragged in %.2f m/s, never past %.1f (a run is 7), where a daemon goes %.2f" % [first_hurt, worst_tick, _t.dps_horizon, _t.dps_core, _t.tick_s, outside_hp, player_pull, _t.player_pull_cap, daemon_pull], player_pull > 0.0 and player_pull <= _t.player_pull_cap + EPS and daemon_pull > _t.player_pull_cap and not hurt_outside and first_hurt < _t.horizon_m + 0.2 and worst_tick > 0.0 and worst_tick <= _t.dps_core * _t.tick_s + EPS and held_line == "$ cat * > /dev/null\n4 held  0 discarded", held_line)
 	# The core discards: each daemon that reaches it dies, its 400 health or not.
 	var said: String = round_hud.last_callout
 	var line: String = hole.get("_look").tag()

@@ -208,7 +208,7 @@ func _model_checks() -> void:
 		shapes["%d %d %d %d" % [roundi(box.size.x * 100.0), roundi(box.size.y * 100.0), roundi(box.size.z * 100.0), tris]] = def.id
 	_check("acceptance: every model is built: a Muzzle marker of its own, a Body mesh of 2 to 4 surfaces each with its material (body, plates, polymer, hot parts), the trim its own mesh, the script its weapon names", built.is_empty(), ", ".join(built))
 	_check("acceptance: every model's trim glows in its weapon's own light skin at the weapon's own energy, its base darkened under it as the old box's was", glow.is_empty(), ", ".join(glow))
-	_check("acceptance: low poly: every model between %d and %d triangles (all eleven %d, eight at A1, nine at C28, ten at C29), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
+	_check("acceptance: low poly: every model between %d and %d triangles (all twelve %d, eight at A1, nine at C28, ten at C29, eleven at C30), built once" % [TRIANGLES_FIRST, TRIANGLES_LAST, total], budget.is_empty(), ", ".join(budget))
 	_check("acceptance: every Muzzle marker is at its model's front, on the barrel's tip, so effects come out of the barrel", front.is_empty(), ", ".join(front))
 	_check("acceptance: every muzzle sits in front of the camera, %.1f m at least, and in view at the arena's %d degree field of view, at 16:9 and at 4:3" % [MUZZLE_NEAREST_M, cam.fov], view.is_empty(), ", ".join(view))
 	_check("no model reaches within %d degrees of the crosshair" % CROSSHAIR_CLEAR_DEGREES, clear.is_empty(), ", ".join(clear))
