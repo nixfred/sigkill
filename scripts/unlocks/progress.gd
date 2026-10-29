@@ -159,7 +159,8 @@ func flush() -> void:
 		save()
 
 
-## Moves `feat` on by `n` and unlocks whatever that earned: [[weapon, item, title], ...], each told once.
+## Moves `feat` on by `n` and unlocks whatever that earned: [[weapon, item, title, need], ...] in the order their
+## counts were reached, each told once.
 func count(feat: String, n: int = 1) -> Array:
 	if n <= 0 or not feat_names().has(feat):
 		return []
@@ -179,8 +180,9 @@ func count(feat: String, n: int = 1) -> Array:
 			if item.feat == feat and not held.has(key) and feats[feat] >= item.need:
 				held[key] = true
 				var title := "%s  (%s %s)" % [item.display_name, def.short_name, "skin" if item is WeaponSkin else "mod"]
-				out.append([def.id, id, title])
+				out.append([def.id, id, title, item.need])
 	if not out.is_empty():
+		out.sort_custom(func(a: Array, b: Array) -> bool: return a[3] < b[3])  # told in the order they were reached
 		save()
 		for got in out:
 			unlocked.emit(got[0], got[1], got[2])
