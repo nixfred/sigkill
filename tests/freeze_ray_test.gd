@@ -346,10 +346,15 @@ func _tell_checks() -> void:
 	var frozen := await _wait(func(): return rogue.chmod_frozen(), 40)
 	p.hold_fire = false
 	var no_strike := true
+	var held_at: Vector3 = rogue.global_position
+	var held_yaw: float = rogue.global_rotation.y
+	var still := true
 	for i in 90:
 		await physics_frame
 		no_strike = no_strike and rogue.brain.attacks == attacks and rogue.brain.state != DaemonBrain.State.STRIKE and rogue.brain.state != DaemonBrain.State.TELL
-	_check("acceptance: a freeze calls off the tell it lands in: rogue.d rearing is frozen, nothing is thrown (no strike, the player's health %.0f untouched), its slot let go, \"frozen\" noted" % life.health(), drawn and telling >= 0 and frozen >= 0 and no_strike and life.health() == health and rogue.brain.frozen_offs == 1 and not rogue.brain.holds_slot and _events(rogue.brain).contains("frozen"), "telling %d frozen %d; %s" % [telling, frozen, _events(rogue.brain)])
+		if rogue.chmod_frozen():
+			still = still and rogue.global_position.distance_to(held_at) < EPS and absf(rogue.global_rotation.y - held_yaw) < EPS
+	_check("acceptance: a freeze calls off the tell it lands in: rogue.d rearing is frozen, nothing is thrown (no strike, the player's health %.0f untouched), its slot let go, \"frozen\" noted; frozen in play it neither moves nor turns" % life.health(), drawn and telling >= 0 and frozen >= 0 and no_strike and still and life.health() == health and rogue.brain.frozen_offs == 1 and not rogue.brain.holds_slot and _events(rogue.brain).contains("frozen"), "telling %d frozen %d still %s; %s" % [telling, frozen, still, _events(rogue.brain)])
 	var back := await _wait(func(): return rogue.brain.state == DaemonBrain.State.TELL, int((_ft.freeze_s + 6.0) * 60.0))
 	_check("it fights again once thawed (after its attack's own wait)", back >= int(_ft.freeze_s * 60.0) - 120)
 	await _drop(main)
@@ -504,9 +509,10 @@ func _hunter_checks() -> void:
 	var before := hunter.health()
 	hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigkill_rail")
 	var took := before - hunter.health()
-	_check("acceptance: it freezes the hunter like a daemon (ICE's %.1f s of beam), held still with its lance quiet, and the next hit lands %.0fx after its cap (the rail's 1000: %.0f) and thaws it" % [_ft.ice_chill_s, _ft.frozen_hit_scale, took], frozen >= 0 and still and absf(took - ice.tuning.hit_cap * _ft.frozen_hit_scale) < EPS and not hunter.chmod_frozen() and hunter.frost.broken_by_hits == 1)
+	_check("acceptance: it freezes the hunter like a daemon (ICE's %.1f s of beam), held still with its lance quiet, and the next hit lands %.0fx after its cap (the rail's 1000: %.0f) and thaws it" % [_ft.ice_chill_s, _ft.frozen_hit_scale, took], frozen >= 0 and still and absf(took - ice.tuning.hit_cap * _ft.frozen_hit_scale) < EPS and not hunter.chmod_frozen() and hunter.frost != null and hunter.frost.broken_by_hits == 1)
 	# Its lance's tell, frozen in the middle, is called off (the player open to it again).
-	hunter.frost.clear()
+	if hunter.frost != null:
+		hunter.frost.clear()
 	hunter.art.frozen = false
 	life.combat.states[1]["protect_left"] = 0.0
 	var telling := await _wait(func(): return hunter.brain.state == DaemonBrain.State.TELL, 900)
