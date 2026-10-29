@@ -93,7 +93,7 @@ func _resource_checks() -> void:
 			wrong.append(def.id)
 		else:
 			paths[script.resource_path] = true
-	_check("acceptance: every weapon of the arsenal (8 at A1, 9 since C28's ping, 10 since C29's chmod 000, 11 since C30's pipe |) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 11 and paths.size() == 11 and wrong.is_empty(), ", ".join(wrong))
+	_check("acceptance: every weapon of the arsenal (8 at A1, 9 since C28's ping, 10 since C29's chmod 000, 11 since C30's pipe |, 12 since C31's /dev/null) names a model of its own in its resource, a script under scripts/viewmodels/ extending the Viewmodel, and still passes its own checks", _defs.size() == 12 and paths.size() == 12 and wrong.is_empty(), ", ".join(wrong))
 	var bad = _defs[0].duplicate()
 	bad.viewmodel_model = load("res://scripts/palette.gd")
 	var none = _defs[0].duplicate()
@@ -212,7 +212,7 @@ func _model_checks() -> void:
 	_check("acceptance: every Muzzle marker is at its model's front, on the barrel's tip, so effects come out of the barrel", front.is_empty(), ", ".join(front))
 	_check("acceptance: every muzzle sits in front of the camera, %.1f m at least, and in view at the arena's %d degree field of view, at 16:9 and at 4:3" % [MUZZLE_NEAREST_M, cam.fov], view.is_empty(), ", ".join(view))
 	_check("no model reaches within %d degrees of the crosshair" % CROSSHAIR_CLEAR_DEGREES, clear.is_empty(), ", ".join(clear))
-	_check("acceptance: nine different shapes (eight at A1, ping's since C28; ten since C29's chmod 000, eleven since C30's pipe |): no two models share their size and triangle count", shapes.size() == 11, str(shapes.size()))
+	_check("acceptance: nine different shapes (eight at A1, ping's since C28; ten since C29's chmod 000, eleven since C30's pipe |, twelve since C31's /dev/null): no two models share their size and triangle count", shapes.size() == 12, str(shapes.size()))
 	await _look_checks(models)
 	_placeholder_checks(cam)
 

@@ -238,6 +238,17 @@ extends Node
 ## any shot's. No new message, no changed one; the loadout grew (weapon 11) and _shot's ends mean a
 ## chain for it, which an older build would neither believe nor draw, so protocol 16.
 ##
+## /dev/null (C31): a throw like the fork bomb's (_throw, the host's usual checks and its own count of each
+## player's charges coming back), its live cap one open hole a player. The host runs the hole (_spawn_hole,
+## scripts/weapons/dev_null_hole.gd): it opens it, drags and hurts the daemons and ICE it holds while they
+## fight, and judges every player it reaches each tick and at its implosion (_judge_hole: the ninth host-only
+## damage site; never the thrower, a dead or a spawn-protected player), told as shots of /dev/null at the
+## core and deaths by it. Joiners get the throw's seed on _bomb (its sign the thrower's root: a wider hole)
+## and its opening place, its collapse and each discard on _blast (generations HOLE_OPENED, HOLE_COLLAPSED,
+## HOLE_DISCARDED); each screen drags its own player from its own copy, so the pull is felt with no lag of
+## the host's. No new message, no changed one; the loadout grew (weapon 12) and _bomb and _blast mean a
+## hole for it, which an older build would neither draw nor feel, so protocol 17.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -273,6 +284,7 @@ const ArsenalScript = preload("res://scripts/weapons/arsenal_tuning.gd")
 const SigstopTuning = preload("res://scripts/abilities/sigstop_tuning.gd")
 const SudoTuning = preload("res://scripts/abilities/sudo_overcharge_tuning.gd")
 const ForkBomb = preload("res://scripts/weapons/fork_bomb.gd")
+const DevNullHoleScript = preload("res://scripts/weapons/dev_null_hole.gd")
 const ForkVolley = preload("res://scripts/weapons/fork_volley.gd")
 const SeekerVolley = preload("res://scripts/weapons/seeker_volley.gd")
 const RmSlug = preload("res://scripts/weapons/rm_slug.gd")
@@ -283,6 +295,10 @@ const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 const MINE_CRONTAB := -1
 const MINE_SHOT := -2
 const MINE_GONE := -3
+## /dev/null's words on _blast (C31): its generation says what (the index is unused but a discard's count).
+const HOLE_OPENED := 0
+const HOLE_COLLAPSED := 1
+const HOLE_DISCARDED := 2
 ## From a player's middle down to its feet: where a mine placed at the feet looks for the floor.
 const FEET_M := 0.9
 const LightTrails = preload("res://scripts/modes/light_trails.gd")
@@ -331,7 +347,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 16
+const PROTOCOL := 17
 ## An avatar's freeze beam starts this far ahead of its eye and this far below it (C29): its emitter.
 const BEAM_AHEAD_M := 0.45
 const BEAM_DROP_M := 0.2
@@ -532,6 +548,8 @@ var _pellets_rng := RandomNumberGenerator.new()
 var _seeds := RandomNumberGenerator.new()
 var _throws := 0
 var _chains := {}
+## /dev/null's holes in this arena (C31), throw id -> hole.
+var _holes := {}
 ## The fork() volleys this arena runs or draws (C24), shot id -> volley; their ids share the
 ## throws' count.
 var _volleys := {}
@@ -1022,6 +1040,14 @@ func leave() -> void:
 
 func is_online() -> bool:
 	return state == State.HOSTING or state == State.JOINED
+
+
+## True while player `id` is in spawn protection, as this side knows it: hosting, the match's combat;
+## joined, the host's last word (C31: a hole never drags a protected player on its own screen).
+func protected_now(id: int) -> bool:
+	if state == State.HOSTING and combat != null:
+		return combat.protected(id)
+	return protect_left.get(id, 0.0) > 0.0
 
 
 func is_connecting() -> bool:
@@ -2269,7 +2295,8 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 	if id != 1 and origin.is_finite() and _obstructed(id, eye, origin, BLAST_SIGHT_MASK):
 		combat.drop_after(Combat.DROP_ORIGIN)  # a throw from behind the cover it stands against
 		return
-	var live := ForkBomb.live_of(_arena, _bomb_key(id))
+	var thrown = _weapons.get(weapon)
+	var live := DevNullHoleScript.live_of(_arena, _bomb_key(id)) if thrown != null and thrown.is_hole() else ForkBomb.live_of(_arena, _bomb_key(id))
 	if combat.throw(id, life, weapon, origin, dir, eye, _view_of(id), lives.get(id, 0), _clock, live) != "":
 		return
 	var breakers := BreakerDirector.of(_arena) if _arena != null and is_instance_valid(_arena) else null
@@ -2277,6 +2304,9 @@ func _handle_throw(id: int, life: int, weapon: String, origin: Vector3, dir: Vec
 		breakers.fired(id)  # a throw ends the thrower's cloak (I2)
 	_throws += 1
 	var seed := _seeds.randi()
+	if thrown.is_hole():
+		seed = (seed & 0x3fffffff) + 1
+		seed = -seed if combat.root(id) else seed  # /dev/null (C31): a root's wider hole, told in the seed's sign
 	_spawn_chain(_throws, id, weapon, seed, origin, dir, true)
 	_tell_seed(_throws, id, weapon, seed, origin, dir)
 
@@ -2298,7 +2328,7 @@ func _tell_seed(throw_id: int, thrower: int, weapon: String, seed: int, origin: 
 func _bomb(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, marks: PackedInt32Array) -> void:
 	if state != State.JOINED or not players.has(thrower) or not _weapons.has(weapon) or not (_weapons[weapon].is_thrown() or _weapons[weapon].is_volley() or _weapons[weapon].is_ping()):
 		return
-	if throw_id < 1 or _chains.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
+	if throw_id < 1 or _chains.has(throw_id) or _holes.has(throw_id) or _volleys.has(throw_id) or _mines.has(throw_id) or not origin.is_finite() or not Combat.dir_ok(dir) or _arena == null or not is_instance_valid(_arena):
 		return
 	# A believed mark of a player who has left since flies its dart straight (_mark_point), so
 	# the darts stay as many as the host's and fan the same.
@@ -2328,6 +2358,9 @@ func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
 	if _mines.has(throw_id):
 		_mine_word(throw_id, gen, index, at)  # a cron mine's run or removal (C27)
 		return
+	if _holes.has(throw_id):
+		_hole_word(throw_id, gen, at)  # /dev/null's opening, collapse or discard (C31)
+		return
 	if _volleys.has(throw_id):
 		# The blast of an rm -rf slug (C26): its slug here goes off at the host's place.
 		var slug = _volleys[throw_id]
@@ -2347,6 +2380,9 @@ func _blast(throw_id: int, gen: int, index: int, at: Vector3) -> void:
 ## joiner's, which only draws on the host's word. The thrower's own body is never hit.
 func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
 	var def: WeaponDefScript = _weapons[weapon]
+	if def.is_hole():
+		_spawn_hole(throw_id, thrower, weapon, seed, origin, dir, deciding)  # /dev/null (C31): its own throw
+		return
 	var never: Array[RID] = []
 	if thrower == my_id and _player != null and is_instance_valid(_player):
 		never.append(_player.get_rid())
@@ -2361,6 +2397,117 @@ func _spawn_chain(throw_id: int, thrower: int, weapon: String, seed: int, origin
 	chain.finished.connect(func(): _chains.erase(throw_id))
 	if deciding:
 		chain.blasted.connect(_on_chain_blasted.bind(throw_id, thrower))
+
+
+## /dev/null's hole in this arena (C31): the host's decides (it opens, judges every player it reaches and,
+## while the daemons fight, a joiner's hole's hold on them) and tells its opening, its collapse and each
+## discard; a joiner's draws, opens at the host's place, drags its own player and takes the host's word for
+## the rest. The seed's sign is the thrower's root (a wider hole). The thrower's own screen moves and hurts
+## its own idle dummies in a match whose daemons do not fight, as pipe | does (C30).
+func _spawn_hole(throw_id: int, thrower: int, weapon: String, seed: int, origin: Vector3, dir: Vector3, deciding: bool) -> void:
+	var def: WeaponDefScript = _weapons[weapon]
+	var never: Array[RID] = []
+	if thrower == my_id and _player != null and is_instance_valid(_player):
+		never.append(_player.get_rid())
+	var avatar = avatars.get(thrower)
+	if avatar != null and is_instance_valid(avatar):
+		never.append(avatar.hit_rid())
+	var along: Vector3 = (_arena.global_transform.basis * dir).normalized()
+	var own: bool = thrower == my_id and _player_ready() and _player.has_method("hole_judge")
+	var judge_daemon := Callable()
+	if own:
+		judge_daemon = _player.hole_judge(def)
+	elif deciding:
+		judge_daemon = func(node: Node, damage: float, point: Vector3, way: Vector3) -> bool:
+			return _hit_daemon(node, thrower, damage * combat.damage_scale(thrower), point, way, def.id)
+	var moves: bool = own or (deciding and daemons_fight())
+	var judge_players := _judge_hole.bind(throw_id, thrower, weapon) if deciding else Callable()
+	var tuning: DevNullTuning = def.hole_tuning()
+	var hole := DevNullHoleScript.spawn(_arena, tuning, _arena.to_global(origin), DevNullHoleScript.throw_velocity(tuning, along), absi(seed), _bomb_key(thrower), deciding, thrower, seed < 0, def.light_skin, never, judge_daemon, judge_players, moves)
+	hole.target_mask = PLAYER_LAYER_MASK | RemotePlayer.HIT_LAYER
+	_holes[throw_id] = hole
+	hole.finished.connect(func(): _holes.erase(throw_id))
+	if deciding:
+		hole.opened.connect(func(at: Vector3): _tell_blast(throw_id, HOLE_OPENED, 0, _arena.to_local(at)))
+		hole.collapsed.connect(func(at: Vector3): _tell_blast(throw_id, HOLE_COLLAPSED, 0, _arena.to_local(at)))
+		hole.discarded.connect(func(_what: Node, at: Vector3): _tell_blast(throw_id, HOLE_DISCARDED, hole.discards, _arena.to_local(at)))
+	if thrower == my_id and _player_ready() and _player.has_method("take_hole"):
+		_player.take_hole(hole)
+
+
+## The host's word of hole `id` (C31): opened at `at` (arena space), collapsed, or something discarded there.
+func _hole_word(id: int, gen: int, at: Vector3) -> void:
+	var hole = _holes[id]
+	if not is_instance_valid(hole):
+		return
+	match gen:
+		HOLE_OPENED:
+			hole.open_at(_arena.to_global(at))
+		HOLE_COLLAPSED:
+			hole.collapse_now()
+		HOLE_DISCARDED:
+			hole.told_discard(_arena.to_global(at))
+
+
+## The host's judgement of hole `hole` of `thrower`'s for every player it reaches (C31), every tick ("tick")
+## and at its implosion ("pulse"): never the thrower, a dead or a spawn-protected player. Held inside the
+## horizon a player takes the hole's damage a second for its distance, its tick's share; reaching the core
+## it is discarded (the discard's damage: far over any health), once; the implosion's pulse for its distance
+## from the core. Told as shots of /dev/null at the core, each kill as a death by it.
+func _judge_hole(hole: Node, what: String, throw_id: int, thrower: int, weapon: String) -> void:
+	if state != State.HOSTING or combat == null or _player == null or not is_instance_valid(_player) or not is_instance_valid(hole):
+		return
+	var t: DevNullTuning = hole.tuning
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var hits := PackedInt32Array()
+	var healths := PackedFloat32Array()
+	var killed := PackedInt32Array()
+	for id in players:
+		if id == thrower or not combat.alive(id) or combat.protected(id):
+			continue
+		var middle := Vector3.INF
+		if id == 1:
+			middle = _player.global_position
+		else:
+			var avatar = avatars.get(id)
+			if avatar != null and is_instance_valid(avatar) and avatar.visible:
+				middle = _arena.to_global(avatar.latest_position())
+		if not middle.is_finite():
+			continue
+		var reach: Dictionary = hole.reaches(middle, space)
+		if not reach["in"]:
+			continue
+		var base := 0.0
+		var discard := false
+		if what == "pulse":
+			base = t.pulse_at(middle.distance_to(hole.core))
+		elif reach["distance"] <= t.core_m and not hole.players_discarded.has(id):
+			hole.players_discarded[id] = true
+			base = t.discard_damage
+			discard = true
+		elif reach["distance"] < t.horizon_m:
+			base = t.dps_at(reach["distance"]) * t.tick_s
+		if base <= 0.0:
+			continue
+		var before := combat.health_of(id)
+		var outcome := combat.damage_player(id, thrower, base * combat.damage_scale(thrower))  # root's harder (C22)
+		if outcome.is_empty():
+			continue
+		hits.append(id)
+		healths.append(outcome["health"])
+		if outcome["killed"]:
+			killed.append(id)
+		combat.add_meter(thrower, minf(base, before) / _ct.max_health, outcome["killed"])
+		if discard:
+			hole.told_discard(hole.core)  # its discarded signal tells every joiner
+	if hits.is_empty():
+		return
+	var local: Vector3 = _arena.to_local(hole.core)
+	_broadcast_shot(thrower, weapon, local, PackedVector3Array([local]), hits, healths)
+	for victim in killed:
+		_broadcast_death(victim, thrower, Vector3.UP, weapon)
+	_mirror_from_combat()
+	_flush_sudo()
 
 
 ## A blast of a chain the host runs, to every joiner; the thrower's callout when it is the

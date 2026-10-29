@@ -48,6 +48,10 @@ extends RefCounted
 ## again after its attack's own wait, as a ping's stagger does. A bolt already thrown flies on. On a
 ## joiner its copy plays the host's word, frozen with it.
 ##
+## /dev/null (C31): while a hole holds its dummy it does nothing of its own (the hole drags it); a tell or a
+## strike it was in is called off, as a freeze calls one off, and once let go it hunts again after its
+## attack's own wait or walks home from where it was left.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -86,6 +90,8 @@ var state_t := 0.0
 var staggers := 0
 ## Attacks a freeze called off since it was made (C29).
 var frozen_offs := 0
+## Attacks a /dev/null hole called off since it was made (C31).
+var pulled_offs := 0
 ## The player hunted (0 none), the last place it saw it, and for how long it has not.
 var prey := 0
 var last_seen := Vector3.INF
@@ -166,6 +172,8 @@ func step(delta: float, d) -> void:
 		state_t = 0.0
 	if _held_by_chmod(d):
 		return  # chmod 000: frozen, its clock and every timer held
+	if _held_by_hole(d):
+		return  # /dev/null: the hole drags it, it does nothing of its own
 	if d.frozen(prey):
 		velocity = Vector3.ZERO
 		return  # SIGSTOP: frozen whole, its clock and every timer held
@@ -204,6 +212,8 @@ func rest(delta: float, d) -> void:
 		return
 	if _held_by_chmod(d):
 		return  # frozen in practice too (C29): it stands where the beam caught it
+	if _held_by_hole(d):
+		return  # dragged in practice too (C31); it walks home once the hole lets go
 	if moved and has_home and _flat(dummy.global_position - home.origin).length() > HOME_M:
 		state = State.RETURN
 		_walk(home.origin, _speed(d), delta, d)
@@ -265,6 +275,25 @@ func _held_by_chmod(d) -> bool:
 		_note("frozen")
 		cooldown = maxf(cooldown, _attack_wait(d))
 		_enter(State.HUNT if d.prey_valid(prey) else State.RETURN)
+	return true
+
+
+## /dev/null (C31): true while a hole holds its dummy (the hole moves it, not the brain); a tell or a strike
+## it was in is called off, as chmod 000's freeze calls one off, and once the hole lets go it hunts again
+## after its attack's own wait, or walks home from where it was left.
+func _held_by_hole(d) -> bool:
+	if dummy == null or not dummy.has_method("held_by_hole") or not dummy.held_by_hole():
+		return false
+	velocity = Vector3.ZERO
+	moved = true
+	if state == State.TELL or state == State.STRIKE:
+		_release(d)
+		burst_left = 0
+		pulled_offs += 1
+		_note("pulled")
+		cooldown = maxf(cooldown, _attack_wait(d))
+		_enter(State.HUNT if d.prey_valid(prey) else State.RETURN)
+	art.drive(DaemonArt.Act.MOVE)
 	return true
 
 

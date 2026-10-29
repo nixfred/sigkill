@@ -263,6 +263,15 @@ func apply_run(left: int, at: Vector3) -> void:
 	_run(at, left)
 
 
+## /dev/null (C31): drawn into a hole's core, the job runs once more there, now, its last (its own blast,
+## judged as every run of it is, its owner's), and ends. Only where the mine decides (alone, or the host's);
+## a joiner's copy hears that run as any other, from the host's word.
+func set_off() -> void:
+	if not authoritative or not running():
+		return
+	_run(global_position, 0)
+
+
 ## The job ends now (`reason`: CRONTAB, SHOT or GONE): no run more, the stud fades out.
 func remove(reason: String) -> void:
 	if not running():

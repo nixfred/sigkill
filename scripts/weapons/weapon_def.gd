@@ -92,11 +92,19 @@ extends "res://scripts/weapon_tuning.gd"
 ## magazine: its ammo is the pipe's buffer (scripts/weapons/pipe_buffer.gd), which each chain writes into
 ## and which drains on its own; every number of the chain and the buffer is the PipeTuning it names in pipe
 ## (inside the same .tres). The Pipe slot is empty for every other weapon.
+##
+## /dev/null (C31, resources/dev_null.tres): a thrown weapon, as the fork bomb is (fire_mode PROJECTILE, the
+## same throw path and the same host judging), but its projectile slot names a DevNullTuning, not a
+## ForkBombTuning: the device opens a black hole where it lands (scripts/weapons/dev_null_hole.gd) that
+## drags what it reaches toward its core, hurts what it holds inside its horizon, discards what reaches the
+## core and ends in an implosion. Its magazine is its charges; a spent one comes back after the tuning's
+## recharge_s (scripts/weapons/inventory.gd, the host's combat alike). damage is unused, as the fork bomb's.
 
 const Palette = preload("res://scripts/palette.gd")
 const ForkBombTuning = preload("res://scripts/weapons/fork_bomb_tuning.gd")
 const FreezeTuningScript = preload("res://scripts/weapons/freeze_tuning.gd")
 const PipeTuningScript = preload("res://scripts/weapons/pipe_tuning.gd")
+const DevNullTuningScript = preload("res://scripts/weapons/dev_null_tuning.gd")
 
 enum FireMode { HITSCAN_SINGLE, HITSCAN_PELLETS, PROJECTILE, BEAM, FORK_PELLETS, SEEKER, SLUG, MINE, PING, FREEZE }
 
@@ -266,8 +274,8 @@ const CHAIN_RANGE_LAST_M := 60.0
 @export var ult_per_kill: float = 0.0
 
 @export_group("Projectile")
-## A thrown weapon's chain, a ForkBombTuning (C19): resources/fork_bomb.tres for the fork bomb.
-## Empty for every other weapon.
+## A thrown weapon's chain, a ForkBombTuning (C19): resources/fork_bomb.tres for the fork bomb; or its
+## hole, a DevNullTuning (C31, inside resources/dev_null.tres). Empty for every other weapon.
 @export var projectile: Resource = null
 
 @export_group("Fork")
@@ -400,8 +408,8 @@ func problems() -> PackedStringArray:
 	if not BUILT_MODES.has(fire_mode):
 		out.append("fire_mode %d is not a fire mode" % fire_mode)
 	elif fire_mode == FireMode.PROJECTILE:
-		if not (projectile is ForkBombTuning):
-			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning in projectile")
+		if not (projectile is ForkBombTuning or projectile is DevNullTuningScript):
+			out.append("a thrown weapon (fire_mode projectile) needs a ForkBombTuning or a DevNullTuning in projectile")
 		elif not projectile.problems().is_empty():
 			out.append("a thrown weapon's projectile tuning is refused: %s" % projectile.problems()[0])
 		if pellet_count != 1 or not has_magazine() or pierce or charge_s > 0.0 or ult_meter > 0.0:
@@ -499,9 +507,19 @@ func is_ult() -> bool:
 	return ult_meter > 0.0
 
 
-## True for a thrown weapon (C19): the fork bomb.
+## True for a thrown weapon (C19): the fork bomb, and /dev/null (C31).
 func is_thrown() -> bool:
 	return fire_mode == FireMode.PROJECTILE
+
+
+## True for /dev/null (C31): a thrown weapon whose device opens a black hole.
+func is_hole() -> bool:
+	return is_thrown() and projectile is DevNullTuningScript
+
+
+## /dev/null's numbers (C31), or null for every other weapon.
+func hole_tuning() -> DevNullTuningScript:
+	return projectile as DevNullTuningScript if is_hole() else null
 
 
 ## True for fork() pellets (C24): projectiles that fork mid-flight.

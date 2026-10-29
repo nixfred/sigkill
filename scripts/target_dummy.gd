@@ -90,6 +90,8 @@ var _credit := true
 var _killer := 0
 ## Its freeze meter and freeze (C29), and its frost on screen once the beam has met it.
 var frost: Frost
+## /dev/null (C31): the last physics frame a hole holds it to.
+var _held_until := -1
 var _frost_look: FrostLook
 ## Its deaths that were shatters (C29), for the checks.
 var shatters := 0
@@ -167,6 +169,17 @@ func health() -> float:
 ## HEAD_ZONE_M deep. A rail kill there is called out as "kill -9".
 func is_head_hit(point: Vector3) -> bool:
 	return point.y >= _body.global_position.y + _hex.height * 0.5 - WeaponDefScript.HEAD_ZONE_M
+
+
+## /dev/null (C31): a hole holds it for `seconds` more (renewed each step it is held): while held its brain
+## does nothing of its own and the hole moves it.
+func hold_in_hole(seconds: float) -> void:
+	_held_until = maxi(_held_until, Engine.get_physics_frames() + ceili(seconds * Engine.physics_ticks_per_second))
+
+
+## True while a hole holds it.
+func held_by_hole() -> bool:
+	return Engine.get_physics_frames() <= _held_until and is_alive()
 
 
 ## Called by the player's cannon through the ray hit. Returns true if the hit landed,

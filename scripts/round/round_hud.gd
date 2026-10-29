@@ -84,6 +84,8 @@ const FORK_LINE := "fork()"
 const GREP_LINE := "grep"
 const RM_LINE := "rm -rf"
 const CRON_LINE := "cron"
+## /dev/null's discard (C31).
+const DEV_NULL_LINE := "> /dev/null"
 ## A flatline's loss (I3): the summary's heading and its line.
 const FLATLINE_HEADING := "FLATLINED by %s   RUN OVER   round 1 in %d s"
 const FLATLINE_LINE := "Black ICE touched you. The run is over: the next one starts at round 1."
@@ -191,7 +193,7 @@ static func usable_tuning(candidate: Resource) -> Resource:
 ## The player whose shots, jumps, slides and steps a round counts.
 func set_player(player: Node) -> void:
 	_player = player
-	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked], ["rm_blast", _on_rm_blast], ["cron_ran", _on_cron_ran]]:
+	for pair in [["shot_fired", _on_shot], ["jumped", _on_jumped], ["slid", _on_slid], ["rail_kill", _on_rail_kill], ["fork_bomb_burst", _on_fork_bomb], ["fork_split", _on_fork_split], ["grep_marked", _on_grep_marked], ["rm_blast", _on_rm_blast], ["cron_ran", _on_cron_ran], ["hole_discarded", _on_hole_discarded]]:
 		if player.has_signal(pair[0]) and not player.is_connected(pair[0], pair[1]):
 			player.connect(pair[0], pair[1])
 	var stop = player.get("sigstop")
@@ -431,6 +433,11 @@ func _on_rm_blast() -> void:
 	_callout("rm_rf", true)
 
 
+## Something this player's /dev/null discarded (C31): called out at once, as the fork bomb is.
+func _on_hole_discarded() -> void:
+	_callout("dev_null", true)
+
+
 ## The first run of a mine of this player's: called out at the usual pace.
 func _on_cron_ran() -> void:
 	_callout("cron")
@@ -469,6 +476,8 @@ func _callout(word: String, now: bool = false) -> void:
 			last_callout = RM_LINE
 		"cron":
 			last_callout = CRON_LINE
+		"dev_null":
+			last_callout = DEV_NULL_LINE
 	_callout_left_s = _t.callout_seconds
 	_ring()
 	_refresh()

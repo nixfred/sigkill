@@ -5,8 +5,9 @@ extends Node3D
 ## burst, and a ping's sonar ring (C28): a flat disc of streaks flying out level with the ring's
 ## front, and chmod 000's frost (C29): chips of frost thrown off a body as the freeze takes it, a few as it
 ## thaws, a storm of them as a frozen daemon shatters, and pipe |'s packets (C30): a spill of data streaks
-## flung on from each link of a chain, the way the stream was going. Cosmetic only: no collision, no ray, nothing
-## outside the game.
+## flung on from each link of a chain, the way the stream was going, and /dev/null's debris (C31): streaks drawn in from
+## all round to the core, at a discard and at its implosion. Cosmetic only: no collision, no ray, nothing outside the
+## game.
 ##
 ## Everything is made once. The arena (scripts/main.gd) makes this node, which holds a fixed pool of
 ## one-shot emitters for each kind of effect; an effect takes the next emitter of its kind round the
@@ -36,7 +37,7 @@ const MUZZLE_GROUP := &"particle_muzzle_burst"
 ## A beam that ends this short of its weapon's range met something; one that reaches it hit the sky.
 const BEAM_OPEN_M := 1.0
 
-enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING, FROST, PIPE }
+enum Kind { SPARK, DEREZZ, BLAST, TRAIL, HEAVY_TRAIL, PING, FROST, PIPE, HOLE }
 ## Each pool: [emitters, particles each, lifetime in seconds, how far its particles may fly, metres].
 const POOLS := {
 	Kind.SPARK: [12, 24, 0.45, 4.0],
@@ -47,6 +48,7 @@ const POOLS := {
 	Kind.PING: [2, 96, 0.5, 64.0],
 	Kind.FROST: [2, 32, 0.9, 6.0],
 	Kind.PIPE: [4, 24, 0.35, 6.0],
+	Kind.HOLE: [2, 48, 0.45, 8.0],
 }
 ## The particle level: [the share of each effect's particles shown, trails on].
 const LEVELS := {"low": [0.25, false], "medium": [0.5, true], "high": [1.0, true]}
@@ -111,7 +113,7 @@ func _ready() -> void:
 	for pair in Palette.SKINS.values():
 		_draw_material(pair[0])
 		_draw_material(pair[1])
-	for color in [Palette.HOSTILE_AMBER, Palette.HOSTILE_RED, Palette.FLASH, Palette.MINT, Palette.TEAL, Palette.PIPE_HI]:
+	for color in [Palette.HOSTILE_AMBER, Palette.HOSTILE_RED, Palette.FLASH, Palette.MINT, Palette.TEAL, Palette.PIPE_HI, Palette.DEV_NULL_HI]:
 		_draw_material(color)
 	for kind in POOLS:
 		var spec: Array = POOLS[kind]
@@ -122,7 +124,7 @@ func _ready() -> void:
 			p.name = "%s%d" % [Kind.keys()[kind].capitalize().replace(" ", ""), i]
 			# A world-space effect: its particles stay where they were thrown as the emitter moves.
 			p.local_coords = false
-			if kind == Kind.SPARK or kind == Kind.BLAST or kind == Kind.PING or kind == Kind.PIPE:
+			if kind == Kind.SPARK or kind == Kind.BLAST or kind == Kind.PING or kind == Kind.PIPE or kind == Kind.HOLE:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
 			elif trail:
 				p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
@@ -236,6 +238,12 @@ func frost(point: Vector3, radius_m: float, share_of: float) -> void:
 ## stream's way out of it, `share_of` of the pool's (the chain's end spills them all).
 func pipe(point: Vector3, way: Vector3, share_of: float = 1.0) -> void:
 	_fire(Kind.PIPE, Transform3D(_basis_up(way), point), Palette.PIPE_HI, share_of)
+
+
+## /dev/null's debris at its core `point` (C31): streaks drawn in from all round to it, `share_of` of the pool's (a
+## discard a share, the implosion all).
+func hole(point: Vector3, share_of: float = 1.0) -> void:
+	_fire(Kind.HOLE, Transform3D(Basis.IDENTITY, point), Palette.DEV_NULL_HI, share_of)
 
 
 ## Sparks shed behind `target` while it flies, in `color`; `heavy` for the rm -rf slug's. False when
@@ -489,6 +497,19 @@ static func _process_material(kind: Kind) -> ParticleProcessMaterial:
 			m.damping_max = 7.0
 			m.scale_min = 0.8
 			m.scale_max = 1.6
+		Kind.HOLE:
+			# Debris drawn in: thrown out from a shell round the core and pulled straight back into it, fast.
+			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE
+			m.emission_sphere_radius = 2.6
+			m.direction = Vector3.UP
+			m.spread = 180.0
+			m.initial_velocity_min = 0.0
+			m.initial_velocity_max = 0.5
+			m.radial_velocity_min = -9.0
+			m.radial_velocity_max = -5.0
+			m.gravity = Vector3.ZERO
+			m.scale_min = 1.0
+			m.scale_max = 2.2
 		Kind.TRAIL, Kind.HEAVY_TRAIL:
 			var heavy := kind == Kind.HEAVY_TRAIL
 			m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE

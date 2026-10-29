@@ -55,7 +55,7 @@ const ARSENAL_SHA := "b98ef06f812877af00be320ad1350d3942b35f03fa78c00d355c03b0ab
 ## ray's own are resources/chmod_000.tres (C29_TRES).
 const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
 const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
-const PROTOCOL := 16
+const PROTOCOL := 17
 const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
 const I1_TRES := ["ice.tres"]
@@ -65,9 +65,12 @@ const C28_TRES := ["arsenal.tres", "ping_sonar.tres"]
 const C29_TRES := ["chmod_000.tres"]
 ## pipe |'s own numbers (C30): resources/pipe_chain.tres.
 const C30_TRES := ["pipe_chain.tres"]
+## /dev/null's own numbers (C31): resources/dev_null.tres.
+const C31_TRES := ["dev_null.tres"]
 ## The most particles the arena's pools may ever show at once, and the most a muzzle burst may. 1600 at
-## A4 (full to the last since C29's frost pool); 1700 since C30, for pipe |'s own pool of packets (4 x 24).
-const PARTICLE_BUDGET := 1700
+## A4 (full to the last since C29's frost pool); 1700 since C30, for pipe |'s own pool of packets (4 x 24);
+## 1800 since C31, for /dev/null's own pool of debris drawn in (2 x 48).
+const PARTICLE_BUDGET := 1800
 const MUZZLE_BUDGET := 32
 ## The player's collision capsule: no viewmodel may reach past it.
 const PLAYER_RADIUS_M := 0.4
@@ -175,16 +178,16 @@ func _source_checks() -> void:
 	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
 	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
 	tres.sort()
-	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES
+	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES + C31_TRES
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
 	var protocol := _code("res://scripts/net/net_session.gd").contains("const PROTOCOL := %d" % PROTOCOL)
 	var arsenal_text := FileAccess.get_file_as_string("res://resources/arsenal.tres")
-	var as_was := arsenal_text.replace("load_steps=13", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/chmod_000.tres\" id=\"11_chmod\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/pipe_chain.tres\" id=\"12_pipe\"]\n", "").replace(", ExtResource(\"10_ping\"), ExtResource(\"11_chmod\"), ExtResource(\"12_pipe\")])", "])")
+	var as_was := arsenal_text.replace("load_steps=14", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/chmod_000.tres\" id=\"11_chmod\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/pipe_chain.tres\" id=\"12_pipe\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/dev_null.tres\" id=\"13_dev_null\"]\n", "").replace(", ExtResource(\"10_ping\"), ExtResource(\"11_chmod\"), ExtResource(\"12_pipe\"), ExtResource(\"13_dev_null\")])", "])")
 	var arsenal := as_was.sha256_text()
 	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added; since C31 dev_null.tres, the black hole's own, and the arsenal with it added) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30, 17 since C31)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---
@@ -350,7 +353,7 @@ func _particle_checks(main: Node) -> void:
 		if by_family.has(family) and by_family[family] != burst.process_material:
 			bursts.append("%s does not share its family's" % model.name)
 		by_family[family] = burst.process_material
-	_check("acceptance: muzzle flash per weapon family: every model carries its family's GPU burst under its Muzzle (in its own space, at most %d particles), the same family sharing one process material; %d families among the 11 (8 at A4, ping's since C28 the rail's ring, chmod 000's since C29 a frost family of its own, pipe |'s since C30 a brass crackle of its own)" % [MUZZLE_BUDGET, by_family.size()], bursts.is_empty() and models.size() == 11 and by_family.size() >= 5, ", ".join(bursts))
+	_check("acceptance: muzzle flash per weapon family: every model carries its family's GPU burst under its Muzzle (in its own space, at most %d particles), the same family sharing one process material; %d families among the 12 (8 at A4, ping's since C28 the rail's ring, chmod 000's since C29 a frost family of its own, pipe |'s since C30 a brass crackle of its own, /dev/null's since C31 the launchers' with the fork bomb)" % [MUZZLE_BUDGET, by_family.size()], bursts.is_empty() and models.size() == 12 and by_family.size() >= 5, ", ".join(bursts))
 
 	# A muzzle burst fires with a shot's flash.
 	p.respawn_at(main.to_global(Vector3(0.0, 0.95, 10.0)))

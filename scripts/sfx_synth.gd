@@ -181,6 +181,63 @@ const CRACKLE_FALL := 0.78
 const CRACKLE_GAIN := 0.8
 
 
+## /dev/null's hole while it pulls (C31): a loop of VOID_HUM_S seconds (every tone a whole number of cycles
+## in it, so the loop has no seam): a deep sub and its beating neighbour under a wind of filtered noise that
+## swells twice a second, the air being drawn in.
+static func void_hum() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(VOID_HUM_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED
+	var wind := 0.0
+	var slow := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var sub := sin(TAU * 36.0 * t) * 0.55 + sin(TAU * 37.0 * t) * 0.35 + sin(TAU * 72.0 * t) * 0.12
+		var n := rng.randf_range(-1.0, 1.0)
+		wind = lerpf(wind, n, 0.08)
+		slow = lerpf(slow, wind, 0.05)
+		var swell := 0.55 + 0.45 * sin(TAU * 2.0 * t)
+		data.encode_s16(i * 2, int(clampf((sub * 0.8 + (wind - slow) * 2.2 * swell) * VOID_GAIN, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+## /dev/null's implosion (C31): a short rush of air drawn in, then a deep falling boom with a crackle in it.
+static func void_implosion() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(IMPLOSION_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 1
+	var phase := 0.0
+	var low := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var n := rng.randf_range(-1.0, 1.0)
+		low = lerpf(low, n, 0.25)
+		var rush := (n - low) * smoothstep(0.0, IMPLOSION_RUSH_S, t) * (1.0 if t < IMPLOSION_RUSH_S else exp(-(t - IMPLOSION_RUSH_S) * 40.0))
+		var into := maxf(t - IMPLOSION_RUSH_S, 0.0)
+		var hz := 28.0 + 70.0 * exp(-into * 6.0)
+		phase = fmod(phase + TAU * hz / rate, TAU)
+		var boom := sin(phase) * exp(-into * 3.2) * (1.0 if t >= IMPLOSION_RUSH_S else 0.0)
+		var crackle := n * exp(-into * 14.0) * 0.35 * (1.0 if t >= IMPLOSION_RUSH_S else 0.0)
+		data.encode_s16(i * 2, int(clampf((rush * 0.6 + boom + crackle) * VOID_GAIN * 1.6, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+const VOID_HUM_S := 2.0
+const IMPLOSION_S := 1.2
+const IMPLOSION_RUSH_S := 0.14
+const VOID_GAIN := 0.55
+
+
 ## The arena's hum (I3): a low, steady server-room drone, a loop of HUM_S seconds (every tone a whole
 ## number of cycles in it, so the loop has no seam): a mains hum and its octave and fifth, swelling slowly,
 ## with a breath of air. It plays under everything on the Music bus until Black ICE takes it away.

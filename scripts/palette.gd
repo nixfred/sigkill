@@ -99,6 +99,19 @@ const FROST_TEXT := Color(0.882352941, 0.588235294, 0.635294118)  # #e196a2 its 
 const PIPE := Color(0.654901961, 0.576470588, 0.0)  # #a79300 pipe |'s body and light, the arcs' sheath
 const PIPE_HI := Color(0.984313725, 0.925490196, 0.721568627)  # #fbecb8 the arcs' cores and their packets
 const PIPE_TEXT := Color(0.705882353, 0.62745098, 0.098039216)  # #b4a019 its light skin's beam colour, its strip lines and the chain readout
+# /dev/null, the black-hole grenade (C31): everything written to it is discarded. Its hole is black (the
+# core, unlit), so its colour is its accretion ring's, a void plum: every hue band of the bright palette is
+# held, so a search of the plum band between the breakers' ultraviolet and the fork bomb's magenta for the
+# farthest point (OKLab) from every bright colour above found it 0.159 from chmod's frost opal, 0.160 from
+# the breakers' ultraviolet and the runaway's hot magenta and 0.162 from SIGTERM's violet, the nearest, and
+# far from ICE's (glacier 0.315, the hunter's cobalt 0.283, Black ICE's slate 0.230: another family of hue
+# altogether) and the pipe's brass (0.312). Its HUD text a light tint of it,
+# legible on black (lightness 0.78; the band is full: 0.10 from the breakers' and chmod's texts, the
+# nearest, and it lives only in the strip and its readout); its highlight, the ring's white-hot inner edge
+# and the photon ring, a near-white tint of it.
+const DEV_NULL := Color(0.670588235, 0.219607843, 0.607843137)  # #ab389b /dev/null's body and light, the accretion ring, the debris
+const DEV_NULL_HI := Color(1.0, 0.850980392, 0.964705882)  # #ffd9f6 the ring's inner edge, the photon ring, the implosion
+const DEV_NULL_TEXT := Color(0.937254902, 0.560784314, 0.890196078)  # #ef8fe3 its light skin's beam colour, its strip lines and readout
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -113,7 +126,7 @@ const SKY_HORIZON := Color(0.011764706, 0.062745098, 0.070588235)  # #031012 the
 const SKY_ABYSS := Color(0.003921569, 0.015686275, 0.019607843)  # #010405 the sky below the horizon
 ## Light skin name -> [body, beam]: the viewmodel and muzzle light take the first, tracers,
 ## the muzzle flash and the sparks of a miss the second. "teal" is the terminal cannon's.
-const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT], "brass": [PIPE, PIPE_TEXT]}
+const SKINS := {"teal": [TEAL, MINT], "violet": [VIOLET, VIOLET_HI], "ice": [ICE, ICE_HI], "fork": [FORK, FORK_HI], "yellow": [CROSSHAIR_YELLOW, YELLOW_HI], "cobalt": [COBALT, COBALT_HI], "ember": [EMBER, EMBER_HI], "rose": [ROSE, ROSE_HI], "lime": [LIME, LIME_HI], "frost": [FROST, FROST_TEXT], "brass": [PIPE, PIPE_TEXT], "plum": [DEV_NULL, DEV_NULL_TEXT]}
 # Crosshair colours the settings offer (C16b): the shipped mint and four that stand out.
 const CROSSHAIR_YELLOW := Color(1.0, 0.882352941, 0.301960784)  # #ffe14d
 const CROSSHAIR_MAGENTA := Color(1.0, 0.301960784, 1.0)  # #ff4dff

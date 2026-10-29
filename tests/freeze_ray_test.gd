@@ -184,7 +184,7 @@ func _palette_checks() -> void:
 func _bank_checks() -> void:
 	var shipped := load(ARSENAL_PATH) as Arsenal
 	var loadout := Arsenal.usable_loadout(shipped)
-	_check("acceptance: weapon 10, bank 2's first: the arsenal holds ten (nine in bank 1 as before; eleven since C30's pipe |), chmod 000 the tenth, bank 2 key 1", shipped.problems().is_empty() and loadout.size() == 11 and loadout[SLOT].id == "chmod_000" and Arsenal.bank_of(SLOT) == 1 and Arsenal.key_of(SLOT) == 1 and Arsenal.bank_of(8) == 0 and Arsenal.key_of(8) == 9 and Arsenal.SLOTS_LAST == 18, str(loadout.map(func(w): return w.id)))
+	_check("acceptance: weapon 10, bank 2's first: the arsenal holds ten (nine in bank 1 as before; eleven since C30's pipe |, twelve since C31's /dev/null), chmod 000 the tenth, bank 2 key 1", shipped.problems().is_empty() and loadout.size() == 12 and loadout[SLOT].id == "chmod_000" and Arsenal.bank_of(SLOT) == 1 and Arsenal.key_of(SLOT) == 1 and Arsenal.bank_of(8) == 0 and Arsenal.key_of(8) == 9 and Arsenal.SLOTS_LAST == 18, str(loadout.map(func(w): return w.id)))
 	var shift := Controls.default_bind("weapon_bank")
 	var clashes := Controls.conflicts({})
 	var others := PackedStringArray()
@@ -230,12 +230,12 @@ func _key_checks() -> void:
 	var wheel_wrap: int = p.inventory.current
 	await _wheel(MOUSE_BUTTON_WHEEL_UP)
 	var wheel_back: int = p.inventory.current
-	_check("acceptance: Shift+1 draws weapon 10, chmod 000 (\"%s\" on the strip, bank 2 lit), 1 the cannon, Q swaps back to chmod 000, and the wheel reaches it from ping and goes on to the next (the cannon, the wrap; pipe | since C30) and back" % strip_two, shift_one == SLOT and strip_two == "Shift+ [1 chmod] 2" and lit_two == 1 and one == 0 and q_back == SLOT and wheel_on == SLOT and wheel_wrap == SLOT + 1 and wheel_back == SLOT, "%d %d %d %d %d %d" % [shift_one, one, q_back, wheel_on, wheel_wrap, wheel_back])
+	_check("acceptance: Shift+1 draws weapon 10, chmod 000 (\"%s\" on the strip, bank 2 lit), 1 the cannon, Q swaps back to chmod 000, and the wheel reaches it from ping and goes on to the next (the cannon, the wrap; pipe | since C30; the strip's bank 2 shows /dev/null's charges, 3(2), since C31) and back" % strip_two, shift_one == SLOT and strip_two == "Shift+ [1 chmod] 2 3(2)" and lit_two == 1 and one == 0 and q_back == SLOT and wheel_on == SLOT and wheel_wrap == SLOT + 1 and wheel_back == SLOT, "%d %d %d %d %d %d" % [shift_one, one, q_back, wheel_on, wheel_wrap, wheel_back])
 	# The bank key held alone lights bank 2 (1 to 9 then draw its weapons); let go, the drawn weapon's.
 	await _key(KEY_1)
 	var held_lit: int = await _hold_shift(func(): return wh.active_bank())
 	var after_lit: int = wh.active_bank()
-	_check("the strip shows the active bank: the cannon drawn, bank 1 lit and bank 2 dimmed; Shift held, bank 2 lit; let go, bank 1 again", held_lit == 1 and after_lit == 0 and wh.bank_alpha(1) < 1.0 and wh.bank_alpha(0) == 1.0 and wh.bank2_text() == "Shift+ 1 2", "%d %d %s" % [held_lit, after_lit, wh.bank2_text()])
+	_check("the strip shows the active bank: the cannon drawn, bank 1 lit and bank 2 dimmed; Shift held, bank 2 lit; let go, bank 1 again", held_lit == 1 and after_lit == 0 and wh.bank_alpha(1) < 1.0 and wh.bank_alpha(0) == 1.0 and wh.bank2_text() == "Shift+ 1 2 3(2)", "%d %d %s" % [held_lit, after_lit, wh.bank2_text()])
 	await _drop(main)
 
 
@@ -284,7 +284,7 @@ func _strip_checks() -> void:
 		lines = PackedStringArray([hud.weapon_hud().bank2_text(), hud.weapon_hud().slots_text(), hud.weapon_hud().ammo_text(), hud.weapon_hud().state_text()])
 		await _drop_side(host)
 	root.size = before
-	_check("acceptance: at 960x540 (and 1280x720) the strip is two rows in its own column, bank 2 over bank 1 (\"%s\" over \"%s\"), the 10 px slot line kept, and with chmod 000 drawn its coolant (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice" % [lines[0], lines[1], lines[2], lines[3]], wrong.is_empty() and lines[0] == "Shift+ [1 chmod] 2" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "chmod  coolant 100%" and lines[3] == "coolant [##########]", ", ".join(wrong))
+	_check("acceptance: at 960x540 (and 1280x720) the strip is two rows in its own column, bank 2 over bank 1 (\"%s\" over \"%s\"), the 10 px slot line kept, and with chmod 000 drawn its coolant (\"%s\", \"%s\"): every line inside the screen, clear of a full kill feed, the net panel and a long guide notice" % [lines[0], lines[1], lines[2], lines[3]], wrong.is_empty() and lines[0] == "Shift+ [1 chmod] 2 3(2)" and lines[1] == "1 2 3 4(2) 5 6 7 8 9" and lines[2] == "chmod  coolant 100%" and lines[3] == "coolant [##########]", ", ".join(wrong))
 
 
 # --- The meter and the freeze. ---
@@ -593,7 +593,7 @@ func _match_checks() -> void:
 	var cs = client["session"]
 	var cid: int = cs.my_id
 	var rpcs := _code("res://scripts/net/net_session.gd").count("@rpc(")
-	_check("acceptance: the wire: protocol 15 (14 at I3; 16 since C30's pipe |), no new message (28 RPCs as I2 left them): a beam tick is the usual fire intent, and the meters ride words already sent", joined and Session.PROTOCOL == 16 and rpcs == 28, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 15 (14 at I3; 16 since C30's pipe |, 17 since C31's /dev/null), no new message (28 RPCs as I2 left them): a beam tick is the usual fire intent, and the meters ride words already sent", joined and Session.PROTOCOL == 17 and rpcs == 28, "%d RPCs" % rpcs)
 	var hp = host["player"]
 	var cp = client["player"]
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:

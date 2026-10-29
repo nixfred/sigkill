@@ -105,6 +105,12 @@ extends CharacterBody3D
 ## chain). The host's own chain is the one built here (pipe_last()), so its judgement never sees an arena
 ## this chain's own hits already changed.
 ##
+## /dev/null (C31), slot 12 (Shift+3): a click throws the device (the fork bomb's throw: from just in front
+## of the eyes along the aim, one charge spent); alone its hole runs here (scripts/weapons/dev_null_hole.gd),
+## this player's own hits on what it holds (hole_judge()), its discards the round HUD's "> /dev/null"; in a
+## match the intent goes as any throw does and the host runs it. Every other player's open hole drags this
+## player toward its core (_drag_by_holes(): level, under a run, never its own, never spawn-protected).
+##
 ## Settings (C16b, scripts/settings/game_settings.gd) the player reads: invert Y for the
 ## mouse and the right stick alike, the mouse and aim-down-sights sensitivity multipliers,
 ## hold or toggle for crouch (X) and aim (right mouse), the field of view, screen shake (the
@@ -143,6 +149,7 @@ const CronMine = preload("res://scripts/weapons/cron_mine.gd")
 const PingPulseScript = preload("res://scripts/weapons/ping_pulse.gd")
 const FreezeBeamScript = preload("res://scripts/weapons/freeze_beam.gd")
 const PipeArcScript = preload("res://scripts/weapons/pipe_arc.gd")
+const DevNullHoleScript = preload("res://scripts/weapons/dev_null_hole.gd")
 ## pipe |'s chain (C30): the level's own layer, which a chain never arcs through.
 const LEVEL_MASK := 1
 ## A daemon's middle, above its feet: where a blast aims at it.
@@ -190,6 +197,9 @@ signal grep_marked
 signal rm_blast
 ## A mine of this player's ran for the first time (C27): the round HUD's "cron" callout.
 signal cron_ran
+## Something reached the core of this player's /dev/null and was discarded (C31): the round HUD's
+## "> /dev/null".
+signal hole_discarded
 
 ## Movement and camera tuning. Leave empty to use resources/movement_tuning.tres.
 @export var tuning: Resource
@@ -334,6 +344,10 @@ var chain_frame := -1
 var chain_age := INF
 ## Seconds since a press was refused for a full buffer (C30), for the HUD's note.
 var blocked_age := INF
+## /dev/null (C31): this player's last hole (its readout's), and the drag of other players' holes on it now
+## (metres a second, level).
+var last_hole: Node3D
+var hole_drag := Vector3.ZERO
 var _pipe_arc: Node3D
 var _rail_heads := {}
 var _ads_blend := 0.0  # 0 at the hip, 1 fully aimed down the sights
@@ -721,6 +735,7 @@ func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 	velocity *= own_rate
 	move_and_slide()
 	velocity /= own_rate
+	_drag_by_holes(delta)
 
 	var grounded := is_on_floor()
 	if _was_on_floor and not grounded:
@@ -1085,6 +1100,8 @@ func _step_weapon(delta: float) -> void:
 	if _w.is_chain():
 		var pipe = inventory.buffer(inventory.current)
 		_viewmodel.set_charge(pipe.share() if pipe != null else 0.0)  # the gauge's bars: the buffer's fill (C30)
+	if _w.is_hole():
+		_viewmodel.set_charge(float(inventory.mags[inventory.current]) / maxf(float(_w.magazine_size), 1.0))  # /dev/null's cells: the charges left (C31)
 	_place_viewmodel(delta)
 
 
@@ -1583,6 +1600,57 @@ func _pipe_sight(a: Vector3, b: Vector3) -> bool:
 	return get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, LEVEL_MASK)).is_empty()
 
 
+## /dev/null (C31): a hole of this player's, alone or told by the match's session: the readout's, and its
+## discards the round HUD's callout.
+func take_hole(hole: Node3D) -> void:
+	last_hole = hole
+	if hole != null and hole.has_signal("discarded") and not hole.discarded.is_connected(_on_hole_discarded):
+		hole.discarded.connect(_on_hole_discarded)
+
+
+func _on_hole_discarded(_what: Node, _at: Vector3) -> void:
+	hole_discarded.emit()
+
+
+## How this player's own hole lands its damage on a daemon or a piece of ICE it holds (C31): `def`'s hit at
+## this player's strength (root's harder, C22), the ult meter filled solo as the other weapons fill it.
+func hole_judge(def: WeaponDefScript) -> Callable:
+	return func(node: Node, damage: float, point: Vector3, way: Vector3) -> bool:
+		if not is_instance_valid(node) or not node.has_method("hit"):
+			return false
+		var before: float = node.call("health") if node.has_method("health") else 0.0
+		var landed: bool = node.call("hit", damage * _damage_scale(), point, way, def.id) == true
+		if landed and not match_meter and node.has_method("health"):
+			var max_health = node.get("max_health")
+			if max_health is float and max_health > 0.0:
+				var killed: bool = node.has_method("is_alive") and not node.call("is_alive")
+				inventory.add_meter(meter_gain(clampf(minf(damage, before), 0.0, before) / float(max_health), killed))
+		if landed:
+			hits_landed += 1
+		return landed
+
+
+## /dev/null (C31): every other player's open hole drags this player toward its core: level, each hole's
+## at most its player_pull_cap (under a run, so running out gets out), never through the level. Never its
+## own hole, never while dead or spawn-protected; alone no one else throws, so nothing drags it.
+func _drag_by_holes(delta: float) -> void:
+	hole_drag = Vector3.ZERO
+	var session = grep.session if grep != null else null
+	if not alive or session == null or not is_instance_valid(session) or not session.is_online():
+		return
+	if session.protected_now(session.my_id):
+		return
+	var root = session.get("_arena")
+	if root == null or not is_instance_valid(root):
+		return
+	hole_drag = DevNullHoleScript.drag_on(root, global_position, session.my_id, get_world_3d().direct_space_state)
+	if hole_drag.is_zero_approx():
+		return
+	var hit := move_and_collide(hole_drag * delta)
+	if hit != null:
+		move_and_collide(hit.get_remainder().slide(hit.get_normal()))
+
+
 ## This player's chain of this physics frame, for the host to judge its own shot by (C30): the same links
 ## its look and its own hits came from, never a second chain built after those hits changed the arena.
 ## Empty once the frame is over.
@@ -1820,7 +1888,11 @@ func quick_throw() -> bool:
 ## bomb spent (in a match the host keeps the cap).
 func _bombs_full(slot: int) -> bool:
 	var tuning: Resource = inventory.defs[slot].projectile
-	return not match_meter and tuning != null and ForkBomb.live_of(_fx_root(), "solo") >= tuning.live_cap
+	if tuning == null or match_meter:
+		return false
+	if inventory.defs[slot].is_hole():
+		return DevNullHoleScript.live_of(_fx_root(), "solo") >= tuning.live_cap  # /dev/null's own holes (C31)
+	return ForkBomb.live_of(_fx_root(), "solo") >= tuning.live_cap
 
 
 ## A throw of the thrown weapon in `slot`, its bomb already spent: from just in front of the
@@ -1844,6 +1916,12 @@ func _throw_from(slot: int) -> void:
 	if match_meter:
 		return
 	var never: Array[RID] = [get_rid()]
+	if def.is_hole():
+		# /dev/null (C31): alone its hole runs here, this player's own hits on what it holds.
+		var root: bool = sudo != null and sudo.state != null and sudo.is_root()
+		var hole := DevNullHoleScript.spawn(_fx_root(), def.hole_tuning(), origin, DevNullHoleScript.throw_velocity(def.hole_tuning(), forward), _bomb_rng.randi(), "solo", true, 0, root, def.light_skin, never, hole_judge(def))
+		take_hole(hole)
+		return
 	var chain := ForkBomb.spawn(_fx_root(), def.projectile, origin, ForkBomb.throw_velocity(def.projectile, forward), _bomb_rng.randi(), "solo", true, def.light_skin, never, _judge_blast.bind(def))
 	chain.blasted.connect(_on_bomb_blasted)
 

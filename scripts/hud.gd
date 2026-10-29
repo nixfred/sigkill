@@ -26,6 +26,7 @@ const BreakerHud = preload("res://scripts/hud/breaker_hud.gd")
 const BlackIceHud = preload("res://scripts/hud/black_ice_hud.gd")
 const FreezeHud = preload("res://scripts/hud/freeze_hud.gd")
 const PipeHud = preload("res://scripts/hud/pipe_hud.gd")
+const DevNullHud = preload("res://scripts/hud/dev_null_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -50,6 +51,7 @@ var _breakers: BreakerHud
 var _black: BlackIceHud
 var _freeze: FreezeHud
 var _pipe: PipeHud
+var _dev_null: DevNullHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -157,6 +159,10 @@ func _ready() -> void:
 	_pipe = PipeHud.new()
 	_pipe.name = "PipeHud"
 	root.add_child(_pipe)
+	# /dev/null (C31): this player's hole as the command it is, over the crosshair; another's dragging it.
+	_dev_null = DevNullHud.new()
+	_dev_null.name = "DevNullHud"
+	root.add_child(_dev_null)
 
 	# Last, so it takes unhandled input first while it is open.
 	_menu = PauseMenu.new()
@@ -212,6 +218,7 @@ func set_player(player: Node) -> void:
 	_ice.player = player
 	_freeze.player = player
 	_pipe.player = player
+	_dev_null.player = player
 	if player.has_signal("menu_requested"):
 		player.menu_requested.connect(open_menu)
 
@@ -269,6 +276,10 @@ func freeze_hud() -> FreezeHud:
 
 func pipe_hud() -> PipeHud:
 	return _pipe
+
+
+func dev_null_hud() -> DevNullHud:
+	return _dev_null
 
 
 func combat_hud() -> CombatHud:

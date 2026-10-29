@@ -51,6 +51,8 @@ var hits := 0
 ## Its freeze meter and freeze (C29): the hunter's and the nodes'; null for a wall (and Black ICE), which
 ## the beam does not freeze.
 var frost: Frost = null
+## /dev/null (C31): the last physics frame a hole holds it to.
+var _held_until := -1
 var _frost_look: FrostLook
 
 var _health := 100.0
@@ -94,6 +96,17 @@ func is_alive() -> bool:
 
 func is_hittable() -> bool:
 	return not broken
+
+
+## /dev/null (C31): a hole holds it for `seconds` more (renewed each step it is held): while held its brain
+## does nothing of its own and the hole moves it.
+func hold_in_hole(seconds: float) -> void:
+	_held_until = maxi(_held_until, Engine.get_physics_frames() + ceili(seconds * Engine.physics_ticks_per_second))
+
+
+## True while a hole holds it.
+func held_by_hole() -> bool:
+	return Engine.get_physics_frames() <= _held_until and is_alive()
 
 
 ## Called by a shot through its ray, a pellet, a dart or a blast, as a daemon's hit(). True when it

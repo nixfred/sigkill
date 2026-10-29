@@ -113,6 +113,8 @@ const VENT_LINE := "venting [%s%s]"
 const BUFFER_AMMO := "%s  buffer %dK/%dK"
 const BUFFER_BLOCKED_AMMO := "%s  BLOCKED"
 const BUFFER_LINE := "buffer [%s%s]"
+## /dev/null's next charge coming back (C31).
+const RECHARGE_LINE := "recharge [%s%s]"
 const BLOCKED_LINE := "blocked [%s%s]"
 ## A bank's row while the other is active.
 const BANK_DIM := 0.5
@@ -309,6 +311,13 @@ func _refresh() -> void:
 		state_color = def.skin_beam()
 	elif inv.fiction_left > 0.0:
 		_state.text = def.fiction
+	elif def.is_hole() and mag < def.magazine_size:
+		# /dev/null (C31): its next charge coming back; amber with none left.
+		var lit := clampi(roundi(inv.recharge_share(inv.current) * BAR_CELLS), 0, BAR_CELLS)
+		_state.text = RECHARGE_LINE % [BAR_FULL.repeat(lit), BAR_EMPTY.repeat(BAR_CELLS - lit)]
+		state_color = Palette.HOSTILE_AMBER if mag <= 0 else Palette.DEV_NULL_TEXT
+		if mag <= 0:
+			color = Palette.HOSTILE_AMBER
 	elif def.has_magazine() and mag <= 0:
 		_state.text = DRY_LINE if reserve == 0 else EMPTY_LINE
 		color = Palette.HOSTILE_AMBER
@@ -360,7 +369,8 @@ func _refresh_banks(inv) -> void:
 	var parts := PackedStringArray()
 	for i in range(Arsenal.BANK_SLOTS, inv.slot_count()):
 		var key := Arsenal.key_of(i)
-		parts.append(SLOT_DRAWN % [key, inv.defs[i].short_name] if i == inv.current else SLOT % key)
+		var plain: String = (SLOT_THROWN % [key, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % key
+		parts.append(SLOT_DRAWN % [key, inv.defs[i].short_name] if i == inv.current else plain)
 	var lead := Controls.bind_label(GameSettings.current().bind("weapon_bank"))
 	_bank2.text = (BANK2_LEAD % lead) + SLOT_GAP.join(parts)
 	var held: bool = player.has_method("bank_held") and player.bank_held()

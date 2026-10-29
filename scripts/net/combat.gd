@@ -72,6 +72,9 @@ extends RefCounted
 ## dead or spawn-protected one). A frozen player's shots and throws are dropped ("frozen") until it
 ## thaws. A death and a new life thaw it and refill its tank.
 ##
+## /dev/null (C31): a throw like the fork bomb's, its live cap the hole's (one open at a time); the host counts
+## its charges coming back as the player's inventory does (step_charges()); the session runs and judges the hole.
+##
 ## pipe | (C30): the host owns every player's pipe buffer too (scripts/weapons/pipe_buffer.gd, a little
 ## more lenient than the player's own by the fire-rate tolerance). A chain is a shot of the chain beam:
 ## believed only from a buffer that is not blocked (else dropped and counted "buffer"), it writes into it
@@ -426,6 +429,13 @@ func tick(delta: float) -> Array:
 			s["coolant"].tick(delta)
 		if s["buffer"] != null:
 			s["buffer"].tick(delta)  # pipe |'s buffer drains (C30)
+		for weapon in weapons:
+			var hole = weapons[weapon].hole_tuning()
+			if hole != null:
+				var a: Dictionary = s["ammo"][weapon]
+				var now: Array = hole.step_charges(a["mag"], weapons[weapon].magazine_size, a["recharge"], delta, tuning.fire_rate_tolerance)  # /dev/null's charges (C31)
+				a["mag"] = now[0]
+				a["recharge"] = now[1]
 		if s["protect_left"] > 0.0:
 			s["protect_left"] = maxf(s["protect_left"] - delta, 0.0)
 		if s["dead"] and s["respawn_left"] > 0.0:
@@ -578,7 +588,7 @@ func _alive_in(id: int, life: int, known_life: int) -> String:
 func _full_ammo() -> Dictionary:
 	var out := {}
 	for id in weapons:
-		out[id] = {"mag": weapons[id].magazine_size, "reserve": weapons[id].reserve_ammo, "last_fire": -INF}
+		out[id] = {"mag": weapons[id].magazine_size, "reserve": weapons[id].reserve_ammo, "last_fire": -INF, "recharge": 0.0}
 	return out
 
 

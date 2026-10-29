@@ -30,6 +30,9 @@ extends RefCounted
 ## own after a rest, drawn or not, and a tank run dry vents ("coolant") until it has refilled to its share.
 ## Root's free ammo spends none. A new life refills it.
 ##
+## /dev/null's charges (C31): its magazine; a spent one comes back recharge_s later (its tuning's step_charges(),
+## the host's count the same), drawn or not; root throws for free; a new life fills them.
+##
 ## pipe |'s buffer (C30): the chain beam has no magazine but the pipe's buffer (scripts/weapons/pipe_buffer.gd):
 ## each chain (each try_fire()) writes into it, it drains on its own after a rest, drawn or not, and a full
 ## one blocks ("buffer") until it has drained to its share. Root's free ammo writes nothing. A new life
@@ -85,6 +88,8 @@ var jams: Array[float] = []
 var coolants: Array = []
 ## Each slot's pipe buffer (C30): a PipeBuffer for the chain beam, null for every other.
 var buffers: Array = []
+## /dev/null's recharge (C31): seconds to its next charge coming back, each slot (0: none coming).
+var recharges: Array[float] = []
 
 
 func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float = 1.6) -> void:
@@ -98,6 +103,7 @@ func _init(weapon_defs: Array, swap_seconds: float = 0.3, fiction_seconds: float
 		jams.append(0.0)
 		coolants.append(CoolantScript.new(def.freeze_tuning()) if def.is_freeze() else null)
 		buffers.append(PipeBufferScript.new(def.pipe_tuning()) if def.is_chain() else null)
+		recharges.append(0.0)
 
 
 func slot_count() -> int:
@@ -322,6 +328,12 @@ func tick(delta: float) -> void:
 	for pipe in buffers:
 		if pipe != null:
 			pipe.tick(delta)
+	for i in defs.size():
+		var hole = defs[i].hole_tuning()
+		if hole != null:
+			var now: Array = hole.step_charges(mags[i], defs[i].magazine_size, recharges[i], delta)  # /dev/null's charges (C31)
+			mags[i] = now[0]
+			recharges[i] = now[1]
 	if reload_left > 0.0:
 		reload_left -= delta
 		if reload_left <= 0.0:
@@ -341,6 +353,13 @@ func coolant(slot: int) -> CoolantScript:
 ## Slot `slot`'s pipe buffer (C30), or null when its weapon has none.
 func buffer(slot: int) -> PipeBufferScript:
 	return buffers[slot] if slot >= 0 and slot < buffers.size() else null
+
+
+## How far slot `slot`'s next /dev/null charge has come back (C31), 0 just spent to 1; 1 when none is coming.
+func recharge_share(slot: int) -> float:
+	if slot < 0 or slot >= defs.size() or defs[slot].hole_tuning() == null or recharges[slot] <= 0.0:
+		return 1.0
+	return clampf(1.0 - recharges[slot] / defs[slot].hole_tuning().recharge_s, 0.0, 1.0)
 
 
 ## The slot of the loadout's freeze weapon (chmod 000, C29), or -1 when it has none.
@@ -376,6 +395,7 @@ func refill() -> void:
 			coolants[i].refill()
 		if buffers[i] != null:
 			buffers[i].empty()
+		recharges[i] = 0.0
 	swap_left = 0.0
 	reload_left = 0.0
 	block_left = 0.0

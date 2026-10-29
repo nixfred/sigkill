@@ -72,6 +72,9 @@ const LOCK_EASE := 10.0
 const CLOCK_WRAP := 3600.0
 ## Where the ground is, in art space.
 const GROUND_Y := -0.9
+## /dev/null (C31): the most a hole draws a body out (1.9 times its length along the pull) and leans it in, metres.
+const STRETCH_MOST := 0.9
+const STRETCH_LEAN_M := 0.25
 ## The shader global every daemon shader reads its time from (project.godot's shader globals).
 const SHADER_CLOCK := &"daemon_clock"
 ## A hit's recoil: how far the body is knocked away from the shot, in metres, and how long it
@@ -160,6 +163,10 @@ var act: int = Act.IDLE
 var act_u := 0.0
 ## chmod 000 (C29): true while its daemon is frozen: it holds its pose, nothing moves.
 var frozen := false
+## /dev/null (C31): how far its body is drawn out toward a hole's core now, 0 (its own shape) to 1, and its
+## transform before the hole took it, put back when it lets go.
+var stretched := 0.0
+var _unstretched := Transform3D.IDENTITY
 var _drive := 0.0
 ## The daemon's motion since the last pose, as a map from the last pose's art space into this
 ## one's: what stays put in the world is carried back by it. Identity while nothing drives it.
@@ -272,6 +279,29 @@ func setup(target: Node3D, seed: int = -1) -> void:
 
 
 # --- What the daemon tells it. ---
+
+## /dev/null's pull (C31): the body drawn out toward `way` (world space) by `amount`, 0 (its own shape) to 1:
+## longer along the way, thinner across it (its volume kept), and leaning toward the core a little. Every
+## screen draws it from its own copy of the hole; 0 puts its own shape back.
+func stretch_toward(way: Vector3, amount: float) -> void:
+	var now := clampf(amount, 0.0, 1.0) if is_finite(amount) else 0.0
+	if stretched <= 0.0 and now > 0.0:
+		_unstretched = transform
+	if now <= 0.0 or way.length() < 0.0001 or not is_inside_tree():
+		if stretched > 0.0:
+			transform = _unstretched
+		stretched = 0.0
+		return
+	stretched = now
+	var parent_basis: Basis = (get_parent() as Node3D).global_transform.basis if get_parent() is Node3D else Basis.IDENTITY
+	var w := (parent_basis.inverse() * way).normalized()
+	var k := 1.0 + STRETCH_MOST * now
+	var across := 1.0 / sqrt(k)
+	# across * I + (k - across) * w w^T: k along w, across round it, the volume kept.
+	var along := k - across
+	var pull := Basis(Vector3(across, 0.0, 0.0) + w * w.x * along, Vector3(0.0, across, 0.0) + w * w.y * along, Vector3(0.0, 0.0, across) + w * w.z * along)
+	transform = Transform3D(pull * _unstretched.basis, _unstretched.origin + w * STRETCH_LEAN_M * now)
+
 
 ## A hit landed: the parts, the core and the glyphs flare and fade over FLASH_S.
 func flash() -> void:
