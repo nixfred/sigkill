@@ -348,6 +348,11 @@ const REFUSE_GRACE_MS := 500
 ## ENet connection slots beyond max_players, so a joiner to a full host can be told so.
 const ENET_SLACK := 2
 const ENET_TIMEOUT_LIMIT := 32
+## A link to this same machine never throttles (C31's fix-it): ENet backs off a peer's unreliable packets
+## when its round trip rises, and on a loopback link (a host and its joiners on one machine, as every
+## check runs them, in one process) that round trip is only the frame loop's own jitter on a busy machine,
+## so the packets it dropped there relieved no congestion. Every other link keeps ENet's own back-off.
+const ENET_THROTTLE_INTERVAL_MS := 5000
 const WORLD_LAST := 10000.0
 const SPEED_LAST := 200.0
 ## Sequence numbers count up from 1 per session and never reach this.
@@ -1545,6 +1550,7 @@ func _on_peer_connected(id: int) -> void:
 	players[id] = _pending[id]
 	_pending.erase(id)
 	_set_peer_timeout(id)
+	_steady_loopback(id)
 	combat.add_player(id)
 	_actions_from[id] = 0
 	_mirror_from_combat()
@@ -1576,6 +1582,7 @@ func _on_connected() -> void:
 	if state != State.CONNECTING:
 		return
 	_set_peer_timeout(1)
+	_steady_loopback(1)
 	state = State.JOINED
 	error = ""
 	changed.emit()
@@ -1597,6 +1604,21 @@ func _set_peer_timeout(id: int) -> void:
 	if _enet == null or not multiplayer.get_peers().has(id):
 		return
 	_enet.get_peer(id).set_timeout(ENET_TIMEOUT_LIMIT, _t.peer_timeout_ms / 2, _t.peer_timeout_ms)
+
+
+## Peer `id`'s link, when it is to this same machine: never throttled (C31: ENET_THROTTLE_INTERVAL_MS's
+## note). ENet tells the other end too, so both ways run steady.
+func _steady_loopback(id: int) -> void:
+	if _enet == null or not multiplayer.get_peers().has(id):
+		return
+	var peer := _enet.get_peer(id)
+	if peer != null and is_loopback(peer.get_remote_address()):
+		peer.throttle_configure(ENET_THROTTLE_INTERVAL_MS, ENetPacketPeer.PACKET_THROTTLE_SCALE, 0)
+
+
+## True for an address of this same machine: 127.x.x.x, ::1, or 127.x.x.x mapped into IPv6.
+static func is_loopback(address: String) -> bool:
+	return address.begins_with("127.") or address == "::1" or address.begins_with("::ffff:127.")
 
 
 func _free_slot() -> int:

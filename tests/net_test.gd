@@ -314,6 +314,14 @@ func _session_checks() -> void:
 	var client_enet = cs.get("_enet")
 	_check("the joiner's socket is bound to the tuning's bind address, 127.0.0.1, on a port the system handed out for it", client_enet != null and cs.get("_local_port") > 0 and client_enet.host.get_local_port() == cs.get("_local_port"), "local port %d, bound %d" % [cs.get("_local_port"), client_enet.host.get_local_port() if client_enet != null else -1])
 	_check("the joiner connects, passes the handshake and both sides agree on the roster: Daemon-1 (host) and Daemon-2", started and joined and client_id != 1 and hs.players.has(client_id) and hs.players[client_id] == {"slot": 2, "name": "Daemon-2"} and cs.players == hs.players and cs.my_name() == "Daemon-2" and hs.roster_text() == "Daemon-1 (you), Daemon-2" and cs.roster_text() == "Daemon-1, Daemon-2 (you)")
+	# C31's fix-it: a link to this same machine never throttles (ENet's back-off measured the shared frame loop
+	# on a busy machine and dropped position and meter words: the long delay below and chmod's joiner check
+	# missed under load); any other link keeps ENet's back-off.
+	var to_host: ENetPacketPeer = client_enet.get_peer(1) if client_enet != null else null
+	var to_joiner: ENetPacketPeer = hs.get("_enet").get_peer(client_id) if hs.get("_enet") != null else null
+	var steady := func(peer: ENetPacketPeer) -> bool: return peer != null and peer.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_DECELERATION) == 0 and peer.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_ACCELERATION) == ENetPacketPeer.PACKET_THROTTLE_SCALE
+	var far_off := "%d.%d.%d.%d" % [10, 0, 0, 2]
+	_check("a link to this same machine never throttles, both ways (C31): no back-off on the joiner's link to the host or the host's to the joiner; only loopback addresses count", steady.call(to_host) and steady.call(to_joiner) and Session.is_loopback("127.0.0.1") and Session.is_loopback("::1") and Session.is_loopback("::ffff:127.0.0.1") and not Session.is_loopback(far_off) and not Session.is_loopback("::ffff:" + far_off) and not Session.is_loopback(""), "joiner's %s, host's %s" % [[to_host.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_ACCELERATION), to_host.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_DECELERATION)] if to_host != null else [], [to_joiner.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_ACCELERATION), to_joiner.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE_DECELERATION)] if to_joiner != null else []])
 	_check("each side shows the other's avatar, named, under the arena's Players node, hidden until it moves", _avatar(host, client_id) is RemotePlayer and _avatar(client, 1) is RemotePlayer and _avatar(client, 1).player_name == "Daemon-1" and _avatar(host, client_id).player_name == "Daemon-2" and _avatar(client, 1).get_parent() == client["main"].get_node("Players"))
 	# The host's player runs forward; the joiner's avatar of it follows, smoothly, behind.
 	var hp = host["player"]

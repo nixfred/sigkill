@@ -661,7 +661,7 @@ func _match_checks() -> void:
 	var asks_refused: int = hs.breaker_refused
 	cs._breaker.rpc_id(1, cs.lives.get(cid, 0), 0, Vector3.FORWARD)
 	var no_breaker := await _wait(func(): return hs.breaker_refused > asks_refused, 30)
-	_check("acceptance: the host's beam freezes the joiner, its own meter told back to it by the host: the joiner's screen frozen (\"%s\"), and its breaker ask refused while it is" % " / ".join(hud_lines), joiner_frozen >= 0 and hud_lines.size() == 2 and hud_lines[0] == "chmod 000: Permission denied" and client["hud"].freeze_hud().wash() > 0.5 and no_breaker >= 0)
+	_check("acceptance: the host's beam freezes the joiner, its own meter told back to it by the host: the joiner's screen frozen (\"%s\"), and its breaker ask refused while it is" % " / ".join(hud_lines), joiner_frozen >= 0 and hud_lines.size() == 2 and hud_lines[0] == "chmod 000: Permission denied" and client["hud"].freeze_hud().wash() > 0.5 and no_breaker >= 0, "frozen at %d, joiner frozen now %s, wash %.2f, breaker refused %d" % [joiner_frozen, cp.frozen_now(), client["hud"].freeze_hud().wash(), no_breaker])
 	await _frames(int(_ft.player_freeze_s * 60.0) + int(_ft.player_guard_s * 60.0) + 30)
 	# Spawn protection holds.
 	hs.combat.states[cid]["protect_left"] = 10.0
