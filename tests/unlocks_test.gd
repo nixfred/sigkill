@@ -510,10 +510,10 @@ func _match_checks() -> void:
 	var cp = client["player"]
 	var cid: int = cs.my_id
 	var judged: WeaponDefScript = hs.combat.def_of(cid, "terminal_cannon")
-	_check("acceptance: a host and a joiner over ENet on 127.0.0.1, protocol 19: the joiner's look rides its hello, and the host accepts its mod and judges with it (the joiner's cannon 21 a hit every 0.13 s in the host's count; the host's own 25 as shipped)", joined and Session.PROTOCOL == 19 and absf(judged.damage - 21.0) < EPS and absf(judged.fire_cooldown - 0.13) < EPS and hs.combat.def_of(1, "terminal_cannon").damage == 25.0 and (hs.look_of(cid)[0] & Loadout.MOD_BIT) != 0)
+	_check("acceptance: a host and a joiner over ENet on 127.0.0.1, protocol 19: the joiner's look rides its hello, and the host accepts its mod and judges with it (the joiner's cannon 21 a hit every 0.13 s in the host's count; the host's own 25 as shipped)", joined and Session.PROTOCOL == 19 and absf(_n(judged, "damage") - 21.0) < EPS and absf(_n(judged, "fire_cooldown") - 0.13) < EPS and _n(hs.combat.def_of(1, "terminal_cannon"), "damage") == 25.0 and (hs.look_of(cid)[0] & Loadout.MOD_BIT) != 0)
 	_check("the joiner wears what the host accepted (its cannon overclocked, in tty1); every roster carries each look: the joiner's screen knows its own and the host's stock one", cp.inventory.defs[0].light_skin == "tty1" and absf(cp.inventory.defs[0].damage - 21.0) < EPS and cs.look_of(cid) == hs.look_of(cid) and cs.look_of(1) == Loadout.stock(_defs))
 	var avatar = hs.avatars.get(cid)
-	_check("acceptance: a skin seen by the other player: on the host's screen the joiner's shots are drawn in its tty1 (its cannon as the host draws it) and its avatar's freeze beam is painted chattr +i's paper white", hs.def_of(cid, "terminal_cannon").skin_beam() == Palette.MATRIX_HEAD and avatar != null and avatar.freeze_beam().body == Palette.SKIN_PAPER and cs.def_of(1, "terminal_cannon").light_skin == "teal")
+	_check("acceptance: a skin seen by the other player: on the host's screen the joiner's shots are drawn in its tty1 (its cannon as the host draws it) and its avatar's freeze beam is painted chattr +i's paper white", Palette.skin_beam(_s(hs.def_of(cid, "terminal_cannon"), "light_skin")) == Palette.MATRIX_HEAD and _s(hs.def_of(cid, "terminal_cannon"), "light_skin") == "tty1" and avatar != null and avatar.freeze_beam().body == Palette.SKIN_PAPER and _s(cs.def_of(1, "terminal_cannon"), "light_skin") == "teal")
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:
 		_park(_dummy(host["main"], name))
 		_park(_dummy(client["main"], name))
@@ -555,7 +555,7 @@ func _match_checks() -> void:
 	var rejoined := await _join_hosted(host, client)
 	cid = cs.my_id
 	var plain: WeaponDefScript = hs.combat.def_of(cid, "terminal_cannon")
-	_check("acceptance: the host's mods rule off: the joiner's mod is ignored (the host judges its cannon as shipped, 25 a hit every 0.16 s; the joiner wears it so, told the rule) while its skin is still tty1 on both screens", rejoined and plain.damage == 25.0 and absf(plain.fire_cooldown - 0.16) < EPS and (hs.look_of(cid)[0] & Loadout.MOD_BIT) == 0 and hs.def_of(cid, "terminal_cannon").light_skin == "tty1" and cp.inventory.defs[0].damage == 25.0 and cp.inventory.defs[0].light_skin == "tty1" and cs.match_mods == false and hs.match_mods == false)
+	_check("acceptance: the host's mods rule off: the joiner's mod is ignored (the host judges its cannon as shipped, 25 a hit every 0.16 s; the joiner wears it so, told the rule) while its skin is still tty1 on both screens", rejoined and _n(plain, "damage") == 25.0 and absf(_n(plain, "fire_cooldown") - 0.16) < EPS and (hs.look_of(cid)[0] & Loadout.MOD_BIT) == 0 and _s(hs.def_of(cid, "terminal_cannon"), "light_skin") == "tty1" and cp.inventory.defs[0].damage == 25.0 and cp.inventory.defs[0].light_skin == "tty1" and cs.match_mods == false and hs.match_mods == false)
 	hs.combat.states[1]["protect_left"] = 0.0
 	hs.combat.states[cid]["protect_left"] = 0.0
 	hp.global_position = host["main"].to_global(Vector3(0.0, 0.95, 8.0))
@@ -573,6 +573,15 @@ func _match_checks() -> void:
 
 
 # --- Helpers. ---
+
+## Number `prop` of weapon `def`, NAN with no weapon (a check then fails by its name, never by an error).
+static func _n(def: Resource, prop: String) -> float:
+	return float(def.get(prop)) if def != null else NAN
+
+
+## Text `prop` of weapon `def`, "" with no weapon.
+static func _s(def: Resource, prop: String) -> String:
+	return String(def.get(prop)) if def != null else ""
 
 ## Every number a weapon holds, its tunings' too ("<slot>:<name>"), for comparing.
 func _numbers(def: Resource) -> Dictionary:
