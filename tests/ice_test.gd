@@ -187,12 +187,13 @@ func _piece_art(world: Node3D, type: Array, seed: int, at: Vector3) -> DaemonArt
 	return art
 
 
-## What a build is: its part count, its size and every part's place, rounded.
+## What a build is: its part count, its size and every part's own size (its shape's three axes,
+## rounded): what its seed's dice choose, never where its clock has moved it or its tone.
 func _signature(art: DaemonArt) -> String:
 	var bits := PackedStringArray([str(art.part_count()), "%.3f" % art.size_scale])
 	for id in art.part_count():
-		var o := art.part_transform(id).origin
-		bits.append("%.2f,%.2f,%.2f,%.2f" % [o.x, o.y, o.z, art.part_custom(id).g])
+		var basis := art.part_transform(id).basis
+		bits.append("%.2f,%.2f,%.2f" % [basis.x.length(), basis.y.length(), basis.z.length()])
 	return ";".join(bits)
 
 
