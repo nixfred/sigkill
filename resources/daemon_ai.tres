@@ -49,6 +49,7 @@ swarm_scatter_s = 1.0
 swarm_scatter_speed = 7.0
 ping_stagger_s = 1.0
 ping_knock_m = 0.5
+elite_health = 30.0
 easy_damage = 0.6
 easy_aggression = 0.75
 normal_damage = 1.0

@@ -5,8 +5,12 @@
 // and a swarm, hostile amber for a zombie), breathing slowly, guttering for a zombie, flaring
 // white-hot on a hit. Faceless: gems of light, no feature.
 //
+// Since A5 it is also every daemon's seams, joints and weak points (rogue.d crimson, the zombie
+// amber, the runaway hot magenta): the light in its armour's gaps.
+//
 // Every part is one instance of a daemon's MultiMesh; its custom data: x its salt, y its
-// brightness, z its presence (below 1 it breaks up cell by cell, as the shell does). It moves with
+// brightness, z its presence (below 1 it breaks up cell by cell, as the shell does), w how damaged
+// a seam is (A5: 0 steady, more and it drops out more often, a battle-damaged flicker). It moves with
 // the same glitch as the shell (shaders/daemon_glitch.gdshaderinc), so a core never drifts off its
 // shell. One material for every daemon: the colour, the gutter and the flash are instance
 // uniforms pinned to the shared slots, the time the shared shader global. Defaults only mirror
@@ -22,6 +26,7 @@ uniform float breath_hz : hint_range(0.0, 8.0) = 0.6;
 uniform float flash_energy : hint_range(0.0, 32.0) = 10.0;
 uniform vec4 flash_color : source_color = vec4(1.0, 0.95, 0.85, 1.0);
 uniform float cells_per_m : hint_range(1.0, 100.0) = 28.0;
+uniform float flicker_hz : hint_range(0.0, 60.0) = 9.0;
 
 instance uniform vec4 core_color : source_color, instance_index(4) = vec4(1.0, 0.2, 0.333, 1.0);
 instance uniform float gutter : instance_index(5) = 0.0;
@@ -46,6 +51,10 @@ void fragment() {
 	int tick = int(mod(floor(t * 12.0), 1024.0));
 	float roll = hash2(tick, int(seed * 997.0) + int(part.x * 251.0));
 	float dim = mix(1.0, 0.15 + 0.85 * step(0.35, roll), gutter); // a zombie's ember drops out now and then
+	// A damaged seam (A5, its custom data's w): out now and then, more often the more damaged.
+	int flick_tick = int(mod(floor(t * flicker_hz), 1024.0));
+	float flick = step(part.w * 0.75, hash2(flick_tick + int(part.x * 613.0), int(seed * 997.0) + 29));
+	dim *= mix(1.0, 0.08 + 0.92 * flick, step(0.001, part.w));
 	vec3 col = core_color.rgb * energy * wave * dim * part.y;
 	ALBEDO = mix(col, flash_color.rgb * flash_energy, hit);
 }

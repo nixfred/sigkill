@@ -1,19 +1,30 @@
 class_name DaemonArt
 extends Node3D
-## What you see of a daemon (A2, redone in A2b): a creature, never a static mesh. Faceless and
-## geometric (PRD 5.6's art bar, no cartoon monsters): obsidian crystal parts edged in light round
-## glowing parts in the type's own colour, red terminal glyphs floating round it, and a heavy
-## glitch. Every part moves every frame: a type poses its parts on the daemon's own clock (the
-## rogue daemon a crystal spider-mantis stepping on its legs, the zombie a limping wireframe with
-## its ghosts, the runaway a swarm of insects flocking), each reacts to a hit with a recoil and a
-## spray of shards, and dies in a burst of its own parts (scripts/daemons/daemon_shatter.gd).
+## What you see of a daemon (A2, redone in A2b, armoured in A5): a creature, never a static mesh.
+## Faceless and geometric (PRD 5.6's art bar, no cartoon monsters). Since A5 a daemon is a solid
+## body (Tron Legacy, not glowing wire): closed dark armour with mass (plates, a segmented carapace,
+## limbs with thickness) whose light is only in its seams, its joints and its weak points, in its
+## type's own colour (rogue.d crimson, the zombie amber, the runaway hot magenta), a few terminal
+## glyphs of that colour floating round it, and a glitch that stays quiet until it is hit. Every
+## part moves every frame: a type poses its parts on the daemon's own clock (the rogue daemon a
+## mantis-scorpion stepping on its legs, the zombie a hulk dragging a leg, the runaway a swarm of
+## drones round its core), each reacts to a hit with a recoil and a spray of shards, and dies in a
+## burst of its own parts (scripts/daemons/daemon_shatter.gd).
 ##
-## Built once, never rebuilt while it is drawn. A part is one instance of one of a few unit shapes
-## (a crystal shard, a cut gem, a voxel, a light trail's sliver), made once for every daemon from
-## the shared shape kit (scripts/art/shape_kit.gd), in one of three looks (the obsidian shell, the
-## glowing core, the added light of a trail). A daemon holds one MultiMesh per shape and look it
-## uses, so a whole creature is a handful of draw calls; posing it moves instances by their
-## transforms and nothing else: no mesh, node, material or array is made after the build.
+## No two alike (A5): a daemon is built from a seed (build_seed), and every choice of its build is
+## a roll of it: its size (inside its type's hitbox-safe range), its plates, its seams, its stance,
+## its gait's timing, its battle damage (chipped and scorched plates, flickering seams) and, one
+## spawn in twelve, whether it is its type's elite (bigger, extra parts). The same seed builds the
+## same daemon on every machine, so a match's host sends its seeds and every screen draws the same
+## creature; the dummy picks the seeds (scripts/target_dummy.gd).
+##
+## Built once per spawn, never rebuilt while it is drawn. A part is one instance of one of a few unit
+## shapes (a crystal shard, a cut gem, a voxel, a light trail's sliver, an armour plate, a limb, a
+## blade, a hex puck, a seam ring), made once for every daemon from the shared shape kit
+## (scripts/art/shape_kit.gd), in one of four looks (the edged obsidian, the glowing core, the added
+## light of a trail, the armour). A daemon holds one MultiMesh per shape and look it uses, so a
+## whole creature is a handful of draw calls; posing it moves instances by their transforms and
+## nothing else: no mesh, node, material or array is made after the build.
 ##
 ## Visual only. The daemon it dresses keeps its own hit volume, health and states; this sits under
 ## its Body, so the Body's hiding at a derezz and its growing back at a respawn carry it along. Every
@@ -26,7 +37,7 @@ extends Node3D
 ## Each type is a script extending this one that builds itself in _build() and poses itself in
 ## _pose(), named by its target's `art` (scripts/daemons/<type>.gd), so a new enemy type slots in
 ## the same way. Art space: metres, the origin at the body's centre, the ground 0.9 below it, +Y
-## up, -Z ahead.
+## up, -Z ahead; the art's own transform scales it by its size about the ground under it (A5).
 ##
 ## Fighting back (C27b): a daemon's brain (scripts/fight/daemon_brain.gd) moves the daemon
 ## itself and tells its art what it is doing, an act (drive()): moving, its tell, its strike, its
@@ -42,6 +53,9 @@ extends Node3D
 ## rogue cowering low, the zombie thrown back with its arms up) and its glitch spikes with it (the
 ## shaders' unstable slot, never above what a respawn's glitch reaches). The swarm's stagger is its
 ## own scatter.
+##
+## Weak points (A5): a type marks the parts a later ICEbreaker aims at (its seams, a visor, a core)
+## with weak(); weak_points() says where they are now. Nothing aims at them yet.
 
 const Palette = preload("res://scripts/palette.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
@@ -75,18 +89,29 @@ const HIDDEN := Transform3D(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZE
 const DRIVE_EASE := 4.0
 ## A walker's stagger after a ping (C28): its glitch at the stagger's start, as an unstable share.
 const STAGGER_GLITCH := 0.6
+## How often a spawn is its type's elite (A5): one in twelve.
+const ELITE_RATE := 1.0 / 12.0
+## The seeds a build can have (A5): 0 to this, so one fits the wire's 32-bit integers.
+const SEED_LAST := 0x7fffffff
 
 ## A part's unit shape: SHARD a six-sided crystal from its base (the origin) to its tip (+Y 1), a
 ## unit across; GEM a cut gem centred on the origin, a unit across and tall; CUBE a unit voxel;
-## STREAK a thin sliver from its tail (the origin) to its head (+Y 1).
-enum Shape { SHARD, GEM, CUBE, STREAK }
-## A part's look: the obsidian shell, the glowing core, or a trail's added light.
-enum Look { SHELL, CORE, TRAIL }
+## STREAK a thin sliver from its tail (the origin) to its head (+Y 1). Since A5 the armour's: PLATE
+## a slab with a bevelled top, centred, a unit each way (X across, Y thick, Z long); LIMB an eight-
+## sided limb from its base (the origin) to its tip (+Y 1), a unit across at the base and narrower
+## at the tip; BLADE a curved blade from its root (the origin) to its point (+Y 1), its spine to +Z,
+## its edge to -Z, a unit thick (X) and a unit wide (Z); HEX a hex puck with bevelled faces,
+## centred, a unit across and tall (+Y its axis); RING an eight-sided band round +Y, centred, a
+## unit across and tall: a seam or a joint's light.
+enum Shape { SHARD, GEM, CUBE, STREAK, PLATE, LIMB, BLADE, HEX, RING }
+## A part's look: the edged obsidian (A2's shell: a voxel peeling off), the glowing core (seams,
+## joints and weak points since A5), a trail's added light, or the armour (A5).
+enum Look { SHELL, CORE, TRAIL, ARMOR }
 ## What a brain has the daemon doing (C27b): nothing (its own idle life), moving, its tell, its
 ## strike, recovering from it, scattering from a hit.
 enum Act { IDLE, MOVE, TELL, STRIKE, RECOVER, SCATTER }
-const SHAPE_NAMES := ["Shard", "Gem", "Cube", "Streak"]
-const LOOK_NAMES := ["Shell", "Core", "Trail"]
+const SHAPE_NAMES := ["Shard", "Gem", "Cube", "Streak", "Plate", "Limb", "Blade", "Hex", "Ring"]
+const LOOK_NAMES := ["Shell", "Core", "Trail", "Armor"]
 
 ## The core's colour, and the shell's edges: a type's own, from the palette.
 var core_color := Palette.HOSTILE_RED
@@ -102,7 +127,7 @@ var glyph_size := 0.13
 var glyph_turns := 0.04
 ## The box every pose stays inside, in art space: the parts' culling box.
 var reach := AABB(Vector3(-1.6, -1.0, -1.6), Vector3(3.2, 3.2, 3.2))
-## How high over the daemon's feet its name tag floats, clear of the creature, in metres.
+## How high over the daemon's feet its name tag floats, clear of the creature, in metres (art space).
 var tag_height := 2.25
 ## The type's budget: the most triangles and draw calls it may take (triangles(), draw_calls()).
 var budget_triangles := 800
@@ -113,6 +138,17 @@ var ai_kind := "rogue"
 ## at a hit): only when no brain fights with it (practice, or no brain). A rear-up is otherwise
 ## only ever a tell.
 var displays := true
+## The seed this daemon was built from (A5): every roll of its build (dice()) comes from it.
+var build_seed := 0
+## Whether this build is its type's elite (A5): bigger, with extra parts; the dummy gives it more
+## health.
+var elite := false
+## Its size (A5), a share of its type's own: every pose, its hit box and its tag scale with it,
+## about the ground under it. A type's hitbox-safe range, and its elite's size.
+var size_scale := 1.0
+var size_low := 1.0
+var size_high := 1.0
+var elite_size := 1.0
 ## The brain's act now, how far through it (0 to 1), and how far the type has eased from its idle
 ## life into being driven (0 to 1).
 var act: int = Act.IDLE
@@ -135,6 +171,8 @@ var _part_set := PackedInt32Array()
 var _part_slot := PackedInt32Array()
 var _xf: Array[Transform3D] = []
 var _custom := PackedColorArray()
+## The parts that are weak points (A5).
+var _weak := PackedInt32Array()
 var _glyphs: MultiMeshInstance3D
 var _drawn: Array[GeometryInstance3D] = []
 var _target: Node3D
@@ -171,10 +209,11 @@ static var _shader_clock := 0.0
 static var _shader_clock_frame := -1
 
 
-## The art `script` names, built for `target`, or the plain look when it names none.
-static func make(script: Script, target: Node3D = null) -> DaemonArt:
+## The art `script` names, built for `target` from `seed` (A5; below 0, the fixed seed of the
+## target's name), or the plain look when it names none.
+static func make(script: Script, target: Node3D = null, seed: int = -1) -> DaemonArt:
 	var art: DaemonArt = script.new() if is_art(script) else DaemonArt.new()
-	art.setup(target)
+	art.setup(target, seed)
 	return art
 
 
@@ -188,12 +227,34 @@ static func is_art(script: Script) -> bool:
 	return false
 
 
-func setup(target: Node3D) -> void:
+## The fixed seed of a daemon named `daemon_name` (A5): its build in demo, test and capture runs.
+## Salted so the arena's four (rogue.d, zombie, <defunct>, runaway) roll no elite: the checks and
+## stills keep their one-hit kills (step 39 holds it).
+static func seed_of(daemon_name: String) -> int:
+	return hash("sk:" + daemon_name) & SEED_LAST
+
+
+## True when a build from `seed` is its type's elite (A5): one roll of the seed, ELITE_RATE of them.
+static func elite_of(seed: int) -> bool:
+	return roll_of(seed, 9001, 17) < ELITE_RATE
+
+
+## A number from 0 to 1 fixed by `seed` and two integers: a build's own dice.
+static func roll_of(seed: int, a: int, b: int) -> float:
+	return float(hash(Vector3i(a, b, seed)) & 0xffff) / 65535.0
+
+
+func setup(target: Node3D, seed: int = -1) -> void:
 	_target = target
 	name = "Art"
 	add_to_group(GROUP)
-	_seed = float(absi(hash(String(target.name) if target != null else "daemon")) % 1000) / 1000.0
+	build_seed = (seed if seed >= 0 else seed_of(String(target.name) if target != null else "daemon")) & SEED_LAST
+	_seed = float(build_seed % 1000) / 1000.0
+	elite = elite_of(build_seed)
 	_build()
+	size_scale = elite_size if elite else lerpf(size_low, size_high, dice(9002, 3))
+	# Scaled about the ground under it: its feet stay on the floor at any size.
+	transform = Transform3D(Basis.from_scale(Vector3.ONE * size_scale), Vector3(0.0, GROUND_Y * (1.0 - size_scale), 0.0))
 	_spray_first = _xf.size()
 	for i in SPRAY:
 		part(Shape.GEM, Look.CORE)
@@ -218,7 +279,7 @@ func react(point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> v
 	flash()
 	_hits += 1
 	_hit_at = _clock
-	var inverse := global_transform.affine_inverse() if is_inside_tree() else Transform3D.IDENTITY
+	var inverse := global_transform.affine_inverse() if is_inside_tree() else transform.affine_inverse()
 	var way := inverse.basis * direction
 	way.y = 0.0
 	var at := inverse * point if point.is_finite() else Vector3(0.0, 0.2, 0.0) - way.normalized() * 0.4
@@ -253,17 +314,20 @@ func set_unstable(amount: float) -> void:
 
 ## The death in shards (A2b): a burst of this daemon's own parts as they stand now, flung apart
 ## under `into` (the death's derezz, so it goes when that does), the killing shot's level way
-## `shot` pushing them. It frees itself after its own life at the latest.
+## `shot` pushing them. A type may fly some of its parts off together instead (the runaway's drones
+## scattering when its core dies, A5: _scatter_groups()). It frees itself after its own life at the
+## latest.
 func shatter(into: Node, shot: Vector3 = Vector3.ZERO) -> Node3D:
 	var burst := Shatter.new()
 	into.add_child(burst)
 	var parts: Array[Dictionary] = []
+	var groups := _scatter_groups()
 	for id in _xf.size():
 		var look := _set_look[_part_set[id]]
 		if look == Look.TRAIL or not shown(id) or (id >= _spray_first and id < _spray_first + SPRAY):
 			continue
-		parts.append({"shape": _set_shape[_part_set[id]], "look": look, "xf": global_transform * _xf[id], "custom": _custom[id]})
-	burst.start(parts, _meshes, _materials, global_transform * Vector3(0.0, GROUND_Y, 0.0), global_transform * Vector3.ZERO, shot, _seed, {"core_color": core_color, "edge_color": edge_color, "seed": _seed, "gutter": gutter}, Callable(DaemonArt, &"_step_shader_clock"))
+		parts.append({"shape": _set_shape[_part_set[id]], "look": look, "xf": global_transform * _xf[id], "custom": _custom[id], "group": _group_of(id)})
+	burst.start(parts, _meshes, _materials, global_transform * Vector3(0.0, GROUND_Y, 0.0), global_transform * Vector3.ZERO, shot, _seed, {"core_color": core_color, "edge_color": edge_color, "seed": _seed, "gutter": gutter}, Callable(DaemonArt, &"_step_shader_clock"), groups)
 	return burst
 
 
@@ -280,10 +344,10 @@ func drive_amount() -> float:
 	return _drive
 
 
-## Where the daemon's attack comes from now, in the world: the rogue's scythes, the zombie's claw,
-## the swarm's nest. The type gives it in art space (_muzzle()).
+## Where the daemon's attack comes from now, in the world: the rogue's scythes, the zombie's
+## cannon, the swarm's nest. The type gives it in art space (_muzzle()).
 func muzzle() -> Vector3:
-	return global_transform * _muzzle() if is_inside_tree() else _muzzle()
+	return global_transform * _muzzle() if is_inside_tree() else transform * _muzzle()
 
 
 ## The box round the body a shot should hit (C27b's fair hit volume), in art space, beyond the
@@ -294,6 +358,16 @@ func body_box() -> Transform3D:
 
 func body_box_size() -> Vector3:
 	return Vector3.ZERO
+
+
+## The body box's size at this daemon's size (A5), in the body's own metres.
+func box_size() -> Vector3:
+	return body_box_size() * size_scale
+
+
+## The name tag's height over the body's centre (A5: at this daemon's size), in the body's metres.
+func tag_y() -> float:
+	return (transform * Vector3(0.0, tag_height, 0.0)).y
 
 
 ## A walker's stagger after a ping (C28): 1 as it starts, easing to 0; 0 when it is not staggering
@@ -339,6 +413,11 @@ func set_look(i: int) -> int:
 	return _set_look[i]
 
 
+## The shape of set `i`.
+func set_shape(i: int) -> int:
+	return _set_shape[i]
+
+
 ## The set of the core's look holding its gems, the one its colour shows on.
 func core_set() -> MultiMeshInstance3D:
 	for i in _set_node.size():
@@ -351,13 +430,35 @@ func part_count() -> int:
 	return _xf.size()
 
 
-## Part `id`'s transform as last posed (art space) and its custom data.
+## Part `id`'s transform as last posed (art space) and its custom data, its shape and its look.
 func part_transform(id: int) -> Transform3D:
 	return _xf[id]
 
 
 func part_custom(id: int) -> Color:
 	return _custom[id]
+
+
+func part_shape(id: int) -> int:
+	return _set_shape[_part_set[id]]
+
+
+func part_look(id: int) -> int:
+	return _set_look[_part_set[id]]
+
+
+## The parts marked as weak points (A5).
+func weak_parts() -> PackedInt32Array:
+	return _weak
+
+
+## Where each weak point drawn now is (art space): its seams, a visor, a core (A5).
+func weak_points() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for id in _weak:
+		if shown(id):
+			out.append(_xf[id].origin)
+	return out
 
 
 ## How many of the hit spray's shards are drawn now.
@@ -433,10 +534,10 @@ func _process(delta: float) -> void:
 
 
 ## The daemon's motion since the last pose (C27b): only while driven and whole (not mid-respawn,
-## when the body grows from nothing), else identity.
+## when the body grows from nothing; whole is its own size, A5), else identity.
 func _step_carry() -> void:
 	var now := global_transform if is_inside_tree() else Transform3D.IDENTITY
-	var whole := absf(now.basis.determinant() - 1.0) < 0.01
+	var whole := absf(now.basis.determinant() / (size_scale * size_scale * size_scale) - 1.0) < 0.01
 	_carry = now.affine_inverse() * _last_world if _have_world and whole and _drive > 0.0 else Transform3D.IDENTITY
 	_last_world = now
 	_have_world = whole
@@ -519,11 +620,22 @@ func _muzzle() -> Vector3:
 	return Vector3(0.0, 0.2, -0.6)
 
 
+## The groups of parts its death flies off together (A5): each a Dictionary with its centre and its
+## velocity (world space); none by default, every part bursting on its own.
+func _scatter_groups() -> Array[Dictionary]:
+	return []
+
+
+## The group part `id` flies off with at its death (_scatter_groups()), or -1 for none.
+func _group_of(_id: int) -> int:
+	return -1
+
+
 # --- Building and posing parts. ---
 
 ## A new part of `shape` in `look`, drawn as wire when `wire` is 1 (a shell's; a core's or a trail's
-## brightness starts at 1), as ghost `ghost` of a trail when above 0. Returns its id. Only in
-## _build().
+## brightness starts at 1, an armour plate's tone at its salt), as ghost `ghost` of a trail when
+## above 0. Returns its id. Only in _build().
 func part(shape: Shape, look: Look, wire: float = 0.0, ghost: float = 0.0) -> int:
 	var bin := -1
 	for i in _set_shape.size():
@@ -539,8 +651,40 @@ func part(shape: Shape, look: Look, wire: float = 0.0, ghost: float = 0.0) -> in
 	_part_slot.append(_set_count[bin])
 	_set_count[bin] += 1
 	_xf.append(HIDDEN)
-	_custom.append(Color(fmod(id * 0.618034 + _seed, 1.0), wire if look == Look.SHELL else 1.0, 1.0, ghost))
+	var salt := fmod(id * 0.618034 + _seed, 1.0)
+	_custom.append(Color(salt, wire if look == Look.SHELL else (salt if look == Look.ARMOR else 1.0), 1.0, ghost))
 	return id
+
+
+## Marks part `id` a weak point (A5): a seam, a visor, a core. Only in _build().
+func weak(id: int) -> int:
+	_weak.append(id)
+	return id
+
+
+## A seam that flickers (A5's battle damage): part `id` of the core's look dropping out now and then,
+## `amount` 0 (steady) to 1 (out more often than not), by the core shader. Only in _build().
+func flicker(id: int, amount: float) -> void:
+	var c := _custom[id]
+	c.a = clampf(amount, 0.0, 1.0)
+	_custom[id] = c
+
+
+## A seam (A5): part `id` of the core's look at the seams' brightness, dimmer than a core, so it
+## glows in its type's colour. Returns its id. Only in _build().
+func seam(id: int) -> int:
+	var c := _custom[id]
+	c.g = Palette.DAEMON_SEAM_GLOW
+	_custom[id] = c
+	return id
+
+
+## A scorched armour plate (A5's battle damage): part `id` of the armour's look burned darker and
+## matte, `amount` 0 to 1. Only in _build().
+func scorch(id: int, amount: float) -> void:
+	var c := _custom[id]
+	c.a = clampf(amount, 0.0, 1.0)
+	_custom[id] = c
 
 
 ## Places part `id` at `xf`, in art space.
@@ -572,6 +716,21 @@ func orient(id: int, at: Vector3, axis: Vector3, length: float, width: float, de
 		conceal(id)
 		return
 	put(id, Transform3D(_axes(axis, width, length, width if depth < 0.0 else depth, flat), at))
+
+
+## A centred part `id` placed by `basis` (its own X, Y and Z, sizes included) at `at` (A5): a plate
+## laid on a body's own axes.
+func lay(id: int, at: Vector3, basis: Basis) -> void:
+	put(id, Transform3D(basis, at))
+
+
+## A right-handed frame with `right` across and `back` along, its up between them (A5): how a plate
+## is laid on a head, a chest or a tail.
+static func plank(right: Vector3, back: Vector3) -> Basis:
+	var z := back.normalized()
+	var y := z.cross(right).normalized()
+	var x := y.cross(z)
+	return Basis(x, y, z)
 
 
 ## Sets part `id`'s presence (1 whole, 0 gone, between breaking up) and its wire (-1 keeps it),
@@ -612,16 +771,21 @@ func since(at: float) -> float:
 	return INF if at < 0.0 else fposmod(_clock - at, CLOCK_WRAP)
 
 
-## A number from 0 to 1 fixed by this daemon's seed and two integers: its own dice, the same on
-## every run.
+## A number from 0 to 1 fixed by this daemon's seed, two integers and its hits so far: its own dice
+## for a hit's spray, the same on every run.
 func _roll(a: int, b: int) -> float:
-	var h := hash(Vector3i(a, b, int(_seed * 1000.0) + _hits * 7919))
-	return float(h & 0xffff) / 65535.0
+	return roll_of(build_seed + _hits * 7919, a, b)
 
 
-## A seeded number from 0 to 1 that does not change with the hits: for shapes and schedules.
+## A seeded number from 0 to 1 that does not change with the hits: for its build, its shapes and
+## its schedules.
 func dice(a: int, b: int) -> float:
-	return float(hash(Vector3i(a, b, int(_seed * 1000.0))) & 0xffff) / 65535.0
+	return roll_of(build_seed, a, b)
+
+
+## A seeded whole number from `low` to `high`, both included (A5's build).
+func pick(a: int, b: int, low: int, high: int) -> int:
+	return mini(low + int(dice(a, b) * (high - low + 1)), high)
 
 
 func _knock() -> float:
@@ -672,6 +836,7 @@ static func _statics() -> void:
 	_materials.append(Palette.daemon_shell_material())
 	_materials.append(Palette.daemon_core_material())
 	_materials.append(Palette.daemon_trail_material())
+	_materials.append(Palette.daemon_armor_material())
 	_glyph_material = Palette.daemon_glyph_material()
 	_glyph_mesh = QuadMesh.new()
 	_glyph_mesh.size = Vector2.ONE
@@ -687,6 +852,16 @@ static func _statics() -> void:
 				kit.box(bucket, Vector3.ZERO, Vector3.ONE)
 			Shape.STREAK:
 				kit.spike(bucket, Vector3.ZERO, Vector3.UP, 0.5, 3, 0.85)
+			Shape.PLATE:
+				_plate(kit, bucket)
+			Shape.LIMB:
+				_limb(kit, bucket)
+			Shape.BLADE:
+				_blade(kit, bucket)
+			Shape.HEX:
+				_hex(kit, bucket)
+			Shape.RING:
+				kit.tube(bucket, Vector3.ZERO, 0.4, 0.5, 1.0, 8, Vector3(90.0, 0.0, 0.0), 22.5)
 		_mesh_triangles.append(kit.count(bucket) / 3)
 		_meshes.append(kit.commit(bucket))
 
@@ -729,6 +904,102 @@ static func _gem(kit: ShapeKit, bucket: int) -> void:
 		kit.polygon(bucket, [girdle[i], girdle[j], Vector3(0.0, -0.5, 0.0)], out + Vector3.DOWN * 0.5)
 
 
+## The plate (A5): an armour slab centred on the origin, a unit each way, its top (+Y) bevelled in
+## to a smaller face so its edges catch the light: straight sides up to 0.1, the bevel above them.
+static func _plate(kit: ShapeKit, bucket: int) -> void:
+	var rims := []
+	for r in [[-0.5, 0.5, 0.5], [0.1, 0.5, 0.5], [0.5, 0.36, 0.4]]:
+		var rim := []
+		for c in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
+			rim.append(Vector3(r[1] * c[0], r[0], r[2] * c[1]))
+		rims.append(rim)
+	_band(kit, bucket, rims)
+	kit.polygon(bucket, rims[0], Vector3.DOWN)
+	kit.polygon(bucket, rims[2], Vector3.UP)
+
+
+## The sides between each rim of `rims` and the next (A5): each face turned out from the Y axis.
+static func _band(kit: ShapeKit, bucket: int, rims: Array) -> void:
+	for k in rims.size() - 1:
+		var n: int = rims[k].size()
+		for i in n:
+			var j := (i + 1) % n
+			var quad := [rims[k][i], rims[k][j], rims[k + 1][j], rims[k + 1][i]]
+			var c := ((quad[0] + quad[1] + quad[2] + quad[3]) as Vector3) * 0.25
+			kit.polygon(bucket, quad, Vector3(c.x, 0.0, c.z))
+
+
+## The limb (A5): an eight-sided limb from its base (the origin) up to +Y 1, a unit across at the
+## base, 0.7 at the tip, its two ends cut in a short bevel.
+static func _limb(kit: ShapeKit, bucket: int) -> void:
+	var rims := []
+	for r in [[0.0, 0.36], [0.08, 0.5], [0.9, 0.35], [1.0, 0.24]]:
+		var rim := []
+		for i in 8:
+			var a := TAU * (i + 0.5) / 8.0
+			rim.append(Vector3(cos(a) * r[1], r[0], sin(a) * r[1]))
+		rims.append(rim)
+	_band(kit, bucket, rims)
+	kit.polygon(bucket, rims[0], Vector3.DOWN)
+	kit.polygon(bucket, rims[rims.size() - 1], Vector3.UP)
+
+
+## The blade (A5): a scythe from its root (the origin) to its point (+Y 1), curving forward (-Z) as
+## it goes; a diamond in section, a thick spine to +Z and a thin edge to -Z, a unit thick across X at
+## its root and a unit wide along Z, narrowing to the point.
+static func _blade(kit: ShapeKit, bucket: int) -> void:
+	# Each station: its height, how far forward its middle has curved, its width (Z), its thickness (X).
+	var stations := [[0.0, 0.0, 0.7, 0.9], [0.3, -0.06, 1.0, 1.0], [0.62, -0.2, 0.8, 0.7], [0.86, -0.38, 0.45, 0.4]]
+	var rims := []
+	var mids := []
+	for s in stations:
+		var y: float = s[0]
+		var mid: float = s[1]
+		var w: float = s[2] * 0.5
+		var x: float = s[3] * 0.5
+		# The spine (+Z), the right flank, the edge (-Z, thin), the left flank.
+		rims.append([Vector3(0.0, y, mid + w * 0.55), Vector3(x, y, mid + w * 0.1), Vector3(0.0, y - 0.04, mid - w), Vector3(-x, y, mid + w * 0.1)])
+		mids.append(Vector3(0.0, y, mid))
+	var tip := Vector3(0.0, 1.0, -0.62)
+	for k in rims.size() - 1:
+		for i in 4:
+			var j := (i + 1) % 4
+			var quad := [rims[k][i], rims[k][j], rims[k + 1][j], rims[k + 1][i]]
+			var c := ((quad[0] + quad[1] + quad[2] + quad[3]) as Vector3) * 0.25
+			kit.polygon(bucket, quad, c - (mids[k] + mids[k + 1]) * 0.5)
+	var last: Array = rims[rims.size() - 1]
+	for i in 4:
+		var j := (i + 1) % 4
+		var c := ((last[i] + last[j] + tip) as Vector3) / 3.0
+		kit.polygon(bucket, [last[i], last[j], tip], c - mids[mids.size() - 1])
+	kit.polygon(bucket, rims[0], Vector3.DOWN)
+
+
+## The hex puck (A5): a hexagonal body centred on the origin, a unit across its corners and a unit
+## tall along +Y, its top and bottom bevelled in.
+static func _hex(kit: ShapeKit, bucket: int) -> void:
+	var top := []
+	var upper := []
+	var lower := []
+	var bottom := []
+	for i in 6:
+		var a := TAU * i / 6.0
+		var d := Vector3(cos(a), 0.0, sin(a))
+		top.append(d * 0.34 + Vector3(0.0, 0.5, 0.0))
+		upper.append(d * 0.5 + Vector3(0.0, 0.22, 0.0))
+		lower.append(d * 0.5 + Vector3(0.0, -0.22, 0.0))
+		bottom.append(d * 0.34 + Vector3(0.0, -0.5, 0.0))
+	for i in 6:
+		var j := (i + 1) % 6
+		var out := (upper[i] + upper[j]) as Vector3
+		out.y = 0.0
+		kit.polygon(bucket, [top[i], top[j], upper[j], upper[i]], out + Vector3.UP * 0.6)
+		kit.polygon(bucket, [upper[i], upper[j], lower[j], lower[i]], out)
+		kit.polygon(bucket, [lower[i], lower[j], bottom[j], bottom[i]], out + Vector3.DOWN * 0.6)
+	kit.polygon(bucket, top, Vector3.UP)
+	kit.polygon(bucket, bottom, Vector3.DOWN)
+
+
 ## The merge: a MultiMesh for each set, every part hidden until posed; the glyphs one MultiMesh.
 func _commit() -> void:
 	_statics()
@@ -743,8 +1014,9 @@ func _commit() -> void:
 		node.name = LOOK_NAMES[_set_look[bin]] + SHAPE_NAMES[_set_shape[bin]]
 		node.multimesh = mm
 		node.material_override = _materials[_set_look[bin]]
-		# Light is not a solid: only the obsidian throws a shadow.
-		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if _set_look[bin] == Look.SHELL else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Light is not a solid: only the obsidian and the armour throw a shadow.
+		var solid := _set_look[bin] == Look.SHELL or _set_look[bin] == Look.ARMOR
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if solid else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(node)
 		_set_mm.append(mm)
 		_set_node.append(node)
@@ -776,3 +1048,4 @@ func _commit() -> void:
 		add_child(_glyphs)
 		_drawn.append(_glyphs)
 		_glyphs.set_instance_shader_parameter("seed", _seed)
+		_glyphs.set_instance_shader_parameter("core_color", core_color)

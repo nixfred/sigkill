@@ -94,6 +94,12 @@ extends Resource
 @export var ping_stagger_s: float = 1.0
 @export var ping_knock_m: float = 0.5
 
+@export_group("Elite")
+## An elite daemon's health (A5): a rare, bigger build of its type (one spawn in twelve, the art's
+## roll of its seed) takes at least this much; a daemon's own health counts when it is more. The
+## arena's daemons have 1, so every hit kills one; an elite takes a cannon shot (25) and lives.
+@export var elite_health: float = 30.0
+
 @export_group("Difficulty")
 ## Every daemon's damage times this, and every wait between its attacks divided by its
 ## aggression, on easy, normal and hard.
@@ -119,6 +125,7 @@ const RANGES := {
 	"swarm_hit_m": [0.1, 5.0], "swarm_damage": [0.0, 1000.0], "swarm_burst_gap_s": [0.0, 10.0], "swarm_recover_s": [0.02, 10.0], "swarm_cooldown_s": [0.1, 60.0], "swarm_dive_past_m": [0.0, 10.0],
 	"swarm_scatter_s": [0.0, 10.0], "swarm_scatter_speed": [0.0, 50.0],
 	"ping_stagger_s": [0.1, 10.0], "ping_knock_m": [0.0, 5.0],
+	"elite_health": [1.0, 10000.0],
 	"easy_damage": [0.0, 10.0], "easy_aggression": [0.1, 10.0], "normal_damage": [0.0, 10.0], "normal_aggression": [0.1, 10.0],
 	"hard_damage": [0.0, 10.0], "hard_aggression": [0.1, 10.0],
 }

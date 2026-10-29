@@ -209,6 +209,10 @@ extends Node
 ## changed one (_rules), so protocol 10: no older message carried a daemon's place or state, each
 ## machine's dummies having been its own.
 ##
+## No two alike (A5): every daemon is built from a seed, a new one at each spawn on the host, and
+## _daemons carries each one's seed too, so a joiner's copy is rebuilt from it and every screen draws
+## the same creature (its size, its build, an elite's health). A changed message, so protocol 11.
+##
 ## Over the wire, ever: the protocol version, slots and ids, shown names (a placeholder,
 ## never the system's user or host name), positions, angles and velocities, shot intents
 ## and results, health, deaths and respawns by id, SIGSTOP's asks and the host's word on it
@@ -218,7 +222,8 @@ extends Node
 ## runs and removals, the top table's numbers (game PIDs, kills,
 ## deaths, damage dealt, time alive, the match's uptime and load), and the game's daemons
 ## (C27b: places, facing, states, health and life, bolts, hits by daemon index, the practice
-## rule and the difficulty; game objects, never a real process). Nothing about the AI
+## rule and the difficulty; A5: each one's build seed, a random number; game objects, never a real
+## process). Nothing about the AI
 ## guide, the settings, paths, processes or the machine; a game PID is game data, never a
 ## real one. Nothing real is signalled, killed or run.
 
@@ -293,7 +298,7 @@ const SPAWNS_NODE := "Arena/Spawns"
 const FALLBACK_SPAWN := Vector3(0.0, 0.95, 10.0)
 const PLAYER_ID_META := "player_id"
 ## Changes whenever what goes over the wire changes. Both sides must match.
-const PROTOCOL := 10
+const PROTOCOL := 11
 const PLACEHOLDER := "player"
 const DAEMON := "Daemon-"
 const MAGIC_0 := 0x53  # "S"
@@ -3164,6 +3169,7 @@ func _tick_daemons(delta: float) -> void:
 	var life_words := PackedByteArray()
 	var healths := PackedFloat32Array()
 	var killers := PackedInt32Array()
+	var seeds := PackedInt32Array()
 	var bolt_ids := PackedInt32Array()
 	var bolt_owners := PackedByteArray()
 	var bolt_places := PackedVector3Array()
@@ -3184,24 +3190,25 @@ func _tick_daemons(delta: float) -> void:
 		life_words.append(int(dummy.state))
 		healths.append(maxf(dummy.health(), 0.0))  # a killing hit leaves it below 0
 		killers.append(dummy.killer if dummy.killer != 0 else my_id)  # whose kill its last death was
+		seeds.append(dummy.build_seed())  # what it is built from (A5)
 	var connected := multiplayer.get_peers()
 	for id in players:
 		if id != 1 and connected.has(id):
-			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths, killers, bolt_ids, bolt_owners, bolt_places, bolt_ways)
+			_daemons.rpc_id(id, places, yaws, words, times, life_words, healths, killers, seeds, bolt_ids, bolt_owners, bolt_places, bolt_ways)
 
 
 ## Every daemon of the host's, at the sync rate (C27b): where it is (arena space), its facing,
 ## its brain's state (SIGSTOP's hold in the top bit) and seconds into it, its life and its
 ## health, whose kill its last death was (so a death and its credit come in one word, Codex
-## review), in the director's order (both screens hold the same arena), and every bolt in the air
-## (its id, its daemon with SIGSTOP's hold in the top bit, where, its way). A joiner's copies play
-## it.
+## review), the seed each is built from (A5), in the director's order (both screens hold the same
+## arena), and every bolt in the air (its id, its daemon with SIGSTOP's hold in the top bit, where,
+## its way). A joiner's copies play it, each rebuilt first when its seed is new.
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array, killers: PackedInt32Array, bolt_ids: PackedInt32Array, bolt_owners: PackedByteArray, bolt_places: PackedVector3Array, bolt_ways: PackedVector3Array) -> void:
+func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: PackedByteArray, times: PackedFloat32Array, life_words: PackedByteArray, healths: PackedFloat32Array, killers: PackedInt32Array, seeds: PackedInt32Array, bolt_ids: PackedInt32Array, bolt_owners: PackedByteArray, bolt_places: PackedVector3Array, bolt_ways: PackedVector3Array) -> void:
 	if state != State.JOINED or host_practice or _arena == null or not is_instance_valid(_arena):
 		return
 	var n := places.size()
-	if n > DAEMONS_LAST or yaws.size() != n or words.size() != n or times.size() != n or life_words.size() != n or healths.size() != n or killers.size() != n:
+	if n > DAEMONS_LAST or yaws.size() != n or words.size() != n or times.size() != n or life_words.size() != n or healths.size() != n or killers.size() != n or seeds.size() != n:
 		return
 	var b := bolt_ids.size()
 	if b > BOLTS_LAST or bolt_owners.size() != b or bolt_places.size() != b or bolt_ways.size() != b:
@@ -3216,8 +3223,9 @@ func _daemons(places: PackedVector3Array, yaws: PackedFloat32Array, words: Packe
 			continue
 		if not is_finite(times[i]) or times[i] < 0.0 or times[i] > DAEMON_TIME_LAST or not is_finite(healths[i]) or healths[i] < 0.0:
 			continue
-		if (words[i] & 0x7f) > DaemonBrain.State.DOWN or life_words[i] > 2:
+		if (words[i] & 0x7f) > DaemonBrain.State.DOWN or life_words[i] > 2 or seeds[i] < 0:
 			continue
+		brains[i].dummy.follow_seed(seeds[i])  # the host's build first (A5)
 		brains[i].take_word(at, yaws[i], words[i] & 0x7f, times[i], (words[i] & 0x80) != 0)
 		brains[i].dummy.follow_life(life_words[i], healths[i], killers[i] == my_id)
 	var live := {}

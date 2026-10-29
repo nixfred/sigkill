@@ -13,6 +13,10 @@ extends Node3D
 ## presence; nothing else is made until it frees itself. Its motion steps at the game's pace
 ## (SIGSTOP slows it) and its dice are the daemon's seed, so the same death plays the same way.
 ## Cosmetic only: no collision, no physics body, no ray.
+##
+## Groups (A5): a type may fly some of its parts off together, each group whole, at its own
+## velocity, turning slowly about its own middle and falling a little, never bouncing: the runaway's
+## drones scattering in every direction when its core dies. The rest burst as ever.
 
 ## Every shatter joins this group, so the checks can find it (not the derezz's, which counts deaths).
 const GROUP := &"daemon_shatter"
@@ -28,6 +32,9 @@ const SPIN_LOW := 4.0
 const SPIN_HIGH := 13.0
 ## Each part breaks up over the last share of its life.
 const FADE_SHARE := 0.55
+## A group's pull down, as a share of a loose part's, and how fast it turns, in radians a second (A5).
+const GROUP_FALL := 0.25
+const GROUP_SPIN := 2.5
 
 var _sets: Array[MultiMesh] = []
 var _set_of := PackedInt32Array()
@@ -39,6 +46,13 @@ var _spin := PackedFloat32Array()
 var _shape: Array[Basis] = []
 var _custom := PackedColorArray()
 var _ground := 0.0
+## Per part, its group (-1 none) and where it sits from the group's middle (A5); per group, its
+## middle, its velocity and the axis it turns on.
+var _group := PackedInt32Array()
+var _offset := PackedVector3Array()
+var _group_at := PackedVector3Array()
+var _group_vel := PackedVector3Array()
+var _group_axis := PackedVector3Array()
 var _age := 0.0
 ## Steps the daemons' shared shader clock (the burst may outlast every daemon still drawn).
 var _ticker := Callable()
@@ -48,8 +62,10 @@ var _ticker := Callable()
 ## drawn with `meshes` and `materials` (the daemons' own, by shape and by look), on the ground at
 ## world height `ground.y`, from the middle `center`, the shot's level way `shot` pushing them,
 ## its dice the daemon's `seed`; `uniforms` the daemon's instance uniforms; `ticker` steps the
-## daemons' shared shader clock by a delta. Call it once, in the tree.
-func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[ShaderMaterial], ground: Vector3, center: Vector3, shot: Vector3, seed: float, uniforms: Dictionary, ticker: Callable = Callable()) -> void:
+## daemons' shared shader clock by a delta; `groups` the groups some parts fly off in (A5: each a
+## middle "at" and a velocity "vel", world space; a part's "group" its index, -1 or none for none).
+## Call it once, in the tree.
+func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[ShaderMaterial], ground: Vector3, center: Vector3, shot: Vector3, seed: float, uniforms: Dictionary, ticker: Callable = Callable(), groups: Array[Dictionary] = []) -> void:
 	add_to_group(GROUP)
 	_ticker = ticker
 	name = "Shatter"
@@ -87,6 +103,11 @@ func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[
 		_sets.append(mm)
 	var push := Vector3(shot.x, 0.0, shot.z).normalized() * SHOT_PUSH
 	var salt := int(seed * 1000.0)
+	for g in groups.size():
+		_group_at.append(groups[g]["at"])
+		_group_vel.append(groups[g]["vel"])
+		var turn := Vector3(_dice(salt, g, 11) - 0.5, _dice(salt, g, 12) - 0.5, _dice(salt, g, 13) - 0.5)
+		_group_axis.append(turn.normalized() if turn.length_squared() > 0.0001 else Vector3.UP)
 	for i in parts.size():
 		var xf: Transform3D = parts[i]["xf"]
 		var out := xf.origin - center
@@ -100,6 +121,10 @@ func start(parts: Array[Dictionary], meshes: Array[ArrayMesh], materials: Array[
 		_axis.append(axis.normalized() if axis.length_squared() > 0.0001 else Vector3.UP)
 		_spin.append(lerpf(SPIN_LOW, SPIN_HIGH, _dice(salt, i, 8)))
 		_shape.append(xf.basis)
+		var g: int = parts[i].get("group", -1)
+		g = g if g >= 0 and g < _group_at.size() else -1
+		_group.append(g)
+		_offset.append(xf.origin - _group_at[g] if g >= 0 else Vector3.ZERO)
 		# Broken, every part is solid crystal: a wire bone or a ghost bursts as obsidian shards.
 		var c: Color = parts[i]["custom"]
 		if parts[i]["look"] == 0:
@@ -120,6 +145,20 @@ func positions() -> PackedVector3Array:
 	return _pos
 
 
+## The groups flying off whole (A5): how many, each one's middle now (world space), and each part's
+## group (-1 none).
+func group_count() -> int:
+	return _group_at.size()
+
+
+func group_middles() -> PackedVector3Array:
+	return _group_at
+
+
+func part_groups() -> PackedInt32Array:
+	return _group
+
+
 func age() -> float:
 	return _age
 
@@ -131,7 +170,12 @@ func _physics_process(delta: float) -> void:
 	if _age >= LIFE_S:
 		queue_free()
 		return
+	for g in _group_at.size():
+		_group_vel[g] += Vector3.DOWN * (GRAVITY * GROUP_FALL * delta)
+		_group_at[g] += _group_vel[g] * delta
 	for i in _pos.size():
+		if _group[i] >= 0:
+			continue
 		var v := _vel[i] + Vector3.DOWN * (GRAVITY * delta)
 		var p := _pos[i] + v * delta
 		if p.y < _ground and v.y < 0.0:
@@ -147,7 +191,14 @@ func _apply() -> void:
 	var presence := 1.0 - fade * fade
 	for i in _pos.size():
 		var mm := _sets[_set_of[i]]
-		mm.set_instance_transform(_slot[i], Transform3D(Basis(_axis[i], _spin[i] * _age) * _shape[i], _pos[i]))
+		var g := _group[i]
+		if g >= 0:
+			# A group flies whole, turning about its own middle (A5).
+			var turn := Basis(_group_axis[g], GROUP_SPIN * _age)
+			_pos[i] = _group_at[g] + turn * _offset[i]
+			mm.set_instance_transform(_slot[i], Transform3D(turn * _shape[i], _pos[i]))
+		else:
+			mm.set_instance_transform(_slot[i], Transform3D(Basis(_axis[i], _spin[i] * _age) * _shape[i], _pos[i]))
 		var c := _custom[i]
 		c.b = presence * c.b
 		mm.set_instance_custom_data(_slot[i], c)

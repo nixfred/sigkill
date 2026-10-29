@@ -11,14 +11,17 @@ extends SceneTree
 ## shader global; the gameplay collision is byte for byte as it was at 1afcdb7 (the dummy's scene
 ## and the arena's, and the only lines of the dummy's script that touch its collision shape). Each
 ## type alone: built of MultiMesh parts only; the rogue daemon's feet plant and step in a tripod
-## gait while its body glides, and it rears; the zombie's bones flicker in and out, its ghosts trail
-## it and change, it limps, its head stays over the hit volume; the swarm's 20 to 40 insects move,
-## orbit their nest, keep together and dive; each one 1.5 to 2.5 times A2's size and inside its own
+## gait while its body glides, and it rears; the zombie (A5's) whole in its armour on one side and
+## shedding voxels off its open side, limping with its feet planted, its head over the hit volume,
+## and, driven, its planted feet held in the world as the daemon moves (C27b's slide gone); the
+## swarm's 12 to 40 drones move, orbit their core, keep together and dive; each one 1.5 to 2.5 times
+## A2's size and inside its own
 ## budget; every pose seeded per daemon and a function of the game clock (SIGSTOP slows it); a hit
 ## flashes, recoils, sprays shards and brings the type's own reaction; the frames go by with no
 ## object, node or mesh made. In the real arena: the four dummies' collision shapes, sizes, places,
 ## layers and masks exactly the 1afcdb7 literals, unchanged after their art has moved for seconds;
-## every daemon sharing one material per look; a hit through the dummy reacting; a kill bursting
+## every daemon sharing one material per look (A5's armour one more); a hit through the dummy
+## reacting; a kill bursting
 ## into the creature's own parts on top of the derezz, flying apart, gone with it.
 ## Deterministic: frames counted, only counts and outcomes printed.
 
@@ -29,7 +32,6 @@ const Controls = preload("res://scripts/controls.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const Shatter = preload("res://scripts/daemons/daemon_shatter.gd")
 const Dummy = preload("res://scripts/target_dummy.gd")
-const Zombie = preload("res://scripts/daemons/zombie_process.gd")
 const Swarm = preload("res://scripts/daemons/runaway_swarm.gd")
 const ART_DIR := "res://scripts/daemons/"
 const TYPES := ["rogue_daemon", "zombie_process", "runaway_swarm"]
@@ -50,16 +52,16 @@ DummyC | layer 4 mask 0 | cylinder r 0.550 h 1.800 | at (12.000, 0.900, 5.000) x
 DummyD | layer 4 mask 0 | cylinder r 0.550 h 1.800 | at (-8.000, 1.900, 12.000) x (1.000, 0.000, 0.000) y (0.000, 1.000, 0.000) z (0.000, 0.000, 1.000) | enabled"""
 ## What runs every frame, by script: none of it may make anything.
 const PER_FRAME := {
-	"daemon_art.gd": ["_process", "_step_shader_clock", "_marked", "_send", "_pose", "put", "conceal", "bone", "orient", "present", "brighten", "recoil", "jolt", "since", "dice", "_knock", "_axes", "_pose_spray", "_hide_spray"],
-	"rogue_daemon.gd": ["_pose", "_pose_spines", "_pose_legs", "_display_now", "_jerk", "_swinging", "_knee_at"],
-	"zombie_process.gd": ["_pose", "_skeleton", "_pose_bits", "_progress", "_root_at", "_yaw_at", "_right_foot", "_left_foot", "_plant", "_lean", "_knee_at"],
+	"daemon_art.gd": ["_process", "_step_shader_clock", "_marked", "_send", "_pose", "put", "conceal", "bone", "orient", "lay", "plank", "present", "brighten", "recoil", "jolt", "since", "dice", "_knock", "_axes", "_pose_spray", "_hide_spray"],
+	"rogue_daemon.gd": ["_pose", "_pose_tail", "_pose_scythes", "_pose_legs", "_display_now", "_act_now", "_jerk", "_swinging", "_knee_at"],
+	"zombie_process.gd": ["_pose", "_gait", "_pose_bits", "_progress", "_root_at", "_yaw_at", "_right_foot", "_left_foot", "_plant", "_raise", "_charge", "_knee_at"],
 	"runaway_swarm.gd": ["_pose", "_fly"],
 	"daemon_shatter.gd": ["_physics_process", "_apply"],
 }
 const MADE := ["SurfaceTool", "ArrayMesh", "MultiMesh.new", ".new(", "add_child", "duplicate(", "Material", "append(", "resize(", "Array(", "Dictionary(", "{", "str(", "\" %"]
 ## The instance uniforms' slots every daemon shader shares.
 const SLOTS := {"hit": 0, "locked": 1, "unstable": 2, "seed": 3, "core_color": 4, "gutter": 5, "edge_color": 6}
-const SHADERS := ["daemon_glitch.gdshaderinc", "daemon_shell.gdshader", "daemon_split.gdshader", "daemon_core.gdshader", "daemon_trail.gdshader", "daemon_glyphs.gdshader"]
+const SHADERS := ["daemon_glitch.gdshaderinc", "daemon_shell.gdshader", "daemon_split.gdshader", "daemon_core.gdshader", "daemon_trail.gdshader", "daemon_glyphs.gdshader", "daemon_armor.gdshader"]
 ## Frames each type is watched for, and how far a planted foot may slide, in metres.
 const WATCH_FRAMES := 240
 const PLANTED_SLIDE := 0.001
@@ -242,33 +244,101 @@ func _rogue_checks(rogue: DaemonArt) -> void:
 
 
 func _zombie_checks(zombie: DaemonArt) -> void:
-	var states := {}
-	var ghosts := {}
+	var armour := PackedInt32Array()
+	for id in zombie.part_count():
+		if zombie.part_look(id) == DaemonArt.Look.ARMOR:
+			armour.append(id)
+	var whole := 0
+	var shed := {}
+	var fewest_shed := 1000
+	var open_side := 0
+	var other_side := 0
 	var path := 0.0
 	var low := INF
 	var high := -INF
 	var head_out := 0
+	var slid := 0.0
 	var last: Vector3 = zombie.pelvis_at()
-	var least_shown := 1000
+	var last_feet: PackedVector3Array = zombie.feet_at().duplicate()
+	var last_planted: Array[bool] = zombie.planted()
 	for f in WATCH_FRAMES:
 		await process_frame
-		states[str(zombie.bones_state())] = true
-		var g: PackedVector3Array = zombie.ghost_offsets()
-		ghosts["%.2f %.2f %.2f" % [g[0].length(), g[1].length(), g[2].length()]] = true
+		var all_drawn := true
+		for id in armour:
+			all_drawn = all_drawn and zombie.shown(id)
+		whole += 1 if all_drawn else 0
+		fewest_shed = mini(fewest_shed, zombie.shed_now())
+		var bits: PackedVector3Array = zombie.shed_at()
+		for b in bits:
+			shed["%.2f %.2f %.2f" % [b.x, b.y, b.z]] = true
+			if zombie.side_of(b) < 0.0:
+				open_side += 1
+			else:
+				other_side += 1
 		path += zombie.pelvis_at().distance_to(last)
 		last = zombie.pelvis_at()
 		low = minf(low, last.y)
 		high = maxf(high, last.y)
-		least_shown = mini(least_shown, zombie.bones_shown())
-		var head: Vector3 = zombie.head_at()
-		var height := head.y - DaemonArt.GROUND_Y
+		# In the body's own metres (A5: at its size, about the ground under it).
+		var head: Vector3 = zombie.head_at() * zombie.size_scale
+		var height := head.y - DaemonArt.GROUND_Y * zombie.size_scale
 		if height < 1.4 or height > 1.85 or Vector2(head.x, head.z).length() > 0.6:
 			head_out += 1
-	var far: PackedVector3Array = zombie.ghost_offsets()
-	print("ENEMY MOTION zombie: %d bone states in %d frames (fewest bones drawn %d of %d), %d ghost spacings, ghosts now %.2f, %.2f and %.2f m back, the pelvis walked %.2f m and dipped %.2f m, the head off the hit volume's top in %d frames" % [states.size(), WATCH_FRAMES, least_shown, Zombie.BONES, ghosts.size(), far[0].length(), far[1].length(), far[2].length(), path, high - low, head_out])
-	_check("acceptance: the zombie is half derezzed: its bones flicker in and out (many different sets drawn), never all gone", states.size() >= 20 and least_shown >= Zombie.BONES / 3)
-	_check("acceptance: its ghost copies trail it: three ghosts, each further back, their offsets changing as it moves", ghosts.size() >= 20 and far[0].length() > 0.1 and far[1].length() > far[0].length() and far[2].length() > far[1].length())
-	_check("acceptance: it limps: the pelvis walks its loop and dips on the dragged leg; its head stays over the hit volume's head zone (in 95% of frames)", path > 0.4 and high - low > 0.08 and head_out <= WATCH_FRAMES / 20, "%d frames out" % head_out)
+		var feet: PackedVector3Array = zombie.feet_at()
+		var planted: Array[bool] = zombie.planted()
+		for i in 2:
+			if planted[i] and last_planted[i]:
+				slid = maxf(slid, feet[i].distance_to(last_feet[i]))
+		last_feet = feet.duplicate()
+		last_planted = planted
+	print("ENEMY MOTION zombie: %d armour parts all drawn in %d of %d frames, %d places its shed voxels took (never fewer than %d at once), %d of them on its open (left) side and %d on its armoured one; the pelvis walked %.2f m and dipped %.2f m, a planted foot slid at most %.4f m, the head off the hit volume's top in %d frames" % [armour.size(), whole, WATCH_FRAMES, shed.size(), fewest_shed, open_side, other_side, path, high - low, slid, head_out])
+	_check("acceptance: the zombie is half armour, half derezzing (A5): its armour whole every frame, its open side shedding voxels (many places, never all gone), nearly all of them off its left", armour.size() >= 10 and whole == WATCH_FRAMES and shed.size() >= 200 and fewest_shed >= 3 and open_side > other_side * 4, "%d armour, %d places" % [armour.size(), shed.size()])
+	_check("acceptance: it limps: the pelvis walks its loop and dips on the dragged leg, a planted foot stays put (under %.0f mm), and its head stays over the hit volume's head zone (in 95%% of frames)" % (PLANTED_SLIDE * 1000.0), path > 0.4 and high - low > 0.08 and slid < PLANTED_SLIDE and head_out <= WATCH_FRAMES / 20, "%d frames out" % head_out)
+	await _zombie_driven_checks()
+
+
+## C27b's known slide fixed (A5): a zombie driven across the floor holds each planted foot where it
+## stands in the world while the daemon moves under it, lurching and dragging to catch up.
+func _zombie_driven_checks() -> void:
+	var mover := Node3D.new()
+	root.add_child(mover)
+	_scratch.append(mover)
+	mover.position = Vector3(40.0, 0.0, 0.0)
+	var zombie := DaemonArt.make(load(ART_DIR + "zombie_process.gd"), _named("Shambler"))
+	mover.add_child(zombie)
+	zombie.drive(DaemonArt.Act.MOVE)
+	for f in 30:
+		await process_frame
+	var slid := 0.0
+	var moved := 0.0
+	var stepped := [false, false]
+	var last_feet := _feet_world(zombie)
+	var last_planted: Array[bool] = zombie.planted()
+	for f in WATCH_FRAMES:
+		mover.position += Vector3(0.0, 0.0, -1.4 / 60.0)  # the zombie's 1.4 m/s shamble
+		moved += 1.4 / 60.0
+		await process_frame
+		var feet := _feet_world(zombie)
+		var planted: Array[bool] = zombie.planted()
+		for i in 2:
+			if planted[i] and last_planted[i]:
+				slid = maxf(slid, feet[i].distance_to(last_feet[i]))
+			if not planted[i]:
+				stepped[i] = true
+		last_feet = feet
+		last_planted = planted
+	var behind := Vector2(last_feet[0].x - mover.global_position.x, last_feet[0].z - mover.global_position.z).length()
+	print("ENEMY MOTION zombie driven: the daemon moved %.2f m, a planted foot slid at most %.4f m in the world, both feet stepped %s, the bad foot %.2f m from the daemon at the end" % [moved, slid, stepped, behind])
+	_check("acceptance: C27b's foot slide fixed (A5): driven %.1f m across the floor, a zombie's planted feet stay put in the world (under %.0f mm a frame), both feet step and drag to catch up, and they keep with it" % [moved, PLANTED_SLIDE * 1000.0], slid < PLANTED_SLIDE and stepped[0] and stepped[1] and behind < 1.0, "slid %.4f m" % slid)
+	mover.queue_free()
+
+
+## A zombie's two feet in the world now.
+func _feet_world(zombie: DaemonArt) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for at in zombie.feet_at():
+		out.append(zombie.global_transform * at)
+	return out
 
 
 func _swarm_checks(swarm: DaemonArt) -> void:
@@ -306,9 +376,9 @@ func _swarm_checks(swarm: DaemonArt) -> void:
 	moved /= count
 	spin /= WATCH_FRAMES
 	nearest /= samples
-	print("ENEMY MOTION swarm: %d insects moved %.2f m on average, at most %.2f m from the nest, the lowest %.2f m off the ground, turning %.2f m2/s round the nest, %.2f m to the nearest neighbour on average" % [count, moved, farthest, lowest - DaemonArt.GROUND_Y, spin, nearest])
-	_check("acceptance: the runaway is a swarm of 20 to 40 insects that fly: every one moves, together they orbit the nest", count >= 20 and count <= 40 and moved > 0.3 and spin > 0.4, "%d insects" % count)
-	_check("acceptance: it flocks: the insects keep together round the nest (within 2.3 m), keep apart from each other, and dive at the ground now and then", farthest < 2.3 and nearest > 0.08 and lowest - DaemonArt.GROUND_Y < 0.5)
+	print("ENEMY MOTION swarm: %d drones moved %.2f m on average, at most %.2f m from the nest, the lowest %.2f m off the ground, turning %.2f m2/s round the nest, %.2f m to the nearest neighbour on average" % [count, moved, farthest, lowest - DaemonArt.GROUND_Y, spin, nearest])
+	_check("acceptance: the runaway is a swarm of 12 to 40 drones that fly (20 to 40 insects before A5): every one moves, together they orbit the core", count >= 12 and count <= 40 and moved > 0.3 and spin > 0.4, "%d drones" % count)
+	_check("acceptance: it flocks: the drones keep together round the core (within 2.3 m), keep apart from each other, and dive at the ground now and then", farthest < 2.3 and nearest > 0.08 and lowest - DaemonArt.GROUND_Y < 0.5)
 
 
 func _scale_checks(arts: Dictionary) -> void:
@@ -473,10 +543,10 @@ func _arena_checks() -> void:
 				continue
 			looks[mat.shader.resource_path.get_file()] = looks.get(mat.shader.resource_path.get_file(), {})
 			looks[mat.shader.resource_path.get_file()][mat.get_instance_id()] = true
-	var shared := foreign.is_empty() and looks.size() == 4
+	var shared := foreign.is_empty() and looks.size() == 5
 	for file in looks:
 		shared = shared and (looks[file] as Dictionary).size() == 1
-	_check("acceptance: shared materials: the arena's four daemons, three kinds, draw with one shell (its split the next pass), one core, one trail and one glyph material", shared, str(looks.keys()))
+	_check("acceptance: shared materials: the arena's four daemons, three kinds, draw with one shell (its split the next pass), one core, one trail, one glyph and (A5) one armour material", shared, str(looks.keys()))
 	await _arena_hit_checks(main)
 	await _death_checks(main)
 

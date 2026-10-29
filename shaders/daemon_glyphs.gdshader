@@ -1,4 +1,5 @@
-// SIGKILL daemon glyphs (A2): the red terminal glyphs floating round a daemon. Each is a small quad,
+// SIGKILL daemon glyphs (A2): the terminal glyphs floating round a daemon, in its own colour (A5: its
+// core_color instance uniform; all hostile red before). Each is a small quad,
 // one instance of the daemon's glyph MultiMesh, turned to face the camera, carrying a glyph drawn
 // from a 4 by 6 bit grid mirrored left to right (as the code rain's are), re-rolled a few times a
 // second. Original and procedural: no font, no texture. The glyph MultiMesh turns slowly as a
@@ -12,7 +13,6 @@
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
 
-uniform vec4 glyph_color : source_color = vec4(1.0, 0.2, 0.333, 1.0);
 uniform float energy : hint_range(0.0, 32.0) = 3.0;
 uniform float flicker_rate : hint_range(0.0, 30.0) = 4.0;
 uniform float flash_energy : hint_range(0.0, 32.0) = 6.0;
@@ -21,6 +21,7 @@ global uniform float daemon_clock;
 
 instance uniform float hit : instance_index(0) = 0.0;
 instance uniform float seed : instance_index(3) = 0.0;
+instance uniform vec4 core_color : source_color, instance_index(4) = vec4(1.0, 0.2, 0.333, 1.0);
 
 varying float salt;
 
@@ -54,5 +55,5 @@ void fragment() {
 	if (((bits >> uint(bit)) & 1u) == 0u) {
 		discard;
 	}
-	ALBEDO = glyph_color.rgb * mix(energy, flash_energy, hit);
+	ALBEDO = core_color.rgb * mix(energy, flash_energy, hit);
 }

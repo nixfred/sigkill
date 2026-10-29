@@ -18,12 +18,20 @@ extends StaticBody3D
 ## host's: they follow the host's word, and a shot here takes nothing off them (the host judges
 ## every shot at a daemon). rogue.d's hit volume is fair to what is seen of it: beyond the
 ## cylinder, a box round its body from head to tail turns and moves with its art.
+##
+## No two alike (A5): its art is built from a seed, a new one at each spawn in play, so each comes
+## back a different creature of its type (its size, plates, seams, stance, gait, battle damage), now
+## and then its type's elite, which takes at least the daemon tuning's elite_health. In demo, test and
+## capture runs (--demo, or a --script run) the seed is fixed by its name, so stills and checks are
+## the same every run. On a joiner in a match the host's seeds rebuild it (follow_seed()), so every
+## screen draws the same daemon. Its death derezzes in its type's own colour.
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const DEFAULT_DEREZZ_PATH := "res://resources/derezz.tres"
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
+const DAEMON_AI_PATH := "res://resources/daemon_ai.tres"
 
 enum State { ALIVE, DEREZZING, RESPAWNING }
 
@@ -35,6 +43,11 @@ signal respawned(dummy: Node3D)
 ## Smallest body scale while rematerialising, so its transform never collapses to zero.
 const MIN_BODY_SCALE := 0.001
 
+## Whether every daemon's seed is fixed by its name (A5): in demo, test and capture runs, so the
+## same tree gives the same daemons; in play each spawn rolls a new one.
+static var fixed_seeds: bool = OS.get_cmdline_user_args().has("--demo") or OS.get_cmdline_args().has("--script")
+static var _elite_health := -1.0
+
 @export var tag_text: String = "<defunct>"
 @export var max_health: float = 1.0
 ## Derezz and respawn tuning. Leave empty to use resources/derezz.tres.
@@ -45,6 +58,8 @@ const MIN_BODY_SCALE := 0.001
 var state: State = State.ALIVE
 
 var _health := 1.0
+## Its own health as the scene gave it, before an elite's (A5).
+var _base_health := 1.0
 var _state_time := 0.0
 var _hex: CylinderMesh
 var _art: DaemonArt
@@ -70,20 +85,20 @@ var _killer := 0
 
 
 func _ready() -> void:
-	_health = max_health
+	_base_health = max_health
 	_hex = _body.mesh as CylinderMesh
 	# The hex is the volume, drawn by no camera; the art under it is what is seen (A2).
 	_body.layers = 0
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_art = DaemonArt.make(art, self)
-	_body.add_child(_art)
+	_build_art(_spawn_seed())
+	_health = max_health
 	brain = DaemonBrain.new(self, _art)
 	brain.take_home()
 	# The box round the body (C27b), on the dummy itself beside the cylinder: a shot that meets
 	# what is seen of the creature hits it.
 	if _art.body_box_size() != Vector3.ZERO:
 		var box := BoxShape3D.new()
-		box.size = _art.body_box_size()
+		box.size = _art.box_size()
 		_box = CollisionShape3D.new()
 		_box.name = "BodyBox"
 		_box.shape = box
@@ -91,7 +106,7 @@ func _ready() -> void:
 		_fit_box()
 
 	_tag.text = tag_text
-	_tag.position.y = _art.tag_height  # clear of the creature (A2b)
+	_tag.position.y = _art.tag_y()  # clear of the creature (A2b), at its size (A5)
 	_tag.font = Palette.mono_font()
 	_tag.font_size = 48
 	_tag.pixel_size = 0.006
@@ -208,7 +223,7 @@ func _start_derezz(point: Vector3, direction: Vector3) -> void:
 	shot = shot.normalized()
 	var fx := DerezzFx.new()
 	_fx_root().add_child(fx)
-	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d)
+	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d, 0, _art.core_color)  # in its type's colour (A5)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
 	downed.emit(self)
 
@@ -234,6 +249,12 @@ func _begin_rematerialise() -> void:
 	state = State.RESPAWNING
 	_state_time = 0.0
 	_go_home()
+	# A new spawn, a new daemon (A5): built from its next seed while it is still nothing. A joiner's
+	# copy waits for the host's seed (follow_seed()).
+	if not _follows():
+		var seed := _spawn_seed()
+		if seed != _art.build_seed:
+			_build_art(seed)
 	_body.scale = Vector3.ONE * MIN_BODY_SCALE
 	_body.visible = true
 	_art.set_unstable(1.0)
@@ -339,3 +360,56 @@ func _pulse(point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> 
 ## The daemon's art (A2), for the checks.
 func art_node() -> DaemonArt:
 	return _art
+
+
+## The seed its art was built from (A5): what a match's host sends its joiners.
+func build_seed() -> int:
+	return _art.build_seed
+
+
+## On a joiner in a match (A5), the host's seed for this daemon: rebuilt from it when it differs, so
+## this screen draws the host's daemon (its size, its build, an elite's health).
+func follow_seed(seed: int) -> void:
+	if seed >= 0 and seed <= DaemonArt.SEED_LAST and seed != _art.build_seed:
+		_build_art(seed)
+
+
+## The seed for its next spawn (A5): fixed by its name in demo, test and capture runs, else a new
+## roll.
+func _spawn_seed() -> int:
+	if fixed_seeds:
+		return DaemonArt.seed_of(tag_text)
+	return randi() & DaemonArt.SEED_LAST
+
+
+## Builds its art from `seed` (A5), in place of the one it had: under the Body, its brain told,
+## what the old one was doing carried over (its glitch, its displays, its act), its body box, its
+## tag and its health fitted to the new build. Only at a spawn, or a joiner's first word of the
+## host's daemon.
+func _build_art(seed: int) -> void:
+	var old := _art
+	_art = DaemonArt.make(art, self, seed)
+	if old != null:
+		_art.displays = old.displays
+		_art.drive(old.act, old.act_u)
+		_body.remove_child(old)
+		old.queue_free()
+	_body.add_child(_art)
+	if old != null:
+		_art.set_unstable(old.unstable())
+	if brain != null:
+		brain.art = _art
+	if _box != null:
+		(_box.shape as BoxShape3D).size = _art.box_size()
+		_fit_box()
+	_tag.position.y = _art.tag_y()
+	max_health = maxf(_base_health, _elite_health_now()) if _art.elite else _base_health
+	_health = minf(_health, max_health)
+
+
+## An elite's health from the daemon tuning (A5), read once.
+static func _elite_health_now() -> float:
+	if _elite_health < 0.0:
+		var tuning := load(DAEMON_AI_PATH) as DaemonAiTuning
+		_elite_health = tuning.elite_health if tuning != null and tuning.problems().is_empty() else 30.0
+	return _elite_health

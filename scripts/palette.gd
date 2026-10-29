@@ -47,6 +47,13 @@ const POLYMER := Color(0.023529412, 0.027450980, 0.031372549)  # #060708 viewmod
 # cores in the type's own hostile colour, red glyphs.
 const OBSIDIAN := Color(0.011764706, 0.015686275, 0.019607843)  # #030405 daemon shells
 const GLITCH_SPLIT := Color(1.0, 0.168627451, 0.839215686)  # #ff2bd6 the far side of a daemon's glitch split: hostile magenta (A4; cyan #4de1ff before)
+# Daemons' own colours (A5): each type's seams, joints, weak points and glyphs, so the three read
+# apart at a glance: rogue.d crimson (deeper than the HUD's hostile red), the zombie hostile amber,
+# the runaway hot magenta (redder than the fork bomb's #ff4dff). Their armour (A5): near-black
+# gunmetal with a blue cast, catching the arena's light on its bevels.
+const CRIMSON := Color(1.0, 0.070588235, 0.188235294)  # #ff1230 rogue.d's seams, visor and stinger
+const HOT_MAGENTA := Color(1.0, 0.105882353, 0.643137255)  # #ff1ba4 the runaway's drones, core and trails
+const DAEMON_ARMOR := Color(0.050980392, 0.058823529, 0.074509804)  # #0d0f13 every daemon's armour
 # Lighting (A4): the warm accent of the arena's signs and the key lights by them.
 const SODIUM := Color(1.0, 0.560784314, 0.149019608)  # #ff8f26 signs and their lamps
 # Arena (A3): gunmetal trims a shade above the base, a darker plinth and corner towers, the
@@ -138,6 +145,24 @@ const DAEMON_TRAIL_ENERGY := 4.0
 const DAEMON_GLYPH_ENERGY := 3.0
 const DAEMON_GLYPH_FLICKER := 4.0
 const DAEMON_GLYPH_FLASH_ENERGY := 6.0
+# The armour (A5): how metallic and how rough, how far each plate's tone strays, the faint light on
+# its true edges (a machined bevel) and its colour, the rim in the type's colour where it turns away,
+# a scorched plate's darkening, and its calmer glitch at rest (a hit or a respawn still tears it).
+const DAEMON_ARMOR_METALLIC := 0.55
+const DAEMON_ARMOR_ROUGHNESS := 0.32
+const DAEMON_ARMOR_TINT := 0.35
+const DAEMON_ARMOR_BEVEL_ENERGY := 0.24
+const DAEMON_ARMOR_BEVEL := Color(0.62, 0.74, 0.8)  # #9ebdcc a cool steel catch-light
+const DAEMON_ARMOR_RIM_ENERGY := 0.22
+const DAEMON_ARMOR_RIM_POWER := 5.0
+const DAEMON_ARMOR_SCORCH := 0.7
+const DAEMON_ARMOR_GLITCH_SHARE := 0.015
+const DAEMON_ARMOR_TEAR_SHARE := 0.01
+const DAEMON_ARMOR_PART_SHARE := 0.004
+# The seams (A5): how fast a damaged seam's flicker rolls, a second, and a seam's brightness, a share
+# of a core's (dimmer, so it stays its type's colour in the glow instead of burning white).
+const DAEMON_SEAM_FLICKER_HZ := 9.0
+const DAEMON_SEAM_GLOW := 0.6
 # Derezz look (A2): the voxels' edge (a share of a face), the face's share of the glow, the edge's
 # boost, the cells a face breaks into; the death's flash (a column and a ground ring) and its glow.
 const DEREZZ_EDGE_WIDTH := 0.14
@@ -252,6 +277,7 @@ const DAEMON_CORE_SHADER := "daemon_core"
 const DAEMON_GLYPH_SHADER := "daemon_glyphs"
 const DAEMON_SPLIT_SHADER := "daemon_split"
 const DAEMON_TRAIL_SHADER := "daemon_trail"
+const DAEMON_ARMOR_SHADER := "daemon_armor"
 const DEREZZ_VOXEL_SHADER := "derezz_voxel"
 const ARENA_PANEL_SHADER := "arena_panel"
 const ARENA_LIGHT_SHADER := "arena_light"
@@ -413,7 +439,36 @@ static func daemon_core_material() -> ShaderMaterial:
 	mat.set_shader_parameter("flash_energy", DAEMON_CORE_FLASH_ENERGY)
 	mat.set_shader_parameter("flash_color", FLASH)
 	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	mat.set_shader_parameter("flicker_hz", DAEMON_SEAM_FLICKER_HZ)
 	_daemon_glitch(mat)
+	return mat
+
+
+## Every daemon's armour (A5): one material for all of them; each daemon's flash, lock, glitch, seed
+## and colour (its rim, edge_color) are instance uniforms, each plate's tone and scorch its custom
+## data. Solid: no split pass, and a calmer glitch at rest than the obsidian's.
+static func daemon_armor_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader(DAEMON_ARMOR_SHADER)
+	mat.set_shader_parameter("armor", DAEMON_ARMOR)
+	mat.set_shader_parameter("metallic_amount", DAEMON_ARMOR_METALLIC)
+	mat.set_shader_parameter("roughness_amount", DAEMON_ARMOR_ROUGHNESS)
+	mat.set_shader_parameter("tint", DAEMON_ARMOR_TINT)
+	mat.set_shader_parameter("bevel_color", DAEMON_ARMOR_BEVEL)
+	mat.set_shader_parameter("bevel_energy", DAEMON_ARMOR_BEVEL_ENERGY)
+	mat.set_shader_parameter("edge_px", DAEMON_EDGE_PX)
+	mat.set_shader_parameter("rim_energy", DAEMON_ARMOR_RIM_ENERGY)
+	mat.set_shader_parameter("rim_power", DAEMON_ARMOR_RIM_POWER)
+	mat.set_shader_parameter("scorch_dark", DAEMON_ARMOR_SCORCH)
+	mat.set_shader_parameter("flash_color", HOSTILE_AMBER)
+	mat.set_shader_parameter("flash_energy", DAEMON_FLASH_ENERGY)
+	mat.set_shader_parameter("lock_color", COBALT)
+	mat.set_shader_parameter("lock_energy", DAEMON_LOCK_ENERGY)
+	mat.set_shader_parameter("cells_per_m", DAEMON_CELLS_PER_M)
+	_daemon_glitch(mat)
+	mat.set_shader_parameter("glitch_share", DAEMON_ARMOR_GLITCH_SHARE)
+	mat.set_shader_parameter("tear_share", DAEMON_ARMOR_TEAR_SHARE)
+	mat.set_shader_parameter("part_share", DAEMON_ARMOR_PART_SHARE)
 	return mat
 
 
@@ -426,11 +481,11 @@ static func daemon_trail_material() -> ShaderMaterial:
 	return mat
 
 
-## Every daemon's floating glyphs (A2): one material, hostile red.
+## Every daemon's floating glyphs (A2): one material, each daemon's in its own colour (A5: its
+## core_color instance uniform; hostile red for all before).
 static func daemon_glyph_material() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = _shader(DAEMON_GLYPH_SHADER)
-	mat.set_shader_parameter("glyph_color", HOSTILE_RED)
 	mat.set_shader_parameter("energy", DAEMON_GLYPH_ENERGY)
 	mat.set_shader_parameter("flicker_rate", DAEMON_GLYPH_FLICKER)
 	mat.set_shader_parameter("flash_energy", DAEMON_GLYPH_FLASH_ENERGY)

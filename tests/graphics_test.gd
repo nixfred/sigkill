@@ -43,10 +43,11 @@ const RESOURCES_SHA := "603599096ad58a96c8c127f49f93d77c2a9d8aa9b4791ead955ff050
 const ARSENAL_SHA := "b98ef06f812877af00be320ad1350d3942b35f03fa78c00d355c03b0ab1b39a4"
 ## Since C27b the session carries the daemons (its brief changes scripts/net/, protocol 10): the
 ## pin over scripts/net/ (eeca5f69c759 at dee2482, every .gd) is now its files that hold numbers,
-## as they were at dee2482 (NET_NUMBERS_SHA).
+## as they were at dee2482 (NET_NUMBERS_SHA). Since A5 the daemon state message carries each
+## daemon's build seed: protocol 11, its numbers unchanged.
 const NET_NUMBERS := ["combat_tuning.gd", "net_tuning.gd", "room_tuning.gd"]
 const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675cb6952d9fc"
-const PROTOCOL := 10
+const PROTOCOL := 11
 const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
 const C28_TRES := ["arsenal.tres", "ping_sonar.tres"]
@@ -168,7 +169,7 @@ func _source_checks() -> void:
 	var as_was := arsenal_text.replace("load_steps=11", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace(", ExtResource(\"10_ping\")])", "])")
 	var arsenal := as_was.sha256_text()
 	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---

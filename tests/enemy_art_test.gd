@@ -11,8 +11,9 @@ extends SceneTree
 ## volume is byte for byte as it was before A2 (the dummy's collision shape, layer and mask, and the
 ## arena's dummies' places), and nothing under the art can collide; the avatars' derezz is the same
 ## effect. Each type built alone: inside its own triangle and draw-call budget, three different
-## shapes, its core in its own palette colour, every daemon of every type sharing one obsidian, one
-## core, one trail and one glyph material; moving by transforms only, the meshes never rebuilt; its
+## shapes, its core in its own palette colour (A5: rogue.d crimson, the zombie amber, the runaway hot
+## magenta), every daemon of every type sharing one obsidian, one core, one trail, one glyph and one
+## armour material (A5); moving by transforms only, the meshes never rebuilt; its
 ## clock at the game's pace (half as fast at half the engine's time, as SIGSTOP makes it); the hit
 ## flash and the rematerialise glitch reaching the shaders. (Since A2b each type is a posed creature,
 ## tests/enemy_motion_test.gd checks its motion.) In the real arena: each dummy drawn by its art, its hex
@@ -29,7 +30,7 @@ const Controls = preload("res://scripts/controls.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
 const Dummy = preload("res://scripts/target_dummy.gd")
 const ART_DIR := "res://scripts/daemons/"
-const TYPES := {"rogue_daemon": Palette.HOSTILE_RED, "zombie_process": Palette.HOSTILE_AMBER, "runaway_swarm": Palette.HOSTILE_RED}
+const TYPES := {"rogue_daemon": Palette.CRIMSON, "zombie_process": Palette.HOSTILE_AMBER, "runaway_swarm": Palette.HOT_MAGENTA}
 const ARENA_ART := {"DummyA": "rogue_daemon", "DummyB": "zombie_process", "DummyC": "zombie_process", "DummyD": "runaway_swarm"}
 ## The fewest triangles a daemon may take (each type sets its own most, triangles and draw calls).
 const TRIANGLES_FIRST := 120
@@ -162,6 +163,7 @@ func _type_checks() -> void:
 	var core_mats := {}
 	var trail_mats := {}
 	var glyph_mats := {}
+	var armor_mats := {}
 	for type in TYPES:
 		var art := DaemonArt.make(load(ART_DIR + type + ".gd"))
 		art.position = Vector3(3.0 * arts.size(), 0.0, 0.0)
@@ -194,13 +196,15 @@ func _type_checks() -> void:
 				trail_mats[mat.get_instance_id()] = true
 			elif file == "daemon_glyphs.gdshader":
 				glyph_mats[mat.get_instance_id()] = true
+			elif file == "daemon_armor.gdshader" and mat.next_pass == null:
+				armor_mats[mat.get_instance_id()] = true
 			else:
 				shared.append("%s %s" % [type, file])
 	print("ENEMY ART types: " + "; ".join(report))
 	_check("acceptance: every type inside its budget: at least %d triangles, and no more triangles or draw calls than it allows" % TRIANGLES_FIRST, budget.is_empty(), ", ".join(budget))
 	_check("acceptance: three different shapes: no two types share their size and triangle count", shapes.size() == TYPES.size(), str(shapes.size()))
-	_check("acceptance: every core glows in its type's own palette colour through the shared core shader: hostile red for the rogue daemon and the swarm, hostile amber for the zombie", cores.is_empty(), ", ".join(cores))
-	_check("acceptance: every daemon of every type shares one obsidian (its split the next pass), one core, one trail and one glyph material (instance uniforms, no shader of its own), every part in a MultiMesh", shared.is_empty() and shell_mats.size() == 1 and core_mats.size() == 1 and trail_mats.size() == 1 and glyph_mats.size() == 1, "%s; %d %d %d %d" % [", ".join(shared), shell_mats.size(), core_mats.size(), trail_mats.size(), glyph_mats.size()])
+	_check("acceptance: every core glows in its type's own palette colour through the shared core shader (A5): crimson for the rogue daemon, hostile amber for the zombie, hot magenta for the swarm", cores.is_empty(), ", ".join(cores))
+	_check("acceptance: every daemon of every type shares one obsidian (its split the next pass), one core, one trail, one glyph and one armour material (A5; solid, no split pass) (instance uniforms, no shader of its own), every part in a MultiMesh", shared.is_empty() and shell_mats.size() == 1 and core_mats.size() == 1 and trail_mats.size() == 1 and glyph_mats.size() == 1 and armor_mats.size() == 1, "%s; %d %d %d %d %d" % [", ".join(shared), shell_mats.size(), core_mats.size(), trail_mats.size(), glyph_mats.size(), armor_mats.size()])
 	var meshes := _mesh_ids(arts.values())
 	var turns := {}
 	for type in arts:
@@ -223,9 +227,10 @@ func _type_checks() -> void:
 	Engine.time_scale = 1.0
 	_check("acceptance: a daemon's clock runs at the game's pace: half as far at half the engine's time, as SIGSTOP slows the world alone", clock_full > 0.9 and absf(clock_half - clock_full * 0.5) < 0.02, "%.3f s then %.3f s" % [clock_full, clock_half])
 	var rogue: DaemonArt = arts["rogue_daemon"]
+	# Its armour (A5; the obsidian before): a set every flash and glitch must reach.
 	var shell: GeometryInstance3D = null
 	for i in rogue.sets().size():
-		if shell == null and rogue.set_look(i) == DaemonArt.Look.SHELL:
+		if shell == null and rogue.set_look(i) == DaemonArt.Look.ARMOR:
 			shell = rogue.sets()[i]
 	rogue.flash()
 	var flashed: bool = is_equal_approx(rogue.hit_glow(), 1.0) and is_equal_approx(shell.get_instance_shader_parameter("hit"), 1.0) and is_equal_approx(rogue.glyphs().get_instance_shader_parameter("hit"), 1.0)

@@ -436,7 +436,7 @@ func _match_checks() -> void:
 	var cs = client["session"]
 	var cid: int = cs.my_id
 	var rpcs := _code("res://scripts/net/net_session.gd").count("@rpc(")
-	_check("acceptance: the wire: protocol 10 still, no new message (24 RPCs, as C27b left them): a ping is the usual fire intent and the seed message every joiner already draws volleys from", joined and Session.PROTOCOL == 10 and rpcs == 24, "%d RPCs" % rpcs)
+	_check("acceptance: the wire: protocol 11 since A5's daemon seeds (10 at C28), no new message (24 RPCs, as C27b left them): a ping is the usual fire intent and the seed message every joiner already draws volleys from", joined and Session.PROTOCOL == 11 and rpcs == 24, "%d RPCs" % rpcs)
 	# The host's own player far off behind the lair's walls; the joiner on open floor, ping drawn;
 	# the host's rogue near the joiner, the others parked.
 	host["player"].global_position = host["main"].to_global(Vector3(15.0, 0.95, -15.0))

@@ -55,7 +55,8 @@ static var _meshes: Dictionary = {}
 static var _materials: Dictionary = {}
 static var _column_mesh: CylinderMesh
 static var _ring_mesh: TorusMesh
-static var _flash_material: StandardMaterial3D
+## The flash's material for each colour it has been lit in (A5: a daemon's own), made once each.
+static var _flash_materials: Dictionary = {}
 
 var _d: Derezz
 var _pos := PackedVector3Array()
@@ -74,6 +75,8 @@ var _accumulator := 0.0
 var _steps := 0
 var _probes := 0  # ground rays cast so far, for tests
 var _column: MeshInstance3D
+## Its light's colour (A5): hostile red, or a daemon's own.
+var _glow := Palette.HOSTILE_RED
 var _ring: MeshInstance3D
 var _radius := 0.0
 
@@ -88,8 +91,9 @@ var captured_color := Color()
 ## Starts the derezz of a hexagonal prism of `radius` and `height` whose base is at `base`.
 ## Call it after the node is in the tree. `shot_dir` is the horizontal direction the
 ## killing shot travelled in, or zero if unknown.
-## A nonzero `rng_seed` makes the derezz repeatable, for tests.
-func start(base: Vector3, radius: float, height: float, shot_dir: Vector3, d: Derezz, rng_seed: int = 0) -> void:
+## A nonzero `rng_seed` makes the derezz repeatable, for tests. `color` is its light: hostile red
+## for a player, a daemon's own colour for a daemon (A5).
+func start(base: Vector3, radius: float, height: float, shot_dir: Vector3, d: Derezz, rng_seed: int = 0, color: Color = Palette.HOSTILE_RED) -> void:
 	_d = d
 	add_to_group(FX_GROUP)
 	global_transform = Transform3D(Basis.IDENTITY, base)
@@ -108,7 +112,8 @@ func start(base: Vector3, radius: float, height: float, shot_dir: Vector3, d: De
 		points[i] = points[j]
 		points[j] = swap
 	var centre := Vector3(0.0, height * HALF, 0.0)
-	var obsidian := Palette.BASE.lerp(Palette.HOSTILE_RED, d.obsidian_glow)
+	_glow = color
+	var obsidian := Palette.BASE.lerp(color, d.obsidian_glow)
 	for i in count:
 		var p := points[i]
 		var radial := Vector3(p.x - centre.x, 0.0, p.z - centre.z).normalized()
@@ -127,7 +132,7 @@ func start(base: Vector3, radius: float, height: float, shot_dir: Vector3, d: De
 		_fade.append(1.0)
 		_ground.append(0.0)  # the dummy stood on this ground
 		_probe_at.append(Vector2(p.x, p.z))
-		_color.append(Palette.HOSTILE_RED if rng.randf() < d.glow_fraction else obsidian)
+		_color.append(color if rng.randf() < d.glow_fraction else obsidian)
 		_lifetime = maxf(_lifetime, life)
 	multimesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -188,8 +193,6 @@ func _start_flash(radius: float, height: float) -> void:
 		_ring_mesh.outer_radius = 1.0
 		_ring_mesh.rings = 24
 		_ring_mesh.ring_segments = 4
-		_flash_material = Palette.unlit_glow(Palette.HOSTILE_RED, Palette.DEREZZ_FLASH_ENERGY)
-		_flash_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	_column = _flash_node("Column", _column_mesh, Vector3(0.0, height * COLUMN_STRETCH * HALF, 0.0))
 	_column.scale = Vector3(COLUMN_RADIUS, height * COLUMN_STRETCH, COLUMN_RADIUS)
 	_ring = _flash_node("Ring", _ring_mesh, Vector3(0.0, 0.02, 0.0))
@@ -197,11 +200,21 @@ func _start_flash(radius: float, height: float) -> void:
 	_step_flash()
 
 
+## The flash's material in `color`, made the first time it is asked for (A5).
+static func _flash_of(color: Color) -> StandardMaterial3D:
+	var key := color.to_html()
+	if not _flash_materials.has(key):
+		var mat := Palette.unlit_glow(color, Palette.DEREZZ_FLASH_ENERGY)
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_flash_materials[key] = mat
+	return _flash_materials[key]
+
+
 func _flash_node(node_name: String, mesh: Mesh, at: Vector3) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.name = node_name
 	node.mesh = mesh
-	node.material_override = _flash_material
+	node.material_override = _flash_of(_glow)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.position = at
 	add_child(node)
