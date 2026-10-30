@@ -58,6 +58,9 @@ const NET_NUMBERS_SHA := "6e8b0b58e20b69a326149b8f30eae07063c31b4c5fdbaa49ec8675
 const PROTOCOL := 19
 const DEE2482_TRES := ["announcer.tres", "boot.tres", "code_rain.tres", "code_rain_vision.tres", "combat.tres", "cron_mines.tres", "derezz.tres", "fork_bomb.tres", "fork_bomb_weapon.tres", "fork_shotgun.tres", "grep_seeker.tres", "guide.tres", "hud.tres", "light_trail.tres", "movement_tuning.tres", "net.tres", "rm_rf_cannon.tres", "room.tres", "sigkill_rail.tres", "sigstop.tres", "sigterm.tres", "spectate_top.tres", "sudo_overcharge.tres", "terminal_cannon.tres"]
 const C27B_TRES := ["daemon_ai.tres"]
+## The opener's own timeline (C38): resources/opener.tres. Its six palettes sit in resources/opener/, a folder this
+## list never reads; nothing of either is a gameplay number.
+const C38_TRES := ["opener.tres"]
 const I1_TRES := ["ice.tres"]
 const I2_TRES := ["breakers.tres"]
 const I3_TRES := ["black_ice.tres"]
@@ -185,7 +188,7 @@ func _source_checks() -> void:
 	var resources := _dir_sha("res://resources/", ".tres", DEE2482_TRES)
 	var tres := Array(DirAccess.get_files_at("res://resources/")).filter(func(n): return n.ends_with(".tres"))
 	tres.sort()
-	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES + C31_TRES + C32_TRES + C33_KITS
+	var expected_tres := DEE2482_TRES + C27B_TRES + C28_TRES + I1_TRES + I2_TRES + I3_TRES + C29_TRES + C30_TRES + C31_TRES + C32_TRES + C33_KITS + C38_TRES
 	expected_tres.sort()
 	resources = resources if tres == expected_tres else "files %s" % ", ".join(tres)
 	var net := _dir_sha("res://scripts/net/", ".gd", NET_NUMBERS)
@@ -194,7 +197,7 @@ func _source_checks() -> void:
 	var as_was := arsenal_text.replace("load_steps=15", "load_steps=10").replace("[ext_resource type=\"Resource\" path=\"res://resources/ping_sonar.tres\" id=\"10_ping\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/chmod_000.tres\" id=\"11_chmod\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/pipe_chain.tres\" id=\"12_pipe\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/dev_null.tres\" id=\"13_dev_null\"]\n", "").replace("[ext_resource type=\"Resource\" path=\"res://resources/sighup.tres\" id=\"14_sighup\"]\n", "").replace(", ExtResource(\"10_ping\"), ExtResource(\"11_chmod\"), ExtResource(\"12_pipe\"), ExtResource(\"13_dev_null\"), ExtResource(\"14_sighup\")])", "])")
 	var arsenal := as_was.sha256_text()
 	resources = resources if arsenal == ARSENAL_SHA and arsenal_text != as_was else "arsenal %s" % arsenal.left(12)
-	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added; since C31 dev_null.tres, the black hole's own, and the arsenal with it added; since C32 sighup.tres, the confusion grenade's own, and the arsenal with it added; since C33 each weapon's kit beside it, its skin and mod slots naming the kit's ids, read back empty here) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30, 17 since C31, 18 since C32, 19 since C33)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
+	_check("acceptance: no gameplay number changed: resources/ (dee2482's files; daemon_ai.tres beside them since C27b; since C28 ping_sonar.tres too, and the arsenal dee2482's with ping added and nothing else; since I1 ice.tres, ICE's own; since I2 breakers.tres, the ICEbreakers' own; since I3 black_ice.tres, Black ICE's own; since C29 chmod_000.tres, the freeze ray's own, and the arsenal with it added; since C30 pipe_chain.tres, the chain beam's own, and the arsenal with it added; since C31 dev_null.tres, the black hole's own, and the arsenal with it added; since C32 sighup.tres, the confusion grenade's own, and the arsenal with it added; since C33 each weapon's kit beside it, its skin and mod slots naming the kit's ids, read back empty here; since C38 opener.tres, the opener's own timeline, no gameplay number) and scripts/net/'s numbers (its tunings; the session itself since C27b's daemons) byte for byte as at dee2482, the protocol %d (9 at A4, 10 since C27b, 11 since A5, 12 since I1, 13 since I2, 14 since I3, 15 since C29, 16 since C30, 17 since C31, 18 since C32, 19 since C33)" % PROTOCOL, resources == RESOURCES_SHA and net == NET_NUMBERS_SHA and protocol, "resources %s, net %s" % [resources.left(12), net.left(12)])
 
 
 # --- The settings. ---
