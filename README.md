@@ -104,7 +104,7 @@ Built today: the greybox arena with the Tron look, tight movement, the terminal 
 
 ## Story
 
-> **Status: Planned** (story bible C34, missions C35 to C37, the opener C38 to C42). None of the campaign is built yet.
+> **Status: story bible drafted, waiting on Fred's review** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; nothing in it is decided yet). Missions (C35 to C37) and the opener (C38 to C42) are Planned and wait on that review. None of the campaign is built yet.
 
 **You're a sysadmin jacked into your own machine, because something is spawning processes you never started.** Your AI is the only one you trust, until the trail leads to a question nobody wants answered: who wrote the daemons?
 
@@ -1331,6 +1331,7 @@ sigkill/
     ├── DESIGN.md               Decisions log and design notes
     ├── ENGINE.md               Why Godot 4
     ├── RELAY.md                The relay: design, wire format, WebSocket mode, limits, running it locally, on a server and on exe.dev, hosting cost
+    ├── STORY.md                The story bible (C34): a draft waiting on Fred's review, nothing built
     ├── RELEASE_NOTES-0.33.0-prealpha.md  The pre-alpha drop: what is in, what is not yet, known issues
     ├── RELEASE_CHECKLIST.md    What is left before the 0.33.0-prealpha tag
     └── media/                  README art and A1's in-game stills; .gdignore keeps Godot from importing it
@@ -1497,6 +1498,7 @@ flowchart LR
 - [`docs/RELAY.md`](docs/RELAY.md): the rendezvous, punch-through and fallback relay design for room codes, and the hosting cost note (nothing is deployed)
 - [`docs/RELEASE_NOTES-0.33.0-prealpha.md`](docs/RELEASE_NOTES-0.33.0-prealpha.md): the pre-alpha drop, what is in and what is not
 - [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md): what is left before the 0.33.0-prealpha tag
+- [`docs/STORY.md`](docs/STORY.md): the story bible (C34), a draft waiting on Fred's review
 - [`CREDITS.md`](CREDITS.md): who made what, including community prompts
 
 ## Install and play
@@ -1701,7 +1703,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | Art pass | A1 weapon viewmodels (`aa3ca98`) · A2 enemy art: daemons, a drone swarm, the derezz (`0d7cbdb`) · A3 arena: depth, props, signs, skyline, sky and fog (`1590eb0`) · A2b enemy redo: articulated creatures, hit reactions, shard deaths (`766cec6`) · A4 lighting, post and particles: AgX, glow, SSAO and SSR, the grade, warm signs, GPU particles, graphics presets (`c72cc0c`, `ab05c07`) · A5 monster redo: solid armoured daemons lit only at their seams, one colour a type, no two alike, rare elites, the swarm's core (`8c0511f`, `db57bc3`); A1 to A4 right after C27 and before C28, so the site launches with real captures, A5 after C28 | ✅ Done: A1, A2, A3, A2b, A4 and A5 |
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
-| M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
+| M6 Story campaign | C34 story bible drafted, waiting on Fred's review ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | 🟡 C34 drafted, waiting on Fred's review; C35 to C42 Planned, after it |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
