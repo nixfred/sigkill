@@ -407,3 +407,118 @@ static func _render(w: Weapon, seconds: float, start_hz: float, end_hz: float, d
 	stream.stereo = false
 	stream.data = data
 	return stream
+
+
+## The opener's sounds (C38), made here like every other: a keyboard's keys, the stuck buffer of a frozen game, the
+## crackle of its picture coming apart, and the low hum under the fake terminal.
+
+## Key click variants (0 to OPENER_KEYS - 1); -1 is the space bar, -2 a backspace.
+const OPENER_KEYS := 6
+const OPENER_BUZZ_GRAIN_S := 0.046
+const OPENER_CRACKLE_S := 1.2
+const OPENER_HUM_S := 2.0
+
+
+## A key on a keyboard: a short tick (a decaying burst of noise through a resonance at the key's pitch) over a
+## small thump; each variant its own pitch and bite, the space bar deeper and longer, a backspace sharper.
+static func opener_key(variant: int) -> AudioStreamWAV:
+	var rate := 44100
+	var seconds := 0.05 if variant == -1 else 0.032
+	var count := int(seconds * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 31 * (variant + 3)
+	var hz := 1700.0 if variant == -1 else (3900.0 if variant == -2 else 2500.0 + 230.0 * variant)
+	var thump_hz := 95.0 if variant == -1 else 150.0 + 12.0 * maxi(variant, 0)
+	var w := TAU * hz / rate
+	var r := 0.965
+	var c1 := 2.0 * r * cos(w)
+	var c2 := -r * r
+	var y1 := 0.0
+	var y2 := 0.0
+	var peak := 0.0
+	var samples := PackedFloat32Array()
+	samples.resize(count)
+	for i in count:
+		var t := float(i) / rate
+		var burst := rng.randf_range(-1.0, 1.0) * exp(-t * 420.0)
+		var y := c1 * y1 + c2 * y2 + burst
+		y2 = y1
+		y1 = y
+		var thump := sin(TAU * thump_hz * t) * exp(-t * 110.0) * 6.0
+		samples[i] = y + thump
+		peak = maxf(peak, absf(samples[i]))
+	for i in count:
+		data.encode_s16(i * 2, int(clampf(samples[i] / maxf(peak, 0.001) * 0.8, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## A frozen game's sound: its last 46 ms of audio played over and over, a buzz at the grain's own rate with the
+## arena's hum chord and grit in it. Loops until the opener cuts it dead.
+static func opener_buzz() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_BUZZ_GRAIN_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 1
+	var grit := 0.0
+	for i in count:
+		var t := float(i) / rate
+		grit = lerpf(grit, rng.randf_range(-1.0, 1.0), 0.3)
+		var tone := sin(TAU * 55.0 * t) * 0.5 + sin(TAU * 110.0 * t + 0.3) * 0.35 + sin(TAU * 220.0 * t) * 0.22 + sin(TAU * 660.0 * t) * 0.08
+		data.encode_s16(i * 2, int(clampf((tone + grit * 0.3) * 0.75, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+## A picture coming apart: sparse bursts of held, coarsely stepped noise, as a broken decoder's output sounds.
+static func opener_crackle() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_CRACKLE_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 2
+	var held := 0.0
+	var hold := 0
+	var gate := 0.0
+	for i in count:
+		if i % 220 == 0:
+			gate = 1.0 if rng.randf() < 0.3 else 0.0
+		if hold <= 0:
+			held = floorf(rng.randf_range(-1.0, 1.0) * 4.0) / 4.0
+			hold = rng.randi_range(1, 40)
+		hold -= 1
+		data.encode_s16(i * 2, int(clampf(held * gate * 0.7, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+## The low hum under the fake terminal: mains hum and its harmonics with a little air, a loop that closes on itself.
+static func opener_hum() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_HUM_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 3
+	var air := 0.0
+	for i in count:
+		var t := float(i) / rate
+		air = lerpf(air, rng.randf_range(-1.0, 1.0), 0.015)
+		var swell := 0.85 + 0.15 * sin(TAU * t / OPENER_HUM_S)
+		var tone := sin(TAU * 50.0 * t) * 0.5 + sin(TAU * 100.0 * t) * 0.28 + sin(TAU * 150.0 * t + 0.4) * 0.14 + sin(TAU * 250.0 * t) * 0.05
+		data.encode_s16(i * 2, int(clampf((tone * swell + air * 0.6) * 0.6, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream

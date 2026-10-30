@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="OpenerPalette" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/opener/opener_palette.gd" id="1_palette"]
+
+[resource]
+script = ExtResource("1_palette")
+id = "ember"
+inspired_by = "Gruvbox Material"
+mode = "dark"
+colors = Dictionary[String, String]({"accent": "#7daea3", "selection": "#504945", "muted": "#665c54", "background": "#282828", "dark_background": "#1e1e1e", "darker_background": "#161616", "lighter_background": "#3c3836", "foreground": "#d4be98", "dark_foreground": "#7c6f64", "light_foreground": "#bdae93", "bright_foreground": "#d4be98", "red": "#ea6962", "yellow": "#d8a657", "orange": "#e1875c", "green": "#a9b665", "cyan": "#89b482", "blue": "#7daea3", "magenta": "#d3869b", "bright_red": "#ea6962", "bright_yellow": "#d8a657", "bright_green": "#a9b665", "bright_cyan": "#89b482", "bright_blue": "#7daea3", "bright_magenta": "#d3869b"})

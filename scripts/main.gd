@@ -16,6 +16,9 @@ const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
 const NetSession = preload("res://scripts/net/net_session.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
+## The game's own flag that starts the opener (C38) as the arena loads, from the Esc menu, as if picked there: for
+## the tests and the captures. The first launch's own opener is C42's to decide.
+const OPENER_FLAG := "--opener"
 
 var _remaining := 0
 var _total := 0
@@ -107,6 +110,13 @@ func _ready() -> void:
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
+	if launch_args.has(OPENER_FLAG):
+		_play_opener.call_deferred()
+
+
+## The opener from the Esc menu (C38), as the flag asks.
+func _play_opener() -> void:
+	_hud.pause_menu().open_opener()
 
 
 ## The arena scene stores approximate colours so the editor previews the look.

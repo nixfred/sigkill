@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32 or c33):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33 or c38):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -55,7 +55,10 @@ extends SceneTree
 ## Dracula's purple and green, its overclock fitted; the same screen on SIGHUP with a locked skin (dial tone) under
 ## the pointer lighting the handset while its card says how it is earned; a line-up of weapons in earned skins on
 ## the open floor, each on a plinth with its skin's name; and the toast in play, "UNLOCKED: Catppuccin" over a
-## SIGTERM shot in its ^C cyan; then it prints what the turntable costs. Every other set plays in practice,
+## SIGTERM shot in its ^C cyan; then it prints what the turntable costs; c38, the opener's first 35 seconds on demo
+## data, picked from the Esc menu as a player would: the game's own frame frozen and coming apart mid-crash, the
+## prompt that typed itself, the first lines typed, the folder scroll with the uptime ticking and the last lines, the
+## terminal in each of the six demo palettes side by side, and the same terminal in a 960x540 window. Every other set plays in practice,
 ## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -341,6 +344,15 @@ const C33_CAM_LOOK := Vector3(0.0, 0.45, 7.6)
 const C33_TURN_FRAMES := 50
 const C33_SHOT_FROM := Vector3(0.8, 0.95, 14.4)
 const C33_SHOT_AT := Vector3(0.0, 0.0, 8.8)
+## The opener (C38): the seconds each still is taken at (the crash between its two drops to black, the prompt with
+## its cursor lit, the first lines done, the last lines done, the palettes after the tear) and the palette grid's
+## columns.
+const C38_CRASH_AT := 2.15
+const C38_PROMPT_AT := 14.0
+const C38_TERMINAL_AT := 22.9
+const C38_UPTIME_AT := 34.7
+const C38_PALETTES_AT := 35.6
+const C38_GRID_COLUMNS := 3
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -420,6 +432,11 @@ func _run() -> void:
 		return
 	if _set == "c32":
 		await _c32()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c38":
+		await _c38()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -1975,6 +1992,75 @@ func _c33() -> void:
 	await _frames(14)
 	print("capture: the toast \"%s\", the strip \"%s\"" % [hud.unlock_toast().text(), hud.weapon_hud().ammo_text() if hud.weapon_hud().has_method("ammo_text") else ""])
 	await _save("c33-unlock")
+
+
+## c38: the opener from the Esc menu, over the arena as it was (two daemons ahead, the cannon in hand), its stills
+## at the seconds C38_* name, on its own clock.
+func _c38() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var a: Node3D = targets.get_node("DummyA")
+	var b: Node3D = targets.get_node("DummyB")
+	_c27b_place(a, _main.to_global(C33_SHOT_AT))
+	_c27b_place(b, _main.to_global(C33_SHOT_AT + Vector3(2.6, 0.0, -2.2)))
+	await _stand(C33_SHOT_FROM, a.global_position + Vector3.UP * 1.0)
+	_player.select_slot(0)
+	await _frames(SETTLE_FRAMES)
+	var menu = _main.get_node("Hud").pause_menu()
+	var opener: Opener = menu.open_opener()
+	await _opener_at(opener, C38_CRASH_AT, false)
+	print("capture: the crash at %.2f s: glitch %.2f, the world paused %s, a frozen frame %s" % [opener.elapsed(), opener.glitch_amount(), str(paused), str(opener.frame_texture() != null)])
+	await _save("c38-crash")
+	await _opener_at(opener, C38_PROMPT_AT, true)
+	print("capture: the prompt \"%s\"" % opener.terminal().text())
+	await _save("c38-prompt")
+	await _opener_at(opener, C38_TERMINAL_AT, true)
+	await _save("c38-terminal")
+	await _opener_at(opener, C38_UPTIME_AT, true)
+	print("capture: the screen at %.2f s:\n%s" % [opener.elapsed(), opener.terminal().text()])
+	await _save("c38-uptime")
+	await _opener_at(opener, C38_PALETTES_AT, false)
+	var tiles: Array[Image] = []
+	for id in OpenerPalette.IDS:
+		opener.set_palette(OpenerPalette.named(id))
+		await process_frame
+		await process_frame
+		tiles.append(await _grab())
+	_save_grid("c38-palettes", tiles, C38_GRID_COLUMNS)
+	opener.set_palette(OpenerPalette.named(OpenerPalette.DEFAULT_ID))
+	root.size = Vector2i(960, 540)
+	for i in 6:
+		await process_frame
+	print("capture: at 960x540 the terminal has %d columns, a %d px font on %d px rows" % [opener.terminal().columns(), opener.terminal().font_px(), opener.terminal().line_px()])
+	await _save("c38-960")
+	root.size = Vector2i(1920, 1080)
+	while is_instance_valid(opener) and opener.playing():
+		await process_frame
+	await process_frame
+	print("capture: the opener done, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
+
+
+## Frames until `opener` is `seconds` in (and its cursor lit, if `cursor`), on its own clock: it runs through the
+## pause it puts the arena in.
+func _opener_at(opener: Opener, seconds: float, cursor: bool) -> void:
+	while is_instance_valid(opener) and opener.playing() and (opener.elapsed() < seconds or (cursor and not opener.terminal().cursor_showing())):
+		await process_frame
+
+
+## Stills shrunk to half size, `columns` to a row, as one image.
+func _save_grid(name: String, stills: Array[Image], columns: int) -> void:
+	var w := floori(stills[0].get_width() * 0.5)
+	var h := floori(stills[0].get_height() * 0.5)
+	var rows := ceili(float(stills.size()) / columns)
+	var grid := Image.create(w * columns, h * rows, false, Image.FORMAT_RGBA8)
+	for i in stills.size():
+		var tile: Image = stills[i].duplicate()
+		tile.resize(w, h, Image.INTERPOLATE_LANCZOS)
+		grid.blit_rect(tile, Rect2i(0, 0, w, h), Vector2i((i % columns) * w, floori(float(i) / columns) * h))
+	grid.save_png(OUT.path_join(name + ".png"))
+	_shots += 1
+	print("capture: %s, %d stills in a grid" % [name, stills.size()])
 
 
 ## Demo progress for the stills (C33_PROGRESS), everything its counts have earned held, nothing told.

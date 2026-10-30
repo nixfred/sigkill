@@ -27,6 +27,10 @@ extends Control
 ##
 ## The game's version (project.godot's, "v0.33.0-prealpha") sits small and dim in the screen's bottom right
 ## corner while the menu itself is up, as on the boot screen.
+##
+## Play the opener (C38): the opener's first 35 seconds (scripts/opener/opener.gd) on demo data, over everything,
+## with the arena paused behind it; Esc at any moment, or its end, brings this menu back as it was. Alone only: in
+## a match the entry is greyed out, since the match cannot pause for it.
 
 signal closed
 
@@ -56,6 +60,9 @@ const RESET_ASK := "Wipe every unlock and count? Click Reset progress again with
 const RESET_DONE := "Progress wiped: every weapon back to its own skin, nothing earned."
 ## Seconds the reset's second click is waited for.
 const RESET_WAIT_S := 4.0
+const OPENER := "Play the opener"
+const OPENER_ONLINE := "Not during a match: it pauses the game."
+const OpenerScene = preload("res://scenes/opener.tscn")
 const PRACTICE_NOTE := "practice: no attacks, no ICE; a match plays by its host's"
 const RELAY_HINT := "udp://host:9010"
 ## The graphics toggles (A4) in a grid under the preset, three to a row: [label, key].
@@ -121,6 +128,8 @@ var _loadout: LoadoutScreen
 var _reset: Button
 var _reset_left := 0.0
 var _version: Label
+var _opener_button: Button
+var _opener: Opener = null
 
 
 func _ready() -> void:
@@ -176,6 +185,8 @@ func open() -> void:
 func close() -> void:
 	if not _open:
 		return
+	if showing_opener():
+		_opener.skip()
 	_capturing = ""
 	if _loadout.is_open():
 		_loadout.visible = false
@@ -203,6 +214,45 @@ func open_loadout() -> void:
 
 func showing_loadout() -> bool:
 	return _open and _loadout.is_open()
+
+
+## The opener (C38): its first 35 seconds on demo data, the menu out of sight and the arena paused behind it until
+## it ends or Esc. Alone only; in a match nothing happens (null).
+func open_opener() -> Opener:
+	if _online():
+		return null
+	if not _open:
+		open()
+	if showing_opener():
+		return _opener
+	_capturing = ""
+	_loadout.visible = false
+	_sheet.visible = false
+	visible = false
+	_opener = OpenerScene.instantiate()
+	_opener.data = DemoOpenerData.new()
+	_opener.pause_world = true
+	_opener.finished.connect(_on_opener_finished)
+	add_child(_opener)
+	return _opener
+
+
+func showing_opener() -> bool:
+	return _opener != null and is_instance_valid(_opener) and _opener.playing()
+
+
+## The opener playing now, or null.
+func opener() -> Opener:
+	return _opener if _opener != null and is_instance_valid(_opener) else null
+
+
+func _on_opener_finished(_skipped: bool) -> void:
+	if _opener != null and is_instance_valid(_opener):
+		_opener.queue_free()
+	_opener = null
+	visible = true
+	if _open:
+		_show_pause()
 
 
 func loadout_screen() -> LoadoutScreen:
@@ -292,8 +342,8 @@ func begin_rebind(action: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open or _loadout.is_open():
-		return  # the loadout screen takes its own keys (Esc goes back to the menu)
+	if not _open or _loadout.is_open() or showing_opener():
+		return  # the loadout screen and the opener take their own keys (Esc goes back to the menu)
 	if _capturing != "":
 		var button := event is InputEventKey or event is InputEventMouseButton
 		if button:
@@ -337,6 +387,8 @@ func _show_pause() -> void:
 	_sheet.visible = false
 	_loadout.visible = false
 	_pause.visible = true
+	_opener_button.disabled = _online()
+	_opener_button.tooltip_text = OPENER_ONLINE if _online() else ""
 	# The save that leaving the settings just made, said where it can be seen.
 	var saved := _status_text == SAVED_LINE or _status_text == NOT_SAVED_LINE
 	_pause_note.text = (RUNNING_ONLINE if _online() else RUNNING_SOLO) + ("\n" + _status_text if saved else "")
@@ -540,11 +592,13 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], ["Loadout", open_loadout], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], ["Loadout", open_loadout], [OPENER, open_opener], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
 			_resume = button
+		if pair[0] == OPENER:
+			_opener_button = button
 	_sheet = _panel(center)
 	var sheet := _vbox(_sheet, 6)
 	var head := HBoxContainer.new()
