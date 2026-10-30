@@ -259,9 +259,11 @@ func _typist_checks() -> void:
 		spread += (g - mean) * (g - mean)
 	spread = sqrt(spread / gaps.size())
 	var least := 99.0
+	var distinct := {}
 	for g in gaps:
 		least = minf(least, g)
-	_check("acceptance: typing feels human: every key its own wait (mean %.3f s, spread %.3f s, the quickest %.3f s), never a machine's even beat" % [mean, spread, least], spread > mean * 0.25 and least >= 0.02 and mean > 0.04 and mean < 0.14 and Typist.text_of(keys) == line)
+		distinct[snappedf(g, 0.0001)] = true
+	_check("acceptance: typing feels human, per character: every key its own wait (%d different waits in %d keys; mean %.3f s, spread %.3f s, the quickest %.3f s), never a machine's even beat" % [distinct.size(), gaps.size(), mean, spread, least], distinct.size() >= gaps.size() * 0.6 and spread > mean * 0.25 and least >= 0.02 and mean > 0.04 and mean < 0.14 and Typist.text_of(keys) == line)
 	var beat := Typist.plan(["you never read the install script,", 0.75, " did you?"], 9, 0.08)
 	var before := -1.0
 	for i in range(1, beat.size()):
