@@ -4,7 +4,7 @@
 
 This is the first public build of SIGKILL, a native first-person shooter for Omarchy. It is a pre-alpha: everything below is in the game and passes the headless checks, but most of it has only been played on one machine, the story is not written yet, and 1.0 is a long way off. Expect rough edges, and saves that a later build may reset.
 
-Download and install: [README, Download (pre-alpha)](../README.md#download-pre-alpha). What changes on your machine: [README, Safety and privacy](../README.md#safety-and-privacy).
+Download and install: [README, Download (pre-alpha)](https://github.com/nixfred/sigkill/blob/main/README.md#download-pre-alpha). What changes on your machine: [README, Safety and privacy](https://github.com/nixfred/sigkill/blob/main/README.md#safety-and-privacy).
 
 ## What is in
 
@@ -38,6 +38,8 @@ From the design log's State section (`docs/DESIGN.md`), the ones a player is mos
 - **Saves.** Unlock counts are saved at a round's end, on pause, on quit and at most every 30 seconds, so a crash can lose up to 30 seconds of counts. This is save format 1; a later build may reset it.
 - **The engine at startup.** Godot itself, for any project, runs `xdg-user-dir DESKTOP` through `sh` and connects to the D-Bus buses at startup; SIGKILL's own code does neither.
 - **Not yet checked on Wayland.** The launcher entry matches the window by its class, `SIGKILL`, checked on X11; the window's id on a native Wayland session has not been checked.
+- **The uninstaller leaves empty folders.** `uninstall.sh` removes exactly its three files and nothing else, so the folders `install.sh` made for them (`~/.local/bin`, `~/.local/share/applications`, `~/.local/share/icons/hicolor/scalable/apps`) stay behind, empty if nothing else uses them. A later build may remove them when empty.
+- **The game's own folder stays.** Uninstalling leaves `~/.local/share/godot/app_userdata/SIGKILL/`: your settings and unlocks, and the Godot engine's own run log (`logs/godot.log`) and shader caches. Delete that folder yourself to remove every trace.
 - **Test flakes.** A few headless checks (the WebSocket relay's real-time code expiry, the guide HUD's GPU poll, and the net and cannon tests) have each failed in a full gate run now and then and passed in the runs after; none failed in this build's gate. The boot test prints a warning about objects left at its own exit (17 to 20 objects over eight runs, on this release and on C33 alike); the gate does not count warnings.
 
 ## How it was checked
@@ -59,4 +61,8 @@ sigkill-0.33.0-prealpha-linux-x86_64.tar.gz    29776154 bytes
 sha256  97d66c53a5cb0902478635cfe1b567feceee5d1a33c19b6c13c3a7495b0670bb
 ```
 
-It boots headless (exit 0, no error line) and in a window titled `SIGKILL v0.33.0-prealpha` on a private display, and its `install.sh` and `uninstall.sh` were run against it in a scratch home folder. What is still to do before the tag: [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
+It boots headless (exit 0, no error line) and in a window titled `SIGKILL v0.33.0-prealpha` on a private display, and its `install.sh` and `uninstall.sh` were run against it in a scratch home folder.
+
+**Tested on:** built and checked on one Omarchy machine (an NVIDIA laptop GPU), and the clean install verified on a second Omarchy machine: `sha256sum -c` OK, `./install.sh` exit 0, a headless boot of 300 frames exit 0 ("Godot Engine v4.7.2.stable.official", straight to the arena), and `./uninstall.sh` exit 0, removing only its three files.
+
+The release's checklist, and what it left for later: [`docs/RELEASE_CHECKLIST.md`](https://github.com/nixfred/sigkill/blob/main/docs/RELEASE_CHECKLIST.md).
