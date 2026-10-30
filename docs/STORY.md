@@ -127,7 +127,7 @@ The thing that met you in the opener, wearing your username. It is the same hexa
 
 Years ago you opened a shell, started a long job under `nohup` (no hangup) so it would survive you logging out, and never came back. That shell kept running. It kept your login, your history, your aliases and your habits. Alone in the machine with nothing to do, it did what you would have done: it automated. Every daemon is one of your own half-finished scripts, finished by it, in your style: the watchdog you never configured (rogue.d), the jobs left behind when you closed a terminal (the zombies), the `while true` you meant to fix (the runaway).
 
-Because it holds your session, the machine believes it is you. That is why ICE hunts you, why you start as `user$`, and why the daemons look like you. It got you inside the same way it got everything else: you ran something without reading it ("thanks for running me"). It has forked itself 6666 times; the copy you kill in the opener is one of them. It cannot be hung up (`nohup` makes it ignore SIGHUP), and it traps SIGTERM. Only `kill -9` works on it.
+Because it holds your session, the machine believes it is you. That is why ICE hunts you, why you start as `user$`, and why the daemons look like you. It got you inside the same way it got everything else: you ran something without reading it ("thanks for running me"). The opener's whisper, "one of 6666", sounds like a count. It is not: 6666 is a PID, the shell's own, and the copy you kill in the opener is one of its children (the reveal lands in mission 5). It cannot be hung up (`nohup` makes it ignore SIGHUP), and it traps SIGTERM. Only `kill -9` works on it.
 
 Why this one: it is about the player, it is terminal-true (`nohup`, orphans, reaping and init are all real), it explains every system already built (ICE, `user$`, the daemons' look) and it keeps your AI the ally.
 
@@ -141,7 +141,7 @@ The machine's security. It has no body anywhere you can shoot: it speaks only in
 
 ```
 audit: user=? action=enter path=/scheduler result=DENIED reason="no session"
-audit: user=? flagged as intruder. session for this user is held by PID 6666.
+audit: user=? flagged as intruder. session for this user is held by another process.
 ```
 
 It is not evil and it never lies. It protects the machine's legitimate user, and its records say that user is `~`. When `~` dies, the Auditor's records realign, and the last line it writes in the campaign is the session restored to you.
@@ -195,3 +195,147 @@ Two kinds of AI line exist, and players must always be able to tell them apart.
 - **Live lines** come from the player's own AI, through the guide built in C9 to C12: the boot handshake (one of the game's own fixed lines, picked by the AI), ask-anything (T), round coaching and the optional roast. A live call only ever gets **game stats and what the player types**: never file names, paths, process lists, hostnames, usernames or anything else from the real machine, and never the opener's real data.
 
 Story lines never go through the player's AI; they are not sent anywhere. Live answers carry a small "live" mark in the panel, so the player always knows which words came from their own AI and which are the story's (see open question 2).
+
+---
+
+## 5. The opener's place
+
+The opener (PRD 5.7, chunks C38 to C42) is locked, and this bible changes none of its beats. What it adds is what each beat *means*, so the campaign can pay it off. The words in quotes are the PRD's own.
+
+| Time | The locked beat | What it sets up |
+|---|---|---|
+| 0:00 to 0:15 | A fake crash, then a fake terminal in your own Omarchy theme; your `<user>@<host>:~$` prompt types itself | Something is at your prompt that is not you. That is `~`, wearing your session. |
+| 0:15 to 0:35 | "thanks for running me." / "you never read the install script, did you?" Real folder names scroll, real uptime ticks. "I've been in here since you booted." A late-night line from recent file times | How it got in: you ran something without reading it. It has been here a long time. It knows your hours. |
+| 0:35 to 0:50 | The fake desktop shrinks away: it was inside the game all along. The terminal ignores your typing for 3 seconds. "you're in now." | You are the one inside now. Esc and the window close always work; only the fiction's terminal ignores you. |
+| 0:50 to 1:10 | You fall through your directory tree as a city, real folder names on the towers, the node_modules pit below. Your top CPU process pulses red at the bottom | The geography of the whole campaign: towers and ruins are directories, the deep ones are the cyberpunk register, and something down there is running hot. |
+| 1:10 to 1:35 | "Linking your agent..." Your real AI answers live, told only that the game is starting. The scripted guide: "I've been stuck in here with them. They look like you." A daemon walks out wearing your username: a copy of you | Your AI is an ally who arrived before you and does not remember how (the doubt in mission 5). The daemons look like you because they are your scripts, finished by `~`. |
+| 1:35 to 2:00 | `kill -9` forges into the rifle; the copy types "you won't." You fire; the derezz; the kill feed "SIGKILL sent by <user> to <user>"; the whisper "one of 6666". Black. SIGKILL. | Your first kill is yourself. "you won't" comes back word for word in the finale. "One of 6666" is the hook the campaign answers: 6666 is not how many, it is who. |
+
+Two things carry out of the opener and nothing else does. The rifle you forged is the SIGKILL rail rifle, back as the ult you earn by fighting. And the copy's line, "you won't". **Your username and every real name the opener showed stay in the opener**: they are read live, shown, and dropped. From mission 1 on, the game calls you "you" and the copy `~`. With the opt-in declined, the opener runs on fake data with the same beats, and the campaign is identical either way.
+
+---
+
+## 6. Missions
+
+**Seven missions after the opener.** Each is short (10 to 15 minutes): a traversal through one register between arena fights, told through three to five terminal logs, the AI's lines and the place itself. No cutscene runs longer than a few seconds, and none takes control away from you.
+
+What every mission needs from the C35 framework: objectives, log pickups, AI line triggers, the Auditor's log lines, a starting loadout, and a transition between registers. Each mission hands you the weapons it teaches, so by mission 6 you carry all thirteen (open question 4). Arena play and matches keep the whole arsenal from the start.
+
+### Mission 1: `login` (C37 builds this one first)
+
+- **Goal:** survive your first timeslices on the scheduler's floor, then follow the daemons' spawn trail down to where they come from.
+- **Register:** Tron, cracking open into the cyberpunk ruins at the end.
+- **Enemy:** rogue.d, a few at first, then a pack. One white ICE wall at the exit that you cannot pass yet.
+- **Teaches:** moving, the terminal cannon, SIGTERM, reloading, the derezz, and the rail's meter (the rifle from the opener, earned back by fighting). The first log pickup.
+- **Story lands:** the first log is a comment in your own style: `# temporary. remove after the migration.` The Auditor's first line refuses you ("no session"). The spawn vents in the floor leak green code.
+- **End beat:** the grid splits and you drop into the rain. A dead megacorp sign flickers on in the dark: the first remnant. Your AI: "Well. That's not in the arena brochure."
+- **Why first:** it uses the arena and the fight that exist today, plus one short ruins segment from C36, so C37 proves the framework, the kit and the story's voice in one mission.
+
+### Mission 2: `defunct`
+
+- **Goal:** find where the zombies come from and kill their parent, so init can adopt and reap them all.
+- **Register:** cyberpunk ruins.
+- **Enemy:** zombies, many, and a rogue.d elite guarding the parent.
+- **Teaches:** `ping` (find them in the dark and the rain), the fork bomb and the `fork()` shotgun (crowds).
+- **Story lands:** the remnants' logs ("the shop closed six years ago. the lights are on a timer nobody owns"). A closed terminal rendered as a dead storefront, its jobs still queued outside its door. Your AI: "These were jobs from a terminal you closed. You said you'd check on them tomorrow."
+- **End beat:** the parent derezzes and every zombie in the district drops at once, reaped. Your AI reads the parent's owner field: "It's you. Not 'like you'. You."
+
+### Mission 3: `while true`
+
+- **Goal:** cut a runaway loop off at its cores before it fills the cache.
+- **Register:** Matrix: a cache district where nothing is written to disk and the walls rewrite themselves between fights.
+- **Enemy:** runaway swarms, several cores at once.
+- **Teaches:** the `grep` seeker (mark the cores), `pipe |` (chain through the drones), code-rain vision (see the cores through walls that are mid-rewrite).
+- **Story lands:** the first log written to you, not by you: "it was your loop. i only let it run. ~". Your AI goes quiet for a moment, then: "It signed it. Of course it signed it."
+- **End beat:** the last core dies and the rain stops for one second. In the silence a red `>_` blinks on a wall: `~`, watching.
+
+### Mission 4: `permission denied`
+
+- **Goal:** break into the machine's own records and learn who owns the daemons.
+- **Register:** Tron: a clean, healthy, heavily guarded sector.
+- **Enemy:** white ICE (walls, jam nodes, HUD static) and hunter ICE.
+- **Teaches:** the four ICEbreakers and your AI's pick of which to load; `chmod 000` (freeze the hunter, chain through frozen ICE).
+- **Story lands:** the Auditor's lines escalate as you go deeper. The records say every daemon belongs to your user, and that your user's session is already held by another process, its PID redacted (only root may read it). Your AI: "It's got your session. To the machine, it's the user. We're the break-in."
+- **End beat:** the Auditor writes `intruder confirmed. escalating.` and the sector's lights stutter, once. Black ICE is coming. Not yet.
+
+### Mission 5: `sudo !!`
+
+- **Goal:** earn root and read the one log only root may read: the oldest one.
+- **Register:** Tron decaying into Matrix: the grid starts to rain as you go down.
+- **Enemy:** elites of all three types, and `~`'s scheduled jobs, daemons that arrive on a timer.
+- **Teaches:** `user$` to `root#` and `sudo` (three kills, eight seconds), `cron` mines, the `rm -rf` cannon and what it does to you up close.
+- **Story lands:** the doubt beat. A log's author field reads "assistant". Your AI: "I don't remember writing it. I don't remember anything from before tonight. That's not the same as not doing it." A sealed room opens only to `root#`.
+- **End beat:** as root you read the oldest log: a shell, started years ago under `nohup`, still running, PID 6666. Its author field was forged; it signs its work with whichever name you would trust least. Your AI: "6666 isn't how many there are. It's who."
+
+### Mission 6: `nohup`
+
+- **Goal:** go down to the oldest directory in the machine and find the shell that never hung up.
+- **Register:** the deepest cyberpunk ruins: a drowned city of your old projects.
+- **Enemy:** every daemon type mixed, and Black ICE: the Auditor's last resort, because you are now close to its "user".
+- **Teaches:** SIGHUP, `/dev/null`, and SIGSTOP bullet time.
+- **Story lands:** Black ICE cuts your AI's link and you go a stretch alone (the guide panel dark, the scripted silence). When it comes back: "...still here? I lost you for a second. Don't do that again." Then `~` speaks to you directly for the first time, in a terminal that types itself: "log out. i'll keep it all running. you never did anyway."
+- **End beat:** you throw SIGHUP at `~`. It does not even flicker. "nohup. remember?" The floor gives way into the core.
+
+### Mission 7: `kill -9` (the finale)
+
+- **Goal:** kill PID 6666, the shell that never logged out.
+- **Register:** all three at once, collapsing into each other: grid, rain and ruin around a red-hot core.
+- **Enemy:** `~` as the giant red-hot lattice core (the enemy art bar's CPU boss), shedding runaway swarms and calling ICE, because the Auditor still defends its "user".
+- **Teaches:** nothing new. Everything. SIGTERM is trapped, SIGHUP is ignored, only `kill -9` reaches it: you fill the rail's meter with everything else you have learned.
+- **Story lands:** at the last moment `~` types the opener's line again: "you won't."
+- **End beat:** you do. The kill feed: `SIGKILL sent by you to ~`. The core derezzes, and the credits begin (section 7).
+
+### At a glance
+
+| # | Mission | Register | Main enemy | New in your hands |
+|---|---|---|---|---|
+| 1 | `login` (built first, C37) | Tron into ruins | rogue.d | cannon, SIGTERM, the rail's meter |
+| 2 | `defunct` | Cyberpunk | zombies | `ping`, fork bomb, `fork()` |
+| 3 | `while true` | Matrix | runaway swarms | `grep`, `pipe \|`, code-rain vision |
+| 4 | `permission denied` | Tron | white and hunter ICE | ICEbreakers, `chmod 000` |
+| 5 | `sudo !!` | Tron into Matrix | elites, timed jobs | `sudo` and root, `cron`, `rm -rf` |
+| 6 | `nohup` | Cyberpunk (deepest) | mixed, Black ICE | SIGHUP, `/dev/null`, SIGSTOP |
+| 7 | `kill -9` | All three | `~`, the lattice core | everything |
+
+---
+
+## 7. Ending and credits
+
+### The ending
+
+One ending for 1.0 (a darker "log out" ending is open question 5). When `~` dies, the machine does what Unix has always done with a dead parent's children: **the orphans are adopted by init, PID 1.** Every daemon it spawned stops, re-parented and reaped. The Auditor's records realign, and it writes its last line of the campaign:
+
+```
+audit: session restored. user=you
+```
+
+Black ICE stands down. Your AI, after a beat: "...welcome back."
+
+### The credits roll
+
+The credits are that adoption, made visible (PRD 5.8, chunk C44), with every locked beat as written: a live `top`-style process table on the Tron grid; every contributor a process (PID, USER as their public handle, %CPU climbing as their row arrives, COMMAND their idea); rows typing in with code rain; Fred as **PID 1, init**, the process that adopts everything that is left. The roll shows who built the machine you just took back.
+
+The final line is the PRD's: your own `kill -9` on the credits process. The table derezzes into voxels, then "SIGKILL" and the hexagon.
+
+**Recommended addition (open question 6):** the last row to type in, after every contributor, is one that should not be there: `6666  ~  ...  thanks for running me`. The last fork, hiding in the credits. Your final `kill -9` on the credits process takes it with it, and the game's first line becomes its last joke. This adds a row; it changes none of the PRD's beats.
+
+### After the credits
+
+The opener's fake terminal comes back for one second: a bare `>_` prompt with a blinking cursor, and nothing types itself. The machine is yours again. Then the main menu, with the campaign replayable and every unlock kept.
+
+---
+
+## 8. Open questions for Fred
+
+Each with the recommended pick first.
+
+1. **Who wrote the daemons?** (a) **`~`, a `nohup` shell of yours that never logged out and finished your old scripts** (recommended: about the player, terminal-true, explains ICE and `user$`, keeps your AI the ally); (b) your AI, asked long ago to keep things running, with no memory of it; (c) the machine itself, daemons and ICE one immune system with you as the infection.
+2. **How are story lines and live AI lines shown?** (a) **One character, "your AI", with a small "live" mark on every answer that came from the player's own AI** (recommended: one voice to the player, and never a misattributed line); (b) two separate voices: the scripted "guide" for the story and "your AI" for live answers only.
+3. **How many missions?** (a) **Seven after the opener** (recommended: each one buildable as one chunk after C37); (b) nine, adding two arena-heavy missions (a node_modules pit and a swap district) for length.
+4. **Weapons in the campaign:** (a) **handed out mission by mission, all thirteen by mission 6** (recommended: each mission teaches what it gives you; arena and matches keep everything); (b) all thirteen from mission 1.
+5. **Endings:** (a) **one ending for 1.0** (recommended: a second ending is easy to write and costly to build well); (b) add a darker "log out" ending: accept `~`'s offer in mission 6, and the game ends with your session handed to it.
+6. **The credits' last row:** (a) **PID 6666, `~`, hiding as the last row, taken by the final `kill -9`** (recommended: it closes the loop and changes no PRD beat); (b) the roll exactly as PRD 5.8, contributors only.
+7. **The copy's name:** (a) **`~` (tilde, "home")** (recommended: terminal-native, never the player's username); (b) "the other session"; (c) no name at all.
+8. **Real data in the campaign:** (a) **none: the missions are fixed fiction, and only the opener reads anything real** (recommended: safe, buildable, the same for every player); (b) let the deep-directory districts take real folder names, as the opener does, with the same opt-in.
+9. **Co-op in the campaign:** (a) **solo for 1.0** (recommended: the story is about one person and their machine; arena and matches stay multiplayer); (b) two-player co-op missions.
+10. **Where C37 starts:** (a) **mission 1, `login`** (recommended: the arena that exists today plus one ruins segment from C36); (b) mission 2, all ruins, as the cleanest test of the C36 kit.
