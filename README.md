@@ -24,7 +24,7 @@
 > [!WARNING]
 > **SIGKILL 0.33.0-prealpha is a PRE-ALPHA: build 33, far from 1.0.** In: 13 weapons, daemons that fight back, ICE and ICEbreakers, light-trail and LAN modes, unlocks, mods and light skins. Not yet: the story, the missions and the rest of the 1.0 list. Expect rough edges, and saves that a later build may reset. What is in and what is not: [the release notes](docs/RELEASE_NOTES-0.33.0-prealpha.md).
 
-**Linux x86_64 build.** Get `sigkill-0.33.0-prealpha-linux-x86_64.tar.gz` and its `.sha256` from [GitHub Releases](https://github.com/nixfred/sigkill/releases). (The first build is not up yet; until it is, run from source, below.)
+**Linux x86_64 build.** Get `sigkill-0.33.0-prealpha-linux-x86_64.tar.gz` and its `.sha256` from [the v0.33.0-prealpha release](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (a GitHub pre-release; all builds: [Releases](https://github.com/nixfred/sigkill/releases)).
 
 ```bash
 sha256sum -c sigkill-0.33.0-prealpha-linux-x86_64.tar.gz.sha256
@@ -1501,7 +1501,7 @@ flowchart LR
 
 ## Install and play
 
-Runs from source, and from the Linux x86_64 pre-alpha build once it is up on GitHub Releases ([Download (pre-alpha)](#download-pre-alpha); the build, its tag and its upload wait on Fred's yes). AppImage and AUR packages are planned and not available.
+Runs from source, and from the Linux x86_64 pre-alpha build on GitHub Releases ([Download (pre-alpha)](#download-pre-alpha); [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha), released 2026-10-30). AppImage and AUR packages are planned and not available.
 
 **Requirements**
 
@@ -1705,7 +1705,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
-**Pre-alpha drop, 0.33.0-prealpha (build 33, after C33).** Prepped: the version in the corners and the window title, the "Linux x86_64" export preset, `tools/export_linux.sh`, the user-local install in `packaging/linux/`, the [release notes](docs/RELEASE_NOTES-0.33.0-prealpha.md). Still to do, each on Fred's yes: the export templates, the build itself, the tag and the GitHub release ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). 1.0 is further on: M5 and M6 above.
+**Pre-alpha drop, 0.33.0-prealpha (build 33, after C33): ✅ released 2026-10-30** as a GitHub pre-release, [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (tag on `655ff4b`, assets built from `341c182`): the version in the corners and the window title, the "Linux x86_64" export preset and `tools/export_linux.sh`, the user-local install in `packaging/linux/`, the [release notes](docs/RELEASE_NOTES-0.33.0-prealpha.md), the clean install verified on a second Omarchy machine ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). 1.0 is further on: M5 and M6 above.
 
 ## Credits and community prompts
 
