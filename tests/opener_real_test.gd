@@ -428,7 +428,13 @@ func _fallback_checks() -> void:
 	named.user_name = ""
 	await _read(named)
 	_check("no home folder, the root, or a relative one: no walk and no theme (\"%s\"), the rest still read; with no USER the user is the home folder's own name (\"%s\")" % [homeless.walk_report().get("stopped", ""), named.user()], homeless.walk_report().get("stopped", "") == "no home" and not homeless.real_fields().has("folders") and homeless.real_fields().has("host") and rootless.walk_report().get("stopped", "") == "no home" and not rootless.real_fields().has("user") and relative.walk_report().get("stopped", "") == "no home" and named.user() == "home")
-	for reader in [bare, hidden, homeless, rootless, relative, named]:
+	var settled := _reader()
+	settled.settle()
+	await _read(settled)
+	var code := FileAccess.get_file_as_string(READER)
+	var take := _body(FileAccess.get_file_as_string("res://scripts/opener/opener.gd"), "_take")
+	_check("acceptance: settle(), as the opener takes the values, freezes them: a reader settled before it reads keeps every value the demo's and its walk stops at once (\"%s\"); the folders with their counts, and the file times with \"now\", are only ever published together, so the opener never reads real folders with the demo's counts or real times with the demo's clock" % settled.walk_report().get("stopped", ""), settled.real_fields().is_empty() and settled.walk_report().get("stopped", "") == "cancelled" and settled.folders() == demo.folders() and settled.folder_counts() == demo.folder_counts() and settled.now() == demo.now() and code.contains("_put_all({\"folders\": ") and code.contains("_put_all({\"times\": ") and code.count("_put(\"folders\"") == 0 and code.count("_put(\"times\"") == 0 and take.contains("_data.settle()") and take.find("_data.settle()") < take.find("_data.palette()"))
+	for reader in [bare, hidden, homeless, rootless, relative, named, settled]:
 		reader.drop()
 
 

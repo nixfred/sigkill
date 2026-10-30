@@ -42,6 +42,12 @@ func is_ready() -> bool:
 	return true
 
 
+## The opener is taking the values now: none may change after this (a read still going stops where it is, and
+## what it has not got stays the demo's), so every value the opener reads belongs with the others.
+func settle() -> void:
+	pass
+
+
 ## The opener is done with this: anything read is let go. Called as the opener ends, however it ends.
 func drop() -> void:
 	pass

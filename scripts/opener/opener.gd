@@ -312,6 +312,7 @@ func _take() -> void:
 	if _taken:
 		return
 	_taken = true
+	_data.settle()
 	var colours := _data.palette()
 	set_palette(colours if colours != null else OpenerPalette.named(OpenerPalette.DEFAULT_ID))
 	_uptime_base = maxi(_data.uptime_s(), 0)

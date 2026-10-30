@@ -72,6 +72,7 @@ const OPENER_DATA := "opener data"
 const OPENER_DATA_NOTE := "names, counts, times, theme, uptime; no contents"
 const OPENER_DATA_TIP := "On: the opener shows your user and host names, folder names and how many entries each holds, recent file times, your Omarchy theme's colours and your uptime, read live. It never opens a file to read what is in it, and keeps nothing: nothing is saved, logged or sent. Off: invented demo data, the same beats."
 const OPENER_DATA_LATER := "the next time it plays"
+const OPENER_DATA_NOT_SAVED := "Opener data could not be saved: it stays as it was."
 const OpenerScene = preload("res://scenes/opener.tscn")
 const PRACTICE_NOTE := "practice: no attacks, no ICE; a match plays by its host's"
 const RELAY_HINT := "udp://host:9010"
@@ -589,7 +590,7 @@ func _on_real_data_toggled(on: bool) -> void:
 func _on_opener_data_toggled(on: bool) -> void:
 	var link = _link()
 	if link != null:
-		_say(("Opener data %s: %s." % [_word(on), REAL_DATA_DEMO if link.demo else OPENER_DATA_LATER]) if Privacy.save_opener_real(on, link.settings_path) else NOT_SAVED_LINE)
+		_say(("Opener data %s: %s." % [_word(on), REAL_DATA_DEMO if link.demo else OPENER_DATA_LATER]) if Privacy.save_opener_real(on, link.settings_path) else OPENER_DATA_NOT_SAVED)
 	_refresh()
 
 

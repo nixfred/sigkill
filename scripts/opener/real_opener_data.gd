@@ -32,9 +32,10 @@ extends OpenerData
 ## Off the main thread: start() reads on a thread of its own, so the opener never waits on it, and a share that
 ## hangs can stall only that thread. Each value is published as it is read; the opener takes them as soon as all
 ## are in or at its take_by second regardless (scripts/opener/opener.gd), and any value not in by then, unreadable
-## or unusable (no theme, a theme too low in contrast, nothing found) is the demo's, for that value alone; the file
-## times and "now" fall back together. drop(), as the opener ends, cancels a read still going and lets every value
-## go: they lived only in this object's memory.
+## or unusable (no theme, a theme too low in contrast, nothing found) is the demo's, for that value alone; the
+## folders and their counts, and the file times and "now", each arrive and fall back together. settle(), as the
+## opener takes them, stops a read still going so nothing changes after; drop(), as the opener ends, cancels it
+## too and lets every value go: they lived only in this object's memory.
 
 const WALK_DEPTH := 3
 const MOST_ENTRIES := 600
@@ -77,6 +78,7 @@ var _thread: Thread = null
 var _got := {}
 var _done := false
 var _cancel := false
+var _settled := false
 var _report := {}
 
 ## Readers whose thread may still be running: kept alive here until it ends and is joined.
@@ -119,9 +121,16 @@ func is_ready() -> bool:
 	return done
 
 
+func settle() -> void:
+	_mutex.lock()
+	_settled = true
+	_mutex.unlock()
+
+
 func drop() -> void:
 	_mutex.lock()
 	_cancel = true
+	_settled = true
 	_got.clear()
 	_mutex.unlock()
 	_reap()
@@ -291,18 +300,16 @@ func _walk(deadline: int) -> Dictionary:
 	if times.size() > MOST_TIMES:
 		times.resize(MOST_TIMES)
 	if not shown.is_empty():
-		_put("folders", PackedStringArray(shown))
-		_put("counts", shown_counts)
+		_put_all({"folders": PackedStringArray(shown), "counts": shown_counts})
 	if not times.is_empty():
-		_put("times", times)
-		_put("now", clock[0] + clock[1])
+		_put_all({"times": times, "now": clock[0] + clock[1]})
 	return {"entries": entries, "listings": listings, "stopped": stopped}
 
 
 ## Why the walk stops before its next entry, or "done" to go on.
 func _stop_reason(deadline: int, entries: int) -> String:
 	_mutex.lock()
-	var cancelled := _cancel
+	var cancelled := _cancel or _settled
 	_mutex.unlock()
 	if cancelled:
 		return "cancelled"
@@ -369,9 +376,14 @@ static func _order_key(rel: String) -> String:
 
 
 func _put(key: String, value: Variant) -> void:
+	_put_all({key: value})
+
+
+## Values that belong together, published at once (none of them after settle() or drop()).
+func _put_all(values: Dictionary) -> void:
 	_mutex.lock()
-	if not _cancel:
-		_got[key] = value
+	if not _settled:
+		_got.merge(values, true)
 	_mutex.unlock()
 
 
