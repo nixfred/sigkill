@@ -20,7 +20,9 @@ extends OpenerData
 ## from the environment and the third from the kernel's own file.
 ##
 ## The walk: the home folder's own entries, hidden ones included; then, breadth first and in name order, the
-## entries of each folder down to WALK_DEPTH levels, hidden ones below the top skipped. A symbolic link is never
+## entries of each folder down to WALK_DEPTH levels, hidden ones below the top skipped. The folders are handed over
+## in name order, each just before what is in it, the hidden top-level ones last (the scroll shows the player's own
+## folders before their tools' dotfolders). A symbolic link is never
 ## listed, walked or timed. A folder on another filesystem than the home folder's (a network share, a removable
 ## disk) stays a name, never walked; a folder it may not read stays a name with no count, quietly. Every
 ## node_modules met is counted (C40's pit) and never walked. File times are taken from what is not hidden (an app's
@@ -361,9 +363,9 @@ func _clock() -> Array:
 	return [unix, zone]
 
 
-## Name order, without case, a folder straight before what is inside it.
+## Name order, without case, a folder straight before what is inside it, hidden ones after the rest.
 static func _order_key(rel: String) -> String:
-	return rel.to_lower().replace("/", char(1))
+	return ("1" if rel.begins_with(".") else "0") + rel.to_lower().replace("/", char(1))
 
 
 func _put(key: String, value: Variant) -> void:

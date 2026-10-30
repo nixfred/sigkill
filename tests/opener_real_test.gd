@@ -288,10 +288,10 @@ func _walk_checks() -> void:
 	var report := reader.walk_report()
 	var folders := reader.folders()
 	var counts := reader.folder_counts()
-	var expected := PackedStringArray([".cache", ".config", ".local", "bulk", CAFE, "code", "code/game", "code/game/node_modules", "code/game/src", "Documents", "Documents/taxes", "locked", CJK, _emoji_dir()])
-	var expected_counts := PackedInt32Array([-1, -1, -1, RealOpenerData.PER_LISTING, 0, 1, 2, 3, -1, 2, 0, -1, 0, 0])
+	var expected := PackedStringArray(["bulk", CAFE, "code", "code/game", "code/game/node_modules", "code/game/src", "Documents", "Documents/taxes", "locked", CJK, _emoji_dir(), ".cache", ".config", ".local"])
+	var expected_counts := PackedInt32Array([RealOpenerData.PER_LISTING, 0, 1, 2, 3, -1, 2, 0, -1, 0, 0, -1, -1, -1])
 	_check("acceptance: on a fake home, its own values: user \"%s\", host \"%s\", up %d s, the theme's palette; kind \"real\", every field real (%s)" % [reader.user(), reader.host(), reader.uptime_s(), ", ".join(reader.real_fields())], reader.kind() == "real" and reader.user() == USER and reader.host() == HOST and reader.uptime_s() == UPTIME and reader.palette() != null and reader.palette().id == ThemeColors.ID and reader.real_fields() == PackedStringArray(RealOpenerData.FIELDS))
-	_check("acceptance: the folder names, in name order, each folder just before what is in it, hidden ones at the top only: %s" % ", ".join(folders), folders == expected, "expected " + ", ".join(expected))
+	_check("acceptance: the folder names, in name order, each folder just before what is in it, hidden ones from the top level only and last: %s" % ", ".join(folders), folders == expected, "expected " + ", ".join(expected))
 	_check("acceptance: how many entries each holds: a listed folder its count, %d at most (the bulk folder holds %d), node_modules counted (3) and never walked, an unlisted one -1: %s" % [RealOpenerData.PER_LISTING, BULK_FILES, str(Array(counts))], counts == expected_counts, "expected " + str(Array(expected_counts)))
 	var deepest := 0
 	for f in folders:
@@ -329,7 +329,7 @@ static func _has_part(folders: PackedStringArray, part: String) -> bool:
 
 
 func _cap_checks() -> void:
-	var tops := PackedStringArray([".cache", ".config", ".local", "bulk", CAFE, "code", "Documents", "locked", CJK, _emoji_dir()])
+	var tops := PackedStringArray(["bulk", CAFE, "code", "Documents", "locked", CJK, _emoji_dir(), ".cache", ".config", ".local"])
 	var few := _reader()
 	few.most_entries = 5
 	await _read(few)
