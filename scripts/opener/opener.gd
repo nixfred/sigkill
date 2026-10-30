@@ -595,11 +595,11 @@ func _build() -> void:
 	_screen.material = _screen_paint
 	_full(_screen)
 	set_palette(_palette)
-	_buzz = _player("buzz", _t.buzz_volume)
-	_crackle = _player("crackle", 0.0)
-	_hum = _player("hum", 0.0)
+	_buzz = _player("Buzz", "buzz", _t.buzz_volume)
+	_crackle = _player("Crackle", "crackle", 0.0)
+	_hum = _player("Hum", "hum", 0.0)
 	for i in 3:
-		_keys.append(_player("", _t.key_volume))
+		_keys.append(_player("Key%d" % (i + 1), "", _t.key_volume))
 
 
 func _full(control: Control) -> void:
@@ -609,8 +609,9 @@ func _full(control: Control) -> void:
 	control.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
-func _player(sound: String, volume: float) -> AudioStreamPlayer:
+func _player(node_name: String, sound: String, volume: float) -> AudioStreamPlayer:
 	var player := AudioStreamPlayer.new()
+	player.name = node_name
 	player.bus = SettingsApply.EFFECTS if AudioServer.get_bus_index(SettingsApply.EFFECTS) >= 0 else &"Master"
 	player.volume_db = SfxSynth.volume_db(volume)
 	if sound != "":
