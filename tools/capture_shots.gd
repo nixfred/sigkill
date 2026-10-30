@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33 or c38):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38 or c39):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -58,7 +58,10 @@ extends SceneTree
 ## SIGTERM shot in its ^C cyan; then it prints what the turntable costs; c38, the opener's first 35 seconds on demo
 ## data, picked from the Esc menu as a player would: the game's own frame frozen and coming apart mid-crash, the
 ## prompt that typed itself, the first lines typed, the folder scroll with the uptime ticking and the last lines, the
-## terminal in each of the six demo palettes side by side, and the same terminal in a 960x540 window. Every other set plays in practice,
+## terminal in each of the six demo palettes side by side, and the same terminal in a 960x540 window; c39, the
+## settings' "opener data" switch and its note (on a demo run, so it says so), the terminal with wide-character
+## folder names (invented, C39_FOLDERS: CJK, an emoji, accents, hangul, fullwidth; demo data, no machine's) at
+## 1920x1080 and 960x540, and the six palettes as drawn through the readability pass. Every other set plays in practice,
 ## the old dummies, as it was shot.
 ## After each still it prints what the GPU drew for it (draw calls, primitives, objects, and the
 ## same for shadows). A tool, never part of the game.
@@ -73,6 +76,7 @@ extends SceneTree
 
 const Link = preload("res://scripts/guide/guide_link.gd")
 const MainScene = preload("res://scenes/main.tscn")
+const OpenerScene = preload("res://scenes/opener.tscn")
 const Palette = preload("res://scripts/palette.gd")
 const OUT := "user://shots"
 ## Frames after a weapon is drawn before its still: the raise done and the fiction line gone.
@@ -353,9 +357,22 @@ const C38_TERMINAL_AT := 22.9
 const C38_UPTIME_AT := 34.7
 const C38_PALETTES_AT := 35.6
 const C38_GRID_COLUMNS := 3
+## The opener (C39): the seconds its stills are taken at (the folders scrolled and the uptime ticking; the palettes
+## after the tear).
+const C39_WIDE_AT := 26.8
+const C39_PALETTES_AT := 35.6
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
+
+## Invented demo data with wide-character folder names (C39): the demo's user, host, uptime and times, and folders
+## no machine has, in the scripts and widths real names can bring.
+class WideDemo extends DemoOpenerData:
+	const WIDE_FOLDERS := [".config", ".local", "Documents", "写真", "写真/2024-京都", "音楽", "音楽/お気に入り", "ゲーム", "🎮 games", "🎮 games/saves", "café-recettes", "Документы", "한글-노트", "ｆｕｌｌｗｉｄｔｈ", "naïve-bayes", "code", "code/日本語-site", "code/日本語-site/node_modules", "taxes-2024", "scratch"]
+
+	func folders() -> PackedStringArray:
+		return PackedStringArray(WIDE_FOLDERS)
+
 
 var _main: Node
 var _player: Node
@@ -437,6 +454,11 @@ func _run() -> void:
 		return
 	if _set == "c38":
 		await _c38()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c39":
+		await _c39()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2039,6 +2061,53 @@ func _c38() -> void:
 		await process_frame
 	await process_frame
 	print("capture: the opener done, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
+
+
+## c39: the settings' "opener data" row (on a demo run, the real data stays off and says so), then the opener on
+## WideDemo's invented wide names over the arena, at 1920x1080 and 960x540, and the six palettes made readable.
+## Demo data only: the menu's real source is replaced by the demo's, and the opener is handed WideDemo itself.
+func _c39() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	var a: Node3D = targets.get_node("DummyA")
+	_c27b_place(a, _main.to_global(C33_SHOT_AT))
+	await _stand(C33_SHOT_FROM, a.global_position + Vector3.UP * 1.0)
+	_player.select_slot(0)
+	await _frames(SETTLE_FRAMES)
+	var menu = _main.get_node("Hud").pause_menu()
+	menu.real_opener_source = func() -> OpenerData: return DemoOpenerData.new()
+	menu.open_settings()
+	await _frames(SETTLE_FRAMES)
+	await _save("c39-settings")
+	menu.close()
+	await _frames(SETTLE_FRAMES)
+	var opener: Opener = OpenerScene.instantiate()
+	opener.data = WideDemo.new()
+	opener.pause_world = true
+	root.add_child(opener)
+	await _opener_at(opener, C39_WIDE_AT, true)
+	print("capture: the screen at %.2f s (%s data):\n%s" % [opener.elapsed(), opener.data.kind(), opener.terminal().text()])
+	await _save("c39-wide")
+	root.size = Vector2i(960, 540)
+	for i in 6:
+		await process_frame
+	print("capture: at 960x540 the terminal has %d columns, a %d px font on %d px rows" % [opener.terminal().columns(), opener.terminal().font_px(), opener.terminal().line_px()])
+	await _save("c39-wide-960")
+	root.size = Vector2i(1920, 1080)
+	await _opener_at(opener, C39_PALETTES_AT, false)
+	var tiles: Array[Image] = []
+	for id in OpenerPalette.IDS:
+		opener.set_palette(OpenerPalette.named(id))
+		await process_frame
+		await process_frame
+		tiles.append(await _grab())
+	_save_grid("c39-palettes", tiles, C38_GRID_COLUMNS)
+	opener.skip()
+	await process_frame
+	opener.free()
+	await process_frame
+	print("capture: the opener done, the world paused %s, the 3D view drawn %s" % [str(paused), str(not root.disable_3d)])
 
 
 ## Frames until `opener` is `seconds` in (and its cursor lit, if `cursor`), on its own clock: it runs through the
