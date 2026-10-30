@@ -1,12 +1,12 @@
-> **DRAFT, waiting on Fred's review. Nothing here is built yet.**
+> **Locked (Fred, 2026-10-30).** Approved with all ten recommended picks (section 8). The source of truth for the missions and the opener's `~` beats; edited only to fix typos or record decisions.
 
-# SIGKILL story bible (C34 draft)
+# SIGKILL story bible (C34)
 
-The campaign for 1.0 (PRD 5.6, milestone M6). Written to be reviewed: every big choice is stated plainly, and the real forks are in [Open questions for Fred](#8-open-questions-for-fred) at the end, each with a recommended pick first. Nothing in this file is decided until Fred says so. C35 (the mission framework), C36 (the cyberpunk ruins kit) and C37 (the first mission) wait on his review.
+The campaign for 1.0 (PRD 5.6, milestone M6). Every big choice is stated plainly, and the forks it had are recorded in [Decided](#8-decided) at the end, each with the pick Fred approved. C35 (the mission framework), C36 (the cyberpunk ruins kit) and C37 (the first mission) build from it.
 
 The story is fiction from top to bottom. Nothing in it reads, reveals, signals, modifies or runs anything real. Within the story, real data appears only in the opener (PRD 5.7), read-only, live, opted into, and never saved.
 
-**Contents:** 1. [Premise and tone](#1-premise-and-tone) · 2. [The world's rules](#2-the-worlds-rules) · 3. [Characters](#3-characters) · 4. [The AI's voice](#4-the-ais-voice) · 5. [The opener's place](#5-the-openers-place) · 6. [Missions](#6-missions) · 7. [Ending and credits](#7-ending-and-credits) · 8. [Open questions for Fred](#8-open-questions-for-fred)
+**Contents:** 1. [Premise and tone](#1-premise-and-tone) · 2. [The world's rules](#2-the-worlds-rules) · 3. [Characters](#3-characters) · 4. [The AI's voice](#4-the-ais-voice) · 5. [The opener's place](#5-the-openers-place) · 6. [Missions](#6-missions) · 7. [Ending and credits](#7-ending-and-credits) · 8. [Decided](#8-decided)
 
 ---
 
@@ -325,17 +325,17 @@ The opener's fake terminal comes back for one second: a bare `>_` prompt with a 
 
 ---
 
-## 8. Open questions for Fred
+## 8. Decided
 
-Each with the recommended pick first.
+Fred approved all ten recommended picks (2026-10-30). Each is recorded with why, and what was set aside. They keep the numbers they had as open questions, so the text's "open question N" points here.
 
-1. **Who wrote the daemons?** (a) **`~`, a `nohup` shell of yours that never logged out and finished your old scripts** (recommended: about the player, terminal-true, explains ICE and `user$`, keeps your AI the ally); (b) your AI, asked long ago to keep things running, with no memory of it; (c) the machine itself, daemons and ICE one immune system with you as the infection.
-2. **How are story lines and live AI lines shown?** (a) **One character, "your AI", with a small "live" mark on every answer that came from the player's own AI** (recommended: one voice to the player, and never a misattributed line); (b) two separate voices: the scripted "guide" for the story and "your AI" for live answers only.
-3. **How many missions?** (a) **Seven after the opener** (recommended: each one buildable as one chunk after C37); (b) nine, adding two arena-heavy missions (a node_modules pit and a swap district) for length.
-4. **Weapons in the campaign:** (a) **handed out mission by mission, all thirteen by mission 6** (recommended: each mission teaches what it gives you; arena and matches keep everything); (b) all thirteen from mission 1.
-5. **Endings:** (a) **one ending for 1.0** (recommended: a second ending is easy to write and costly to build well); (b) add a darker "log out" ending: accept `~`'s offer in mission 6, and the game ends with your session handed to it.
-6. **The credits' last row:** (a) **PID 6666, `~`, hiding as the last row, taken by the final `kill -9`** (recommended: it closes the loop and changes no PRD beat); (b) the roll exactly as PRD 5.8, contributors only.
-7. **The copy's name:** (a) **`~` (tilde, "home")** (recommended: terminal-native, never the player's username); (b) "the other session"; (c) no name at all.
-8. **Real data in the campaign:** (a) **none: the missions are fixed fiction, and only the opener reads anything real** (recommended: safe, buildable, the same for every player); (b) let the deep-directory districts take real folder names, as the opener does, with the same opt-in.
-9. **Co-op in the campaign:** (a) **solo for 1.0** (recommended: the story is about one person and their machine; arena and matches stay multiplayer); (b) two-player co-op missions.
-10. **Where C37 starts:** (a) **mission 1, `login`** (recommended: the arena that exists today plus one ruins segment from C36); (b) mission 2, all ruins, as the cleanest test of the C36 kit.
+1. **Who wrote the daemons?** Decided: `~`, a `nohup` shell of yours that never logged out and finished your old scripts. Why: about the player, terminal-true, explains ICE and `user$`, keeps your AI the ally. Set aside: (b) your AI, asked long ago to keep things running, with no memory of it; (c) the machine itself, daemons and ICE one immune system with you as the infection.
+2. **How are story lines and live AI lines shown?** Decided: One character, "your AI", with a small "live" mark on every answer that came from the player's own AI. Why: one voice to the player, and never a misattributed line. Set aside: (b) two separate voices: the scripted "guide" for the story and "your AI" for live answers only.
+3. **How many missions?** Decided: Seven after the opener. Why: each one buildable as one chunk after C37. Set aside: (b) nine, adding two arena-heavy missions (a node_modules pit and a swap district) for length.
+4. **Weapons in the campaign:** Decided: handed out mission by mission, all thirteen by mission 6. Why: each mission teaches what it gives you; arena and matches keep everything. Set aside: (b) all thirteen from mission 1.
+5. **Endings:** Decided: one ending for 1.0. Why: a second ending is easy to write and costly to build well. Set aside: (b) add a darker "log out" ending: accept `~`'s offer in mission 6, and the game ends with your session handed to it.
+6. **The credits' last row:** Decided: PID 6666, `~`, hiding as the last row, taken by the final `kill -9`. Why: it closes the loop and changes no PRD beat. Set aside: (b) the roll exactly as PRD 5.8, contributors only.
+7. **The copy's name:** Decided: `~` (tilde, "home"). Why: terminal-native, never the player's username. Set aside: (b) "the other session"; (c) no name at all.
+8. **Real data in the campaign:** Decided: none: the missions are fixed fiction, and only the opener reads anything real. Why: safe, buildable, the same for every player. Set aside: (b) let the deep-directory districts take real folder names, as the opener does, with the same opt-in.
+9. **Co-op in the campaign:** Decided: solo for 1.0. Why: the story is about one person and their machine; arena and matches stay multiplayer. Set aside: (b) two-player co-op missions.
+10. **Where C37 starts:** Decided: mission 1, `login`. Why: the arena that exists today plus one ruins segment from C36. Set aside: (b) mission 2, all ruins, as the cleanest test of the C36 kit.
