@@ -15,6 +15,15 @@ const FOLDERS := [
 	"taxes-2024", "resume-final-v3", "old-laptop-backup", "keyboard-firmware", "dnd-campaign", "photos-unsorted",
 	"games", "backups", "scratch",
 ]
+## How many entries each of FOLDERS holds, in its order (invented, for C40's towers), never past the real reader's
+## cap of 200 a folder: node_modules is the pit at the cap, and the screenshots and the unsorted photos with it.
+const COUNTS := [
+	61, 9, 38, 23, 147, 0, 186, 6,
+	17, 54, 4, 12, 9, 31,
+	18, 200, 200, 73, 14,
+	22, 3, 9, 11, 26, 200,
+	7, 5, 40,
+]
 ## Up 3 days, 7 hours, 42 minutes and 15 seconds.
 const UPTIME_S := 3 * 86400 + 7 * 3600 + 42 * 60 + 15
 ## "Now": Tuesday 2025-11-04, 22:17. A fixed date, never the clock.
@@ -50,6 +59,10 @@ func palette() -> OpenerPalette:
 
 func folders() -> PackedStringArray:
 	return PackedStringArray(FOLDERS)
+
+
+func folder_counts() -> PackedInt32Array:
+	return PackedInt32Array(COUNTS)
 
 
 func uptime_s() -> int:

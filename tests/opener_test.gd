@@ -16,15 +16,21 @@ extends SceneTree
 ## times in any second. Esc leaving mid-crash, mid-typing and in the hold (and a pad's cancel), the game behind let
 ## go each time. In the real arena: the Esc menu's "Play the opener", the arena paused behind it, Esc back to the
 ## menu as it was, greyed out in a match, the --opener flag. Deterministic: frames counted, outcomes printed.
+##
+## C39 added the real reader (scripts/opener/real_opener_data.gd), the one opener file that reads the machine: it is
+## left out of the no-real-reads check here by name, and tests/opener_real_test.gd (step 49) checks it instead.
+## Every other opener file, the two C39 added among them (cell_width.gd, theme_colors.gd), still reads nothing.
 
 const MainScene = preload("res://scenes/main.tscn")
 const OpenerScene = preload("res://scenes/opener.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
 const Controls = preload("res://scripts/controls.gd")
 
-## The opener's code paths in C38: its own scripts, scene, resources and shaders, and the menu's and the arena's
-## parts that start it.
-const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader"]
+## The opener's code paths: its own scripts, scene, resources and shaders, and the menu's and the arena's parts
+## that start it; every script in scripts/opener/ but READER (the check also finds any new one there).
+const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader"]
+## The one opener file that reads the machine (C39), checked by tests/opener_real_test.gd instead.
+const READER := "res://scripts/opener/real_opener_data.gd"
 const NEVER := ["OS.execute", "create_process", "execute_with_pipe", "OS.kill", "shell_open", "shell_show_in_file_manager", "get_environment", "has_environment", "set_environment", "unset_environment", "get_unix_time_from_system", "_dict_from_system", "_string_from_system", "get_time_zone_from_system", "get_ticks", "get_unique_id", "get_processor", "get_model_name", "get_executable_path", "get_system_dir", "get_user_data_dir", "get_cmdline", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "ENetMultiplayerPeer", "WebSocket", "WebRTC", "FileAccess", "DirAccess", "ResourceSaver", "save_png", "save_jpg", "save_webp", "save_exr", "store_", "JavaScriptBridge", "http://", "https://", "auto_accept_quit", "WM_CLOSE_REQUEST", "_notification", "delay_msec", "delay_usec", "while true", ".ogg", ".mp3", ".wav", "AudioStreamOggVorbis", "AudioStreamMP3"]
 ## The PRD's words, as PRD 5.7 has them.
 const PRD_THANKS := "thanks for running me."
@@ -140,13 +146,19 @@ func _source_checks() -> void:
 			loads.append("%s: %s" % [path.get_file(), bad])
 	var menu := _code("res://scripts/hud/pause_menu.gd")
 	var main := _code("res://scripts/main.gd")
-	var starts := _body(menu, "open_opener") + _body(menu, "_on_opener_finished") + _body(main, "_play_opener")
+	var starts := _body(menu, "open_opener") + _body(menu, "_opener_source") + _body(menu, "_on_opener_finished") + _body(main, "_play_opener")
+	var unlisted := PackedStringArray()
+	for file in DirAccess.get_files_at("res://scripts/opener"):
+		var script := "res://scripts/opener/" + file
+		if file.ends_with(".gd") and not OPENER_CODE.has(script) and script != READER:
+			unlisted.append(file)
 	for word in NEVER:
 		if starts.contains(word):
 			found.append("the menu's or the arena's start: " + word)
-	_check("acceptance: the opener's code paths read no environment variable or clock, run no program, open no network connection and write no file (no execute, environment, system time, HTTP, socket, ENet, WebSocket, FileAccess, DirAccess or saver in its %d files, nor where the menu and the arena start it)" % OPENER_CODE.size(), found.is_empty() and all.length() > 0 and starts.length() > 0, ", ".join(found))
+	_check("acceptance: the opener's code paths read no environment variable or clock, run no program, open no network connection and write no file (no execute, environment, system time, HTTP, socket, ENet, WebSocket, FileAccess, DirAccess or saver in its %d files, nor where the menu and the arena start it); the reader is the one file left out, and every other script in scripts/opener/ is in the list" % OPENER_CODE.size(), found.is_empty() and unlisted.is_empty() and all.length() > 0 and starts.length() > 0 and FileAccess.file_exists(READER), ", ".join(found + unlisted))
 	_check("acceptance: the only files it opens are its own under res:// (every load names a res:// literal or a res:// constant; nothing is opened by a path made at run time)", loads.is_empty() and all.contains("load(DEFAULT_TUNING_PATH)") and all.contains("load(DIR + palette_id"), ", ".join(loads))
-	_check("acceptance: C38 reads nothing real: the menu and the --opener flag both play the demo data, and the opener falls back to it when given none", _body(menu, "open_opener").contains("_opener.data = DemoOpenerData.new()") and _code("res://scripts/opener/opener.gd").contains("_data = data if data != null else DemoOpenerData.new()") and DemoOpenerData.new().kind() == "demo")
+	var source := _body(menu, "_opener_source")
+	_check("acceptance: nothing real without the player's yes (C39): the menu and the --opener flag play the demo data unless the opener data answer is on and the run is not on demo data, and the opener falls back to it when given none", _body(menu, "open_opener").contains("_opener.data = _opener_source()") and source.contains("link == null or link.demo") and source.contains("Privacy.real_data_on(link.settings_path)") and source.contains("Privacy.opener_real_on(link.settings_path)") and source.count("return DemoOpenerData.new()") == 2 and _code("res://scripts/opener/opener.gd").contains("_data = data if data != null else DemoOpenerData.new()") and DemoOpenerData.new().kind() == "demo")
 	_check("no real freeze and the window's close untouched: nothing waits on the main loop (no delay, no endless loop), nothing handles the close request or changes auto-quit; Esc is read in _input, before anything else", not all.contains("delay_") and not all.contains("WM_CLOSE") and all.contains("func _input(event: InputEvent)") and _code("res://scripts/opener/opener.gd").contains("process_mode = Node.PROCESS_MODE_ALWAYS"))
 	var sounds := _code("res://scripts/sfx_synth.gd")
 	_check("every sound is made in code (scripts/sfx_synth.gd's opener_key, opener_buzz, opener_crackle, opener_hum), no audio file loaded", sounds.contains("static func opener_key(") and sounds.contains("static func opener_buzz(") and sounds.contains("static func opener_crackle(") and sounds.contains("static func opener_hum(") and not all.contains(".ogg") and not all.contains(".wav"))
@@ -542,7 +554,7 @@ func _stub_checks() -> void:
 	_check("acceptance: the data reaches the screen only through the seam: a stub's user and host make the prompt (\"%s\"), cleaned of its escape and line break" % o.prompt_text(), o.prompt_text() == "ada@engine room:~$ " and lines[0].begins_with("ada@engine room:~$ ") and not control)
 	var latte := OpenerPalette.named("latte")
 	var paint := (o.get_node("Screen") as ColorRect).material as ShaderMaterial
-	_check("acceptance: its palette is the one drawn (latte, a light one, with the glow off so nothing blooms)", term.colors()["background"] == latte.color("background") and term.colors()["foreground"] == latte.color("foreground") and o.palette() == latte and float(paint.get_shader_parameter("glow")) == 0.0)
+	_check("acceptance: its palette is the one drawn (latte, a light one, made readable, with the glow off so nothing blooms)", term.colors()["background"] == latte.color("background") and term.colors()["foreground"] == latte.color("foreground") and o.palette().id == latte.id and o.palette().colors == latte.readable().colors and float(paint.get_shader_parameter("glow")) == 0.0)
 	_check("its folders as given, cleaned and cut: an empty name skipped, an escape dropped, a long one cut at %d (\"%s\"); its uptime ticking on from 59 s; no file times: \"%s\"" % [OpenerData.FOLDER_LONGEST, lines[4].left(24) + "...", o.late_text()], lines[2] == "~/alpha" and lines[3] == "~/beta" and lines[4] == "~/" + "x".repeat(OpenerData.FOLDER_LONGEST - 3) + "..." and lines[5].begins_with("up 00:01:") and o.late_text() == Opener.NO_TIMES + Opener.NO_TIMES_ECHO)
 	o.skip()
 	o.free()

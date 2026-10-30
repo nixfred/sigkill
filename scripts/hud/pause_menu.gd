@@ -31,6 +31,12 @@ extends Control
 ## Play the opener (C38): the opener's first 35 seconds (scripts/opener/opener.gd) on demo data, over everything,
 ## with the arena paused behind it; Esc at any moment, or its end, brings this menu back as it was. Alone only: in
 ## a match the entry is greyed out, since the match cannot pause for it.
+##
+## Opener data (C39): Privacy and AI's "opener data" switch is the player's opt-in to the opener showing their own
+## machine (scripts/opener/real_opener_data.gd: names, entry counts, file times, the theme's colours and the uptime,
+## never a file's contents, never kept or sent), off unless turned on, kept by guide_settings.gd as
+## opener_real_data. It counts the next time the opener plays; on demo data (--demo, real-machine data off) the
+## opener stays on the demo's, and says so.
 
 signal closed
 
@@ -62,6 +68,10 @@ const RESET_DONE := "Progress wiped: every weapon back to its own skin, nothing 
 const RESET_WAIT_S := 4.0
 const OPENER := "Play the opener"
 const OPENER_ONLINE := "Not during a match: it pauses the game."
+const OPENER_DATA := "opener data"
+const OPENER_DATA_NOTE := "names, counts, times, theme, uptime; no contents"
+const OPENER_DATA_TIP := "On: the opener shows your user and host names, folder names and how many entries each holds, recent file times, your Omarchy theme's colours and your uptime, read live. It never opens a file to read what is in it, and keeps nothing: nothing is saved, logged or sent. Off: invented demo data, the same beats."
+const OPENER_DATA_LATER := "the next time it plays"
 const OpenerScene = preload("res://scenes/opener.tscn")
 const PRACTICE_NOTE := "practice: no attacks, no ICE; a match plays by its host's"
 const RELAY_HINT := "udp://host:9010"
@@ -119,6 +129,8 @@ var _ai_button: Button
 var _roast: CheckButton
 var _real_data: CheckButton
 var _real_note: Label
+var _opener_data: CheckButton
+var _opener_note: Label
 var _name: LineEdit
 var _port: SpinBox
 var _relay: LineEdit
@@ -130,6 +142,9 @@ var _reset_left := 0.0
 var _version: Label
 var _opener_button: Button
 var _opener: Opener = null
+## Where the opener's real data comes from once the player has said yes (C39). The tests hand in a reader on a fake
+## home folder; nothing else changes it.
+var real_opener_source := func() -> OpenerData: return RealOpenerData.for_this_machine()
 
 
 func _ready() -> void:
@@ -216,8 +231,8 @@ func showing_loadout() -> bool:
 	return _open and _loadout.is_open()
 
 
-## The opener (C38): its first 35 seconds on demo data, the menu out of sight and the arena paused behind it until
-## it ends or Esc. Alone only; in a match nothing happens (null).
+## The opener (C38): its first 35 seconds, on the demo data or (C39) the player's own (_opener_source), the menu
+## out of sight and the arena paused behind it until it ends or Esc. Alone only; in a match nothing happens (null).
 func open_opener() -> Opener:
 	if _online():
 		return null
@@ -230,11 +245,23 @@ func open_opener() -> Opener:
 	_sheet.visible = false
 	visible = false
 	_opener = OpenerScene.instantiate()
-	_opener.data = DemoOpenerData.new()
+	_opener.data = _opener_source()
 	_opener.pause_world = true
 	_opener.finished.connect(_on_opener_finished)
 	add_child(_opener)
 	return _opener
+
+
+## The opener's data (C39): the player's own only when they said yes ("opener data") and this run is not on demo
+## data (the guide link's demo: --demo, or real-machine data off, checked again here); otherwise, and whenever there
+## is no guide link to ask, the demo's.
+func _opener_source() -> OpenerData:
+	var link = _link()
+	if link == null or link.demo:
+		return DemoOpenerData.new()
+	if not Privacy.real_data_on(link.settings_path) or not Privacy.opener_real_on(link.settings_path):
+		return DemoOpenerData.new()
+	return real_opener_source.call()
 
 
 func showing_opener() -> bool:
@@ -494,6 +521,7 @@ func _refresh_privacy() -> void:
 		_ai_button.disabled = true
 		_roast.disabled = true
 		_real_data.disabled = true
+		_opener_data.disabled = true
 		return
 	_ai_button.disabled = false
 	if link.demo:
@@ -510,6 +538,9 @@ func _refresh_privacy() -> void:
 	_real_data.disabled = false
 	_real_data.set_pressed_no_signal(Privacy.real_data_on(link.settings_path))
 	_real_note.text = REAL_DATA_DEMO if link.demo else REAL_DATA_LATER
+	_opener_data.disabled = false
+	_opener_data.set_pressed_no_signal(Privacy.opener_real_on(link.settings_path))
+	_opener_note.text = REAL_DATA_DEMO if link.demo else ""
 
 
 func _tuning_fov() -> int:
@@ -552,6 +583,13 @@ func _on_real_data_toggled(on: bool) -> void:
 	var link = _link()
 	if link != null:
 		_say(("Real-machine data %s %s." % [_word(on), REAL_DATA_LATER]) if Privacy.save_real_data(on, link.settings_path) else NOT_SAVED_LINE)
+	_refresh()
+
+
+func _on_opener_data_toggled(on: bool) -> void:
+	var link = _link()
+	if link != null:
+		_say(("Opener data %s: %s." % [_word(on), REAL_DATA_DEMO if link.demo else OPENER_DATA_LATER]) if Privacy.save_opener_real(on, link.settings_path) else NOT_SAVED_LINE)
 	_refresh()
 
 
@@ -751,6 +789,15 @@ func _build_privacy(col: VBoxContainer) -> void:
 	_real_data.toggled.connect(_on_real_data_toggled)
 	real.add_child(_real_data)
 	_real_note = _label(real, REAL_DATA_LATER, FONT - 2, Palette.TEAL)
+	var opener := _row(col, OPENER_DATA)
+	opener.tooltip_text = OPENER_DATA_TIP
+	opener.mouse_filter = Control.MOUSE_FILTER_PASS
+	_opener_data = CheckButton.new()
+	_opener_data.tooltip_text = OPENER_DATA_TIP
+	_opener_data.toggled.connect(_on_opener_data_toggled)
+	opener.add_child(_opener_data)
+	_opener_note = _label(opener, "", FONT - 2, Palette.TEAL)
+	_label(col, OPENER_DATA_NOTE, FONT - 2, Palette.TEAL)
 
 
 func _build_multiplayer(col: VBoxContainer) -> void:

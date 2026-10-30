@@ -11,9 +11,12 @@ extends CanvasLayer
 ## from the file times alone (late_line). Text types itself as a hand types (scripts/opener/typist.gd): its own
 ## wait for every key, a hesitation before the punchlines, one typo taken back.
 ##
-## The data comes through one seam, OpenerData (scripts/opener/opener_data.gd): `data`, read once as this starts.
-## C38 has only DemoOpenerData (fixed, invented, nothing read); C39 adds the real reader behind the same methods.
-## Nothing here reads the machine: no file but res://, no environment, no clock, no process, no network.
+## The data comes through one seam, OpenerData (scripts/opener/opener_data.gd): `data`, started as this starts and
+## taken once, as soon as it is ready or at the tuning's take_by second regardless (while the screen is still the
+## crash or black, before anything of it shows), then dropped as this ends. DemoOpenerData (fixed, invented,
+## nothing read) is always ready; RealOpenerData (C39, only with the player's yes) reads on its own thread, and
+## anything it has not got by then is the demo's. Nothing here reads the machine: no file but res://, no
+## environment, no clock, no process, no network; the reader is the one place that does.
 ##
 ## A real way out, always: Esc leaves at any moment, mid-crash and mid-typing included (`finished(true)`), and the
 ## window's close is never touched (Godot's own quit). The main loop never stops: the "freeze" is a picture held on
@@ -83,6 +86,7 @@ var freeze_frame := true
 
 var _t: OpenerTuning
 var _data: OpenerData
+var _taken := false
 var _palette: OpenerPalette
 var _elapsed := 0.0
 var _ticks := 0
@@ -125,16 +129,15 @@ func _init() -> void:
 func _ready() -> void:
 	_t = usable_tuning(tuning)
 	_data = data if data != null else DemoOpenerData.new()
-	_palette = _data.palette()
-	if _palette == null:
-		_palette = OpenerPalette.named(OpenerPalette.DEFAULT_ID)
-	_uptime_base = maxi(_data.uptime_s(), 0)
+	_data.start()
+	_palette = OpenerPalette.named(OpenerPalette.DEFAULT_ID).readable()
 	_build()
-	_build_timeline()
 	_mouse_was = Input.mouse_mode
 	_mouse_held = true
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 	_event("live")
+	if _data.is_ready():
+		_take()
 
 
 func _exit_tree() -> void:
@@ -231,13 +234,19 @@ func skip() -> void:
 	_finish(true)
 
 
-## The terminal recoloured in `colours` at once, its glow with it (none on a light theme).
+## Whether the data's values have been taken (and the lines built from them).
+func taken() -> bool:
+	return _taken
+
+
+## The terminal recoloured in `colours` at once (made readable: OpenerPalette.readable()), its glow with it (none on
+## a light theme).
 func set_palette(colours: OpenerPalette) -> void:
 	if colours == null:
 		return
-	_palette = colours
-	_terminal.palette = colours
-	_screen_paint.set_shader_parameter("glow", _t.glow if colours.mode != "light" else 0.0)
+	_palette = colours.readable()
+	_terminal.palette = _palette
+	_screen_paint.set_shader_parameter("glow", _t.glow if _palette.mode != "light" else 0.0)
 
 
 ## `candidate` if its timeline holds together and keeps the PRD's windows, else the shipped one (or its defaults).
@@ -296,6 +305,19 @@ static func late_line(times: PackedInt64Array, now: int, beat: float) -> Array:
 
 
 # --- The timeline. ---
+
+## The data's values, taken once: its palette (or the default), its uptime, and every line built from its names and
+## times. Its "taken" event marks when.
+func _take() -> void:
+	if _taken:
+		return
+	_taken = true
+	var colours := _data.palette()
+	set_palette(colours if colours != null else OpenerPalette.named(OpenerPalette.DEFAULT_ID))
+	_uptime_base = maxi(_data.uptime_s(), 0)
+	_build_timeline()
+	_event("taken")
+
 
 func _build_timeline() -> void:
 	var t := _t
@@ -389,6 +411,8 @@ func _process(delta: float) -> void:
 		return
 	_elapsed += delta / maxf(Engine.time_scale, 0.01)
 	_ticks += 1
+	if not _taken and (_elapsed >= _t.take_by or _data.is_ready()):
+		_take()
 	_step_crash()
 	_step_actions()
 	_step_uptime()
@@ -524,9 +548,11 @@ func _finish(skipped: bool) -> void:
 	finished.emit(skipped)
 
 
-## The game behind un-paused and its 3D view drawn again (if this paused or hid them) and the mouse as it was: as
-## it ends, and if it is ever freed mid-way.
+## The game behind un-paused and its 3D view drawn again (if this paused or hid them), the mouse as it was, and the
+## data dropped (whatever it read let go): as it ends, and if it is ever freed mid-way.
 func _release() -> void:
+	if _data != null:
+		_data.drop()
 	if _paused_world:
 		_paused_world = false
 		if is_inside_tree():

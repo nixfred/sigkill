@@ -2,8 +2,8 @@ extends RefCounted
 ## SIGKILL's one settings file, user://settings.cfg (C16b): a Godot ConfigFile, versioned,
 ## holding everything the game keeps between launches, a section each:
 ##   [meta]         version=1
-##   [privacy]      the AI opt-in, the roast announcer and real-machine data, read and
-##                  written only by scripts/boot/guide_settings.gd
+##   [privacy]      the AI opt-in, the roast announcer, real-machine data and the opener's
+##                  real data (C39), read and written only by scripts/boot/guide_settings.gd
 ##   [controls] [binds] [video] [audio] [hud] [multiplayer]
 ##                  the settings screen's own, scripts/settings/game_settings.gd
 ## Reading is strict and quiet, as the C9 file's always was: at most MAX_BYTES of plain

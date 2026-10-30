@@ -7,6 +7,9 @@ extends RefCounted
 ##   roast_announcer="on"   (or "off"; off when missing): the roast announcer switch (C12)
 ##   real_machine_data="on"   (or "off"; on when missing): off is demo data at every launch,
 ##       as --demo is: no detector, fake GPU numbers, nothing read from the machine
+##   opener_real_data="on"   (or "off"; off when missing): the opener (C39) shows the player's
+##       own names, counts, times, theme colours and uptime (scripts/opener/real_opener_data.gd)
+##       instead of the demo's; it counts the next time the opener plays, and never on demo data
 ## The answer counts only for that source: a different agent or server is asked again.
 ## Reading is strict and quiet: a damaged file, or a value that is not one of these, counts
 ## as never asked, roast off and real data as shipped, so a damaged file means one more
@@ -24,7 +27,8 @@ const KEY_SOURCE := "ai_consent_source"
 const KEY_CONSENT := "ai_consent"
 const KEY_ROAST := "roast_announcer"
 const KEY_REAL_DATA := "real_machine_data"
-const KEYS := [KEY_SOURCE, KEY_CONSENT, KEY_ROAST, KEY_REAL_DATA]
+const KEY_OPENER := "opener_real_data"
+const KEYS := [KEY_SOURCE, KEY_CONSENT, KEY_ROAST, KEY_REAL_DATA, KEY_OPENER]
 const YES := "yes"
 const NO := "no"
 const ON := "on"
@@ -71,6 +75,12 @@ static func real_data_on(path: String = DEFAULT_PATH) -> bool:
 	return _values(path).get(KEY_REAL_DATA, "") != OFF
 
 
+## True only when the file says opener_real_data on: missing, damaged or anything else is off,
+## the demo data. The player opts in; nothing is read until they do.
+static func opener_real_on(path: String = DEFAULT_PATH) -> bool:
+	return _values(path).get(KEY_OPENER, "") == ON
+
+
 ## The privacy section's string values, or {} when the file is missing or damaged.
 static func _values(path: String) -> Dictionary:
 	var section = SettingsFile.read(path).get(SettingsFile.PRIVACY, {})
@@ -91,7 +101,7 @@ static func save(source: String, allowed: bool, path: String = DEFAULT_PATH) -> 
 	if not known_source(source) or not SettingsFile.usable_path(path):
 		return false
 	var answer := {"source": source, "allowed": allowed}
-	return _write(path, answer, roast_on(path), real_data_on(path))
+	return _write(path, answer, roast_on(path), real_data_on(path), opener_real_on(path))
 
 
 ## Saves the roast announcer switch, keeping the opt-in answer and real data. False if the
@@ -99,7 +109,7 @@ static func save(source: String, allowed: bool, path: String = DEFAULT_PATH) -> 
 static func save_roast(on: bool, path: String = DEFAULT_PATH) -> bool:
 	if not SettingsFile.usable_path(path):
 		return false
-	return _write(path, read(path), on, real_data_on(path))
+	return _write(path, read(path), on, real_data_on(path), opener_real_on(path))
 
 
 ## Saves the real-machine data switch, keeping the opt-in answer and the roast switch. It
@@ -107,14 +117,23 @@ static func save_roast(on: bool, path: String = DEFAULT_PATH) -> bool:
 static func save_real_data(on: bool, path: String = DEFAULT_PATH) -> bool:
 	if not SettingsFile.usable_path(path):
 		return false
-	return _write(path, read(path), roast_on(path), on)
+	return _write(path, read(path), roast_on(path), on, opener_real_on(path))
 
 
-static func _write(path: String, answer: Dictionary, roast: bool, real_data: bool) -> bool:
+## Saves the opener's real-data answer (C39), keeping the others. It counts the next time the
+## opener plays. False if the file cannot be written.
+static func save_opener_real(on: bool, path: String = DEFAULT_PATH) -> bool:
+	if not SettingsFile.usable_path(path):
+		return false
+	return _write(path, read(path), roast_on(path), real_data_on(path), on)
+
+
+static func _write(path: String, answer: Dictionary, roast: bool, real_data: bool, opener: bool) -> bool:
 	var privacy := {}
 	if not answer.is_empty():
 		privacy[KEY_SOURCE] = answer["source"]
 		privacy[KEY_CONSENT] = YES if answer["allowed"] else NO
 	privacy[KEY_ROAST] = ON if roast else OFF
 	privacy[KEY_REAL_DATA] = ON if real_data else OFF
+	privacy[KEY_OPENER] = ON if opener else OFF
 	return SettingsFile.write_sections(path, {SettingsFile.PRIVACY: privacy})

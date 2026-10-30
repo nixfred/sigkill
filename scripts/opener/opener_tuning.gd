@@ -22,6 +22,10 @@ extends Resource
 @export var dropout_s := 0.05
 ## The cut to black, and silence.
 @export var cut_at := 3.1
+## The latest second the data's values are taken (C39): a real reader's values are taken as soon as they are all
+## in, and whatever is not in by now is the demo's. The screen is the crash or black until terminal_at, so the
+## taking never shows.
+@export var take_by := 3.1
 
 @export_group("Terminal")
 ## The low hum fading in, and full.
@@ -106,4 +110,6 @@ func problems() -> PackedStringArray:
 			out.append("a dropout outside the crash")
 	if glitch_hz <= 0.0 or glitch_hz > 12.0:
 		out.append("the glitch steps more than 12 times a second")
+	if take_by < 0.0 or take_by > terminal_at:
+		out.append("the data is taken after the terminal shows")
 	return out

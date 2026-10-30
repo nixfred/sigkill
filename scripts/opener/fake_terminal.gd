@@ -7,6 +7,13 @@ extends Control
 ## ROWS rows in the font Omarchy's terminal uses (or the nearest monospace one here), and a blinking block cursor in
 ## bright_foreground, solid while keys come in. Lines too long for a row wrap; more rows than fit scroll up.
 ##
+## Wide characters (C39, where real names first appear): a row is laid out in cells, as a terminal does
+## (scripts/opener/cell_width.gd): a CJK character or an emoji takes two, a combining mark, a variation selector,
+## a skin tone or a joined emoji takes none and is drawn with the character before it, and a wide character that
+## does not fit at a row's end starts the next row. A plain character is drawn alone in its cell; a cluster is
+## drawn as one piece of shaped text, centred in its cells and scaled down if its glyph is wider than they are, so
+## nothing spills into the next cell. Glyphs this font lacks come from the system's own fallback fonts.
+##
 ## It is text and colour only: nothing typed into it reaches anything (the opener takes every key), and it runs
 ## nothing. Every colour comes from its palette (scripts/opener/opener_palette.gd), by Omarchy's names for them, so
 ## a new palette recolours everything at once. C40 shrinks it away; window_rect() and pop are its handles.
@@ -33,6 +40,8 @@ const FONT_NAMES := ["JetBrainsMono Nerd Font", "JetBrains Mono", "DejaVu Sans M
 
 static var _font: SystemFont
 static var _bold: SystemFont
+## The size each cluster is drawn at to fit its cells, by size and cluster, kept once worked out.
+static var _fit_sizes := {}
 
 ## The colours.
 var palette: OpenerPalette:
@@ -95,15 +104,20 @@ func put(ch: String, attr: String = "foreground") -> void:
 	_keyed()
 
 
-## The character before the cursor taken back.
+## The character before the cursor taken back: the whole of its cluster (a letter and its marks, an emoji and what
+## is joined to it).
 func back() -> void:
 	var line: Dictionary = _lines[-1]
 	var text: String = line["text"]
 	if text.is_empty():
 		return
-	line["text"] = text.left(text.length() - 1)
+	var widths := CellWidth.of_text(text)
+	var keep := text.length() - 1
+	while keep > 0 and widths[keep] == 0:
+		keep -= 1
+	line["text"] = text.left(keep)
 	var attrs: PackedStringArray = line["attrs"]
-	attrs.resize(text.length() - 1)
+	attrs.resize(keep)
 	line["attrs"] = attrs
 	_keyed()
 
@@ -175,6 +189,20 @@ func text() -> String:
 	for row in _visible_rows():
 		out.append(row["text"])
 	return "\n".join(out)
+
+
+## Where the cursor is drawn: its column (in cells) and its row on screen.
+func cursor_cell() -> Vector2i:
+	var rows := _visible_rows()
+	return Vector2i(rows[-1]["used"], rows.size() - 1) if not rows.is_empty() else Vector2i.ZERO
+
+
+## The cells each row on screen takes now, top to bottom.
+func row_cells() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for row in _visible_rows():
+		out.append(row["used"])
+	return out
 
 
 ## Whether the cursor is drawn this frame.
@@ -257,23 +285,31 @@ func _cursor_color() -> Color:
 	return palette.cursor() if palette != null else Color.WHITE
 
 
-## The rows as drawn: every line cut into rows of columns() characters, the last ROWS of them.
+## The rows as drawn: every line laid out in rows of columns() cells, the last ROWS of them. Each row is {"text",
+## "attrs", "cells" (each character's width), "used" (the cells it fills)}.
 func _visible_rows() -> Array:
 	var cols := columns()
 	var rows: Array = []
 	for n in _lines.size():
 		var text: String = _lines[n]["text"]
 		var attrs: PackedStringArray = _lines[n]["attrs"]
-		if text.is_empty():
-			rows.append({"text": "", "attrs": PackedStringArray()})
-			continue
-		var at := 0
-		while at < text.length():
-			rows.append({"text": text.substr(at, cols), "attrs": attrs.slice(at, at + cols)})
-			at += cols
-		if text.length() % cols == 0 and n == _lines.size() - 1:
-			rows.append({"text": "", "attrs": PackedStringArray()})  # a full last row: the cursor waits on the next
+		var widths := CellWidth.of_text(text)
+		var start := 0
+		var used := 0
+		for i in text.length():
+			if widths[i] > 0 and used > 0 and used + widths[i] > cols:
+				rows.append(_row(text, attrs, widths, start, i, used))
+				start = i
+				used = 0
+			used += widths[i]
+		rows.append(_row(text, attrs, widths, start, text.length(), used))
+		if used >= cols and n == _lines.size() - 1:
+			rows.append(_row("", PackedStringArray(), PackedByteArray(), 0, 0, 0))  # a full last row: the cursor waits on the next
 	return rows.slice(maxi(rows.size() - ROWS, 0))
+
+
+static func _row(text: String, attrs: PackedStringArray, widths: PackedByteArray, from: int, to: int, used: int) -> Dictionary:
+	return {"text": text.substr(from, to - from), "attrs": attrs.slice(from, to), "cells": widths.slice(from, to), "used": used}
 
 
 func _draw() -> void:
@@ -301,18 +337,42 @@ func _draw() -> void:
 		var row: Dictionary = rows[r]
 		var text: String = row["text"]
 		var attrs: PackedStringArray = row["attrs"]
+		var cells: PackedByteArray = row["cells"]
 		var y := area.position.y + r * line + base
-		for i in text.length():
-			var ch := text[i]
-			if ch == " ":
-				continue
+		var col := 0
+		var i := 0
+		while i < text.length():
+			var end := i + 1
+			while end < text.length() and cells[end] == 0:
+				end += 1
+			var wide: int = maxi(cells[i], 1)
 			var attr: String = attrs[i] if i < attrs.size() else "foreground"
-			var bold := attr.ends_with("*")
-			var key := attr.trim_suffix("*")
-			draw_char(f[1] if bold else f[0], Vector2(area.position.x + i * cell, y), ch, size_px, Color(_c(key), fade))
+			var font := f[1] if attr.ends_with("*") else f[0]
+			var tint := Color(_c(attr.trim_suffix("*")), fade)
+			var x := area.position.x + col * cell
+			if end == i + 1 and wide == 1:
+				if text[i] != " ":
+					draw_char(font, Vector2(x, y), text[i], size_px, tint)
+			else:
+				var cluster := text.substr(i, end - i)
+				var fit := _fit_size(font, cluster, size_px, wide * cell)
+				var drawn := font.get_string_size(cluster, HORIZONTAL_ALIGNMENT_LEFT, -1, fit).x
+				draw_string(font, Vector2(x + maxf((wide * cell - drawn) * 0.5, 0.0), y), cluster, HORIZONTAL_ALIGNMENT_LEFT, -1, fit, tint)
+			col += wide
+			i = end
 	if cursor_showing() and not rows.is_empty():
-		var last: Dictionary = rows[-1]
-		var col: int = (last["text"] as String).length()
+		var col: int = rows[-1]["used"]
 		var at := Vector2(area.position.x + col * cell, area.position.y + (rows.size() - 1) * line)
 		draw_rect(Rect2(at, Vector2(cell, line)), Color(_cursor_color(), fade))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The font size `cluster` is drawn at so it is no wider than `room` pixels: `size_px`, or smaller.
+static func _fit_size(font: Font, cluster: String, size_px: int, room: float) -> int:
+	var key := "%d|%d|%s" % [font.get_instance_id(), size_px, cluster]
+	if not _fit_sizes.has(key):
+		if _fit_sizes.size() > 512:
+			_fit_sizes.clear()
+		var wide := font.get_string_size(cluster, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+		_fit_sizes[key] = size_px if wide <= room else maxi(int(floor(size_px * room / wide)), 4)
+	return _fit_sizes[key]
