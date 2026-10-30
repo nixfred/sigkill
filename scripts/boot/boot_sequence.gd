@@ -35,8 +35,8 @@ extends Control
 ## in a headless run). Esc and Enter still skip it.
 ##
 ## On screen: fixed lines, an agent name from the detector's known list, numbers, short
-## lowercase error words, and a line from HANDSHAKE_LINES. Never a path, host name, user
-## name or model name.
+## lowercase error words, a line from HANDSHAKE_LINES, and the game's version, small in the
+## bottom right corner. Never a path, host name, user name or model name.
 
 signal finished(skipped: bool)
 
@@ -124,6 +124,7 @@ var _gpu_label: Label
 var _queue: Array[Label] = []
 var _typed := 0.0
 var _pause_ms := 0.0
+var _version: Label
 
 
 func _ready() -> void:
@@ -198,14 +199,20 @@ func _exit_tree() -> void:
 
 
 ## What is on screen, line by line, for tests: every line's whole text, then the spinner,
-## the GPU readout and the hint, whether shown or not.
+## the GPU readout, the hint and the version in the corner, whether shown or not.
 func screen_text() -> PackedStringArray:
 	var out := lines()
 	for label in [_spinner, _gpu_label]:
 		if label != null:
 			out.append(label.text)
 	out.append(HINT)
+	out.append(version_text())
 	return out
+
+
+## The version in the corner as shown ("v0.33.0-prealpha"), or "" before the screen is built.
+func version_text() -> String:
+	return _version.text if _version != null else ""
 
 
 ## The typed lines so far, in order.
@@ -325,6 +332,15 @@ func _build_screen() -> void:
 	add_child(hint)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 48)
 	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# The version, small and dim in the opposite corner (project.godot's, as the window's title has it).
+	_version = _make_label(_t.text_color, _t.hint_font_size)
+	_version.text = SettingsApply.version_tag()
+	_version.modulate = Color(1.0, 1.0, 1.0, _t.hint_alpha)
+	_version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(_version)
+	_version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 48)
+	_version.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_version.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
 func _make_label(color: Color, size: int) -> Label:

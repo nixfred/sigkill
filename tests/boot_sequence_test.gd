@@ -12,6 +12,7 @@ extends SceneTree
 
 const BootScene = preload("res://scenes/boot.tscn")
 const Boot = preload("res://scripts/boot/boot_sequence.gd")
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const BootTuningScript = preload("res://scripts/boot/boot_tuning.gd")
 const Settings = preload("res://scripts/boot/guide_settings.gd")
 const Detector = preload("res://scripts/ai/ai_source_detector.gd")
@@ -724,6 +725,14 @@ func _layout_checks() -> void:
 			if not screen.encloses(label.get_global_rect()):
 				outside.append("%s %s" % [label.text.left(24), label.get_global_rect()])
 		_check("at %dx%d every line, the spinner, the widest GPU readout and the hint sit inside the screen" % [size.x, size.y], screen.size == Vector2(size) and shown >= 5 and outside.is_empty(), "%d labels; outside: %s" % [shown, ", ".join(outside)])
+		# The version (the pre-alpha drop): project.godot's, small in the bottom right corner, and the window's title has it.
+		var tag: String = s["boot"].version_text()
+		var corner: Label = null
+		for label in s["boot"].find_children("*", "Label", true, false):
+			if label.text == tag and label.is_visible_in_tree():
+				corner = label
+		var at := corner.get_global_rect() if corner != null else Rect2()
+		_check("at %dx%d the version sits in the bottom right corner, project.godot's, and the window's title has it" % [size.x, size.y], corner != null and tag == "v" + str(ProjectSettings.get_setting("application/config/version")) and tag.length() > 3 and screen.encloses(at) and at.position.x > screen.size.x * 0.6 and at.position.y > screen.size.y * 0.75 and corner.get_theme_font_size("font_size") < 20 and SettingsApply.window_title() == "SIGKILL " + tag and tag in s["boot"].screen_text(), "%s at %s" % [tag, at])
 		await _drop(s)
 	root.size = before
 

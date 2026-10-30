@@ -24,10 +24,14 @@ extends Control
 ## Loadout (C33): the menu's Loadout opens the loadout screen (scripts/hud/loadout_screen.gd): every weapon's
 ## skins and mod, earned by playing. Alone, what the player wears changes as it closes. The settings add the
 ## host's "mods" match rule (multiplayer) and "reset progress", which asks twice before it wipes every unlock.
+##
+## The game's version (project.godot's, "v0.33.0-prealpha") sits small and dim in the screen's bottom right
+## corner while the menu itself is up, as on the boot screen.
 
 signal closed
 
 const Palette = preload("res://scripts/palette.gd")
+const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Controls = preload("res://scripts/controls.gd")
 const Privacy = preload("res://scripts/boot/guide_settings.gd")
 const RelayWire = preload("res://scripts/net/relay_wire.gd")
@@ -70,6 +74,9 @@ const MARGIN := 14
 const GAP := 16
 ## Space kept clear around a panel shrunk to fit a small window.
 const EDGE := 8.0
+## The version in the corner: its size and how dim.
+const VERSION_FONT := 11
+const VERSION_ALPHA := 0.6
 
 ## The player whose input the menu stops, and whose camera numbers it shows.
 var player: Node = null
@@ -113,6 +120,7 @@ var _fov_value: Label
 var _loadout: LoadoutScreen
 var _reset: Button
 var _reset_left := 0.0
+var _version: Label
 
 
 func _ready() -> void:
@@ -199,6 +207,11 @@ func showing_loadout() -> bool:
 
 func loadout_screen() -> LoadoutScreen:
 	return _loadout
+
+
+## The version in the corner as shown ("v0.33.0-prealpha"), or "" while it is hidden.
+func version_text() -> String:
+	return _version.text if _version != null and _version.is_visible_in_tree() else ""
 
 
 ## The loadout screen closed: alone, the player wears what it chose now (a match holds the host's look).
@@ -562,6 +575,14 @@ func _build() -> void:
 	_status.clip_text = true
 	_status.custom_minimum_size.x = COLUMN_W * 2
 	_sheet.visible = false
+	# The version, small and dim in the screen's bottom right corner while the menu itself is up
+	# (never over the settings sheet, which can fill the window, or the loadout screen).
+	_version = _label(self, SettingsApply.version_tag(), VERSION_FONT, Color(Palette.MINT, VERSION_ALPHA))
+	_version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_version.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, MARGIN)
+	_version.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_version.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_pause.visibility_changed.connect(func() -> void: _version.visible = _pause.visible)
 	_loadout = LoadoutScreen.new()
 	_loadout.name = "Loadout"
 	add_child(_loadout)

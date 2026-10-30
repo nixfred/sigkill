@@ -8,6 +8,9 @@ config_version=5
 
 config/name="SIGKILL"
 config/description="Native first-person shooter for Omarchy. Hunt rogue daemons in a terminal arena."
+; The release version (pre-alpha drop, build 33 = chunk C33). Shown small in the boot screen's and the
+; menu's corner and in the window title (scripts/settings/settings_apply.gd version_tag()).
+config/version="0.33.0-prealpha"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/show_image=false

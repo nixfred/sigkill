@@ -477,6 +477,9 @@ func _menu_checks() -> void:
 	var s := GameSettings.current()
 	await _key(KEY_ESCAPE)
 	_check("Esc in the arena opens the menu: the player's input is stopped, nothing is paused, Resume has the focus for keys and pads", menu.is_open() and not menu.showing_settings() and p.input_blocked and not paused and menu._resume.has_focus())
+	var corner: Rect2 = menu._version.get_global_rect()
+	var view: Vector2 = menu.get_viewport_rect().size
+	_check("the menu shows the game's version, project.godot's, small in the screen's bottom right corner", menu.version_text() == "v" + str(ProjectSettings.get_setting("application/config/version")) and menu.version_text().length() > 3 and Rect2(Vector2.ZERO, view).encloses(corner) and corner.position.x > view.x * 0.6 and corner.position.y > view.y * 0.75, "%s at %s" % [menu.version_text(), corner])
 	var slot_before: int = p.inventory.current
 	await _key(KEY_M)
 	await _key(KEY_T)
@@ -493,6 +496,7 @@ func _menu_checks() -> void:
 	hud.open_menu()
 	menu.open_settings()
 	await _frames(2)
+	_check("the version in the corner steps aside for the settings sheet, which can fill the window", menu.version_text() == "" and not menu._version.visible)
 	menu._rows["controls/invert_y"]["widget"].button_pressed = true
 	menu._rows["controls/mouse_sensitivity"]["widget"].value = 2.5
 	menu._rows["video/quality"]["widget"].item_selected.emit(0)
