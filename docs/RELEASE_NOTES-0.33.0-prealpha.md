@@ -49,4 +49,14 @@ ok:   unlocks test: exit 0, no error lines
 CHECK PASSED
 ```
 
-All 47 steps passed (every script parses, a headless import, a 300-frame run, and 44 headless test suites, all over 127.0.0.1 and fakes only). The release binary itself has not been built yet; see [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
+All 47 steps passed (every script parses, a headless import, a 300-frame run, and 44 headless test suites, all over 127.0.0.1 and fakes only).
+
+The release build, made the same day with Godot's official 4.7.2-stable export templates (their SHA-512 checked against the release's sums):
+
+```text
+sigkill.x86_64                                 75070160 bytes
+sigkill-0.33.0-prealpha-linux-x86_64.tar.gz    29776154 bytes
+sha256  97d66c53a5cb0902478635cfe1b567feceee5d1a33c19b6c13c3a7495b0670bb
+```
+
+It boots headless (exit 0, no error line) and in a window titled `SIGKILL v0.33.0-prealpha` on a private display, and its `install.sh` and `uninstall.sh` were run against it in a scratch home folder. What is still to do before the tag: [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
