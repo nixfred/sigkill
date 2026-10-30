@@ -20,6 +20,9 @@ const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 ## the tests and the captures. The first launch's own opener is C42's to decide.
 const OPENER_FLAG := "--opener"
 
+## The flag is taken once a run: an R reload of the arena never plays the opener again.
+static var _opener_flag_taken := false
+
 var _remaining := 0
 var _total := 0
 
@@ -110,7 +113,8 @@ func _ready() -> void:
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
-	if launch_args.has(OPENER_FLAG):
+	if launch_args.has(OPENER_FLAG) and not _opener_flag_taken:
+		_opener_flag_taken = true
 		_play_opener.call_deferred()
 
 

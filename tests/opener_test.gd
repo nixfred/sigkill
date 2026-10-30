@@ -311,6 +311,13 @@ func _words_checks() -> void:
 	_check("the uptime as it ticks: \"%s\", \"%s\", \"%s\"" % [Opener.uptime_text(DemoOpenerData.UPTIME_S), Opener.uptime_text(86400 + 61), Opener.uptime_text(59)], Opener.uptime_text(DemoOpenerData.UPTIME_S) == "up 3 days, 07:42:15" and Opener.uptime_text(86400 + 61) == "up 1 day, 00:01:01" and Opener.uptime_text(59) == "up 00:00:59")
 	var t := load("res://resources/opener.tres") as OpenerTuning
 	_check("the shipped timeline holds together and keeps the PRD's windows (the prompt ends by 0:15, the lines run 0:15 to 0:35, the glitch steps at most 12 times a second)", t != null and t.problems().is_empty(), ", ".join(t.problems()) if t != null else "no tuning")
+	var broken := OpenerTuning.new()
+	broken.thanks_at = 14.0
+	var strobing := OpenerTuning.new()
+	strobing.glitch_hz = 30.0
+	var fine := OpenerTuning.new()
+	fine.hold_until = 39.0
+	_check("a timeline that breaks a window or strobes is refused for the shipped one (\"%s\"); one that keeps them is used as given" % ", ".join(broken.problems()), not broken.problems().is_empty() and not strobing.problems().is_empty() and Opener.usable_tuning(broken) == t and Opener.usable_tuning(strobing) == t and Opener.usable_tuning(null) == t and Opener.usable_tuning(fine) == fine)
 
 
 static func _local(year: int, month: int, day: int, hour: int, minute: int) -> int:
@@ -645,6 +652,11 @@ func _menu_checks() -> void:
 	await process_frame
 	_check("... and Esc brings that menu back", fmenu.is_open() and fmenu.visible and not fmenu.showing_opener() and not paused)
 	await _drop(flagged)
+	var reloaded := await _lab(PackedStringArray(["--opener"]))
+	await process_frame
+	await process_frame
+	_check("the flag is taken once a run: the arena loaded again (as R reloads it) does not play it again", not reloaded.get_node("Hud").pause_menu().showing_opener() and not reloaded.get_node("Hud").pause_menu().is_open())
+	await _drop(reloaded)
 
 
 # --- Helpers. ---

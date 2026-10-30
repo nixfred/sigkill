@@ -74,7 +74,7 @@ const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "done"]
 
 ## What it shows of "your machine"; null: DemoOpenerData.
 var data: OpenerData = null
-## The timeline; null: resources/opener.tres.
+## The timeline; null (or one with problems): resources/opener.tres.
 var tuning: OpenerTuning = null
 ## Pause the game behind while it plays (alone, from the menu); never in a match, where the menu offers no opener.
 var pause_world := false
@@ -123,7 +123,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_t = tuning if tuning != null else load(DEFAULT_TUNING_PATH) as OpenerTuning
+	_t = usable_tuning(tuning)
 	_data = data if data != null else DemoOpenerData.new()
 	_palette = _data.palette()
 	if _palette == null:
@@ -166,10 +166,10 @@ func events() -> Array:
 	return _events
 
 
-## When `name` first happened, or -1.
-func event_time(name: String) -> float:
+## When `what` first happened, or -1.
+func event_time(what: String) -> float:
 	for e in _events:
-		if e[1] == name:
+		if e[1] == what:
 			return e[0]
 	return -1.0
 
@@ -231,13 +231,27 @@ func skip() -> void:
 	_finish(true)
 
 
-## The terminal recoloured in `palette` at once, its glow with it (none on a light theme).
-func set_palette(palette: OpenerPalette) -> void:
-	if palette == null:
+## The terminal recoloured in `colours` at once, its glow with it (none on a light theme).
+func set_palette(colours: OpenerPalette) -> void:
+	if colours == null:
 		return
-	_palette = palette
-	_terminal.palette = palette
-	_screen_paint.set_shader_parameter("glow", _t.glow if palette.mode != "light" else 0.0)
+	_palette = colours
+	_terminal.palette = colours
+	_screen_paint.set_shader_parameter("glow", _t.glow if colours.mode != "light" else 0.0)
+
+
+## `candidate` if its timeline holds together and keeps the PRD's windows, else the shipped one (or its defaults).
+static func usable_tuning(candidate: OpenerTuning) -> OpenerTuning:
+	if candidate != null:
+		var issues := candidate.problems()
+		if issues.is_empty():
+			return candidate
+		for issue in issues:
+			push_warning("opener tuning: " + issue + "; using the shipped tuning instead")
+	var shipped := load(DEFAULT_TUNING_PATH) as OpenerTuning
+	if shipped != null and shipped.problems().is_empty():
+		return shipped
+	return OpenerTuning.new()
 
 
 # --- The words. ---
@@ -333,8 +347,8 @@ func _typed(id: String, at: float, end: float, segments: Array, pace: float, see
 ## The folder names scrolling past from `at`, the last by `end`, speeding up as they go.
 func _folders(at: float, end: float) -> void:
 	var names := PackedStringArray()
-	for name in _data.folders():
-		var shown := OpenerData.clean(name, OpenerData.FOLDER_LONGEST)
+	for folder in _data.folders():
+		var shown := OpenerData.clean(folder, OpenerData.FOLDER_LONGEST)
 		if shown != "":
 			names.append(shown)
 		if names.size() >= _t.folders_most:
@@ -526,8 +540,8 @@ func _release() -> void:
 		Input.mouse_mode = _mouse_was
 
 
-func _event(name: String) -> void:
-	_events.append([_elapsed, name])
+func _event(what: String) -> void:
+	_events.append([_elapsed, what])
 
 
 ## The game's own last frame, held in memory for the crash only (never saved), or a near-black stand-in.
@@ -629,15 +643,15 @@ func _click(variant: int) -> void:
 
 
 ## The opener's sounds, made once a run and kept.
-static func _sound(name: String) -> AudioStreamWAV:
-	if not _sounds.has(name):
-		match name:
+static func _sound(sound: String) -> AudioStreamWAV:
+	if not _sounds.has(sound):
+		match sound:
 			"buzz":
-				_sounds[name] = SfxSynth.opener_buzz()
+				_sounds[sound] = SfxSynth.opener_buzz()
 			"crackle":
-				_sounds[name] = SfxSynth.opener_crackle()
+				_sounds[sound] = SfxSynth.opener_crackle()
 			"hum":
-				_sounds[name] = SfxSynth.opener_hum()
+				_sounds[sound] = SfxSynth.opener_hum()
 			_:
-				_sounds[name] = SfxSynth.opener_key(int(name.trim_prefix("key")))
-	return _sounds[name]
+				_sounds[sound] = SfxSynth.opener_key(int(sound.trim_prefix("key")))
+	return _sounds[sound]
