@@ -4,7 +4,7 @@
 
 The campaign for 1.0 (PRD 5.6, milestone M6). Written to be reviewed: every big choice is stated plainly, and the real forks are in [Open questions for Fred](#8-open-questions-for-fred) at the end, each with a recommended pick first. Nothing in this file is decided until Fred says so. C35 (the mission framework), C36 (the cyberpunk ruins kit) and C37 (the first mission) wait on his review.
 
-The story is fiction from top to bottom. Nothing in it reads, reveals, signals, modifies or runs anything real. Real data appears only in the opener (PRD 5.7), read-only, live, opted into, and never saved.
+The story is fiction from top to bottom. Nothing in it reads, reveals, signals, modifies or runs anything real. Within the story, real data appears only in the opener (PRD 5.7), read-only, live, opted into, and never saved.
 
 **Contents:** 1. [Premise and tone](#1-premise-and-tone) · 2. [The world's rules](#2-the-worlds-rules) · 3. [Characters](#3-characters) · 4. [The AI's voice](#4-the-ais-voice) · 5. [The opener's place](#5-the-openers-place) · 6. [Missions](#6-missions) · 7. [Ending and credits](#7-ending-and-credits) · 8. [Open questions for Fred](#8-open-questions-for-fred)
 
@@ -119,7 +119,7 @@ The guide that rode in with you. In the game it is always just **"your AI"**: no
 
 ### The copy of you: `~`
 
-The thing that met you in the opener, wearing your username. It is the same hexagon as you, dark, with its prompt lit red. It calls itself **`~`** (tilde): home. The game calls it that too, so its name is never your real username.
+The thing that met you in the opener, wearing your username, was one of its copies. It and every copy it sends are the same hexagon as you, dark, with the prompt lit red. It calls itself **`~`** (tilde): home. The game calls it that too, so its name is never your real username.
 
 ### The author of the daemons: the central mystery
 
@@ -194,7 +194,7 @@ Two kinds of AI line exist, and players must always be able to tell them apart.
 - **Story lines** are written lines, the same for everyone, part of the game's script. They are shown as "your AI" in the guide panel. They never contain real system data.
 - **Live lines** come from the player's own AI, through the guide built in C9 to C12: the boot handshake (one of the game's own fixed lines, picked by the AI), ask-anything (T), round coaching and the optional roast. A live call only ever gets **game stats and what the player types**: never file names, paths, process lists, hostnames, usernames or anything else from the real machine, and never the opener's real data.
 
-Story lines never go through the player's AI; they are not sent anywhere. Live answers carry a small "live" mark in the panel, so the player always knows which words came from their own AI and which are the story's (see open question 2).
+Story lines never go through the player's AI; they are not sent anywhere. Recommended (open question 2): live answers carry a small "live" mark in the panel, so the player always knows which words came from their own AI and which are the story's.
 
 ---
 
@@ -217,7 +217,7 @@ Two things carry out of the opener and nothing else does. The rifle you forged i
 
 ## 6. Missions
 
-**Seven missions after the opener.** Each is short (10 to 15 minutes): a traversal through one register between arena fights, told through three to five terminal logs, the AI's lines and the place itself. No cutscene runs longer than a few seconds, and none takes control away from you.
+**Seven missions after the opener.** Each is short (10 to 15 minutes): a traversal through one register between arena fights, told through three to five terminal logs, the AI's lines and the place itself. No cutscene runs longer than a few seconds, and the camera stays yours.
 
 What every mission needs from the C35 framework: objectives, log pickups, AI line triggers, the Auditor's log lines, a starting loadout, and a transition between registers. Each mission hands you the weapons it teaches, so by mission 6 you carry all thirteen (open question 4). Arena play and matches keep the whole arsenal from the start.
 
@@ -280,7 +280,7 @@ What every mission needs from the C35 framework: objectives, log pickups, AI lin
 
 - **Goal:** kill PID 6666, the shell that never logged out.
 - **Register:** all three at once, collapsing into each other: grid, rain and ruin around a red-hot core.
-- **Enemy:** `~` as the giant red-hot lattice core (the enemy art bar's CPU boss), shedding runaway swarms and calling ICE, because the Auditor still defends its "user".
+- **Enemy:** `~` itself, at last: not a hexagon but the shell's true body, the giant red-hot lattice core (the enemy art bar's CPU boss), shedding runaway swarms and calling ICE, because the Auditor still defends its "user".
 - **Teaches:** nothing new. Everything. SIGTERM is trapped, SIGHUP is ignored, only `kill -9` reaches it: you fill the rail's meter with everything else you have learned.
 - **Story lands:** at the last moment `~` types the opener's line again: "you won't."
 - **End beat:** you do. The kill feed: `SIGKILL sent by you to ~`. The core derezzes, and the credits begin (section 7).
