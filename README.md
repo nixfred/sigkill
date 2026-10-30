@@ -9,12 +9,48 @@
   <img alt="Native Linux" src="https://img.shields.io/badge/Linux-native-19d3c5?logo=linux&amp;logoColor=7dffcf&amp;labelColor=05080a">
   <img alt="Omarchy / Hyprland" src="https://img.shields.io/badge/Omarchy-Hyprland-19d3c5?logo=hyprland&amp;logoColor=7dffcf&amp;labelColor=05080a">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-19d3c5?labelColor=05080a"></a>
-  <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-ff3355?labelColor=05080a">
+</p>
+
+<p align="center">
+  <a href="#download-pre-alpha"><img alt="PRE-ALPHA v0.33.0, build 33" src="https://img.shields.io/badge/PRE--ALPHA-v0.33.0%20%C2%B7%20build%2033-ff3355?style=for-the-badge&amp;labelColor=05080a"></a>
 </p>
 
 <p align="center"><b>A native Linux first-person shooter for Omarchy. You are the nixfred <code>&gt;_</code> hexagon, hunting rogue daemons inside your own machine, with your own AI at your side.</b></p>
 
 <h3 align="center"><i>your AI has been watching you code for months.<br>what happens when you hand it a gun?</i></h3>
+
+## Download (pre-alpha)
+
+> [!WARNING]
+> **SIGKILL 0.33.0-prealpha is a PRE-ALPHA: build 33, far from 1.0.** In: 13 weapons, daemons that fight back, ICE and ICEbreakers, light-trail and LAN modes, unlocks, mods and light skins. Not yet: the story, the missions and the rest of the 1.0 list. Expect rough edges, and saves that a later build may reset. What is in and what is not: [the release notes](docs/RELEASE_NOTES-0.33.0-prealpha.md).
+
+**Linux x86_64 build.** Get `sigkill-0.33.0-prealpha-linux-x86_64.tar.gz` and its `.sha256` from [GitHub Releases](https://github.com/nixfred/sigkill/releases). (The first build is not up yet; until it is, run from source, below.)
+
+```bash
+sha256sum -c sigkill-0.33.0-prealpha-linux-x86_64.tar.gz.sha256
+tar -xzf sigkill-0.33.0-prealpha-linux-x86_64.tar.gz
+cd sigkill-0.33.0-prealpha-linux-x86_64
+./install.sh            # or play without installing: ./sigkill.x86_64
+```
+
+`./install.sh` copies three files into your home and nothing else: the game to `~/.local/bin/sigkill`, a launcher entry to `~/.local/share/applications/`, and the hexagon icon to `~/.local/share/icons/`. No sudo, no system folders, no link or file handlers. `./uninstall.sh` removes exactly those three files; your settings and unlocks stay in `~/.local/share/godot/app_userdata/SIGKILL/`. It is one binary with the game inside, for x86_64 Linux with a Vulkan-capable GPU and driver (so far run only on NVIDIA).
+
+**From source** (Omarchy or any Arch; Godot 4.7 from pacman):
+
+```bash
+sudo pacman -S --needed godot git
+git clone https://github.com/nixfred/sigkill.git && cd sigkill
+godot --headless --path . --import   # once, on a fresh clone: builds Godot's cache (about a minute)
+godot --path .
+```
+
+`scripts/play.sh` does both steps for you. Launch options (`--demo`, `--no-ai`, `--join`, `--light-trails`) are under [Install and play](#install-and-play).
+
+**Controls, in short.** WASD move, mouse look, Space jump, C slide, X crouch, left click fire, right click aim. 1 to 9 draw a weapon, Shift+1 to 4 the second bank, E reload, Q last weapon, F bullet time, V code-rain vision, Z sudo, Tab spectate as top. Esc opens the menu: Resume, Loadout (skins and mods), Settings (most keys can be rebound), Quit. No Ctrl, Alt or Super chords, and none can be bound. [The full table](#controls).
+
+**Multiplayer.** LAN and tailnet direct play works: one player presses M then H to host, the other M then J and types the host's address; the host opens UDP 9009 once (`sudo ufw allow 9009/udp` on Omarchy). Room codes need a relay, and the public relay is not live yet: with none set, the game says so and sends nothing. [Playing on a LAN or tailnet](#playing-on-a-lan-or-tailnet).
+
+**Safety.** SIGKILL never modifies or deletes anything on your system, and never signals or kills a process except the AI agent it started itself. Its "your machine is the world" features read names, sizes and counts only, and the daemons you kill are game objects: no real process is ever touched. The only programs it runs are your own AI agent's command-line tool, with tools and edits off and only after you say yes, and an optional query-only `nvidia-smi` for the GPU readout. It writes only its own two files (settings and unlocks) in its own data folder. Screenshots and trailers use demo data (`--demo`). [Safety and privacy](#safety-and-privacy).
 
 ## Key art
 
@@ -944,7 +980,14 @@ sigkill/
 ├── README.md                   This page
 ├── .gitignore                  Keeps Godot's cache and build output out of git
 ├── CREDITS.md                  Contributors and community prompts
-├── project.godot               Godot 4.7 project: main scene, physics layer names, Forward+, black clear colour, the daemons' shader clock
+├── project.godot               Godot 4.7 project: main scene, version (0.33.0-prealpha), icon, physics layer names, Forward+, black clear colour, the daemons' shader clock
+├── export_presets.cfg          The one export preset, "Linux x86_64": one binary with the pack inside; tests, tools, docs and the relay left out
+├── packaging/
+│   └── linux/
+│       ├── sigkill.desktop     The launcher entry the release installs
+│       ├── sigkill.svg         The nixfred hexagon, byte for byte the brand file: the launcher's and the window's icon
+│       ├── install.sh          User-local install from the unpacked release: three files under ~/.local, no sudo
+│       └── uninstall.sh        Removes exactly those three files
 ├── scenes/
 │   ├── boot.tscn               The boot screen, the main scene: AI link, opt-in, GPU readout, then the arena
 │   ├── main.tscn               Root level: sun light, arena, player and HUD
@@ -1281,12 +1324,15 @@ sigkill/
 │       └── guide/              Stub claude and codex CLIs that record how they were launched
 ├── tools/
 │   ├── capture_shots.gd        Demo-data stills for this page, by set: a1 the weapons, a2 the daemons, a3 the arena, a2b the creatures, a4 the lit arena, c27b the fight, c28 ping, a5 the armoured daemons, i1 ICE; the game never runs it
-│   └── capture_shots.sh        Runs it on a private Xvnc display: no TCP, never the desktop, no sound, user data in a work folder
+│   ├── capture_shots.sh        Runs it on a private Xvnc display: no TCP, never the desktop, no sound, user data in a work folder
+│   └── export_linux.sh         The release build: the headless export, then the tarball and its sha256 (needs the export templates)
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
     ├── DESIGN.md               Decisions log and design notes
     ├── ENGINE.md               Why Godot 4
     ├── RELAY.md                The relay: design, wire format, WebSocket mode, limits, running it locally, on a server and on exe.dev, hosting cost
+    ├── RELEASE_NOTES-0.33.0-prealpha.md  The pre-alpha drop: what is in, what is not yet, known issues
+    ├── RELEASE_CHECKLIST.md    What is left before the 0.33.0-prealpha tag
     └── media/                  README art and A1's in-game stills; .gdignore keeps Godot from importing it
 ```
 
@@ -1449,11 +1495,13 @@ flowchart LR
 - [`docs/DESIGN.md`](docs/DESIGN.md): decisions log and design notes
 - [`docs/ENGINE.md`](docs/ENGINE.md): why Godot 4
 - [`docs/RELAY.md`](docs/RELAY.md): the rendezvous, punch-through and fallback relay design for room codes, and the hosting cost note (nothing is deployed)
+- [`docs/RELEASE_NOTES-0.33.0-prealpha.md`](docs/RELEASE_NOTES-0.33.0-prealpha.md): the pre-alpha drop, what is in and what is not
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md): what is left before the 0.33.0-prealpha tag
 - [`CREDITS.md`](CREDITS.md): who made what, including community prompts
 
 ## Install and play
 
-Runs from source today. Packaged builds (AppImage, AUR) are planned and not available yet. Nothing is published.
+Runs from source, and from the Linux x86_64 pre-alpha build once it is up on GitHub Releases ([Download (pre-alpha)](#download-pre-alpha); the build, its tag and its upload wait on Fred's yes). AppImage and AUR packages are planned and not available.
 
 **Requirements**
 
@@ -1630,7 +1678,7 @@ These rules apply to every chunk, from PRD section 6, in plain language:
 - **Two narrow exceptions, and nothing else.** First, the game may launch your Omarchy default agent's own command-line tool in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never through `omarchy-agent`, and with only round numbers and what you type in the prompt: never file names, paths, process lists or system information. Second, for the HUD's GPU stats, it may run an optional, query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader`, never with control flags; it prefers reading /sys, and if neither works the HUD hides GPU stats. Nothing else is ever executed.
 - **Asked first, and never in a test.** The AI is called only after you say yes, on the boot screen or with O in the arena, for that agent or server. A model is loaded on your local Ollama server only after a second, separate yes in the arena, never saved, and only with a body of exactly `{"model": "<name>"}`; SIGKILL unloads only a model it loaded itself and that was not already loaded when you said yes, on O and at the end of the session, and never touches any other model or any shared setting. Between rounds it gets only that round's numbers, at most once per round, within the same pace and session cap. Headless runs and `--no-ai` never call it, whatever was saved.
 - **One thing outside the game's own code.** The Godot engine itself, at startup, runs `xdg-user-dir DESKTOP` through `sh` and connects to the D-Bus session and system buses. It does this for any project, even an empty one (seen with strace). SIGKILL's code does neither, and this is noted for the PRD.
-- **One file of its own.** The game writes one file, its settings and your privacy answers, in its own data folder (`user://settings.cfg`), and reads it as data only, never as code or objects. Turning real-machine data off makes every later launch use demo data.
+- **Two files of its own.** The game writes two files in its own data folder (`user://`, which is `~/.local/share/godot/app_userdata/SIGKILL/` on Linux): its settings and your privacy answers (`user://settings.cfg`), and your unlocks and loadout (`user://progress.cfg`, C33). It reads both as data only, never as code or objects, and a damaged or missing file gives the defaults. Turning real-machine data off makes every later launch use demo data. The release's `install.sh` and `uninstall.sh` touch three files of their own in your home and nothing else (see [Download (pre-alpha)](#download-pre-alpha)).
 - **Nothing private leaves your machine or lands in the repo.** No real paths, hostnames, process lists or model lists in the repository, in screenshots or in trailers. Anything public uses demo data.
 - **One socket, yours.** The only network connection the game makes is the ENet socket you open by hosting or joining (UDP 9009 by default), to the address you typed. Room codes contact nothing unless you set a relay in Settings: with none (the default) the game's rendezvous is `NullRendezvous`, which sends nothing anywhere. With one set, the game talks to that relay only: its control requests (the room code, the protocol version, the host's game port, a cookie and the room's token), and the match itself through it (docs/RELAY.md). A `ws://` or `wss://` relay is one WebSocket connection (TCP) to it, with the match's datagrams passed through loopback sockets on 127.0.0.1 that only the game's own ENet may use (C16d). No discovery, no broadcast, no relay, no server of anyone's. Over it go only the protocol version, player slots and ids, a placeholder name (the display name you set in Settings stays on your own screen), positions, angles and velocities, shot intents and results, health, deaths and respawns by id, SIGSTOP's asks and the host's on-or-off word with its meter, and fork bomb throws with the host's seed and blasts: never paths, host or user names, process lists, settings or anything your AI said. Shooting and kills are in-game fiction: nothing real is signalled, killed or run.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys, and none can be bound: the settings screen refuses any Ctrl, Alt or Super key or chord. The mouse is captured only while the window is focused and is released on Esc (which opens the menu) or when focus leaves. The game never steals focus and uses no GPU when it is not running.
@@ -1656,6 +1704,8 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M6 Story campaign | C34 story bible · C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission · C38 to C42 the opener | ⬜ Planned |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+
+**Pre-alpha drop, 0.33.0-prealpha (build 33, after C33).** Prepped: the version in the corners and the window title, the "Linux x86_64" export preset, `tools/export_linux.sh`, the user-local install in `packaging/linux/`, the [release notes](docs/RELEASE_NOTES-0.33.0-prealpha.md). Still to do, each on Fred's yes: the export templates, the build itself, the tag and the GitHub release ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). 1.0 is further on: M5 and M6 above.
 
 ## Credits and community prompts
 
