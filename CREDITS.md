@@ -25,6 +25,10 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 
 Two of the weapons' light skins (C33) take their names and colours from open terminal themes, with thanks: [Dracula](https://draculatheme.com) (the cannon's purple and green) and [Catppuccin](https://catppuccin.com) (SIGTERM's pink and mauve). Others only nod by name to old machines and tools: green phosphor and `tty1`, CGA's cyan and yellow, the Commodore 64's blue, the VT220's white. A skin is two colours and a line of text; nothing of these projects is bundled.
 
+## Colours the opener's terminal borrows
+
+The opener's fake terminal (C38) ships six demo palettes, and each takes its colours, and only its colours, from an open terminal theme that Omarchy includes, with thanks: [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (the default), [Catppuccin](https://catppuccin.com) Mocha and Latte, [Gruvbox Material](https://github.com/sainnhe/gruvbox-material), [Nord](https://www.nordtheme.com) and [Everforest](https://github.com/sainnhe/everforest). A palette is a list of colours under Omarchy's names for them; nothing else of these projects is bundled.
+
 ## Brand
 
 nixfred hexagon logo, locked. Art and audio original or properly licensed.
