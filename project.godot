@@ -15,8 +15,9 @@ run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0, 0, 0, 1)
-; TODO(icon): no icon yet. Use the official icon-only hexagon with white >_ from
-; /workspace/nixfredos/brand. Do NOT redraw the logo. Then set config/icon here.
+; The official icon-only nixfred hexagon with the white >_, byte for byte the brand file
+; (docs/media/nixfred-icon.svg), never redrawn. The same file is the launcher icon (packaging/linux/).
+config/icon="res://packaging/linux/sigkill.svg"
 
 [display]
 

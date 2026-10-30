@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=SIGKILL
+GenericName=First-person shooter
+Comment=Pre-alpha: hunt rogue daemons in a terminal arena
+Exec=sigkill
+TryExec=sigkill
+Icon=sigkill
+Terminal=false
+Categories=Game;ActionGame;Shooter;
+Keywords=fps;shooter;arena;terminal;daemons;
+StartupWMClass=SIGKILL
