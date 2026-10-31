@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39 or c40):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40 or c41):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -369,6 +369,15 @@ const C40_SHEET := ["c40-shrink", "c40-panel", "c40-machine", "c40-edge", "c40-d
 const C40_SHEET_COLUMNS := 4
 ## c40's palettes: the same moment of the fall, the machine built in each demo palette, three to a row.
 const C40_PALETTES_AT := 55.0
+## c41's stills: [name, the opener's second], the sheet of the beat (these, in order), the one shot at 960x540, and the
+## copy's face cut from c41-copy (the region, drawn at twice its size).
+## c41-rim is shot RIM_AFTER seconds after the copy's first foot touches the floor (its red rings in front of the player).
+const C41_SHOTS := [["c41-link", 71.3], ["c41-signal", 72.9], ["c41-live", 73.78], ["c41-rise", 87.4], ["c41-rim", -1.0], ["c41-walk", 91.6], ["c41-copy", 94.0]]
+const C41_RIM_AFTER := 0.15
+const C41_SHEET := ["c41-link", "c41-signal", "c41-live", "c41-rise", "c41-rim", "c41-walk"]
+const C41_SHEET_COLUMNS := 3
+const C41_SMALL_AT := 94.0
+const C41_FACE := Rect2i(760, 150, 400, 360)
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -472,6 +481,11 @@ func _run() -> void:
 		return
 	if _set == "c40":
 		await _c40()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c41":
+		await _c41()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2221,6 +2235,75 @@ func _c40() -> void:
 	if not tuning:
 		await _c40_small(menu)
 		await _c40_palettes()
+
+
+## c41: the link to the player's AI and the copy of them on demo data, played from the Esc menu as a player would (the
+## demo's guide link: its canned answer, nothing called): the HUD coming alive as "Linking your agent..." types, the
+## signal climbing out of the pit, the lock (the answer marked live, the rings), the copy rising out of the pit on its
+## stair of light, stepping over the rim, walking up, and standing before the player wearing their (the demo's) user
+## name; the sheet of the beat, the copy's face, and the copy again at 960x540. --at=<s>,<s>,... shoots c41-at-<s> at
+## those seconds instead (an aid for tuning the look).
+func _c41() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _stand(C33_SHOT_FROM, _main.to_global(C33_SHOT_AT) + Vector3.UP)
+	await _frames(SETTLE_FRAMES)
+	var shots: Array = C41_SHOTS
+	var tuning := false
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--at="):
+			tuning = true
+			shots = []
+			for at in arg.substr(5).split(","):
+				shots.append(["c41-at-" + at, float(at)])
+	var menu = _main.get_node("Hud").pause_menu()
+	var opener: Opener = menu.open_opener()
+	var saved := {}
+	for shot in shots:
+		var at: float = shot[1]
+		if at < 0.0 and opener.pit() != null:
+			at = opener.pit().rim_at() + C41_RIM_AFTER
+		await _opener_at(opener, at, false)
+		if not is_instance_valid(opener) or not opener.playing():
+			break
+		var link := opener.link()
+		var said := "linking"
+		if link.done():
+			said = "live (%d ms)" % link.latency_ms() if link.live() else "scripted (%s)" % link.why()
+		var walked := PitBeat.walk_at(opener.elapsed(), opener.timing()) if opener.elapsed() >= opener.timing().copy_at else -1.0
+		print("capture: %s at %.2f s (%s): the link %s; the copy %s" % [shot[0], opener.elapsed(), opener.phase_name(), said, ("%.1f m along its walk" % walked) if walked >= 0.0 else "not yet"])
+		saved[shot[0]] = await _grab()
+		saved[shot[0]].save_png(OUT.path_join(shot[0] + ".png"))
+		_shots += 1
+	if not tuning:
+		var sheet: Array[Image] = []
+		for name in C41_SHEET:
+			if saved.has(name):
+				sheet.append(saved[name])
+		if sheet.size() == C41_SHEET.size():
+			_save_grid("c41-sequence", sheet, C41_SHEET_COLUMNS)
+		if saved.has("c41-copy"):
+			var face: Image = saved["c41-copy"].get_region(C41_FACE)
+			face.resize(C41_FACE.size.x * 2, C41_FACE.size.y * 2, Image.INTERPOLATE_LANCZOS)
+			face.save_png(OUT.path_join("c41-face.png"))
+			_shots += 1
+	while is_instance_valid(opener) and opener.playing():
+		await process_frame
+	await process_frame
+	print("capture: the opener done, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
+	if not tuning:
+		menu.open()
+		await process_frame
+		root.size = Vector2i(960, 540)
+		await _frames(6)
+		var small: Opener = menu.open_opener()
+		await _opener_at(small, C41_SMALL_AT, false)
+		await _save("c41-copy-960")
+		small.skip()
+		await process_frame
+		root.size = Vector2i(1920, 1080)
+		await _frames(6)
 
 
 ## The fall again at 960x540, shot at C40_SMALL_AT.

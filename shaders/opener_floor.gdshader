@@ -48,7 +48,9 @@ void fragment() {
 				float at = pit_r + t * ring_speed;
 				float band = exp(-pow((r - at) / ring_m, 2.0));
 				float trail = r < at ? exp(-(at - r) / 4.0) * 0.1 : 0.0;
-				rgb += ring_color * (band * 1.5 + trail) * exp(-t * 1.5) * (k == 0 ? 1.0 : 0.55);
+				// Fainter the farther it has run from the rim, so it washes past the player as a wave, never a flood.
+				float far = exp(-max(at - pit_r, 0.0) / 9.0);
+				rgb += ring_color * (band * 1.5 + trail) * exp(-t * 1.5) * far * (k == 0 ? 1.0 : 0.55);
 			}
 			rgb *= out_of_pit;
 		}

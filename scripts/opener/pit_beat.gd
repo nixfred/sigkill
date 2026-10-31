@@ -49,7 +49,7 @@ const BEAM_SPEED := 210.0
 const CLEAR_ANGLE := 0.7
 ## The rings' speed and width (metres), how long the lines and rings take to fade once the copy comes.
 const RING_SPEED := 22.0
-const RING_M := 1.2
+const RING_M := 0.7
 ## The stair: how steep (metres up a metre across), how far in front of the player the copy stops, and how many steps
 ## it takes from the bottom of the stair to there (a whole number, so it stops on a whole step).
 const STAIR_SLOPE := 0.6
@@ -235,6 +235,11 @@ func footfalls() -> Array[Dictionary]:
 ## The copy (C42 takes it on from where it stands).
 func copy() -> CopyArt:
 	return _copy
+
+
+## When its first foot touches the floor over the rim (its red rings start), on the opener's clock.
+func rim_at() -> float:
+	return _rim_at
 
 
 ## The name over it as shown, or "".
