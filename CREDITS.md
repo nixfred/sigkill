@@ -10,6 +10,9 @@ PID   USER            %CPU  COMMAND
 3     SIGKILL         71.2  producer, designer, daemon wrangler
 1337  @QuantaCortex   64.0  audit_trail --visor --trace-parents
 1338  @TimProvencio   57.3  ice --white --hunter --black --breakers
+1339  @cgranier       50.1  man sigkill; oom-killer --boss; uptime --score
+1340  @ocdjeremy      44.6  htop --visor; zoom --stepped; hitbox --real
+1341  @MindGamesLabs  38.2  sudo grenade --tries=3
 ```
 
 ## Community-built
@@ -20,6 +23,9 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 |---|---|---|
 | Albert / [@QuantaCortex](https://x.com/QuantaCortex) | [Audit Trail visor](https://x.com/QuantaCortex/status/2114564781050908930): trace every enemy to its parent process; sever the spawn chain to change the arena | Audit Trail visor (planned, C43) |
 | Tim Provencio / [@TimProvencio](https://x.com/TimProvencio) | ICE and ICEbreakers: William Gibson's intrusion countermeasure electronics as a new enemy class, the system defending itself against you (white ICE, hunter ICE, Black ICE), and one-use ICEbreakers to carry against it | ICE: white ICE and hunter ICE built (I1), its HUD tagged "ICE design: @TimProvencio"; ICEbreakers built (I2): brute, exploit, cloak and decoy, pickups and the AI's pick; Black ICE built (I3): rare, unkillable by weapons, its arrival killing the lights, the hum and the AI's link, its touch a flatline, broken only by exploit and brute |
+| Carlos Granier / [@cgranier](https://x.com/cgranier) | Five ideas: a `man sigkill` training level (each weapon unlocks after you read its man page in the world; EXAMPLES is a 20-second drill, `--help` replays it), the OOM killer boss that hunts the biggest in-game memory user, self-wiping `/tmp` and shootable-counter `/proc` arenas (invented spaces, not real folders), uptime as the solo score with a kernel-panic stats screen, and music driven by the in-game load average | status: planned, post-1.0 |
+| Jeremy / [@ocdjeremy](https://x.com/ocdjeremy) | An htop-style visor overlay of in-game daemons, ICE and players only (never real processes), stepped zoom on scoped weapons with hold or toggle, real hitboxes (head and centre mass hardest, limbs least), each weapon balanced on its own strengths, and VR as a stretch | status: planned, post-1.0 |
+| MindGameLabs / [@MindGamesLabs](https://x.com/MindGamesLabs) | A sudo grenade that will not throw until you type a password (an in-game one shown on screen, never yours; nothing typed is kept, sent or checked), three wrong tries and it goes off in your hand; separate from the Z sudo overcharge | status: planned, post-1.0 |
 
 ## Names the skins borrow
 

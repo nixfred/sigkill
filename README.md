@@ -22,11 +22,23 @@
 ## Where we are
 
 - **Pre-alpha.** The latest release is [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (build 33, 2026-10-30, a GitHub pre-release). It came before the opener, so the opener is on `main` only for now.
-- **Built and playable on `main`, through C40:** the Tron arena and its skyline; 13 weapons with light skins, mods and unlocks; SIGSTOP bullet time, code-rain vision, root and `sudo`; daemons that fight back (rogue.d, zombies, runaway swarms, seeded variants and elites); ICE, ICEbreakers and Black ICE; light-trail and LAN modes; your own AI as the guide; and the opener's first 70 seconds: the fake crash, the fake terminal, the shrink-away and the fall through your folder tree as a city (demo data unless you switch on Settings, Privacy and AI, opener data).
-- **In progress:** the 70 second teaser for playsigkill.com. Its raw footage is real in-game clips on demo data, rendered by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md)); the edit and the music are the producer's. Next after it: a full rewrite of the PRD (D1).
-- **Next:** finish the opener (C41, the AI link and the copy of you named `~`; C42, the `kill -9`, the first kill, the title, music and skip logic), then the missions (C35 to C37).
+- **Built and playable on `main`, through C40:**
+  - the Tron arena and its skyline
+  - 13 weapons, with light skins, mods and unlocks
+  - SIGSTOP bullet time, code-rain vision, root and `sudo`
+  - daemons that fight back: rogue.d, zombies and runaway swarms, with seeded variants and elites
+  - ICE, ICEbreakers and Black ICE
+  - light-trail and LAN modes
+  - your own AI as the guide
+  - the opener's first 70 seconds: the fake crash, the fake terminal, the shrink-away and the fall through your folder tree as a city. It runs on demo data unless you switch on Settings, Privacy and AI, opener data.
+- **Also on `main`, the teaser tool (T1):** `tools/trailer_capture.sh` renders the teaser's raw footage as real in-game clips on demo data ([docs/TRAILER.md](docs/TRAILER.md)).
+- **The teaser:** 70 seconds of that footage, with an original soundtrack, for the top of [playsigkill.com](https://playsigkill.com). The edit and the music are the producer's.
+- **In progress, the docs (D1):** [the PRD](docs/PRD.md) is now the entire, current PRD (v0.3): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status. Also this section, and three new community credits ([below](#credits-and-community-prompts)).
+- **Next:** finish the opener, then the missions (C35 to C37).
+  - C41: the AI link, and the copy of you named `~`.
+  - C42: the `kill -9`, the first kill, the title, the music and the skip logic.
 - **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`).
-- **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md).
+- **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md), [the teaser footage](docs/TRAILER.md).
 
 ## Download (pre-alpha)
 
@@ -113,7 +125,7 @@ Built today: the greybox arena with the Tron look, tight movement, the terminal 
 
 ## Story
 
-> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38, C39 and C40 built, below; C41 and C42 Planned), then the missions (C35 to C37, Planned). None of the missions are built yet.
+> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38, C39 and C40 built, below; C41 next, then C42), then the missions (C35 to C37, Planned). None of the missions are built yet.
 
 **You're a sysadmin jacked into your own machine, because something is spawning processes you never started.** Your AI is the only one you trust, until the trail leads to a question nobody wants answered: who wrote the daemons?
 
@@ -1644,21 +1656,21 @@ flowchart LR
     PRD["docs/PRD.md"] --> Chunk["Numbered chunk brief"]
     Chunk --> Build["Larry builds it"]
     Build --> Check["scripts/check.sh<br/>parse, headless import, headless run"]
-    Check --> Codex["Codex bug run<br/>read-only sandbox"]
-    Codex -- real findings --> Build
-    Codex --> Commit["Commit, push to main"]
+    Check --> Review["Self-review of the full diff<br/>(Codex bug run when Fred turns it on)"]
+    Review -- real findings --> Build
+    Review --> Commit["Commit, push to main"]
     Commit --> Audit["Producer audit"]
     Audit --> Chunk
 ```
 
 ### Docs
 
-- [`docs/PRD.md`](docs/PRD.md): what we are building, the hard safety rules, the chunk plan
+- [`docs/PRD.md`](docs/PRD.md): the entire, current PRD (v0.3): what is 1.0, post-1.0 and 2.0, every feature, the hard safety rules, every chunk and its status
 - [`docs/DESIGN.md`](docs/DESIGN.md): decisions log and design notes
 - [`docs/ENGINE.md`](docs/ENGINE.md): why Godot 4
 - [`docs/RELAY.md`](docs/RELAY.md): the rendezvous, punch-through and fallback relay design for room codes, and the hosting cost note (nothing is deployed)
 - [`docs/RELEASE_NOTES-0.33.0-prealpha.md`](docs/RELEASE_NOTES-0.33.0-prealpha.md): the pre-alpha drop, what is in and what is not
-- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md): what is left before the 0.33.0-prealpha tag
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md): the 0.33.0-prealpha drop, step by step: done through the GitHub release; the site button and the X post are left
 - [`docs/STORY.md`](docs/STORY.md): the story bible (C34), locked by Fred on 2026-10-30
 - [`docs/TRAILER.md`](docs/TRAILER.md): the teaser footage (T1): how to re-render it, what it needs, demo data only
 - [`CREDITS.md`](CREDITS.md): who made what, including community prompts
@@ -1868,9 +1880,9 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM (`619a109`) · C16b full settings screen (`76afcbc`) · C17 SIGKILL rail rifle (`e10a006`) · C18 SIGSTOP bullet time (`7927cb2`) · C19 fork bomb (`372d91a`) · C20 light-trail mode (`4d5e92e`) · C21 code-rain vision (`d6d4576`) · C22 root vs user and `sudo` (`658a09f`) · C23 spectate as top (`cf991a5`) · C24 the `fork()` shotgun (`88aeb92`) · C25 the `grep` seeker (`23dd69b`) · C26 the `rm -rf` cannon (`7a7c042`) · C27 `cron` mines (`eac8a86`) · C27b daemons fight back: AI with readable tells, solo health, difficulty and practice, the host's daemons in a match (`3ae7dbe`, `7cbd5b2`, `0e6181c`, `a311cd6`, `51e1376`) · C28 `ping` sonar (`f7f13ed`, `f05eeb8`) · C29 `chmod 000`, the freeze ray, and the strip's second bank (`2ae2c88`, `1c0f53d`, `0728187`) · C30 `pipe \|`, the chain beam (`022762f`, `1fb849e`, `a10b20e`) · C31 `/dev/null`, the black hole (`6fb9f28`, `c96e2c8`; the loopback fix-it `1062d95`) · C32 SIGHUP, the confusion grenade (`517ddd6`, `9b8b766`) · C33 unlocks, mods and light skins: kits, the progress save, the loadout screen, protocol 19 (`4af5320`, `77293ba`) | ✅ Done |
 | Art pass | A1 weapon viewmodels (`aa3ca98`) · A2 enemy art: daemons, a drone swarm, the derezz (`0d7cbdb`) · A3 arena: depth, props, signs, skyline, sky and fog (`1590eb0`) · A2b enemy redo: articulated creatures, hit reactions, shard deaths (`766cec6`) · A4 lighting, post and particles: AgX, glow, SSAO and SSR, the grade, warm signs, GPU particles, graphics presets (`c72cc0c`, `ab05c07`) · A5 monster redo: solid armoured daemons lit only at their seams, one colour a type, no two alike, rare elites, the swarm's core (`8c0511f`, `db57bc3`); A1 to A4 right after C27 and before C28, so the site launches with real captures, A5 after C28 | ✅ Done: A1, A2, A3, A2b, A4 and A5 |
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
-| Website and teaser | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`, `bb82508`, `1087887`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com | 🟡 T1 footage done; the edit, the music and the site are the producer's |
+| Website, teaser and docs | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`, `bb82508`, `1087887`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com · D1 the PRD rewritten as the entire, current PRD (v0.3), this README's "Where we are", three community credits | 🟡 T1 footage done; D1 in progress; the edit, the music and the site are the producer's |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
-| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you · C42 the `kill -9`, the title, music and skip logic · then C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission, `login` (player-facing first: the opener before the missions) | 🟡 C34 locked; C38, C39 and C40 done; C41 and C42, then C35 to C37, Planned |
+| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you · C42 the `kill -9`, the title, music and skip logic · then C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission, `login` (player-facing first: the opener before the missions) | 🟡 C34 locked; C38, C39 and C40 done; C41 next, then C42, then C35 to C37, Planned |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
@@ -1893,13 +1905,31 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 **The second community feature.** Tim Provencio ([@TimProvencio](https://x.com/TimProvencio)) pitched ICE, William Gibson's intrusion countermeasure electronics, as a new enemy class: the system defending itself against you, the intruder. White ICE walls off corridors, jams weapons and corrupts the HUD; hunter ICE tracks you and adapts to the weapon you use most; Black ICE is rare and frightening, never just a bigger health bar. Against it you carry ICEbreakers, one-use programs beside your weapons (brute, exploit, cloak, decoy), and your AI picks which to load from the round's numbers. ✅ I1 built: white ICE (walls that seal a doorway and a corridor, a jam field and a HUD-corruption field) and hunter ICE (it hunts by sight and adapts to your most-used weapon), its HUD tagged "ICE design: @TimProvencio"; see [Built: ICE](#built-ice-white-and-hunter-i1). ✅ I2 built: the four ICEbreakers, pickups and your AI's pick; see [Built: ICEbreakers](#built-icebreakers-i2). ✅ I3 built: Black ICE, rare and unkillable by weapons, its arrival killing the lights, the hum and your AI's link, its touch a flatline; see [Built: Black ICE](#built-black-ice-i3).
 
+**Three more, for after 1.0.** These came in after the 1.0 lock (2026-10-29), so they are post-1.0 ideas unless Fred pulls one in. Every one is fully simulated, and none of them reads or touches anything real on your machine.
+
+- **The third: Carlos Granier ([@cgranier](https://x.com/cgranier)).** ⬜ Planned, post-1.0.
+  - `man sigkill`, a training level where each weapon unlocks once you read its man page in the world. Its EXAMPLES section is a 20-second drill, and `--help` replays the drill.
+  - The OOM killer, a boss that hunts whatever uses the most in-game memory: often you, carrying a big weapon.
+  - A `/tmp` arena that wipes itself every round, and a `/proc` arena whose walls are in-game counters you can shoot. Both are invented spaces, not your real folders.
+  - Uptime as the solo score, with a kernel-panic screen that shows your stats as a stack trace.
+  - Music driven by the in-game load average.
+- **The fourth: Jeremy ([@ocdjeremy](https://x.com/ocdjeremy)).** ⬜ Planned, post-1.0.
+  - An htop-style overlay in the visor that shows the game's own daemons, ICE and players, never your real processes.
+  - Stepped zoom on the scoped weapons, held or toggled.
+  - Real hitboxes, so headshots and centre mass hit hardest and nobody gets one-shot in the toe.
+  - Every weapon balanced on its own strengths.
+  - VR, as a stretch.
+- **The fifth: MindGameLabs ([@MindGamesLabs](https://x.com/MindGamesLabs)).** ⬜ Planned, post-1.0.
+  - A sudo grenade that will not throw until you type a password, and goes off in your hand after three wrong tries.
+  - The password is an in-game one shown on screen, never yours. Nothing you type is kept, sent or checked against your system.
+
 **Names the skins borrow.** Two light skins (C33) take their names and colours from open terminal themes, Dracula and Catppuccin, with thanks; others only nod by name to old machines and tools (green phosphor, CGA, the Commodore 64, the VT220). A skin is two colours and a line of text: nothing of theirs is bundled. See [`CREDITS.md`](CREDITS.md).
 
 **Colours the opener's terminal borrows.** The opener's six demo palettes (C38) take their colours from open terminal themes Omarchy ships, with thanks: Tokyo Night (the default), Catppuccin Mocha and Latte, Gruvbox Material, Nord and Everforest. Colours only: nothing of theirs is bundled. See [`CREDITS.md`](CREDITS.md).
 
 **The pit's maze.** The node_modules pit's walls (C40) are drawn in the classic "10 PRINT" pattern, a diagonal one way or the other in each cell, after the one-line Commodore 64 BASIC program that made it famous; the game's own shader draws it.
 
-**The credits roll.** A live `top`-style process table on the Tron grid. Every contributor is a process: their handle as the USER, their idea as the COMMAND, the CPU column climbing as their row types in with code rain. Fred is PID 1. It ends with your own kill -9 on the credits process, which derezzes the whole table into voxels. ⬜ Planned (C44).
+**The credits roll.** A live `top`-style process table on the Tron grid. Every contributor is a process, everyone above included: their handle as the USER, their idea as the COMMAND, the CPU column climbing as their row types in with code rain. Fred is PID 1. It ends with your own kill -9 on the credits process, which derezzes the whole table into voxels. ⬜ Planned (C44).
 
 ## Screenshots
 
