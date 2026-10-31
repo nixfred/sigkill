@@ -25,7 +25,9 @@ extends Node3D
 ## with the machine as the opener ends.
 ##
 ## C42's hand-off: copy() is the copy standing where it stopped (stand()), facing the player; its gait and gaze go on
-## being set here until C42 takes them.
+## being set here. C42 tells it the rest: from stare_at (the rifle locking in) it stops mirroring the player and stares
+## at them, head level, arms spreading, its crown turning faster; while typing its face's cursor races (it types "you
+## won't."); from gone_at it is gone (the forge beat burst it into its parts), its name and its light with it.
 
 const SignalShader = preload("res://shaders/opener_signal.gdshader")
 const FloorShader = preload("res://shaders/opener_floor.gdshader")
@@ -99,6 +101,10 @@ var _clock := -1.0
 var _lock_at := -1.0
 var _name := ""
 var _built := false
+## C42 (see above).
+var stare_at := INF
+var typing := false
+var gone_at := INF
 
 
 ## Builds the beat in `palette` for timeline `tuning` over the machine's `dark` (TreeFall.void_color()), hidden until its
@@ -470,7 +476,7 @@ func _step_signals(elapsed: float) -> void:
 
 
 func _step_copy(elapsed: float, delta: float, look: Vector2, camera: Transform3D) -> void:
-	var on := elapsed >= _t.copy_at
+	var on := elapsed >= _t.copy_at and elapsed < gone_at
 	_copy.visible = on
 	_tag.visible = on and _name != ""
 	for lamp in [_under, _behind, _front]:
@@ -492,18 +498,22 @@ func _step_copy(elapsed: float, delta: float, look: Vector2, camera: Transform3D
 	var at_you := (camera.origin - head).normalized()
 	var want := at_you
 	var standing := smoothstep(_t.copy_stop - 0.4, _t.copy_stop + 0.4, elapsed)
+	var stare := smoothstep(stare_at, stare_at + 0.5, elapsed)
 	if standing > 0.0:
 		var seen := -(camera.basis.z).normalized()
 		var across := (head - camera.origin)
 		across.y = 0.0
 		var n := across.normalized() if across.length_squared() > 0.0001 else -way_out()
 		var mirrored := seen - 2.0 * seen.dot(n) * n
-		want = at_you.lerp(mirrored, standing).normalized()
+		want = at_you.lerp(mirrored, standing * (1.0 - stare)).normalized()
 	var local := (place.basis.inverse() * want).normalized()
 	_gaze = local if delta <= 0.0 else _gaze.lerp(local, clampf(delta * GAZE_EASE, 0.0, 1.0)).normalized()
 	_copy.gaze = _gaze
-	_tilt = lerpf(_tilt, STAND_TILT * standing, clampf(delta * 1.5, 0.0, 1.0)) if delta > 0.0 else STAND_TILT * standing
+	var tilt_to := STAND_TILT * standing * (1.0 - stare)
+	_tilt = lerpf(_tilt, tilt_to, clampf(delta * (6.0 if stare > 0.0 else 1.5), 0.0, 1.0)) if delta > 0.0 else tilt_to
 	_copy.tilt = _tilt
+	_copy.dare = stare
+	_copy.typing = typing
 	# The name over it, fading in as it rises over the rim.
 	var top := place * Vector3(0.0, _copy.tag_height, 0.0)
 	_tag.position = top

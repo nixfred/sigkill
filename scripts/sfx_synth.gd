@@ -735,3 +735,381 @@ static func opener_step() -> AudioStreamWAV:
 		var attack := minf(t * 600.0, 1.0)
 		data.encode_s16(i * 2, int(clampf((low * 0.8 + clank + slap) * attack, -1.0, 1.0) * INT16_FULL_SCALE))
 	return _stream(data, rate)
+
+
+## The daemons' and ICE's voices (C42; T1's footage found the arena's enemies near silent): each type's own tell,
+## strike, hit and death, made here like every other sound, at LOW_RATE. rogue.d chitters, shrieks and slashes with a
+## blade's ring; the zombie groans, booms and crumbles; the runaway's swarm buzzes, dives and bursts into a cascade of
+## falling blips (a fork tree coming down); ICE rings like glass (a wall's low, a node's high and electric, the hunter's
+## cobalt and metallic: its lock-on chirps and its lance's zap) and shatters. Peaks are normalised to DAEMON_PEAK, so
+## no voice is harsh at full volume; scripts/daemons/daemon_voice.gd plays them, on the Effects bus.
+
+## The kinds (DaemonArt.ai_kind) and what each says.
+const DAEMON_KINDS := ["rogue", "zombie", "swarm", "barrier", "node", "hunter"]
+const DAEMON_WHATS := ["tell", "strike", "hit", "death"]
+const DAEMON_PEAK := 0.62
+
+
+## Kind `kind`'s `what` ("tell", "strike", "hit" or "death"); a kind with no tell or strike of its own (a wall, a node)
+## gets its hit for them, and an unknown kind rogue.d's.
+static func daemon_voice(kind: String, what: String) -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 300 + DAEMON_KINDS.find(kind) * 10 + DAEMON_WHATS.find(what)
+	var key := kind if DAEMON_KINDS.has(kind) else "rogue"
+	if (key == "barrier" or key == "node") and (what == "tell" or what == "strike"):
+		what = "hit"
+	var out := PackedFloat32Array()
+	match key + ":" + what:
+		"rogue:tell":
+			# A rising chitter: a reedy tone climbing, chopped into clicks that quicken, louder all the way.
+			out = _buffer(0.55, rate)
+			var p := 0.0
+			var chop := 0.0
+			for i in out.size():
+				var u := float(i) / out.size()
+				var t := float(i) / rate
+				p += TAU * (700.0 + 1300.0 * u * u) / rate
+				chop += TAU * (24.0 + 26.0 * u) / rate
+				var gate := pow(maxf(sin(chop), 0.0), 3.0)
+				var reed := sin(p) + 0.45 * sin(p * 2.01 + sin(p * 0.5) * 2.0)
+				out[i] = (reed * 0.7 + rng.randf_range(-1.0, 1.0) * 0.3) * gate * (0.25 + 0.75 * u) * minf(t * 40.0, 1.0) * minf((1.0 - u) * 30.0, 1.0)
+		"rogue:strike":
+			# The slash: a rush of air sweeping up through the blade's path, then its ring.
+			out = _buffer(0.42, rate)
+			var lp := 0.0
+			var hp := 0.0
+			var a := 0.0
+			var b := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				var n := rng.randf_range(-1.0, 1.0)
+				var k := clampf(0.04 + 0.5 * u, 0.0, 0.95)
+				lp += (n - lp) * k
+				hp = lp - hp * 0.6
+				a += TAU * 2310.0 / rate
+				b += TAU * 3190.0 / rate
+				var air := hp * sin(PI * clampf(t / 0.2, 0.0, 1.0)) * 1.4
+				var ring := (sin(a) + 0.6 * sin(b)) * exp(-maxf(t - 0.12, 0.0) * 14.0) * smoothstep(0.1, 0.13, t) * 0.4
+				out[i] = air + ring
+		"rogue:hit":
+			# Chitin cracking: a hard click, a short bright blip, and a glitch stuttering its tail.
+			out = _buffer(0.2, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				p += TAU * (1500.0 - 600.0 * t * 5.0) / rate
+				var stutter := 1.0 if fmod(t * 55.0, 1.0) < 0.6 or t < 0.05 else 0.15
+				out[i] = (rng.randf_range(-1.0, 1.0) * exp(-t * 90.0) * 1.2 + signf(sin(p)) * 0.35 * exp(-t * 18.0)) * stutter
+		"rogue:death":
+			# A shriek collapsing into a crunch: a bitcrushed tone falling away fast, noise grinding under it.
+			out = _buffer(0.95, rate)
+			var p := 0.0
+			var crunch := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				p += TAU * (1900.0 * pow(0.14, u)) / rate
+				var tone := signf(sin(p)) * 0.5 + sin(p * 1.5) * 0.3
+				tone = floorf(tone * 6.0) / 6.0
+				crunch = lerpf(crunch, rng.randf_range(-1.0, 1.0), 0.35)
+				out[i] = (tone * (1.0 - u) + crunch * (0.4 + 0.6 * u) * 0.8) * minf(t * 80.0, 1.0) * pow(1.0 - u, 1.4)
+		"zombie:tell":
+			# The bolt charging in its cannon arm: a low groan wavering up, an electric whine climbing over it.
+			out = _buffer(0.85, rate)
+			var g := 0.0
+			var w := 0.0
+			var lp := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				g += TAU * (68.0 + 50.0 * u + 4.0 * sin(t * 31.0)) / rate
+				w += TAU * (320.0 + 1100.0 * u * u) / rate
+				var groan := fposmod(g / TAU, 1.0) * 2.0 - 1.0
+				lp += (groan - lp) * 0.08
+				out[i] = (lp * 1.6 + sin(w) * 0.25 * u) * minf(t * 10.0, 1.0) * minf((1.0 - u) * 25.0, 1.0)
+		"zombie:strike":
+			# The bolt fired: a heavy boom with a bitcrushed blast on it.
+			out = _buffer(0.5, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				p += TAU * (40.0 + 70.0 * exp(-t * 18.0)) / rate
+				var blast := floorf(rng.randf_range(-1.0, 1.0) * 4.0) / 4.0 * exp(-t * 16.0)
+				out[i] = sin(p) * exp(-t * 6.0) * 1.2 + blast * 0.7
+		"zombie:hit":
+			# Dull, heavy armour taking it: a clank of low inharmonic metal and a thud.
+			out = _buffer(0.26, rate)
+			var a := 0.0
+			var b := 0.0
+			var c := 0.0
+			var d := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				a += TAU * 182.0 / rate
+				b += TAU * 263.0 / rate
+				c += TAU * 397.0 / rate
+				d += TAU * (60.0 + 40.0 * exp(-t * 30.0)) / rate
+				out[i] = (sin(a) + 0.7 * sin(b) + 0.5 * sin(c)) * exp(-t * 17.0) * 0.5 + sin(d) * exp(-t * 14.0) + rng.randf_range(-1.0, 1.0) * exp(-t * 70.0) * 0.5
+		"zombie:death":
+			# A long groan falling, the body coming apart into rubble under it.
+			out = _buffer(1.25, rate)
+			var g := 0.0
+			var rumble := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				g += TAU * (110.0 * pow(0.36, u)) / rate
+				var groan := fposmod(g / TAU, 1.0) * 2.0 - 1.0
+				rumble = lerpf(rumble, rng.randf_range(-1.0, 1.0), 0.05)
+				var clicks := rng.randf_range(-1.0, 1.0) * (1.0 if rng.randf() < 0.004 + 0.02 * u else 0.0)
+				out[i] = (groan * 0.5 * (1.0 - u) + rumble * 2.6 * u + clicks * 0.8) * minf(t * 30.0, 1.0) * minf((1.0 - u) * 8.0, 1.0)
+		"swarm:tell":
+			# The swarm gathering: five detuned buzzing tones beating against each other, swelling and rising.
+			out = _buffer(0.62, rate)
+			var ph := PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				var s := 0.0
+				for k in 5:
+					ph[k] = fposmod(ph[k] + (196.0 + 90.0 * u) * (1.0 + 0.013 * (k - 2)) / rate, 1.0)
+					s += ph[k] * 2.0 - 1.0
+				out[i] = s * 0.2 * (0.3 + 0.7 * u) * minf(t * 20.0, 1.0) * minf((1.0 - u) * 30.0, 1.0)
+		"swarm:strike":
+			# The dive: a whine dropping as it comes, the buzz under it.
+			out = _buffer(0.42, rate)
+			var p := 0.0
+			var z := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				p += TAU * (2300.0 * pow(0.22, u)) / rate
+				z = fposmod(z + 150.0 / rate, 1.0)
+				out[i] = (sin(p) * 0.6 + (z * 2.0 - 1.0) * 0.35) * minf(t * 60.0, 1.0) * (1.0 - u * 0.7)
+		"swarm:hit":
+			# High chirps scattering: three quick blips.
+			out = _buffer(0.16, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var n := mini(floori(t / 0.05), 2)
+				var local := t - n * 0.05
+				p += TAU * [2600.0, 3150.0, 2250.0][n] / rate
+				out[i] = sin(p) * exp(-local * 70.0) * (1.0 - 0.25 * n)
+		"swarm:death":
+			# The fork tree coming down: a pop, then a cascade of blips falling in pitch, faster and faster.
+			out = _buffer(0.85, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				var slot := floori(pow(u, 0.7) * 18.0)
+				var local := fposmod(pow(u, 0.7) * 18.0, 1.0)
+				p += TAU * (3200.0 * pow(0.1, slot / 18.0)) / rate
+				var blip := signf(sin(p)) * 0.4 * exp(-local * 6.0)
+				var pop := rng.randf_range(-1.0, 1.0) * exp(-t * 60.0) * 1.3
+				out[i] = (blip + pop) * minf((1.0 - u) * 12.0, 1.0)
+		"barrier:hit", "node:hit", "hunter:hit":
+			# Glass ringing: three inharmonic partials, a wall's low, a node's high with a buzz, the hunter's metallic.
+			out = _buffer(0.32, rate)
+			var f := {"barrier": [1180.0, 1871.0, 2950.0], "node": [2090.0, 3310.0, 5150.0], "hunter": [880.0, 1430.0, 2210.0]}[key] as Array
+			var a := 0.0
+			var b := 0.0
+			var c := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				a += TAU * f[0] / rate
+				b += TAU * f[1] / rate
+				c += TAU * f[2] / rate
+				var buzz := (signf(sin(t * TAU * 120.0)) * 0.15 * exp(-t * 20.0)) if key == "node" else 0.0
+				out[i] = (sin(a) * exp(-t * 11.0) + 0.6 * sin(b) * exp(-t * 16.0) + 0.4 * sin(c) * exp(-t * 24.0)) * 0.6 + rng.randf_range(-1.0, 1.0) * exp(-t * 120.0) * 0.6 + buzz
+		"barrier:death", "node:death", "hunter:death":
+			# Shattering: a burst, then a cascade of glass pings at random pitches, thinning out; the hunter a low thud
+			# under it, a node a falling zap.
+			out = _buffer(1.05, rate)
+			var low := 0.0
+			var zap := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var s := rng.randf_range(-1.0, 1.0) * exp(-t * 14.0) * 0.8
+				if key == "hunter":
+					low += TAU * (55.0 + 50.0 * exp(-t * 20.0)) / rate
+					s += sin(low) * exp(-t * 7.0) * 0.9
+				elif key == "node":
+					zap += TAU * (1800.0 * pow(0.08, minf(t / 0.5, 1.0))) / rate
+					s += signf(sin(zap)) * 0.2 * exp(-t * 5.0)
+				out[i] = s
+			# Each ping only over its own quarter second.
+			var ring := int(0.25 * rate)
+			for k in 26:
+				var from := int(rng.randf_range(0.0, 0.6) * rng.randf() * rate)
+				var step := TAU * rng.randf_range(1700.0, 5200.0) / rate
+				var level := rng.randf_range(0.3, 1.0) * 0.3
+				var fall := exp(-22.0 / rate)
+				var amp := level
+				for j in mini(ring, out.size() - from):
+					out[from + j] += sin(step * j) * amp
+					amp *= fall
+		"hunter:tell":
+			# Locking on: three rising beeps, then the held tone of the lock.
+			out = _buffer(0.7, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var n := mini(floori(t / 0.14), 3)
+				var on := 1.0 if n == 3 or fposmod(t, 0.14) < 0.09 else 0.0
+				p += TAU * [1180.0, 1480.0, 1760.0, 2210.0][n] / rate
+				out[i] = (sin(p) * 0.7 + signf(sin(p)) * 0.15) * on * (0.5 if n == 3 else 1.0) * minf((0.7 - t) * 40.0, 1.0)
+		"hunter:strike":
+			# The lance: a hot zap tearing down, crackling.
+			out = _buffer(0.4, rate)
+			var p := 0.0
+			for i in out.size():
+				var t := float(i) / rate
+				var u := float(i) / out.size()
+				p += TAU * (3100.0 * pow(0.13, u)) / rate
+				var saw := fposmod(p / TAU, 1.0) * 2.0 - 1.0
+				out[i] = (saw * 0.55 + rng.randf_range(-1.0, 1.0) * 0.35 * (1.0 - u)) * minf(t * 200.0, 1.0) * pow(1.0 - u, 1.2)
+		_:
+			return daemon_voice("rogue", what)
+	return _daemon_pcm(out, rate)
+
+
+static func _buffer(seconds: float, rate: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(maxi(int(seconds * rate), 1))
+	return out
+
+
+## Floats to a 16-bit stream, its peak at DAEMON_PEAK and its very ends faded so nothing clicks.
+static func _daemon_pcm(samples: PackedFloat32Array, rate: int) -> AudioStreamWAV:
+	var peak := 0.0001
+	for v in samples:
+		peak = maxf(peak, absf(v))
+	var scale := DAEMON_PEAK / peak
+	var data := PackedByteArray()
+	data.resize(samples.size() * 2)
+	var edge := mini(int(rate * 0.004), samples.size() / 2)
+	for i in samples.size():
+		var fade := minf(1.0, minf(float(i + 1) / maxf(edge, 1.0), float(samples.size() - i) / maxf(edge, 1.0)))
+		data.encode_s16(i * 2, int(clampf(samples[i] * scale * fade, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## The opener's forge and kill (C42): `kill -9` struck key by key (a heavy mechanical key with a teal zap on it), its
+## letters charging (a rising electric hum), breaking into cells (a digital scatter), the rifle printing (a crackling
+## sizzle climbing), locking into the hands (a heavy clack and a charge), and the copy's own keys as it types "you
+## won't." (deeper, distorted). The shot is the rail's own fire (fire_zap) under the score's crack.
+const FORGE_KEY_S := 0.22
+const FORGE_CHARGE_S := 0.8
+const FORGE_BREAK_S := 0.7
+const FORGE_PRINT_S := 1.7
+const FORGE_LOCK_S := 0.6
+const COPY_KEY_S := 0.16
+
+
+## A key of `kill -9` struck: a hard click, a thump, and a short teal zap falling; `variant` shifts its pitch a little.
+static func opener_forge_key(variant: int) -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 400 + variant
+	var out := _buffer(FORGE_KEY_S, rate)
+	var zap := 0.0
+	var thump := 0.0
+	var shift := 1.0 + 0.06 * (variant % 4)
+	for i in out.size():
+		var t := float(i) / rate
+		zap += TAU * (2600.0 * shift * pow(0.25, minf(t / 0.12, 1.0))) / rate
+		thump += TAU * (95.0 + 80.0 * exp(-t * 40.0)) / rate
+		out[i] = rng.randf_range(-1.0, 1.0) * exp(-t * 260.0) * 1.3 + sin(thump) * exp(-t * 28.0) * 0.8 + signf(sin(zap)) * 0.22 * exp(-t * 22.0)
+	return _daemon_pcm(out, rate)
+
+
+## The letters charging: an electric hum climbing and swelling, crackling more as it goes.
+static func opener_forge_charge() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 410
+	var out := _buffer(FORGE_CHARGE_S, rate)
+	var p := 0.0
+	for i in out.size():
+		var u := float(i) / out.size()
+		p += TAU * (120.0 + 380.0 * u * u) / rate
+		var hum := signf(sin(p)) * 0.3 + sin(p * 2.0) * 0.3
+		var crackle := rng.randf_range(-1.0, 1.0) * (1.0 if rng.randf() < 0.02 + 0.2 * u else 0.0)
+		out[i] = (hum + crackle * 0.8) * (0.2 + 0.8 * u * u) * minf((1.0 - u) * 60.0, 1.0)
+	return _daemon_pcm(out, rate)
+
+
+## The letters breaking into cells: a burst, then a scatter of tiny digital blips flying apart.
+static func opener_forge_break() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 420
+	var out := _buffer(FORGE_BREAK_S, rate)
+	for i in out.size():
+		var t := float(i) / rate
+		out[i] = rng.randf_range(-1.0, 1.0) * exp(-t * 25.0)
+	for k in 40:
+		var from := int(rng.randf_range(0.0, 0.55) * rate)
+		var step := TAU * rng.randf_range(900.0, 4200.0) / rate
+		var level := rng.randf_range(0.15, 0.4)
+		for j in mini(int(0.03 * rate), out.size() - from):
+			out[from + j] += signf(sin(step * j)) * level * (1.0 - float(j) / (0.03 * rate))
+	return _daemon_pcm(out, rate)
+
+
+## The rifle printing: a sizzle of sparks, thicker and higher as the print runs down the barrel.
+static func opener_forge_print() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 430
+	var out := _buffer(FORGE_PRINT_S, rate)
+	var lp := 0.0
+	var p := 0.0
+	for i in out.size():
+		var u := float(i) / out.size()
+		var n := rng.randf_range(-1.0, 1.0)
+		lp += (n - lp) * (0.2 + 0.6 * u)
+		p += TAU * (300.0 + 900.0 * u) / rate
+		var spark := n * (1.0 if rng.randf() < 0.03 + 0.08 * u else 0.0)
+		out[i] = (lp * 0.35 + spark * 0.9 + sin(p) * 0.08) * minf(u * 20.0, 1.0) * minf((1.0 - u) * 15.0, 1.0)
+	return _daemon_pcm(out, rate)
+
+
+## The rifle locking into the hands: a heavy metal clack, its ring, and a charge winding up under it.
+static func opener_forge_lock() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 440
+	var out := _buffer(FORGE_LOCK_S, rate)
+	var a := 0.0
+	var b := 0.0
+	var w := 0.0
+	for i in out.size():
+		var t := float(i) / rate
+		a += TAU * 211.0 / rate
+		b += TAU * 557.0 / rate
+		w += TAU * (200.0 + 1400.0 * minf(t / FORGE_LOCK_S, 1.0)) / rate
+		var clack := rng.randf_range(-1.0, 1.0) * exp(-t * 120.0) * 1.2 + (sin(a) + 0.6 * sin(b)) * exp(-t * 18.0) * 0.6
+		var second := rng.randf_range(-1.0, 1.0) * exp(-maxf(t - 0.07, 0.0) * 140.0) * (1.0 if t > 0.07 else 0.0) * 0.9
+		out[i] = clack + second + sin(w) * 0.12 * minf(t * 4.0, 1.0)
+	return _daemon_pcm(out, rate)
+
+
+## A key under the copy's hand: deeper than the player's, a little distorted, with a low hum behind it.
+static func opener_copy_key(variant: int) -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 450 + variant
+	var out := _buffer(COPY_KEY_S, rate)
+	var p := 0.0
+	var lp := 0.0
+	for i in out.size():
+		var t := float(i) / rate
+		p += TAU * (70.0 + 10.0 * (variant % 3)) / rate
+		lp += (rng.randf_range(-1.0, 1.0) - lp) * 0.3
+		out[i] = tanh((lp * exp(-t * 90.0) * 3.0 + sin(p) * exp(-t * 20.0) * 0.8) * 2.0)
+	return _daemon_pcm(out, rate)

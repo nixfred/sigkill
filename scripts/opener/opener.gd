@@ -1,6 +1,6 @@
 class_name Opener
 extends CanvasLayer
-## The opener (PRD 5.7, "you got tricked into this"), live in the engine, its first 95 seconds so far (C38, C40, C41):
+## The opener (PRD 5.7, "you got tricked into this"), live in the engine, the whole of it (C38 to C42):
 ##   0:00 to 0:15  the game freezes on its own last frame, stutters, comes apart and cuts to black and silence (a
 ##                 fake crash: the game glitching inside its own window, never a dialog, never the desktop, never a
 ##                 real freeze); then a fake terminal in the player's theme, and `<user>@<host>:~$` types itself.
@@ -18,8 +18,13 @@ extends CanvasLayer
 ##                 scripts/opener/link_beat.gd), or the scripted guide speaks if it cannot; then the scripted guide's
 ##                 "I've been stuck in here with them. They look like you.", and the copy of the player walks up out of
 ##                 the pit on a stair of light, wearing their user name, and stands before them (scripts/opener/
-##                 pit_beat.gd, scripts/opener/copy_art.gd); the hand-off to C42 (until then the opener fades to black
-##                 and hands back to the menu).
+##                 pit_beat.gd, scripts/opener/copy_art.gd).
+##   1:35 to 2:00  (C42) `kill -9` types itself in the air and forges into the rifle in the player's hands; the copy types
+##                 "you won't."; the player fires (or the rifle does, at fire_by: the opener never waits long); the
+##                 derezz; the kill feed "SIGKILL sent by <user>" / "to <user>"; the whisper "one of 6666"; black;
+##                 SIGKILL on the nixfred hexagon, slammed in on the score's beat (scripts/opener/forge_beat.gd,
+##                 scripts/opener/title_beat.gd). Under it from the shrink-away on, the score: a dark synth bed turning
+##                 into heavy metal at the forge (scripts/opener/opener_score.gd, made on a worker as the opener starts).
 ## Every word in quotes is the PRD's own (THANKS, INSTALL, SINCE, IN_NOW; C41's LinkBeat.LINKING and GUIDE); the
 ## late-night line's words are ours,
 ## built from the file times alone (late_line). Text types itself as a hand types (scripts/opener/typist.gd): its
@@ -35,8 +40,9 @@ extends CanvasLayer
 ## user name the opener already took (cleaned), and nothing else; it goes with the machine as the opener ends, and the
 ## player's AI is never told it, nor anything else of the data (C41).
 ##
-## A real way out, always: Esc leaves at any moment, mid-crash and mid-typing included (`finished(true)`), and the
-## window's close is never touched (Godot's own quit). The main loop never stops: the "freeze" is a picture held on
+## A real way out, always: Esc pauses it at any moment, mid-crash and mid-typing included, in its own Esc menu (C42,
+## scripts/opener/intro_menu.gd: Resume, Skip intro, "Skip the intro next time"); Skip intro, or holding Space for a
+## second at any moment, leaves (`finished(true)`); the window's close is never touched (Godot's own quit). The main loop never stops: the "freeze" is a picture held on
 ## screen while every frame still runs and every key is still read. Played from the Esc menu alone, the arena
 ## behind is paused (`pause_world`) so nothing can hit the player while it plays, and goes on as it was after;
 ## this layer and its sounds run through the pause. The mouse is hidden while it plays and given back after.
@@ -51,8 +57,9 @@ extends CanvasLayer
 ## The hand-off to C41: at handoff_at the camera has landed (fall().landing()) and the machine goes on drawing;
 ## fall() and layout() are the world and the city, so the next beat can stand a daemon in them.
 ##
-## The hand-off to C42: at forge_at the copy stands before the player (pit().copy(), at PitBeat.stand()), the link has
-## said its line (link()) and the guide has said its own; the machine goes on drawing.
+## C42 takes it from forge_at: the copy standing before the player (pit().copy(), at PitBeat.stand()), the link has
+## said its line (link()) and the guide its own. The opener ends at the title's end after the shot (end_time()), by
+## 2:00, and hands back: to the Esc menu as it was, or (the first launch's own) into the arena.
 
 signal finished(skipped: bool)
 ## The player turned "Skip the intro next time" on or off in the intro's Esc menu (C42); the Esc menu keeps it.
@@ -63,6 +70,9 @@ const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const GlitchShader = preload("res://shaders/opener_glitch.gdshader")
 const ScreenShader = preload("res://shaders/opener_screen.gdshader")
 const Palette = preload("res://scripts/palette.gd")
+const PostShader = preload("res://shaders/opener_post.gdshader")
+const Controls = preload("res://scripts/controls.gd")
+const RAIL_PATH := "res://resources/sigkill_rail.tres"
 const DEFAULT_TUNING_PATH := "res://resources/opener.tres"
 
 ## The PRD's words (PRD 5.7), exactly.
@@ -100,15 +110,19 @@ const FALL_WINDOW := Vector2(50.0, 70.0)
 ## The terminal moves into its own viewport this long before the camera starts to pull back, so the screen's
 ## picture is drawn before the panel shows it.
 const LIFT_S := 0.1
-## The screen's overall brightness in the machine, for luma_at(): the dark the panel shrinks into.
+## The screen's overall brightness in the machine, for luma_at(): the dark the panel shrinks into; the shot's flash at
+## its brightest (C42); the title's own, and its slam's flash at its brightest.
 const MACHINE_LUMA := 0.3
+const SHOT_LUMA := 0.85
+const TITLE_LUMA := 0.22
+const SLAM_LUMA := 0.75
 ## A frozen frame's stand-in when there is none to take (a headless run): near black.
 const NO_FRAME := Color(0.02, 0.02, 0.03)
 ## How the glitch tints a corrupted band: the daemons' glitch magenta (A4).
 const BLEED := Color(1.0, 0.17, 0.84)
 
-enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, IGNORE, IN, REVEAL, FALL, LANDED, LINK, COPY, DONE }
-const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "ignore", "in", "reveal", "fall", "landed", "link", "copy", "done"]
+enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, IGNORE, IN, REVEAL, FALL, LANDED, LINK, COPY, FORGE, FIRE, KILL, TITLE, DONE }
+const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "ignore", "in", "reveal", "fall", "landed", "link", "copy", "forge", "fire", "kill", "title", "done"]
 
 ## What it shows of "your machine"; null: DemoOpenerData.
 var data: OpenerData = null
@@ -188,6 +202,24 @@ var _lock: AudioStreamPlayer
 var _rise: AudioStreamPlayer
 var _steps: Array[AudioStreamPlayer] = []
 
+## The forge, the kill and the title (C42): the beat in the machine and the one on the screen, the picture's punch, when
+## fire was pressed and when the shot lands, the score's players (part -> player) and the forge's sounds.
+var _forge: ForgeBeat
+var _title: TitleBeat
+var _post: ShaderMaterial
+var _press_at := -1.0
+var _shot_at := -1.0
+var _music := {}
+var _forge_keys: Array[AudioStreamPlayer] = []
+var _copy_keys: Array[AudioStreamPlayer] = []
+var _charge: AudioStreamPlayer
+var _break: AudioStreamPlayer
+var _print: AudioStreamPlayer
+var _lock_in: AudioStreamPlayer
+var _shot: AudioStreamPlayer
+var _keys_struck := 0
+var _dare_typed := 0
+
 ## Skipping (C42): the intro's own Esc menu and its hold-to-skip, whether it is paused in that menu, and how long
 ## Space has been held.
 var _menu: IntroMenu
@@ -205,6 +237,8 @@ func _init() -> void:
 
 func _ready() -> void:
 	_t = usable_tuning(tuning)
+	# The score (C42), made on a worker from now: the bed is not needed for forty seconds.
+	OpenerScore.begin()
 	_data = data if data != null else DemoOpenerData.new()
 	_data.start()
 	_link = OpenerLink.new()
@@ -296,6 +330,40 @@ func locked_at() -> float:
 	return _locked_at
 
 
+## The forge, the shot and the derezz in the machine (C42), or null before the machine is built and after.
+func forge() -> ForgeBeat:
+	return _forge
+
+
+## The reticle, the kill feed, the whisper and the title on the screen (C42), or null before and after.
+func title() -> TitleBeat:
+	return _title
+
+
+## When fire was pressed, and when the shot fires (the next sixteenth of the press, or fire_by), or -1.
+func pressed_at() -> float:
+	return _press_at
+
+
+func shot_time() -> float:
+	return _shot_at
+
+
+## When it ends: the title's end after the shot, or the latest (a shot at fire_by) until the shot is known.
+func end_time() -> float:
+	return _shot_at + _t.end_after if _shot_at >= 0.0 else _t.end_at
+
+
+## The score's player for `part` ("bed", "forge", "wait", "stinger"), or null before it is made.
+func score_player(part: String) -> AudioStreamPlayer:
+	return _music.get(part)
+
+
+## The picture's punch now (the machine's view), for the checks.
+func post() -> ShaderMaterial:
+	return _post
+
+
 ## The player's look about while falling (radians: yaw, pitch).
 func look() -> Vector2:
 	return _look
@@ -346,14 +414,32 @@ func luma_at(seconds: float) -> float:
 		return 1.0
 	if seconds < _t.terminal_at:
 		return 0.0
-	if seconds >= _t.end_at:
+	if seconds >= end_time():
 		return 0.0
 	var level := clampf((seconds - _t.terminal_at) / maxf(_t.pop_s, 0.001), 0.0, 1.0)
 	if seconds >= _t.shrink_at:
 		level = lerpf(1.0, MACHINE_LUMA, smoothstep(_t.shrink_at, lerpf(_t.shrink_at, _t.fall_at, 0.5), seconds))
-	if seconds >= _t.forge_at:
-		level *= 1.0 - clampf((seconds - _t.forge_at) / maxf(_t.end_at - _t.forge_at, 0.001), 0.0, 1.0)
+	# C42: the shot's one flash, the black, the title's slam (one more), torn away to black at the end.
+	var shot := _shot_at if _shot_at >= 0.0 else _t.fire_by
+	if seconds >= shot:
+		var after := seconds - shot
+		var black := OpenerScore.BLACK_BEATS * OpenerScore.BEAT_S
+		var slam := OpenerScore.SLAM_BEATS * OpenerScore.BEAT_S
+		if after < black:
+			level = lerpf(MACHINE_LUMA, SHOT_LUMA, _flash_curve(after))
+		elif after < slam:
+			level = 0.0
+		else:
+			level = lerpf(TITLE_LUMA, SLAM_LUMA, exp(-(after - slam) / 0.12))
+			level *= 1.0 - smoothstep(_t.end_after - 1.2, _t.end_after - 0.4, after)
 	return level
+
+
+## The shot's flash, 0 to 1, `after` seconds after it: up in 0.03 s, down again by about 0.35 s.
+static func _flash_curve(after: float) -> float:
+	if after < 0.03:
+		return after / 0.03
+	return exp(-(after - 0.03) / 0.09)
 
 
 ## Leave now: the intro's Esc menu's "Skip intro", holding Space, or the Esc menu closing (C42).
@@ -616,9 +702,10 @@ func _process(delta: float) -> void:
 	_step_actions()
 	_step_uptime()
 	_step_screen()
-	_step_machine(delta / maxf(Engine.time_scale, 0.01))
-	_step_link(delta / maxf(Engine.time_scale, 0.01))
-	if _elapsed >= _t.end_at:
+	_step_machine(real)
+	_step_link(real)
+	_step_forge()
+	if _elapsed >= end_time():
 		_finish(false)
 
 
@@ -727,8 +814,31 @@ func _build_machine() -> void:
 	_pit = PitBeat.new()
 	_pit.build(_palette, _t, _fall.void_color())
 	_fall.add_child(_pit)
+	# The forge and the kill (C42): in the machine, the rifle in the camera's hands; the copy stares from the drop.
+	_forge = ForgeBeat.new()
+	_fall.add_child(_forge)
+	_forge.build(_t, _fall, _pit)
+	_pit.stare_at = _forge.drop_at()
+	# On the screen, over the fade, under the intro's menu; the machine's picture punched through the post shader.
+	_title = TitleBeat.new()
+	_title.name = "TitleBeat"
+	add_child(_title)
+	_title.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_title.setup(_t, _forge, _palette.color("green").lightened(0.25), _fire_label())
+	move_child(_menu, -1)
+	_post = ShaderMaterial.new()
+	_post.shader = PostShader
+	_world_view.material = _post
 	_fall.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_event("machine")
+
+
+## The fire action's bind as the settings name it ("left mouse").
+static func _fire_label() -> String:
+	if not InputMap.has_action("fire"):
+		return "fire"
+	var events := InputMap.action_get_events("fire")
+	return Controls.bind_label(Controls.bind_of(events[0])) if not events.is_empty() else "fire"
 
 
 func _view(node_name: String, texture: Texture2D) -> TextureRect:
@@ -784,12 +894,21 @@ func _step_machine(delta: float) -> void:
 	if _phase == Phase.LINK and _elapsed >= _t.copy_at:
 		_phase = Phase.COPY
 		_event("copy")
-	if _phase == Phase.REVEAL or _phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY:
+	if _phase == Phase.COPY and _elapsed >= _t.forge_at:
+		_phase = Phase.FORGE
+	if _phase == Phase.FORGE and _elapsed >= _t.fire_from:
+		_phase = Phase.FIRE
+	if _phase == Phase.REVEAL or _phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY or _phase == Phase.FORGE or _phase == Phase.FIRE or (_phase == Phase.KILL and not _title.black()):
 		_look = TreeFall.settle_look(_look, delta)
 		var seeing := _look + PitBeat.scripted_look(_elapsed, _t)
 		_fall.pit_dim = smoothstep(_t.copy_at - 0.5, _t.copy_at + 2.5, _elapsed)
+		var kick: Array = _forge.kick_at(_elapsed)
+		_fall.kick = kick[0]
+		_fall.kick_back = kick[1]
+		_fall.fov_push = kick[2]
 		_fall.step(_elapsed, seeing)
 		_pit.step(_elapsed, seeing, _fall.eye())
+		_forge.step(_elapsed, _fall.eye())
 		var speed := _fall.speed_at(_elapsed)
 		if _wind.playing:
 			var k := clampf(speed / 40.0, 0.0, 1.0)
@@ -800,7 +919,7 @@ func _step_machine(delta: float) -> void:
 			_beats = beat
 			_beat.volume_db = SfxSynth.volume_db(_t.beat_volume * smoothstep(_t.fall_at, _t.land_at, _elapsed))
 			_beat.play()
-		_fade.color.a = clampf((_elapsed - _t.forge_at) / maxf(_t.end_at - _t.forge_at, 0.001), 0.0, 1.0)
+		_fade.color.a = 0.0
 
 
 # --- The link and the copy (C41). ---
@@ -837,6 +956,7 @@ func _step_link(delta: float) -> void:
 		_event("guide_done")
 	if _elapsed >= _t.copy_at and event_time("rise") < 0.0:
 		_pit.set_name_tag(_user)
+		_title.set_user(_user)
 		_rise.play()
 		_event("rise")
 	var heard := _pit.steps_by(_elapsed)
@@ -851,6 +971,142 @@ func _step_link(delta: float) -> void:
 		_event("stand")
 	if _elapsed >= _t.forge_at and event_time("forge") < 0.0:
 		_event("forge")
+
+
+# --- The forge, the kill and the title (C42). ---
+
+## The score (each part from its moment, joined late at the right place if it was not made yet), the forge's moments
+## and sounds, the shot (from the player's press, on the next sixteenth, or at fire_by), the kill, the black and the
+## title; the picture's punch and the brightness model drawn.
+func _step_forge() -> void:
+	if _phase == Phase.DONE:
+		return
+	OpenerScore.collect()
+	_play_part("bed", OpenerScore.BED_AT, OpenerScore.part_seconds("bed"))
+	if _forge == null:
+		return
+	_play_part("forge", _t.forge_at, OpenerScore.part_seconds("forge"))
+	if _shot_at < 0.0 or _elapsed < _shot_at:
+		_play_part("wait", _t.fire_from, INF)
+	if _elapsed < _t.forge_at:
+		return
+	if _link_beat != null:
+		_link_beat.closing_at = _t.forge_at
+		if _shot_at >= 0.0:
+			_link_beat.hide_at = _shot_at + OpenerScore.BLACK_BEATS * OpenerScore.BEAT_S
+	# The keys of `kill -9`, the charge, the break, the print, the lock.
+	while _keys_struck < ForgeBeat.WORD.length() and _elapsed >= _forge.key_at(_keys_struck):
+		var key := _forge_keys[_keys_struck % _forge_keys.size()]
+		key.stream = _sound("forge_key%d" % _keys_struck)
+		key.volume_db = SfxSynth.volume_db(_t.forge_key_volume * (0.5 if ForgeBeat.WORD[_keys_struck] == " " else 1.0))
+		key.play()
+		_event("forge_key" if _keys_struck > 0 else "forge_type")
+		_keys_struck += 1
+	_once("charge", _forge.charge_at(), _charge)
+	_once("break", _forge.break_at(), _break)
+	_once("print", _forge.print_from(), _print)
+	_once("coils", _forge.coils_at(), null)
+	_once("drop", _forge.drop_at(), _lock_in)
+	# The copy's line.
+	_once("dare", _forge.dare_at(), null)
+	while _dare_typed < ForgeBeat.DARE.length() and _elapsed >= _forge.dare_key_at(_dare_typed):
+		var key := _copy_keys[_dare_typed % _copy_keys.size()]
+		key.stream = _sound("copy_key%d" % (_dare_typed % 3))
+		key.play()
+		if _dare_typed == 0:
+			_event("dare_start")
+		_dare_typed += 1
+		if _dare_typed == ForgeBeat.DARE.length():
+			_event("dare_done")
+	# The shot: the player's, or the rifle's own at fire_by.
+	_once("fire_ready", _t.fire_from, null)
+	if _press_at < 0.0 and _elapsed >= _t.fire_by:
+		_arm(_t.fire_by, false)
+	if _shot_at >= 0.0 and _elapsed >= _shot_at and event_time("shot") < 0.0:
+		_phase = Phase.KILL
+		var waiting: AudioStreamPlayer = _music.get("wait")
+		if waiting != null:
+			waiting.stop()
+		_shot.play()
+		_event("shot")
+	if _shot_at >= 0.0:
+		_play_part("stinger", _shot_at, OpenerScore.part_seconds("stinger"))
+		_once("derezz", _forge.shatter_at(), null)
+		_once("feed", _shot_at + OpenerScore.FEED_BEATS * OpenerScore.BEAT_S, null)
+		_once("whisper", _shot_at + OpenerScore.WHISPER_BEATS * OpenerScore.BEAT_S, null)
+		_once("black", _shot_at + OpenerScore.BLACK_BEATS * OpenerScore.BEAT_S, null)
+		_once("slam", _title.slam_at(), null)
+		_once("title_out", _title.out_from(), null)
+		if event_time("black") >= 0.0 and _phase == Phase.KILL:
+			# Black: the machine stops drawing (its picture hidden under the title's black), nothing left of it to see.
+			_world_view.visible = false
+			_fall.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		if event_time("slam") >= 0.0:
+			_phase = Phase.TITLE
+	# The picture's punch: the rifle locking in, the shot; the shot's flash and the slam's from the brightness model.
+	var level := luma_at(_elapsed)
+	var punch := 0.0
+	var tear := 0.0
+	var since_drop := _elapsed - _forge.drop_at()
+	if since_drop >= 0.0:
+		punch += exp(-since_drop * 8.0) * 0.5
+		tear += 0.02 if since_drop < 0.1 else 0.0
+	var flash := 0.0
+	var slam_flash := 0.0
+	if _shot_at >= 0.0 and _elapsed >= _shot_at:
+		var after := _elapsed - _shot_at
+		punch += exp(-after * 7.0)
+		tear += 0.06 if after < 0.14 else 0.0
+		if after < OpenerScore.BLACK_BEATS * OpenerScore.BEAT_S:
+			flash = clampf((level - MACHINE_LUMA) / (1.0 - MACHINE_LUMA), 0.0, 1.0)
+		elif _elapsed >= _title.slam_at():
+			slam_flash = clampf((level - TITLE_LUMA) / (1.0 - TITLE_LUMA), 0.0, 1.0)
+	_post.set_shader_parameter("flash", flash)
+	_post.set_shader_parameter("split", 0.012 * punch)
+	_post.set_shader_parameter("shake", Vector2(sin(_elapsed * 71.0), cos(_elapsed * 53.0)) * 0.006 * punch)
+	_post.set_shader_parameter("tear", tear)
+	_post.set_shader_parameter("seed", floorf(_elapsed * 20.0))
+	_fade.color.a = 1.0 if _title.black() else 0.0
+	_title.step(_elapsed, _shot_at, slam_flash)
+
+
+## Fire pressed at `at` (or the rifle firing on its own at fire_by): the shot on the next sixteenth of the wait.
+func _arm(at: float, pressed: bool) -> void:
+	if _press_at >= 0.0:
+		return
+	_press_at = at
+	var steps := ceilf((at - _t.fire_from) / OpenerScore.STEP_S - 0.0001)
+	_shot_at = clampf(_t.fire_from + maxf(steps, 0.0) * OpenerScore.STEP_S, _t.fire_from, _t.fire_by)
+	_forge.set_shot(_shot_at)
+	_title.set_armed(at)
+	_event("fire" if pressed else "auto")
+
+
+## `what` once, at `at`: its event, and `player` played.
+func _once(what: String, at: float, player: AudioStreamPlayer) -> void:
+	if _elapsed >= at and event_time(what) < 0.0:
+		_event(what)
+		if player != null:
+			player.play()
+
+
+## The score's `part` from `at`, `seconds` long: started when its moment comes, or joined late at the right place.
+func _play_part(part: String, at: float, seconds: float) -> void:
+	if _elapsed < at or _elapsed >= at + seconds or _music.has(part):
+		return
+	var stream := OpenerScore.stream(part)
+	if stream == null:
+		return
+	var player := AudioStreamPlayer.new()
+	player.name = "Score" + part.capitalize()
+	player.bus = SettingsApply.MUSIC if AudioServer.get_bus_index(SettingsApply.MUSIC) >= 0 else &"Master"
+	player.volume_db = SfxSynth.volume_db(_t.score_volume)
+	player.stream = stream
+	add_child(player)
+	var into := _elapsed - at
+	player.play(fposmod(into, stream.get_length()) if part == "wait" else into)
+	_music[part] = player
+	_event("score_" + part)
 
 
 ## The terminal and its screen into a viewport of their own (their picture, shown at once as it was, the window's
@@ -940,7 +1196,7 @@ func _finish(skipped: bool) -> void:
 	_menu.close()
 	_menu.set_hold(0.0)
 	_event("skipped" if skipped else "done")
-	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat, _carrier, _lock, _rise] + _keys + _steps:
+	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat, _carrier, _lock, _rise, _charge, _break, _print, _lock_in, _shot] + _keys + _steps + _forge_keys + _copy_keys + _music.values():
 		player.stop()
 	_link.stop()
 	_release()
@@ -957,6 +1213,12 @@ func _release() -> void:
 	# The user name the copy wore goes with the data; the copy and its name tag go with the machine (C41).
 	_user = ""
 	_pit = null
+	_forge = null
+	if _title != null:
+		_title.set_user("")
+		_title.visible = false
+		_title.queue_free()
+		_title = null
 	if _link_beat != null:
 		_link_beat.visible = false
 		_link_beat.queue_free()
@@ -1015,6 +1277,11 @@ func _input(event: InputEvent) -> void:
 		return
 	if _paused:
 		return  # the menu takes its own keys and clicks; the Esc menu behind swallows the rest
+	# The first kill (C42): the fire key or button, once the rifle is the player's.
+	if _phase == Phase.FIRE and _press_at < 0.0 and event.is_action_pressed("fire") and not event.is_echo():
+		get_viewport().set_input_as_handled()
+		_arm(_elapsed, true)
+		return
 	var key := event as InputEventKey
 	if key != null and (key.keycode == KEY_SPACE or key.physical_keycode == KEY_SPACE) and not key.echo:
 		_space_down = key.pressed
@@ -1027,7 +1294,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
 		get_viewport().set_input_as_handled()
 	# Falling, the player may look about a little (TreeFall.LOOK_MOST), never steer.
-	if event is InputEventMouseMotion and (_phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY):
+	if event is InputEventMouseMotion and (_phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY or _phase == Phase.FORGE or _phase == Phase.FIRE or _phase == Phase.KILL):
 		_look = TreeFall.add_look(_look, (event as InputEventMouseMotion).relative)
 
 
@@ -1085,6 +1352,14 @@ func _build() -> void:
 	_rise = _player("Rise", "rise", _t.rise_volume)
 	for i in 2:
 		_steps.append(_player("Step%d" % (i + 1), "step", _t.step_volume))
+	for i in 3:
+		_forge_keys.append(_player("ForgeKey%d" % (i + 1), "", _t.forge_key_volume))
+		_copy_keys.append(_player("CopyKey%d" % (i + 1), "", _t.copy_key_volume))
+	_charge = _player("Charge", "charge", _t.forge_volume)
+	_break = _player("Break", "break", _t.forge_volume)
+	_print = _player("Print", "print", _t.forge_volume)
+	_lock_in = _player("LockIn", "lock_in", _t.forge_volume)
+	_shot = _player("Shot", "shot", _t.shot_volume)
 
 
 func _full(control: Control) -> void:
@@ -1139,6 +1414,21 @@ static func _sound(sound: String) -> AudioStreamWAV:
 				_sounds[sound] = SfxSynth.opener_rise()
 			"step":
 				_sounds[sound] = SfxSynth.opener_step()
+			"charge":
+				_sounds[sound] = SfxSynth.opener_forge_charge()
+			"break":
+				_sounds[sound] = SfxSynth.opener_forge_break()
+			"print":
+				_sounds[sound] = SfxSynth.opener_forge_print()
+			"lock_in":
+				_sounds[sound] = SfxSynth.opener_forge_lock()
+			"shot":
+				var rail = load(RAIL_PATH)
+				_sounds[sound] = SfxSynth.fire_zap(rail) if rail != null else SfxSynth.opener_thud()
+			_ when sound.begins_with("forge_key"):
+				_sounds[sound] = SfxSynth.opener_forge_key(int(sound.trim_prefix("forge_key")))
+			_ when sound.begins_with("copy_key"):
+				_sounds[sound] = SfxSynth.opener_copy_key(int(sound.trim_prefix("copy_key")))
 			_:
 				_sounds[sound] = SfxSynth.opener_key(int(sound.trim_prefix("key")))
 	return _sounds[sound]

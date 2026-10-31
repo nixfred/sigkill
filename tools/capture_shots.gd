@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40 or c41):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41 or c42):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -378,6 +378,16 @@ const C41_SHEET := ["c41-link", "c41-signal", "c41-live", "c41-rise", "c41-rim",
 const C41_SHEET_COLUMNS := 3
 const C41_SMALL_AT := 94.0
 const C41_FACE := Rect2i(760, 150, 400, 360)
+## c42's stills: before the shot, [name, the opener's second]; fire pressed at C42_PRESS; after the shot, [name, seconds
+## after it]; the sheet (these, in order, three to a row); the intro's Esc menu over the stream at C42_PAUSE_AT; the
+## title again at 960x540, C42_SMALL_AFTER after its shot.
+const C42_BEFORE := [["c42-type", 95.75], ["c42-charge", 96.7], ["c42-stream", 97.75], ["c42-forged", 99.32], ["c42-dare", 104.55]]
+const C42_PRESS := 104.62
+const C42_AFTER := [["c42-shot", 0.05], ["c42-derezz", 0.62], ["c42-feed", 1.45], ["c42-whisper", 3.0], ["c42-slam", 5.27], ["c42-title", 6.95]]
+const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-shot", "c42-derezz", "c42-feed", "c42-slam", "c42-title"]
+const C42_SHEET_COLUMNS := 3
+const C42_PAUSE_AT := 98.1
+const C42_SMALL_AFTER := 6.95
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -486,6 +496,11 @@ func _run() -> void:
 		return
 	if _set == "c41":
 		await _c41()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c42":
+		await _c42()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2304,6 +2319,113 @@ func _c41() -> void:
 		await process_frame
 		root.size = Vector2i(1920, 1080)
 		await _frames(6)
+
+
+## c42: the first launch and the opener's end on demo data, as a player meets them: the first-launch card over the paused
+## arena (its own intro state in this run's folder), answered no, and the opener playing itself (the demo guide link: its
+## canned answer, nothing called); the intro's Esc menu over the stream; `kill -9` typing, charging, streaming into the
+## rifle, the rifle forged; the copy's "you won't." with the reticle; fire pressed; the shot, the derezz, the kill feed,
+## the whisper, the title's slam and the title; the sheet; the title again at 960x540. --at=<s>,<s>,... shoots
+## c42-at-<s> at those seconds instead, fire pressed at C42_PRESS (an aid for tuning the look).
+func _c42() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _stand(C33_SHOT_FROM, _main.to_global(C33_SHOT_AT) + Vector3.UP)
+	await _frames(SETTLE_FRAMES)
+	var before: Array = C42_BEFORE
+	var after: Array = C42_AFTER
+	var tuning := false
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--at="):
+			tuning = true
+			before = []
+			after = []
+			for at in arg.substr(5).split(","):
+				if float(at) < C42_PRESS:
+					before.append(["c42-at-" + at, float(at)])
+				else:
+					after.append(["c42-at-" + at, float(at)])
+	var menu = _main.get_node("Hud").pause_menu()
+	var opener: Opener = null
+	if not tuning:
+		# The first launch: its card over the paused arena, answered no; the opener plays itself.
+		menu.first_launch_path = "user://capture-intro.cfg"
+		menu.begin_first_launch()
+		for i in 20:
+			await process_frame
+		await _save("c42-card")
+		menu.card().answer(false)
+		await process_frame
+		opener = menu.opener()
+	else:
+		opener = menu.open_opener()
+	var saved := {}
+	var paused_shot := false
+	for shot in before:
+		if not tuning and not paused_shot and shot[1] > C42_PAUSE_AT:
+			await _opener_at(opener, C42_PAUSE_AT, false)
+			opener.pause()
+			for i in 4:
+				await process_frame
+			await _save("c42-paused")
+			opener.resume()
+			paused_shot = true
+		await _opener_at(opener, shot[1], false)
+		if not is_instance_valid(opener) or not opener.playing():
+			break
+		saved[shot[0]] = await _grab()
+		saved[shot[0]].save_png(OUT.path_join(shot[0] + ".png"))
+		_shots += 1
+		print("capture: %s at %.2f s (%s)" % [shot[0], opener.elapsed(), opener.phase_name()])
+	await _opener_at(opener, C42_PRESS, false)
+	_fire()
+	await process_frame
+	var shot_at := opener.shot_time()
+	print("capture: fire pressed at %.2f s, the shot at %.2f s" % [opener.pressed_at(), shot_at])
+	for shot in after:
+		var at: float = shot[1] if tuning else shot_at + shot[1]
+		await _opener_at(opener, at, false)
+		if not is_instance_valid(opener) or not opener.playing():
+			break
+		saved[shot[0]] = await _grab()
+		saved[shot[0]].save_png(OUT.path_join(shot[0] + ".png"))
+		_shots += 1
+		print("capture: %s at %.2f s (%s): feed \"%s\", whisper \"%s\", title \"%s\"" % [shot[0], opener.elapsed(), opener.phase_name(), opener.title().feed_text(), opener.title().whisper_text(), opener.title().title_text()])
+	if not tuning:
+		var sheet: Array[Image] = []
+		for name in C42_SHEET:
+			if saved.has(name):
+				sheet.append(saved[name])
+		if sheet.size() == C42_SHEET.size():
+			_save_grid("c42-sequence", sheet, C42_SHEET_COLUMNS)
+	while is_instance_valid(opener) and opener.playing():
+		await process_frame
+	await process_frame
+	print("capture: the opener done, the menu closed into the arena %s, the world paused %s, the 3D view drawn %s" % [str(not menu.is_open()), str(paused), str(not root.disable_3d)])
+	if not tuning:
+		menu.open()
+		await process_frame
+		root.size = Vector2i(960, 540)
+		await _frames(6)
+		var small: Opener = menu.open_opener()
+		await _opener_at(small, C42_PRESS, false)
+		_fire()
+		await process_frame
+		await _opener_at(small, small.shot_time() + C42_SMALL_AFTER, false)
+		await _save("c42-title-960")
+		small.skip()
+		await process_frame
+		root.size = Vector2i(1920, 1080)
+		await _frames(6)
+
+
+## The fire action pressed, as the player's button does.
+func _fire() -> void:
+	var press := InputEventAction.new()
+	press.action = "fire"
+	press.pressed = true
+	root.push_input(press)
 
 
 ## The fall again at 960x540, shot at C40_SMALL_AT.

@@ -38,6 +38,8 @@ func _ready() -> void:
 	_shape(hull, Vector3(0.0, tuning.hunter_hover_m, 0.0))
 	brain = HunterBrain.new(self, art, tuning)
 	brain.take_home()
+	if voice != null:
+		voice.brain = brain  # its lock-on and its lance (C42)
 	frost = Frost.new(Frost.Kind.ICE)  # chmod 000 freezes it (C29)
 	(art as HunterArt).lock_share = tuning.hunter_lock_s / tuning.hunter_tell_s
 

@@ -31,7 +31,7 @@ const Claude = preload("res://scripts/ai/claude_adapter.gd")
 const Agent = preload("res://scripts/ai/agent_adapter.gd")
 const STUBS := "res://tests/fixtures/ai/guide"
 const FPS := 60.0
-const MOST_FRAMES := 6200
+const MOST_FRAMES := 7600
 const WATCHDOG_MS := 8000
 ## The stub data's invented values: none may reach the AI, the AI's line on screen or this test's output.
 const NAME := "qz-copy-7"
@@ -245,7 +245,7 @@ func _line_checks() -> void:
 
 func _tuning_checks() -> void:
 	var t := load("res://resources/opener.tres") as OpenerTuning
-	_check("the shipped timeline keeps C41's window: the link at 1:10 (%.1f s), the AI's latest moment %.1f s after it, the copy standing by %.1f s, the hand-off to C42 at %.1f s, the end by 1:35 (%.1f s)" % [t.link_at, t.answer_by - t.link_at, t.copy_stop, t.forge_at, t.end_at], t.problems().is_empty() and t.link_at >= 70.0 and t.link_at <= 70.5 and t.answer_by - t.link_at <= 8.0 and t.forge_at <= 95.5 and t.end_at <= 95.5, ", ".join(t.problems()))
+	_check("the shipped timeline keeps C41's window: the link at 1:10 (%.1f s), the AI's latest moment %.1f s after it, the copy standing by %.1f s, the hand-off to C42 at %.1f s, by 1:35 (C42's end, %.1f s, by 2:00)" % [t.link_at, t.answer_by - t.link_at, t.copy_stop, t.forge_at, t.end_at], t.problems().is_empty() and t.link_at >= 70.0 and t.link_at <= 70.5 and t.answer_by - t.link_at <= 8.0 and t.forge_at <= 95.5 and t.end_at <= 120.0, ", ".join(t.problems()))
 	var patient := OpenerTuning.new()
 	patient.answer_by = 80.5
 	var early := OpenerTuning.new()

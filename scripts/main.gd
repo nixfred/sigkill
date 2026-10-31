@@ -47,6 +47,7 @@ func _ready() -> void:
 	_apply_palette_to_environment()
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
+	DaemonVoice.prewarm()  # the daemons' and ICE's sounds (C42), made once a run, here as the arena loads
 	# The daemons fight back (C27b): this player's health alone, and the director that steps
 	# every daemon's brain.
 	var life := SoloLife.new()

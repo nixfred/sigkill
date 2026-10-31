@@ -34,6 +34,9 @@ extends StaticBody3D
 ## opal in a storm of frost. In practice the beam freezes the old dummy too. On a joiner in a match where
 ## they fight its meter is the host's word (follow_frost()).
 ##
+## Its voice (C42, scripts/daemons/daemon_voice.gd): its type's tell and strike as its brain enters them, a hit landing
+## (never a quiet one) and its death, from where it stands, on the Effects bus.
+##
 ## SIGHUP (C32): a hangup burst catching it confuses its brain (take_hup(): its reload, then its wander;
 ## scripts/fight/daemon_brain.gd) and its look shows it (scripts/fx/hup_look.gd: the "reloading config" tag,
 ## then the "?", its seams cycling in the carrier green, its pose stuttering). In practice the old dummy
@@ -109,6 +112,8 @@ var _frost_look: FrostLook
 var shatters := 0
 ## SIGHUP's look on it (C32), made the first time it is hung up.
 var _hup_look: HupLook
+## Its own sounds (C42).
+var voice: DaemonVoice
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -126,6 +131,10 @@ func _ready() -> void:
 	_health = max_health
 	brain = DaemonBrain.new(self, _art)
 	brain.take_home()
+	voice = DaemonVoice.new()
+	voice.kind = _art.ai_kind
+	voice.brain = brain
+	add_child(voice)
 	# The box round the body (C27b), on the dummy itself beside the cylinder: a shot that meets
 	# what is seen of the creature hits it.
 	if _art.body_box_size() != Vector3.ZERO:
@@ -363,6 +372,8 @@ func _start_derezz(point: Vector3, direction: Vector3, shattered: bool = false) 
 	# In its type's colour (A5); a frozen daemon's shatter in the frost opal, in a storm of frost (C29).
 	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d, 0, Palette.FROST if shattered else _art.core_color)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
+	if voice != null:
+		voice.death()
 	if shattered:
 		shatters += 1
 		var chips := ParticleFx.of(self)
@@ -506,6 +517,8 @@ func _fit_box() -> void:
 ## A hit that did not kill: the art flares (A2), recoils and sprays shards from where it struck (A2b).
 func _pulse(point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO) -> void:
 	_art.react(point, direction)
+	if voice != null:
+		voice.hit()
 
 
 ## The daemon's art (A2), for the checks.

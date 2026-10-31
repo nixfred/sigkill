@@ -68,6 +68,10 @@ var _kept := false
 var _lock_at := -1.0
 var _elapsed := 0.0
 var _scale := 1.0
+## C42: the panel wipes shut from closing_at (the forge: the guide has had its say), the badge staying lit; all of it
+## gone from hide_at (the black).
+var closing_at := INF
+var hide_at := INF
 
 
 func _init() -> void:
@@ -152,13 +156,12 @@ func step(elapsed: float) -> void:
 	_elapsed = elapsed
 	if _t == null:
 		return
-	visible = elapsed >= _t.link_at and elapsed < _t.end_at
+	visible = elapsed >= _t.link_at and elapsed < minf(_t.end_at, hide_at)
 	if not visible:
 		return
 	_scale = maxf(get_viewport_rect().size.y / 1080.0, 0.25)
 	var alive := _alive()
 	var open := _open()
-	var dim := 1.0 - smoothstep(_t.forge_at, _t.end_at, elapsed)
 	var locked := _lock_at >= 0.0 and elapsed >= _lock_at
 	# The badge.
 	_badge.visible = alive > 0.35
@@ -189,7 +192,6 @@ func step(elapsed: float) -> void:
 	else:
 		_body.text = Typist.text_of(_upto(_linking_keys, elapsed - _t.link_at))
 		_body.add_theme_color_override("font_color", Color(_text_color, 0.72))
-	modulate.a = dim
 	_place()
 	queue_redraw()
 
@@ -199,9 +201,9 @@ func _alive() -> float:
 	return smoothstep(_t.signal_at - 0.2, _t.signal_at + 0.9, _elapsed)
 
 
-## How far the panel has wiped open (0 to 1).
+## How far the panel has wiped open (0 to 1), and shut again from closing_at.
 func _open() -> float:
-	return smoothstep(_t.link_at, _t.link_at + 0.35, _elapsed)
+	return smoothstep(_t.link_at, _t.link_at + 0.35, _elapsed) * (1.0 - smoothstep(closing_at, closing_at + 0.35, _elapsed))
 
 
 static func _upto(keys: Array, seconds: float) -> Array:

@@ -99,6 +99,11 @@ var land_at := 68.4
 var process_name := ""
 ## How far the pit's two names (its folder's and the hot process's) are faded out, 0 to 1: C41's copy takes their place.
 var pit_dim := 0.0
+## C42's kick on the camera, on top of its pose and the look: radians (pitch, yaw, roll) and metres back; and a push of
+## the field of view, degrees (the rifle locking in, the shot).
+var kick := Vector3.ZERO
+var kick_back := 0.0
+var fov_push := 0.0
 
 var _camera: Camera3D
 var _env: Environment
@@ -157,8 +162,8 @@ func step(elapsed: float, look: Vector2) -> void:
 	if not _built:
 		return
 	_look = look
-	_camera.transform = pose(elapsed) * Transform3D(Basis.from_euler(Vector3(look.y, look.x, 0.0)), Vector3.ZERO)
-	_camera.fov = fov_at(elapsed)
+	_camera.transform = pose(elapsed) * Transform3D(Basis.from_euler(Vector3(look.y, look.x, 0.0)), Vector3.ZERO) * Transform3D(Basis.from_euler(kick), Vector3(0.0, 0.0, kick_back))
+	_camera.fov = fov_at(elapsed) + fov_push
 	var beat := pulse_at(elapsed)
 	for paint in _paints:
 		paint.set_shader_parameter("clock", elapsed)
@@ -226,6 +231,11 @@ func landing() -> Transform3D:
 ## Where the camera is now and which way it looks (its pose and the look on top), or the landing before it is built.
 func eye() -> Transform3D:
 	return _camera.transform if _camera != null else landing()
+
+
+## The camera itself (C42 holds the forged rifle in its hands), or null before it is built.
+func camera() -> Camera3D:
+	return _camera
 
 
 ## How far the camera stands from the screen when the screen fills the view (FOV_SCREEN, the window's height).

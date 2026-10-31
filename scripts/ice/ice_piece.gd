@@ -22,6 +22,9 @@ extends StaticBody3D
 ## (after the hit cap, as exploit's bonus); ICE never shatters (the cap holds). Walls ignore the beam (no
 ## frost: "read-only file system"), and Black ICE is only ever slowed (scripts/ice/black_ice.gd).
 ##
+## Its voice (C42, scripts/daemons/daemon_voice.gd): a wall's, a node's or the hunter's glass ringing as a hit lands,
+## and shattering as it breaks (the hunter's lock-on and lance too, from its brain); Black ICE keeps its own sounds.
+##
 ## SIGHUP (C32): a hangup reaches a piece through take_hup(): the hunter is confused as a daemon is and
 ## forgets what it learned (scripts/ice/hunter_ice.gd), a node reloads and drops its field for a while
 ## (scripts/ice/ice_node.gd); a wall is not touched and Black ICE ignores it (it runs under nohup), both
@@ -30,6 +33,7 @@ extends StaticBody3D
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
 const DerezzFx = preload("res://scripts/derezz_fx.gd")
+const SfxSynth = preload("res://scripts/sfx_synth.gd")
 const DEREZZ_PATH := "res://resources/derezz.tres"
 ## The physics layers: a piece's own body is on the targets' (shots meet it, nothing walks into it);
 ## a wall's core is on the level's (it blocks movement, sight and bolts as the level does).
@@ -63,6 +67,8 @@ var _held_until := -1
 var quiet := false
 var _frost_look: FrostLook
 var _hup_look: HupLook
+## Its own sounds (C42); null for Black ICE.
+var voice: DaemonVoice
 
 var _health := 100.0
 var _holder: Node3D
@@ -82,6 +88,10 @@ func _make_art(script: Script, seed: int, prepare: Callable = Callable()) -> voi
 		prepare.call(art)
 	art.setup(self, build_seed)
 	_holder.add_child(art)
+	if SfxSynth.DAEMON_KINDS.has(art.ai_kind):
+		voice = DaemonVoice.new()
+		voice.kind = art.ai_kind
+		add_child(voice)
 
 
 ## A collision shape on this body: `shape` at `at`.
@@ -243,6 +253,8 @@ func frost_look() -> FrostLook:
 func _hurt(point: Vector3, direction: Vector3) -> void:
 	art.react(point, direction)
 	_show_health()
+	if voice != null:
+		voice.hit()
 
 
 ## The type shows its health on its art (a wall's cracks).
@@ -271,6 +283,8 @@ func _break(point: Vector3, direction: Vector3) -> void:
 	fx.start(global_position, _derezz_radius(), _derezz_height(), shot, d if d != null and d.problems().is_empty() else Derezz.new(), build_seed, art.core_color)
 	art.shatter(fx, shot)
 	_holder.visible = false
+	if voice != null:
+		voice.death()
 	broke.emit(self)
 
 

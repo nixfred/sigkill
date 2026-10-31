@@ -52,8 +52,9 @@ const CURSOR := [Vector2(-0.2, -0.12), Vector2(-0.06, -0.12)]
 const CHEVRON := [Vector2(0.18, 0.12), Vector2(0.03, 0.0), Vector2(0.18, -0.12)]
 const STROKE := 0.06
 const GLYPH_GLOW := 2.3
-## The cursor's blink, a second.
+## The cursor's blink, a second; its race while it types (C42).
 const BLINK_HZ := 1.1
+const TYPING_HZ := 9.0
 ## The heart's light: a swell in time with its steps while it walks, slow once it stands.
 const HEART_R := 0.12
 ## The column of hexagons from the pelvis up: [height, width across corners, tall].
@@ -69,6 +70,10 @@ var gaze := Vector3.FORWARD
 var tilt := 0.0
 var time := 0.0
 var form_y := 99.0
+## C42: how far it has squared up to the player (0 to 1: arms spreading, claws open, its prompt and crown burning
+## brighter, the crown turning faster), and whether it is typing (its face's cursor racing).
+var dare := 0.0
+var typing := false
 
 var _face: int
 var _face_back: int
@@ -158,6 +163,11 @@ static func head_y() -> float:
 	return GROUND_Y + HIP_H + HEAD_UP
 
 
+## Its heart in art space, standing still (C42: where the shot lands).
+static func heart_at() -> Vector3:
+	return Vector3(0.0, GROUND_Y + HIP_H + COLUMN[3][0] + 0.05, -0.47)
+
+
 ## Where it is in its walk: its phase (whole steps of both feet, 0 to 1 a cycle).
 func gait_phase() -> float:
 	return walk_m / (2.0 * STRIDE)
@@ -226,7 +236,7 @@ func _pose(_t: float, _delta: float) -> void:
 		lay(_pauldrons[side * 2], shoulder + up * 0.12 + right * (0.05 * s), slant * Basis.from_scale(Vector3(0.44, 0.11, 0.5)))
 		lay(_pauldrons[side * 2 + 1], shoulder + up * 0.02 + right * (0.16 * s), plank((right * s + up * -1.4).normalized(), back) * Basis.from_scale(Vector3(0.3, 0.09, 0.42)))
 		var arm_swing := -0.35 * swing * walking * (1.0 if side == 0 else -1.0)
-		var reach_out := 0.12 + 0.06 * sin(time * 0.9 + side)
+		var reach_out := 0.12 + 0.06 * sin(time * 0.9 + side) + 0.22 * dare
 		var upper_dir := (Basis(right, arm_swing + reach_out) * (Vector3.DOWN + right * (0.14 * s))).normalized()
 		var elbow := shoulder + upper_dir * UPPER
 		var fore_dir := (Basis(right, arm_swing + reach_out + 0.35) * (Vector3.DOWN + right * (0.05 * s))).normalized()
@@ -236,7 +246,7 @@ func _pose(_t: float, _delta: float) -> void:
 		orient(_elbows[side], elbow, (upper_dir + fore_dir).normalized(), 0.07, 0.19)
 		var outward := (right * s - fore_dir * fore_dir.dot(right * s)).normalized()
 		lay(_bracers[side], elbow.lerp(hand, 0.5) + outward * 0.06, plank(outward.cross(fore_dir).normalized(), fore_dir) * Basis.from_scale(Vector3(0.16, 0.06, 0.42)))
-		var curl := 0.5 + 0.15 * sin(time * 2.3 + side * 1.7)
+		var curl := (0.5 + 0.15 * sin(time * 2.3 + side * 1.7)) * (1.0 - 0.6 * dare)
 		for f in 3:
 			var spread := (float(f) - 1.0) * 0.34
 			var claw := (Basis(fore_dir, spread) * Basis(right, curl) * fore_dir).normalized()
@@ -273,23 +283,24 @@ func _pose(_t: float, _delta: float) -> void:
 	lay(_face, head, Basis(u * FACE_R * 2.0, f * FACE_T, -r * FACE_R * 2.0))
 	lay(_face_back, head - f * (FACE_T * 0.95), Basis(u * FACE_R * 1.7, f * FACE_T * 1.3, -r * FACE_R * 1.7))
 	var front := head + f * (FACE_T * 0.5 + 0.014)
-	var blink := 1.0 if fposmod(time * BLINK_HZ, 1.0) < 0.55 else 0.0
+	var blink := 1.0 if fposmod(time * (TYPING_HZ if typing else BLINK_HZ), 1.0) < 0.55 else 0.0
+	var burn := 1.0 + 0.6 * dare
 	_stroke(_cursor, front, r, u, f, CURSOR[0], CURSOR[1])
-	brighten(_cursor, GLYPH_GLOW * blink)
+	brighten(_cursor, GLYPH_GLOW * blink * burn)
 	_stroke(_chevron[0], front, r, u, f, CHEVRON[0], CHEVRON[1])
 	_stroke(_chevron[1], front, r, u, f, CHEVRON[1], CHEVRON[2])
 	for id in _chevron:
-		brighten(id, GLYPH_GLOW)
+		brighten(id, GLYPH_GLOW * burn)
 	# The crown: the brand's hexagon ring of six bars, a gap at the start of each side, turning slowly.
 	var crown_c := head - f * CROWN_BACK
-	var spin := time * CROWN_TURN
+	var spin := time * CROWN_TURN * (1.0 + 2.5 * dare)
 	for k in 6:
 		var a0 := PI / 2.0 - TAU * k / 6.0 - spin
 		var a1 := a0 - TAU / 6.0
 		var c0 := crown_c + (u * sin(a0) - r * cos(a0)) * CROWN_R
 		var c1 := crown_c + (u * sin(a1) - r * cos(a1)) * CROWN_R
 		bone(_crown[k], c0.lerp(c1, 0.16), c0.lerp(c1, 1.04), 0.06)
-		brighten(_crown[k], 0.9)
+		brighten(_crown[k], 0.9 * burn)
 	_form()
 
 

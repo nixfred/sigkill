@@ -1,7 +1,7 @@
 class_name OpenerTuning
 extends Resource
 ## Every time and strength that shapes the opener (C38: PRD 5.7's 0:00 to 0:35; C40: 0:35 to 1:10; C41: 1:10 to
-## 1:35): the fake crash, the black, the terminal's arrival, when each line starts and the latest it may end, how fast
+## 1:35; C42: 1:35 to 2:00): the fake crash, the black, the terminal's arrival, when each line starts and the latest it may end, how fast
 ## each types, the folder scroll, the hold, the 3 seconds the terminal ignores typing, the shrink-away, the fall and its
 ## landing, the link to the player's AI and the copy of them, the sounds and the screen's look. Times are seconds from the moment the opener starts. The default is
 ## resources/opener.tres; scripts/opener/opener.gd reads only this. The words themselves are the PRD's and live in
@@ -9,8 +9,13 @@ extends Resource
 ##
 ## The PRD's windows hold whatever the data: the prompt types inside 0:00 to 0:15, every line after it inside
 ## 0:15 to 0:35, the shrink-away inside 0:35 to 0:50, the fall from 0:50 to 1:10, the link and the copy inside 1:10 to
-## 1:35 (whenever the player's AI answers, or does not). A line given more to type than its
+## 1:35 (whenever the player's AI answers, or does not), the forge, the kill and the title inside 1:35 to 2:00 (whenever
+## the player fires, or does not by fire_by). A line given more to type than its
 ## time (a long user name, say) types faster to fit (Typist.fit).
+##
+## C42's moments inside the forge and after the shot are the score's (scripts/opener/opener_score.gd, in sixteenths and
+## beats), so what is seen lands on what is heard; here are the forge's start (C41's hand-off), when the player may fire
+## and when the rifle fires on its own, and how long the kill and the title run after the shot.
 
 @export_group("Crash")
 ## The game as it was, before it freezes.
@@ -111,10 +116,18 @@ extends Resource
 @export var guide_beat := 0.8
 @export var copy_at := 82.6
 @export var copy_stop := 93.6
-## The hand-off to C42 (its kill -9 forge starts here) and, until C42, the fade to black over the last moment and the
-## end.
+## The hand-off to C42: the kill -9 forge starts here, on the score's bar line (the bed ends here).
 @export var forge_at := 94.4
-@export var end_at := 95.0
+
+@export_group("Kill")
+## The player may fire from fire_from (the forge's end, the score's wait loop); the rifle fires on its own at fire_by,
+## so the opener never waits longer. The shot lands on the next sixteenth of the press.
+@export var fire_from := 104.0
+@export var fire_by := 107.2
+## From the shot to the end: the derezz, the kill feed, the whisper, the black, the title slam and its riff, the title
+## torn away. end_at is the latest end (a shot at fire_by), inside 2:00.
+@export var end_after := 10.8
+@export var end_at := 118.0
 
 @export_group("Sound")
 ## Linear volumes: the stuck buzz, the crackle at its fullest, the hum, a key.
@@ -132,6 +145,13 @@ extends Resource
 @export var lock_volume := 0.5
 @export var rise_volume := 0.55
 @export var step_volume := 0.6
+## C42: the score (on the Music bus), the keys of `kill -9`, the forge's charge, break, print and lock, the copy's keys,
+## and the rail's shot.
+@export var score_volume := 0.62
+@export var forge_key_volume := 0.55
+@export var forge_volume := 0.5
+@export var copy_key_volume := 0.5
+@export var shot_volume := 0.7
 
 @export_group("Screen")
 ## The terminal's glow (dark themes only), its reach and threshold, scanlines, vignette, and the tear's shift.
@@ -147,7 +167,7 @@ extends Resource
 ## Problems with these numbers, in words; empty when the timeline holds together and keeps the PRD's windows.
 func problems() -> PackedStringArray:
 	var out := PackedStringArray()
-	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until], ["in_at", in_at], ["in_end", in_end], ["shrink_at", shrink_at], ["fall_at", fall_at], ["land_at", land_at], ["handoff_at", handoff_at], ["link_at", link_at], ["link_end", link_end], ["answer_from", answer_from], ["answer_by", answer_by], ["guide_at", guide_at], ["guide_end", guide_end], ["copy_stop", copy_stop], ["forge_at", forge_at], ["end_at", end_at]]
+	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until], ["in_at", in_at], ["in_end", in_end], ["shrink_at", shrink_at], ["fall_at", fall_at], ["land_at", land_at], ["handoff_at", handoff_at], ["link_at", link_at], ["link_end", link_end], ["answer_from", answer_from], ["answer_by", answer_by], ["guide_at", guide_at], ["guide_end", guide_end], ["copy_stop", copy_stop], ["forge_at", forge_at], ["fire_from", fire_from], ["fire_by", fire_by], ["end_at", end_at]]
 	for i in range(1, order.size()):
 		if order[i][1] < order[i - 1][1]:
 			out.append("%s comes before %s" % [order[i][0], order[i - 1][0]])
@@ -190,6 +210,18 @@ func problems() -> PackedStringArray:
 		out.append("the copy's walk is too short to read")
 	if guide_end - guide_at < 2.0 or guide_beat <= 0.0 or guide_beat > 2.0:
 		out.append("the guide's line has no room to type")
-	if forge_at > 95.5 or end_at > 95.5:
+	if forge_at > 95.5:
 		out.append("the copy's beat ends after 1:35")
+	if absf(forge_at - OpenerScore.BED_AT - OpenerScore.BED_BARS * OpenerScore.BAR_S) > 0.02:
+		out.append("the forge is not on the score's bar line")
+	if absf(fire_from - forge_at - OpenerScore.FORGE_BARS * OpenerScore.BAR_S) > 0.02:
+		out.append("the player may fire before or after the forge ends")
+	if fire_by <= fire_from or fire_by - fire_from > 4.0:
+		out.append("the opener waits more than 4 s for the shot")
+	if end_after < OpenerScore.SLAM_BEATS * OpenerScore.BEAT_S + 2.0 * OpenerScore.BAR_S + 1.0 or end_after > OpenerScore.STINGER_S:
+		out.append("the title has no room after the shot")
+	if absf(end_at - fire_by - end_after) > 0.05:
+		out.append("the end is not fire_by and the title after it")
+	if end_at > 120.0:
+		out.append("the opener runs past 2:00")
 	return out

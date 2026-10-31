@@ -19,7 +19,7 @@ extends SceneTree
 
 const OpenerScene = preload("res://scenes/opener.tscn")
 const FPS := 60.0
-const MOST_FRAMES := 6000
+const MOST_FRAMES := 7600
 ## Invented folders for a source of the test's own (no machine's), with their counts: two node_modules (the first is
 ## the pit, the second a maze tower), a hidden one, one not counted, an orphan whose parents are missing, a duplicate,
 ## an empty name, an escape sequence and a line break, wide characters and one far too long.
