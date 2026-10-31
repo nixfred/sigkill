@@ -743,8 +743,12 @@ func _finish(skipped: bool) -> void:
 func _release() -> void:
 	if _data != null:
 		_data.drop()
-	# The city and the machine built from the data go with it.
+	# The city and the machine built from the data go with it, and nothing goes on showing their pictures.
 	_layout = null
+	for view in [_world_view, _screen_view]:
+		if view != null:
+			view.visible = false
+			view.texture = null
 	if _fall != null:
 		if is_inside_tree() and get_viewport().size_changed.is_connected(_size_ports):
 			get_viewport().size_changed.disconnect(_size_ports)

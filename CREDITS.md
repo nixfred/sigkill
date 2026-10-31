@@ -29,6 +29,10 @@ Two of the weapons' light skins (C33) take their names and colours from open ter
 
 The opener's fake terminal (C38) ships six demo palettes, and each takes its colours, and only its colours, from an open terminal theme that Omarchy includes, with thanks: [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (the default), [Catppuccin](https://catppuccin.com) Mocha and Latte, [Gruvbox Material](https://github.com/sainnhe/gruvbox-material), [Nord](https://www.nordtheme.com) and [Everforest](https://github.com/sainnhe/everforest). A palette is a list of colours under Omarchy's names for them; nothing else of these projects is bundled.
 
+## The pattern the pit's maze borrows
+
+The opener's node_modules pit (C40) is walled in the classic "10 PRINT" maze, a diagonal one way or the other in each cell, after the one-line Commodore 64 BASIC program `10 PRINT CHR$(205.5+RND(1)); : GOTO 10` that made it famous (and the book about it, *10 PRINT CHR$(205.5+RND(1)); : GOTO 10*, MIT Press, 2012). The game's own shader draws it; nothing is bundled.
+
 ## Brand
 
 nixfred hexagon logo, locked. Art and audio original or properly licensed.
