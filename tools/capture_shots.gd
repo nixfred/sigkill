@@ -388,7 +388,7 @@ const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-sho
 const C42_SHEET_COLUMNS := 3
 const C42_PAUSE_AT := 98.1
 ## c36's sheet, three a row; how many frames each register's GPU time is averaged over.
-const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide", "c36-fight", "c36-mission"]
+const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide-tron", "c36-fight", "c36-mission"]
 const C36_GPU_FRAMES := 120
 ## c35's sheet: the stills in the order a player meets them, three a row.
 const C35_SHEET := ["c35-missions", "c35-card", "c35-fight", "c35-hud", "c35-complete", "c35-failed"]
@@ -2583,8 +2583,8 @@ func _c36() -> void:
 	await _frames(40)
 	await _c35_save(sheet, "c36-wide")
 	world.set_register("tron", 0.0)
-	await _frames(30)
-	await _save("c36-wide-tron")
+	await _frames(70)  # the rain's last drops gone
+	await _c35_save(sheet, "c36-wide-tron")
 	world.set_register("cyberpunk", 0.0)
 	_free_camera_done(cam)
 	if world.has_point("vista_0"):
@@ -2614,6 +2614,7 @@ func _c36() -> void:
 			await _frames(1)
 		rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
 		await _frames(3)
+	_c27b_place(rogue, world.point("daemon_0"))  # back at its own point, out of the way of the view down the district
 	var log_at := runner.log_place("temporary")
 	_player.global_position = log_at
 	await _frames(100)
