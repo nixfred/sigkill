@@ -58,7 +58,7 @@ const TOWER_TALL := Vector2(12.0, 46.0)
 const GIANT_OUT := Vector2(70.0, 230.0)
 const GIANT_TALL := Vector2(40.0, 230.0)
 
-var set: RuinsSet
+var ruins: RuinsSet
 var size := Vector2i.ZERO
 var cells := PackedByteArray()
 var start_cell := Vector2i.ZERO
@@ -92,11 +92,11 @@ var _rng := RandomNumberGenerator.new()
 
 
 func _init(from: RuinsSet) -> void:
-	set = from
-	if set == null:
+	ruins = from
+	if ruins == null:
 		return
-	size = set.cells
-	_rng.seed = set.seed
+	size = ruins.cells
+	_rng.seed = ruins.seed
 	_outline()
 	_route()
 	_ruins()
@@ -200,8 +200,8 @@ func _reserved(c: Vector2i) -> bool:
 
 func _ruins() -> void:
 	var placed := 0
-	for t in set.blocks * 4:
-		if placed >= set.blocks:
+	for t in ruins.blocks * 4:
+		if placed >= ruins.blocks:
 			break
 		var w := _rng.randi_range(1, 2)
 		var h := _rng.randi_range(1, 3)
@@ -217,8 +217,8 @@ func _ruins() -> void:
 			blocks.append({"rect": rect, "kind": kind, "seed": block_seed})
 			placed += 1
 	placed = 0
-	for t in set.holes * 12:
-		if placed >= set.holes:
+	for t in ruins.holes * 12:
+		if placed >= ruins.holes:
 			break
 		var w := _rng.randi_range(1, 2)
 		var h := 1 if w == 2 else _rng.randi_range(1, 2)
@@ -397,8 +397,8 @@ func point_names() -> PackedStringArray:
 
 func _cover() -> void:
 	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell)
-	for t in set.cover * 3:
-		if cover.size() >= set.cover or open.is_empty():
+	for t in ruins.cover * 3:
+		if cover.size() >= ruins.cover or open.is_empty():
 			break
 		var c: Vector2i = open[_rng.randi_range(0, open.size() - 1)]
 		var pick: Array = COVER[_rng.randi_range(0, COVER.size() - 1)]
@@ -485,7 +485,7 @@ func unreachable() -> PackedStringArray:
 func _scenery() -> void:
 	var outer := edges.filter(func(e): return not e["hole"])
 	var tries := 0
-	while towers.size() < set.towers and tries < set.towers * 8 and not outer.is_empty():
+	while towers.size() < ruins.towers and tries < ruins.towers * 8 and not outer.is_empty():
 		tries += 1
 		var e: Dictionary = outer[_rng.randi_range(0, outer.size() - 1)]
 		var out := Vector3(SIDES[e["side"]].x, 0, SIDES[e["side"]].y)
@@ -515,8 +515,8 @@ func _scenery() -> void:
 			var depth := _rng.randf_range(1.2, 1.6)
 			var at := Vector3(_rng.randf_range(lo.x + width * 0.5, maxf(lo.x + width * 0.5, hi.x - width * 0.5)), 0, _rng.randf_range(lo.z + depth * 0.5, maxf(lo.z + depth * 0.5, hi.z - depth * 0.5)))
 			towers.append({"at": at, "tall": _rng.randf_range(7.0, 26.0), "foot": 0.0, "width": width, "depth": depth, "yaw": float(_rng.randi_range(0, 3)) * PI * 0.5 + _rng.randf_range(-0.12, 0.12), "lean": Vector2(_rng.randf_range(-3.0, 3.0), _rng.randf_range(-3.0, 3.0)), "seed": _rng.randi(), "inside": true})
-	for i in set.giants:
-		var a := TAU * (float(i) + _rng.randf_range(0.1, 0.9)) / float(maxi(set.giants, 1))
+	for i in ruins.giants:
+		var a := TAU * (float(i) + _rng.randf_range(0.1, 0.9)) / float(maxi(ruins.giants, 1))
 		var d := _rng.randf_range(GIANT_OUT.x, GIANT_OUT.y)
 		giants.append({"at": Vector3(sin(a) * d, 0, cos(a) * d), "tall": _rng.randf_range(GIANT_TALL.x, GIANT_TALL.y) * clampf(d / 140.0, 0.6, 1.4), "foot": 260.0, "width": _rng.randf_range(9.0, 26.0), "depth": _rng.randf_range(7.0, 16.0), "yaw": _rng.randf_range(0.0, TAU), "lean": Vector2(_rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0)), "seed": _rng.randi(), "inside": false, "broken": _rng.randf() < 0.35})
 	_cables()
@@ -534,7 +534,7 @@ func _over_void(at: Vector3, radius: float) -> bool:
 
 func _cables() -> void:
 	var tries := 0
-	while cables.size() < set.cables and tries < set.cables * 12 and towers.size() >= 2:
+	while cables.size() < ruins.cables and tries < ruins.cables * 12 and towers.size() >= 2:
 		tries += 1
 		var a: Dictionary = towers[_rng.randi_range(0, towers.size() - 1)]
 		var b: Dictionary = towers[_rng.randi_range(0, towers.size() - 1)]
@@ -615,17 +615,17 @@ func _signs() -> void:
 	for i in towers.size():
 		if towers[i]["tall"] > (16.0 if not towers[i]["inside"] else 10.0):
 			ring.append(i)
-	for k in mini(set.signs, ring.size()):
+	for k in mini(ruins.signs, ring.size()):
 		var i: int = ring[(k * 5 + _rng.randi_range(0, 2)) % ring.size()]
 		var t: Dictionary = towers[i]
-		var words := set.words
+		var words := ruins.words
 		var text: String = words[_rng.randi_range(0, words.size() - 1)]
 		signs.append({"tower": i, "height": _rng.randf_range(0.35, 0.8) * t["tall"], "text": text, "slot": k % 2, "upright": _rng.randf() < 0.55, "seed": _rng.randi()})
 
 
 ## A monolith's name: one of the set's folder names, by its seed.
 func folder_name(seed: int) -> String:
-	return set.folders[posmod(seed, set.folders.size())]
+	return ruins.folders[posmod(seed, ruins.folders.size())]
 
 
 ## True when every letter of `text` is in the sign font and it is short enough to stand on a monolith.

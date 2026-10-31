@@ -22,7 +22,7 @@
 ## Where we are
 
 - **Pre-alpha.** The latest release is [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (build 33, 2026-10-30, a GitHub pre-release). It came before the opener, so the opener is on `main` only for now.
-- **Built and playable on `main`, through C35:**
+- **Built and playable on `main`, through C36:**
   - the Tron arena and its skyline
   - 13 weapons, with light skins, mods and unlocks
   - SIGSTOP bullet time, code-rain vision, root and `sudo`
@@ -35,18 +35,31 @@
     - you fire; the derezz, the kill feed, the whisper, black, and SIGKILL slammed in on the hexagon;
     - all of it over an original score made in code: dark synths, then heavy metal from the forge.
   - **the first launch:** a card first asks whether the intro may use your real user name and folder names (No is the default). Then the intro plays itself once. Esc pauses it ("Skip intro" is right there), holding Space skips it, and "Play the opener" in the Esc menu replays it any time. It runs on demo data unless you say yes, or switch on Settings, Privacy and AI, opener data.
-  - **the mission framework (C35), new:** Esc, **Missions** lists the campaign's seven missions, done, next, in production or locked (a locked one's title and goal redacted). Each mission is data, not code:
+  - **the mission framework (C35):** Esc, **Missions** lists the campaign's seven missions, done, next, in production or locked (a locked one's title and goal redacted). Each mission is data, not code:
     - objectives (kill so many of a daemon type, reach a point, pick up a terminal log, survive);
     - your AI's story lines in the guide panel, the Auditor's audit log and `~`'s own terminal;
     - register shifts, a fail rule, retry, and a weapon handout that gives you all 13 by mission 6, kept with your unlocks.
 
-    Mission 1, `login`, plays now as a first cut on today's arena; C36 and C37 build it for real. Missions 2 to 7 are in, as skeletons from the story bible, and open as their chunks land.
+    Mission 1, `login`, plays now as a first cut, in its ruins since C36; C37 builds it for real. Missions 2 to 7 are in, as skeletons from the story bible, and open as their chunks land.
+  - **the ruins (C36), new:** the places the missions happen in, all made in code. Decaying server-farm and filesystem ruins:
+    - rack towers toppling and half sunk into the abyss, their status lights dying;
+    - cut cables swinging and sparking, cracked floors glowing from below, holes into the void;
+    - directory monoliths with their folder names half lit, dead terminals still typing;
+    - megatowers far out in the void, and debris drifting.
+
+    Three registers change the world itself, not just the HUD:
+    - **Tron:** the clean grid in teal.
+    - **Cyberpunk:** rain, a violet haze, and dead megacorps' neon in magenta and amber, held in the puddles.
+    - **Matrix:** dark, with green code streaming down every wall and falling through the air.
+
+    Every district is seeded: the same set always builds the same place, no two racks or monoliths are alike, and every point a mission needs can be walked to from the start. Mission 1 stands in one, and at the vent the world tears from Tron into the ruins. The GPU time, measured at 1920x1080 on a recent laptop GPU, is about 2.8 ms a frame.
 - **Also on `main`, the teaser tool (T1):** `tools/trailer_capture.sh` renders the teaser's raw footage as real in-game clips on demo data ([docs/TRAILER.md](docs/TRAILER.md)).
 - **The teaser:** 70 seconds of that footage, with an original soundtrack, for the top of [playsigkill.com](https://playsigkill.com). The edit and the music are the producer's.
-- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.6 now, with C35): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
-- **Next:** C36, the cyberpunk ruins art kit, then C37, mission 1 (`login`) end to end, then missions 2 to 7, a chunk each.
+- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.7 now, with C36): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
+- **Next:** C37, mission 1 (`login`) end to end on the ruins kit, then missions 2 to 7, a chunk each.
 - **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`). A build of `main` also shows the first-launch card and plays it once by itself; the v0.33.0 release came before the opener.
 - **Try the missions** from source: Esc, then **Missions**, and Enter on mission 1 (it is solo, so not in a match). To start it at once: `godot --path . -- --demo --mission=login`. The v0.33.0 release came before them too.
+- **Try the ruins** with no mission, from source: `godot --path . -- --demo --ruins=deep_dirs` (or `scheduler_breach`, mission 1's, or `cache_district`). Each stands in its own register; the daemons fight as in the arena, and ICE stands down.
 - **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md), [the teaser footage](docs/TRAILER.md).
 
 ## Download (pre-alpha)
@@ -74,7 +87,7 @@ godot --headless --path . --import   # once, on a fresh clone: builds Godot's ca
 godot --path .
 ```
 
-`scripts/play.sh` does both steps for you. Launch options (`--demo`, `--no-ai`, `--join`, `--light-trails`, `--opener`) are under [Install and play](#install-and-play).
+`scripts/play.sh` does both steps for you. Launch options (`--demo`, `--no-ai`, `--join`, `--light-trails`, `--opener`, `--mission`, `--ruins`) are under [Install and play](#install-and-play).
 
 **Controls, in short.** WASD move, mouse look, Space jump, C slide, X crouch, left click fire, right click aim. 1 to 9 draw a weapon, Shift+1 to 4 the second bank, E reload, Q last weapon, F bullet time, V code-rain vision, Z sudo, Tab spectate as top. Esc opens the menu: Resume, Loadout (skins and mods), Settings (most keys can be rebound), Quit. No Ctrl, Alt or Super chords, and none can be bound. [The full table](#controls).
 
@@ -105,7 +118,7 @@ You play the nixfred `>_` hexagon, deep inside your own machine, hunting rogue d
 
 - **Tron** where the system is healthy: a pure black void, glowing light grids, neon edges on every surface. Teal and mint are yours; red and amber are hostile. **Built:** the greybox arena already has the black void, the glowing floor grid and the neon edges.
 - **Matrix** where reality is thin: green code rain that bleeds through walls when daemons are near. **Built:** the greybox walls rain glyphs around every live dummy, and the rain fades when it derezzes. Code-rain vision is **Built** (C21): hold V and enemies show through walls as glyph silhouettes.
-- **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage. **Planned** (C36 ruins art kit).
+- **Cyberpunk** in the deep directories: neon megacorp ruins, rain and signage. **Built** (C36): the ruins kit the missions stand in, and a mission's register shift now changes the world itself, Tron to cyberpunk to Matrix ([the ruins kit](#built-the-ruins-kit-c36)).
 
 In the planned game, corruption pushes the clean Tron grid toward Matrix rain and cyberpunk decay, and the core loop is fast arena deathmatch against other players plus a solo or co-op daemon hunt, in the same arenas with the same weapons, wrapped in a story campaign. Today's build is single-player: one greybox arena with target dummies that derezz into voxels when killed and then respawn, and walls that rain code wherever a dummy stands near them.
 
@@ -317,7 +330,7 @@ The test, `tests/opener_end_test.gd` (check step 53), uses invented names, setti
 
 ### The missions
 
-Seven missions after the opener (STORY.md section 6): `login`, `defunct`, `while true`, `permission denied`, `sudo !!`, `nohup` and `kill -9`. Each is short, told through terminal logs you pick up, your AI's lines, the Auditor's audit log and the place itself. They are solo, and they are fiction: nothing in them reads or touches your machine. Status: 🟡 the framework built (C35), mission 1 a playable first cut; C36 (the ruins art kit) and C37 (mission 1 for real) next.
+Seven missions after the opener (STORY.md section 6): `login`, `defunct`, `while true`, `permission denied`, `sudo !!`, `nohup` and `kill -9`. Each is short, told through terminal logs you pick up, your AI's lines, the Auditor's audit log and the place itself. They are solo, and they are fiction: nothing in them reads or touches your machine. Status: 🟡 the framework built (C35) and the ruins the missions stand in (C36); mission 1 a playable first cut, in its ruins; C37 (mission 1 for real) next.
 
 #### Built: the mission framework (C35)
 
@@ -357,6 +370,63 @@ The test, `tests/mission_test.gd` (check step 54), plays the test range and miss
 - every objective kind, fail by death and by time, Retry, R, the Esc menu, and the Missions screen at 960x540;
 - refusal in a match;
 - quitting while the opener's score is still being made, now at once (a C42 leftover).
+
+#### Built: the ruins kit (C36)
+
+Stills in [Screenshots](#screenshots).
+
+The places the missions happen in: decaying server-farm and filesystem ruins, made in Godot from code, primitives and shaders. No model, texture or font file is used, and nothing is downloaded or ripped.
+
+- **Districts are data.** A ruins set (`resources/ruins/`) is a recipe: a seed, its size and how many ruin blocks, holes, pieces of cover, towers, giants, cables and signs it has. It also holds the demo folder names for its monoliths and the demo company words for its signs. Three sets ship:
+  - `scheduler_breach`, Tron, mission 1's;
+  - `deep_dirs`, cyberpunk, dense, in the rain;
+  - `cache_district`, Matrix.
+
+  A mission names one (`ruins` in its data), and its points can be the district's by name: mission 1's log stands at `log_0` and its vent at `exit`.
+- **The layout is seeded and repeatable.** The same set always makes the same district, on every machine; another seed makes another. It is planned on a grid of 4 m cells:
+  - the outline is cut into the void, a route from the start to the exit is kept open, and a plaza is kept for the fight;
+  - ruin blocks (rack clusters, directory monoliths, a fallen tower) and holes into the void are each kept only if the floor stays one piece;
+  - every edge onto the void or a hole gets a parapet, taller than a jump reaches, and some of them are overlooks, bent rails to look out over the abyss through;
+  - cover is kept only while every point can still be walked to.
+
+  The plan names the points a mission uses: `start`, `exit`, `plaza`, four logs, six daemon spots, six ICEbreaker spots, five spawns and the vistas.
+- **The pieces, no two alike** (each from its own dice):
+  - **rack towers** of modules: corner posts, blades of status lights, blades pulled out or missing, side panels gone, modules knocked askew, cables spilling from the worst, sometimes neon up a corner, and a mast with a beacon or a jagged break on top;
+  - **giants** far out in the void: setback slabs banded with windows, neon up their edges;
+  - **directory monoliths:** black glass with a folder's tab, cracked into shifted pieces, the folder's name and `DRWXR-XR-X` lit in pixel letters with some of them gone;
+  - **fallen towers** across a block;
+  - **cover:** toppled racks, dead terminals still typing, piles of drive sleds, rubble with hot rods, shards of monoliths;
+  - **the rest:** broken slabs hanging off the edges, towers rising out of holes with the void glowing far below, pylons under the district, cables between towers (a cut one dangling and sparking), and neon signs, upright or wide.
+- **Motion everywhere:**
+  - status lights blinking, dying and stuttering, each on its own phase;
+  - a scan of light climbing the towers, and a pulse running out over the floor;
+  - cut cables swinging, their ends crackling and throwing sparks with a flash of light;
+  - rain, motes of data, falling glyphs, drifting haze and steam;
+  - debris turning slowly round the district in the void.
+- **Registers that change the world.** One shader global sets the register, and every ruins shader blends by it; the fog, the sky, the sun, the lamps and the weather follow.
+  - **Tron:** the clean grid. Teal edges on everything, the lights alive, motes rising.
+  - **Cyberpunk:** dark and wet. A violet haze stacks the towers in layers, rain runs down every face, and the dead megacorps' neon hangs in magenta `#d24bff` and amber `#ff7a1a`, held in the puddles. A third of the windows burn warm amber against the cold violet, and most status lights are dead.
+  - **Matrix:** dark. Green code streams down every wall and over the floor, and glyphs fall through the air.
+  - **All**, the finale's three at once, mixed across the place.
+
+  A mission's register shift runs over 1.4 s with a tear through the world: at the vent, mission 1's Tron ruins tear into the cyberpunk ones. Near daemons the walls bleed code in every register, as the arena's walls do.
+- **Readable, always.** No ruins colour comes within 0.1 (OKLab) of a daemon's or ICE's colour: rogue.d's crimson, the zombie's amber, the runaway's magenta, the glitch split, and ICE's glacier, cobalt and Black ICE teal. The signs hang high behind the haze, and the floor's own light is cold.
+- **In the arena.** A mission set in ruins stands the arena in them as it loads: the arena's own level goes, and the ruins are built in its place. The player, the spawns, the daemons and the ICEbreaker pickups move to the ruins' points, and a fall puts you back at the start. ICE stays down in ruins for now. The next plain arena is exactly as it was.
+- **Cost.**
+  - **Build:** about 1.2 s the first time a run builds a set, then kept, so a retry or R builds nothing.
+  - **Size:** about 250,000 triangles in some 80 merged meshes.
+  - **GPU time:** 2.75 to 2.90 ms a frame at 1920x1080, measured live in the captures on a recent laptop GPU at the high preset. Nothing of it runs when the game is closed.
+- **The C35 leftovers.** In a mission, the arena's "daemons down" counter gives way to the mission's own panel. An arena reloaded into a mission (a start, a retry, R) comes in from black over 0.35 s instead of blinking.
+
+The test, `tests/ruins_test.gd` (check step 55), covers:
+- **The code:** no file, process, network or environment read anywhere in the kit.
+- **The data:** every set is good, and no folder name or sign word gives the story away.
+- **Every set's plan:** repeatable, another seed giving another district; every point named, on the floor and reachable; no cable low over the floor; enough of every piece.
+- **Every set built headless with no errors:** inside its budgets; a ray down from every point meets the floor, and a player stands at every point clear of everything; the second build kept.
+- **Variety:** no two rack towers alike among about a hundred, and no two of twelve monoliths with the same name and place alike.
+- **The registers:** switching, at once and over a shift with its tear; the colours' distance from the daemons' and ICE's.
+- **In the arena:** staging (the level gone, everything at the ruins' points, ICE stood down, the environment a copy) and the plain arena after it; mission 1 in its ruins; the counter hidden, and the cut from black.
+- **The mission data:** refusals for a point the ruins lack, for ICE in ruins, and for unknown ruins.
 
 ## The arsenal
 
@@ -1088,6 +1158,24 @@ Like the rest of the look, the rain has only run headless so far: the shader com
 - **The arena's own lights.** A new shader global, `arena_light`, is multiplied into the arena's shaders (strips, signs, beacons, panels' edges, screens, racks, holograms, floor, the walls' rain, the skyline), and the sun, the room's light, the lamps, the lair's danger lights and the sky go down with it: one value dims the whole arena and nothing else.
 - **The cost** (measured, I3). As built, one Black ICE is 2,192 triangles in 7 draw calls. With the line-up's three drawn and hidden in turn on the real GPU at 1920x1080, the frame's GPU time showed no measurable difference (1.80 to 2.01 ms drawn against 1.66 to 1.86 ms hidden); they add 15 draw calls and 6.8k primitives. Posing is GDScript, 183 microseconds a frame at the quickest of five rounds (median 201), and only one is ever out.
 
+### Built: the ruins' look (C36)
+
+The missions' places, in their own shaders, all blending by one shader global, the register (`ruins_mix`: Tron, cyberpunk, Matrix, or all three at once mixed across the place by a slow noise), with a second (`ruins_tear`) tearing them in bands while a register shifts. Everything is built once per district into merged meshes and kept; nothing is rebuilt while it is drawn. [The ruins kit](#built-the-ruins-kit-c36) has the rest.
+
+- **Bodies**, `shaders/ruins_body.gdshader`, lit. Each part carries its own data in its vertex colour (the shape kit's painted buckets): its grime, how bright its edges are, its material, how far it swings.
+  - **Gunmetal** is cut into panels in world space, darker down into the abyss.
+  - **Monoliths** are black glass with lit hairline cracks; **cables** are rubber with data pulses running along them and hot cut ends that swing.
+  - **Tron** draws every true edge bright teal, with a scan of light climbing the towers. **Cyberpunk** turns the faces wet and slick, rain streaking down them, the edges a dim indigo. **Matrix** streams code down the faces.
+- **Lights**, `shaders/ruins_light.gdshader`, unshaded. Every LED, strip, sign letter, beacon and screen line has a phase, a health and a slot.
+  - Corruption puts out a share of the status lights, strips and screens in each register, each by a frailty of its own, so a shift kills most of them and a shift back relights them. Those just past the line stutter.
+  - A third take the register's second colour: warm amber windows against the cold violet. Signs and beacons stay lit.
+- **The floor**, `shaders/ruins_floor.gdshader`:
+  - deck plates, the old grid cut into slabs, and a crazed network of cracks glowing from below, as dense as each slab's damage;
+  - rims of light where it meets the void, and a pulse running out over the grid in Tron;
+  - puddles holding the signs' magenta and amber, with rain rings, in cyberpunk; code trickling over it in Matrix.
+- **Haze**, `shaders/ruins_haze.gdshader`: smoke, data fog and steam on soft cards, faded where they meet the level.
+- **The weather** is GPU particles that follow the camera, their amount set by the register (and by the particle level setting): rain, motes of data and falling glyphs from a glyph atlas made in code. Sparks burst from cut cables with a flash of light.
+
 ### Where the look is heading
 
 <table>
@@ -1289,6 +1377,14 @@ sigkill/
 │   │   ├── mission_runner.gd       MissionRunner: the arena's runner: objectives, pickups, triggers, fail, retry, complete, next
 │   │   ├── mission_log_pickup.gd   A terminal log standing in the arena, picked up by walking through
 │   │   └── mission_beacon.gd       A reach objective's pillar of light and its hexagon on the floor
+│   ├── ruins/
+│   │   ├── ruins_set.gd            RuinsSet (C36): one district's recipe as data (seed, size, how many of each piece, demo names), validated
+│   │   ├── ruins_book.gd           RuinsBook: the sets, from a fixed list
+│   │   ├── ruins_layout.gd         RuinsLayout: the seeded plan: cells, route, ruins, holes, parapets, points, cover, towers, cables, signs, collision
+│   │   ├── ruins_pieces.gd         RuinsPieces: rack towers, giants, monoliths, the fallen, cover, edges, holes, slabs, cables, signs
+│   │   ├── ruins_world.gd          RuinsWorld: the build, kept per set; collision, lamps, weather, sparks, haze, drift; the register
+│   │   ├── ruins_register.gd       RuinsRegister: tron, cyberpunk, matrix and all: colours, fog, sky, sun, weather; the readability gap
+│   │   └── ruins_stage.gd          RuinsStage: an arena stood in a set, its level gone, everything at the ruins' points
 │   ├── round/
 │   │   ├── round_hud.gd            Rounds: the clock, the break's summary panel, in-round callouts, the roast switch on B
 │   │   ├── round_stats.gd          One round's numbers from the game's signals, under the whitelisted round keys
@@ -1355,7 +1451,7 @@ sigkill/
 │   │   ├── sudo_state.gd           The sudo rules (kills to a charge, the cap, root, death), shared by player and host
 │   │   └── sudo_overcharge_tuning.gd   SudoOverchargeTuning: kills needed, charges, root time, damage scale, the look, validated
 │   ├── art/
-│   │   └── shape_kit.gd            ShapeKit: boxes, prisms, tubes, spikes, frustums, flat faces, glyphs, true edges; the weapons', daemons' and arena's shapes
+│   │   └── shape_kit.gd            ShapeKit: boxes, prisms, tubes, spikes, frustums, flat faces, glyphs, true edges, painted parts; the weapons', daemons', arena's and ruins' shapes
 │   ├── arena/
 │   │   ├── arena_art.gd            ArenaArt: the arena's trims, props, signs, plinth, towers and holograms, built once; visual only
 │   │   ├── arena_skyline.gd        ArenaSkyline: the megastructures, data towers, orbital ring and drifting slabs round the arena
@@ -1492,6 +1588,11 @@ sigkill/
 │   ├── neon_edge.gdshaderinc   The neon edge maths, shared by the two shaders below
 │   ├── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms; the dummies' look
 │   ├── code_rain.gdshader      Neon edges plus Matrix code rain near enemies; the blocks' look
+│   ├── ruins_common.gdshaderinc  The ruins' shared maths (C36): the register and tear globals, hashes, noise, glyphs
+│   ├── ruins_body.gdshader     The ruins' bodies: gunmetal panels, black glass, cables; per register edges, rain, code, the scan
+│   ├── ruins_light.gdshader    Every light in the ruins by slot: LEDs, strips, signs, beacons, screens; corruption puts them out
+│   ├── ruins_floor.gdshader    The district's slabs: plates, the cut grid, glowing cracks, rims, neon puddles, code, the pulse
+│   ├── ruins_haze.gdshader     Smoke, steam and data fog on soft cards
 │   ├── colorblind_safe.gdshader The colorblind-safe palette: a full-screen hue filter to the Okabe-Ito pair
 │   ├── sigstop_look.gdshader   SIGSTOP's look on your own screen: grey, the theme's teal, motion trails
 │   ├── viewmodel_metal.gdshader The viewmodels' dark metal: panel lines or hex cells, a faint neon rim
@@ -1565,6 +1666,7 @@ sigkill/
 │   ├── opener.tres             The opener's timeline and look (C38)
 │   ├── opener/                 The opener's six demo palettes: night, mocha, ember, frost, forest, latte
 │   ├── missions/               The campaign's seven missions as data (C35), login to kill_9, and the hidden test range
+│   ├── ruins/                  The ruins districts as data (C36): scheduler_breach, deep_dirs, cache_district
 │   └── room.tres               Default room code tuning, no relay URL
 ├── tests/
 │   ├── movement_test.gd        Headless movement test
@@ -1612,6 +1714,7 @@ sigkill/
 │   ├── opener_link_test.gd     Headless opener link test (C41): the agent's argv and prompt, the fallbacks, the beats never waiting, the copy, Esc
 │   ├── opener_end_test.gd      Headless opener end test (C42): the forge, the shot, the title, the score, voices, skipping, the first launch
 │   ├── mission_test.gd         Headless mission test (C35): the data, the handout, the saves, the runner, the menus, net refusal
+│   ├── ruins_test.gd           Headless ruins test (C36): the code, the sets, seeded plans, reachable points, builds, variety, registers, the arena
 │   ├── code_rain_vision_test.gd  Headless code-rain vision test: the meter to the frame, the silhouettes behind a wall, a match on 127.0.0.1
 │   ├── root_sudo_test.gd       Headless root and sudo test: the rules, 1.5x and free ammo on a real dummy, a match the host judges
 │   ├── spectate_top_test.gd    Headless spectate top test: the record, top's columns, Tab alone, a match on 127.0.0.1, protocol 8 (9 since C25)
@@ -1732,6 +1835,7 @@ Every one of these resources validates itself on load with `problems()`. If a va
 52. **Opener link test**, `tests/opener_link_test.gd`.
 53. **Opener end test**, `tests/opener_end_test.gd`.
 54. **Mission test**, `tests/mission_test.gd`.
+55. **Ruins test**, `tests/ruins_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -1815,6 +1919,7 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
   - **The menus.** Missions after Resume; the locked six redacted; Enter starting mission 1. Esc mid-mission: Resume, Restart and Quit, the clock held and the player shielded. Quit goes back to the Missions screen. The screen and the end screen whole at 960x540 and 1920x1080, with no scroll.
   - **Net modes.** A match starting mid-mission ends it; `begin()`, the menu entry and the screen all refuse in a match.
   - **Mission 1 played through.** The rail handed over and its three weapons kept, mission 2 open, the end screen, and the loadout screen's campaign line. Also the opener's score build stopping at once as the game quits.
+- **Ruins test** (C36). The kit's code reads nothing of your machine; the three sets are good, with no spoiler in their names; every plan is seeded and repeatable, with every point a mission uses named, on the floor and walkable to from the start (a 0.5 m walk grid, everything grown by a player's radius), and no cable lower than 4.6 m over the floor; every set builds headless with no error inside its budgets, a ray down from every point meeting its floor and a player standing at every point clear of everything; no two of about a hundred rack towers and no two of twelve monoliths alike; tron, cyberpunk, matrix and all set the shaders' mix, the fog, the sun and the weather, a shift tearing as it runs; every ruins colour 0.1 OKLab or more from the daemons' and ICE's; a set queued stands the arena in it and the next plain arena is as it was; mission 1 runs in its ruins; the arena's counter hidden in a mission and the cut from black after a reload.
 - **Arena art test.** The sources: the arena scene holds the dressing, the skyline, a sky and a depth fog; its gameplay nodes (every block, the spawn points, the targets) and the scenes and script that make collision are byte for byte as before A3 (by sha256); the art code calls nothing outside the game, no wall clock, nothing loaded or saved at run time; the dressing has no per-frame code and the skyline's only turns its nodes; the sky never runs on the clock. In the real arena: every block but the floor dressed, the signs in the font, the holograms; the dressing, the skyline and the whole arena inside their triangle and draw-call budgets; nothing under them can collide, and the arena's collision (every body, shape, place and spawn point) and the sight lines from every spawn point to every daemon equal literals taken from the commit before A3; every vertex a player can walk into within 0.3 m of a block, nothing over a top a player stands on below a jump's reach; every surface wearing one of the palette's shared arena materials; 120 frames rebuilding nothing while the ring and the drift turn; the palette's sky and fog in the environment; a reload taking the kept meshes.
 - **Bullet time test.** SIGSTOP's resource and numbers, nine bad values refused, the meter's rules alone. A scan proves the engine's time scale is written in two places only, both in `scripts/abilities/sigstop.gd` (a hold that returns first in a match, and a restore to exactly 1.0), that the ability runs, reads and signals nothing, and that the wire is protocol 4 with the host's meter check and zero spread on its word only. F moved to G, saved to a settings file in a temporary folder and read back; Ctrl+Alt+F refused. In the real arena: no start below a quarter of the meter; during SIGSTOP the time scale is exactly 0.3, a falling body, the physics time and the round clock run at 0.3x, while the player walks 6.30 m/s against its 7.00 (0.9x in real time) and its weapon cools at 0.9x, with zero recoil and nine straight pellets; the meter drains a second per real second and refills 0.2 s a second; and the time scale is exactly 1.0 again after SIGCONT's ease, after the meter runs out, at once after a death, a round's end, the Esc menu (mid-ease too), a stray change and the arena being freed. Over 127.0.0.1: hosting mid-SIGSTOP ends it before the match's first frame; the joiner's SIGSTOP, started and ended by the host's word, never moves the time scale off 1.0 or the host's clock off 1/60 s a frame, and both players walk at their normal speed; the host draws the joiner's pellets straight while it says SIGSTOP is on and from its generator again after; an R reload keeps the host's word; a forged empty-meter ask is dropped as "sigstop"; the host's own SIGSTOP slows nothing; a death empties the meter on both sides.
 
@@ -1875,7 +1980,7 @@ scripts/play.sh
 
 `scripts/play.sh` imports the project once, headless, the first time (a fresh clone has no import cache yet, about a minute), then launches it; after that it starts straight away, and so does `godot --path .`. It installs and changes nothing outside the project. Launch options go after `--` with either: `scripts/play.sh -- --demo`.
 
-The game opens on the boot screen. It names your AI, asks once before calling it (Y allows, N keeps it off), then moves on to the arena; Esc or Enter skips straight there. Five launch options, after `--`:
+The game opens on the boot screen. It names your AI, asks once before calling it (Y allows, N keeps it off), then moves on to the arena; Esc or Enter skips straight there. Seven launch options, after `--`:
 
 ```bash
 godot --path . -- --demo                         # demo data only: nothing read from your machine, no AI called
@@ -1883,6 +1988,8 @@ godot --path . -- --no-ai                        # the boot screen without any A
 godot --path . -- --join sigkill://join/ABC23P   # join a room by its invite link (or --join ABC23P)
 godot --path . -- --light-trails                 # light-trail mode on for this run's hosting (never saved)
 godot --path . -- --demo --opener                # play the opener (C38, demo data) from the Esc menu as the arena loads
+godot --path . -- --demo --mission=login         # start mission 1 as the arena loads (C35; only with --demo)
+godot --path . -- --demo --ruins=deep_dirs       # stand the arena in a ruins district, no mission (C36; only with --demo)
 ```
 
 Room codes need a relay: with none set (the default, as no relay is hosted yet), `--join` and K in the multiplayer panel answer "Online rooms aren't live yet. Use LAN join (address)." Use the LAN or tailnet steps below, or run a relay yourself ([docs/RELAY.md](docs/RELAY.md)) and set it in Settings, Multiplayer.
@@ -2065,7 +2172,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
 | Website, teaser and docs | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`, `bb82508`, `1087887`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com · D1 the PRD rewritten as the entire, current PRD (v0.3), this README's "Where we are", three community credits (`e1e658d`, `e79b9e5`) | 🟡 T1 footage and D1 done; the edit, the music and the site are the producer's |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
-| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9` forge, the first kill, the title slam, the score, the skip logic and the first launch, and the daemons' voices (`77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa`) · C35 the mission framework: missions as data, the runner, the objective HUD, the Missions screen, the weapon handout and the saves, mission 1 as a first cut (`a724aae`, `aee2e1c`) · then C36 cyberpunk ruins art kit · C37 first mission, `login`, end to end · missions 2 to 7 (player-facing first: the opener before the missions) | 🟡 C34 locked; the opener done (C38 to C42); C35 done; C36 next, then C37, Planned |
+| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9` forge, the first kill, the title slam, the score, the skip logic and the first launch, and the daemons' voices (`77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa`) · C35 the mission framework: missions as data, the runner, the objective HUD, the Missions screen, the weapon handout and the saves, mission 1 as a first cut (`a724aae`, `aee2e1c`) · C36 the cyberpunk ruins art kit: seeded districts of rack towers, monoliths, cables and signs, three registers that change the world, mission 1 standing in its ruins (`31ef6f0`, `0650508`, `63b99bc`) · then C37 first mission, `login`, end to end · missions 2 to 7 (player-facing first: the opener before the missions) | 🟡 C34 locked; the opener done (C38 to C42); C35 and C36 done; C37 next, Planned |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
@@ -2116,7 +2223,7 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 ## Screenshots
 
-Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31, C32, C33, C38, C39, C40, C41, C42 and C35). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
+Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31, C32, C33, C38, C39, C40, C41, C42, C35 and C36). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
 
 <p align="center">
   <img src="docs/media/a4-overview.png" alt="In-game overview from above after A4: the walled arena on its plinth, warm orange signs on the walls, the red swarm and the magenta-edged creatures glowing, gloss deck plates, dark megastructures with lit teal windows rising out of a teal haze all round"><br>
@@ -2276,7 +2383,37 @@ Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I
   <em>The title in a 960x540 window.</em>
 </p>
 
-**The mission framework (C35).** Mission 1, `login`, as a player meets it, on demo progress: Esc, Missions, Enter. It is a first cut on today's arena (C37 builds it for real). Your AI's lines are the story's written lines and nothing is called; the Auditor's and the log are the mission's own data.
+**The ruins (C36).** Mission 1, `login`, started as the Missions screen starts it: the arena reloads into its ruins, the scheduler's breach. The same view down the district in each register, then its scale, a fight in the rain, the mission running and the register shift at the vent. Every sign and folder name is demo text from the set's data.
+
+<p align="center">
+  <img src="docs/media/c36-sequence.png" alt="Six frames in a grid of three by two: the same view down the ruins in Tron, teal edges on leaning rack towers and a cracked glowing floor; in cyberpunk, dark towers in a violet haze, rain, warm amber windows and magenta and amber neon held in the wet floor; in Matrix, dark towers streaming green code; the district from high above in Tron, a crater of rack towers plunging into the abyss round a glowing floor, debris drifting; a fight in the rain, rogue.d crimson and a zombie in amber against an upright amber CRONWORX sign and a monolith reading BACKUP 2019; mission 1 running in the Tron ruins with its panel, the log reader and the vent's marker"><br>
+  <em>Tron, cyberpunk and Matrix from the same spot; the district's scale; a fight; mission 1 running in its ruins.</em>
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c36-tron.png" alt="The ruins in Tron from mission 1's start: leaning towers of server racks with bright teal edges and rows of mint status lights, a black glass monolith reading BUILD-OLD with letters missing, cables strung overhead, the floor's cell grid glowing teal through a crazed network of cracks; the mission panel top left, Hold the floor for one timeslice"><br><sub>Tron: the clean grid, its lights alive.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c36-cyberpunk.png" alt="The same view in cyberpunk: the towers dark against a violet haze, their edges a dim indigo, rain falling, a third of the windows warm amber, an upright neon sign down the street, pools of magenta and amber light in the wet floor"><br><sub>Cyberpunk: rain, haze, dead neon in the puddles.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c36-matrix.png" alt="The same view in Matrix: dark towers with green code streaming down every face, glyphs trickling over the floor and falling through the air, the monolith's name in green"><br><sub>Matrix: dark, the code carrying the light.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c36-wide-tron.png" alt="The district from high off its corner in Tron: a ring of teal-edged rack towers rising out of the abyss round the district's glowing floor, giants far out in the void, broken slabs and rack modules drifting"><br><sub>Its scale: the district in the abyss, towers dwarfing the floor.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c36-wide.png" alt="The same district from high above in cyberpunk: dark towers with indigo edges round a floor glowing violet with amber puddles, giants with warm windows standing in the violet fog, rain"><br><sub>The same, in the rain.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c36-vista.png" alt="From an overlook at the district's edge: a bent rail, and past it rack towers rising out of the abyss in the rain, lit windows, the haze below"><br><sub>An overlook: out over the abyss.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c36-fight.png" alt="A fight in cyberpunk: the cannon firing a green beam at rogue.d, crimson, rearing on the plaza; a zombie in amber to the left; behind them an upright amber neon sign reading CRONWORX, another upright sign, a monolith with magenta cracks reading BACKUP 2019; rain, and magenta and amber light in the wet floor"><br><sub>Daemons against the ruins: still readable in the neon.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c36-mission.png" alt="Mission 1 in the Tron ruins: the panel with two objectives done and Follow the spawn trail to the vent, spawn vent 31 m; kill -9 handed to you and the Auditor's amber line; the log reader at the right, cat migrate.sh; a zombie in amber and the runaway's magenta swarm on the glowing floor, an upright sign between the towers"><br><sub>Mission 1 running in its ruins, with its HUD.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c36-shift.png" alt="The register shift at the vent: the towers torn by bands of teal and magenta mid-change from Tron to cyberpunk, REGISTER SHIFT tron >> cyberpunk, the panel's chip now CYBERPUNK, exit 0 every objective done"><br><sub>The shift at the vent tears the world itself.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c36-960.png" alt="Mission 1 in the ruins in a 960 by 540 window: the panel, the log reader, the daemons, the towers"><br><sub>In a 960x540 window.</sub></td>
+  </tr>
+</table>
+
+**The mission framework (C35).** Mission 1, `login`, as a player meets it, on demo progress: Esc, Missions, Enter. It was a first cut on that day's arena (since C36 it stands in its ruins; C37 builds it for real). Your AI's lines are the story's written lines and nothing is called; the Auditor's and the log are the mission's own data.
 
 <p align="center">
   <img src="docs/media/c35-sequence.png" alt="Six frames in a grid of three by two: the Missions screen, mission 1 login next with START lit and the six after it locked behind red redaction bars; the mission card, MISSION 01 and login in large mint letters across a dark band over the arena; the fight, the objective panel top left with one of two pips lit for rogue.d and your AI's line at the bottom; the objective HUD with the vent's pillar of light rising over the lair, the terminal's amber audit line and the log reader at the right; the end screen, exit 0, the time, kills, logs and tries, and the three weapons handed to you as chips; the failed screen, exit 137 in red, derezzed by rogue.d, Retry lit"><br>

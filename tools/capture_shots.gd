@@ -2499,7 +2499,7 @@ func _c35() -> void:
 	await _c35_save(sheet, "c35-fight")
 	rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
 	await _frames(20)
-	var at: Vector3 = runner.def.log_of("temporary")["at"]
+	var at: Vector3 = runner.log_place("temporary")
 	await _stand(C35_LOG_FROM, at + Vector3(0, 0.25, 0))
 	await _c35_save(sheet, "c35-terminal")
 	_player.global_position = at
@@ -2512,7 +2512,7 @@ func _c35() -> void:
 	await _c35_save(sheet, "c35-log")
 	await _stand(C35_VENT_FROM, _main.to_global(C35_VENT_LOOK))
 	await _c35_save(sheet, "c35-hud")
-	_player.global_position = runner.def.objectives[3]["at"]
+	_player.global_position = runner.reach_place(3)
 	await _frames(10)
 	await _c35_save(sheet, "c35-shift")
 	await _frames(150)
