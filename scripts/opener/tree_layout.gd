@@ -16,9 +16,10 @@ extends RefCounted
 ## tower. Towers with no name fill the rows behind and megastructures the dark beyond, and streams of code light
 ## pour down the shaft onto the terraces, so the city is never a few boxes in a void.
 ##
-## Caps, whatever it is handed: ROOMS folders become towers (the shallow ones first), LABELS of them are named, at
-## most PIECES boxes in all, CABLES cables and STREAMS streams; a name is cleaned and cut as the terminal's are
-## (OpenerData.clean()), so it can never be more than plain text.
+## Caps, whatever it is handed: it looks at the first MOST_GIVEN folders only (C39's reader hands over at most 128),
+## ROOMS of them become towers (the shallow ones first), LABELS are named, at most PIECES boxes in all, CABLES cables
+## and STREAMS streams; a name is cleaned and cut as the terminal's are (OpenerData.clean()), so it can never be more
+## than plain text.
 
 ## The terraces, top down: the radius of each one's front row of towers, its height, and its tallest tower.
 const RING_R := [150.0, 112.0, 82.0, 58.0]
@@ -54,6 +55,7 @@ const SKYLINE_SPREAD := 150.0
 const FILLERS := [44, 36, 30, 24]
 
 ## The caps.
+const MOST_GIVEN := 512
 const ROOMS := 96
 const LABELS := 40
 const PIECES := 1024
@@ -101,7 +103,7 @@ var cables: Array[Dictionary] = []
 var streams: Array[Dictionary] = []
 ## The pit's folder ("" when there is no node_modules), and the label over it.
 var pit_path := ""
-## Folders given, and how many were left out by the caps.
+## Folders given, and how many of them are not in the city (past MOST_GIVEN or ROOMS, empty or repeated names).
 var given := 0
 var left_out := 0
 var roll_seed := SEED
@@ -143,8 +145,9 @@ static func floor_under(radius: float) -> float:
 	return PIT_Y - PIT_DEEP * 0.5
 
 
-func _build(folders: PackedStringArray, counts: PackedInt32Array) -> void:
-	given = folders.size()
+func _build(all_folders: PackedStringArray, counts: PackedInt32Array) -> void:
+	given = all_folders.size()
+	var folders := all_folders.slice(0, MOST_GIVEN)
 	var names := ""
 	for path in folders:
 		names += path + "\n"
@@ -182,7 +185,7 @@ func _choose(folders: PackedStringArray, counts: PackedInt32Array) -> Array[Dict
 	var kept := {}
 	for entry in by_depth.slice(0, ROOMS):
 		kept[entry["path"]] = entry
-	left_out = all.size() - kept.size()
+	left_out = given - kept.size()
 	# Each kept folder under its nearest kept ancestor (an orphan, whose ancestors are all missing, is a top-level one).
 	var children := {"": []}
 	for entry in all:
@@ -311,7 +314,7 @@ func _room(entry: Dictionary, _weight: Dictionary) -> Dictionary:
 		kind = Kind.MAZE
 		if pit_path == "":
 			pit_path = entry["path"]
-	height = minf(height, RING_TALLEST[depth])
+	height = minf(height, minf(RING_TALLEST[depth], headroom(depth)))
 	return {"path": entry["path"], "name": OpenerData.clean(entry["base"], LABEL_LONGEST) + "/", "depth": depth, "count": count, "kind": kind, "angle": entry["angle"], "radius": RING_R[depth], "width": width, "height": height, "base": RING_Y[depth], "top": RING_Y[depth] + height, "lit": lit, "seed": h, "parent": -1, "label": -1}
 
 
@@ -338,11 +341,20 @@ func _tower_pieces(room: Dictionary) -> void:
 		var centre := on_ring(angle, room["radius"] + depth_m * 0.5, y + tall * 0.5)
 		_piece(centre, Vector3(w, tall, d), facing_in(angle), room["lit"], room["kind"], h + i, FLAG_ROOF if i == tiers - 1 else 0)
 		y += tall
-	if (h >> 12) % 3 == 0 and room["kind"] != Kind.HIDDEN:
-		var spire: float = room["height"] * 0.22
+	# A spire now and then, never up through the terrace above (or the ceiling).
+	var room_left := headroom(room["depth"]) - (y - float(room["base"]))
+	if (h >> 12) % 3 == 0 and room["kind"] != Kind.HIDDEN and room_left > 4.0:
+		var spire: float = minf(room["height"] * 0.22, room_left)
 		_piece(on_ring(angle, room["radius"] + depth_m * 0.5, y + spire * 0.5), Vector3(0.7, spire, 0.7), facing_in(angle), 0.0, room["kind"], h + 7, FLAG_SPIRE)
 		y += spire
 	room["top"] = y
+
+
+## How tall a tower on terrace `depth` may stand, spire and all: under the terrace above, or the ceiling.
+static func headroom(depth: int) -> float:
+	if depth == 0:
+		return CEILING_Y - 30.0 - RING_Y[0]
+	return RING_Y[depth - 1] - RING_Y[depth] - 8.0
 
 
 func _piece(at: Vector3, size: Vector3, yaw: float, lit: float, kind: int, roll: int, flags: int) -> void:
