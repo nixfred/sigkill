@@ -248,7 +248,7 @@ func _draw_whisper(view: Vector2) -> void:
 	for i in WHISPER.length():
 		var ch := WHISPER[i]
 		var wobble := Vector2(sin(s * 23.0 + i * 1.9), sin(s * 17.0 + i * 2.7)) * 1.5 * _scale
-		_text(Vector2(x, view.y * 0.6) + wobble, ch, size, Color(0.78, 0.86, 0.9, a * 0.85))
+		_text(Vector2(x, view.y * 0.46) + wobble, ch, size, Color(0.78, 0.86, 0.9, a * 0.85))
 		x += _font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + gap
 
 
@@ -366,8 +366,8 @@ func _draw_embers(view: Vector2, s: float, fade: float) -> void:
 		var speed := 0.03 + 0.05 * absf(sin(i * 4.13))
 		var y := view.y * (1.05 - fposmod(absf(sin(i * 2.71)) + maxf(s, 0.0) * speed, 1.1))
 		var x := view.x * absf(sin(i * 7.37)) + sin(s * 0.9 + i) * 12.0 * _scale
-		var size := (2.0 + 4.0 * absf(sin(i * 1.91))) * _scale
-		var a := fade * (0.35 + 0.35 * sin(s * 6.0 + i * 2.3)) * clampf(y / view.y * 1.4, 0.0, 1.0)
+		var size := (3.5 + 6.0 * absf(sin(i * 1.91))) * _scale
+		var a := fade * (0.55 + 0.4 * sin(s * 6.0 + i * 2.3)) * clampf(y / view.y * 1.4, 0.0, 1.0)
 		draw_rect(Rect2(x, y, size, size), Color(Palette.CRIMSON if i % 3 == 0 else Palette.TEAL, a))
 
 

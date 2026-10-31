@@ -383,7 +383,7 @@ const C41_FACE := Rect2i(760, 150, 400, 360)
 ## title again at 960x540, C42_SMALL_AFTER after its shot.
 const C42_BEFORE := [["c42-type", 95.75], ["c42-charge", 96.7], ["c42-stream", 97.75], ["c42-forged", 99.32], ["c42-dare", 104.55]]
 const C42_PRESS := 104.62
-const C42_AFTER := [["c42-shot", 0.11], ["c42-derezz", 0.62], ["c42-feed", 1.45], ["c42-whisper", 3.0], ["c42-slam", 5.27], ["c42-title", 6.95]]
+const C42_AFTER := [["c42-shot", 0.07], ["c42-derezz", 0.62], ["c42-feed", 1.45], ["c42-whisper", 3.0], ["c42-slam", 5.27], ["c42-title", 6.95]]
 const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-shot", "c42-derezz", "c42-feed", "c42-slam", "c42-title"]
 const C42_SHEET_COLUMNS := 3
 const C42_PAUSE_AT := 98.1

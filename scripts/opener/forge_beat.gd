@@ -16,7 +16,8 @@ extends Node3D
 ##
 ## The copy's line, "you won't." (STORY.md's words), types itself in its crimson in the air by its head, a cursor after
 ## it, while its face's cursor races. From fire_from the player fires (the opener's input); the shot is a beam of the
-## rail's white-blue light from the muzzle into the copy's heart, the rifle kicking back. The copy flares and shudders;
+## rail's white-blue light from the muzzle into the copy's heart, the rifle kicking back; it burns in for BURN_S, then
+## the copy flares and shudders;
 ## on the next beat it bursts: its own parts flung apart (DaemonArt.shatter, as every daemon dies) with a storm of
 ## crimson and teal voxels in slow, heavy arcs, falling and fading on the floor (the derezz: its memory returned to the
 ## machine). Nothing here reads anything; the rifle's model is the game's own, built from res://.
@@ -62,9 +63,10 @@ const BURST_SIZE := Vector2(0.045, 0.15)
 const BURST_SPEED := Vector2(1.6, 8.5)
 const GRAVITY := 7.5
 const BURST_LIFE := Vector2(0.9, 2.4)
-## The beam: how long it burns, its width.
+## The beam: how long it burns, its width; how long it burns into the heart before the copy flares.
 const BEAM_S := 0.42
 const BEAM_W := 0.16
+const BURN_S := 0.1
 ## The rifle's glow here, a share of its own: the machine's glow is tuned for its dark, and the rifle's full charge would
 ## bloom into one white blur.
 const RIFLE_GLOW := 0.32
@@ -99,6 +101,7 @@ var _burst_size := PackedFloat32Array()
 var _burst_axis := PackedVector3Array()
 var _shot_at := -1.0
 var _hit := false
+var _flashed := false
 var _shattered := false
 var _word_place := Transform3D.IDENTITY
 var _rng := RandomNumberGenerator.new()
@@ -457,6 +460,7 @@ func _step_rifle(elapsed: float) -> void:
 	if _shot_at >= 0.0 and elapsed >= _shot_at:
 		charge = 1.0 - smoothstep(_shot_at, _shot_at + 0.15, elapsed)
 	_rifle.set_charge(charge)
+	_dim_rifle()
 	# Held: rising into the hands as it prints, the kick of the drop, breathing; the shot's recoil.
 	var place := home + Vector3(0.0, -0.08 * (1.0 - smoothstep(print_from(), drop_at(), elapsed)), 0.0)
 	var turn := Vector3.ZERO
@@ -472,6 +476,16 @@ func _step_rifle(elapsed: float) -> void:
 		turn.x += 0.16 * k
 	_rifle.transform = Transform3D(Basis.from_euler(turn), place)
 	_rifle.idle(0.016)
+
+
+## The rifle's own lit pieces (its coils, which light from the weapon's own glow, not the trim's) at RIFLE_GLOW of what it
+## gives them: set again after each charge, which sets them from scratch.
+func _dim_rifle() -> void:
+	for node in _rifle.get_children():
+		if node is MeshInstance3D and String(node.name).begins_with("Piece"):
+			var mat := (node as MeshInstance3D).material_override as StandardMaterial3D
+			if mat != null:
+				mat.emission_energy_multiplier *= RIFLE_GLOW
 
 
 # --- The copy's line. ---
@@ -573,10 +587,12 @@ func _step_shot(elapsed: float, camera: Transform3D) -> void:
 	_heart_light.position = target + Vector3(0.0, 0.2, 0.0) - PitBeat.way_out() * 0.6
 	_heart_light.light_energy = 9.0 * exp(-maxf(s - shatter_at() + _shot_at, 0.0) * 3.0) * minf(s * 20.0, 1.0)
 	var copy := _pit.copy()
-	if copy != null and not _hit and s >= 0.03:
-		_hit = true
+	if not _flashed:
+		_flashed = true
 		if _rifle != null:
 			ParticleFx.fire_muzzle(_rifle.muzzle)
+	if copy != null and not _hit and s >= BURN_S:
+		_hit = true
 		copy.react(target, (target - muzzle).normalized())
 		copy.set_unstable(0.55)
 	if copy != null and not _shattered and elapsed >= shatter_at():

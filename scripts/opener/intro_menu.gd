@@ -32,6 +32,7 @@ const RING_W := 3.5
 const EDGE := 36.0
 
 var _panel: PanelContainer
+var _center: CenterContainer
 var _resume: Button
 var _skip: Button
 var _toggle: CheckButton
@@ -110,8 +111,8 @@ func step(delta: float) -> void:
 	_hint_left = maxf(_hint_left - delta, 0.0)
 	_scale = maxf(get_viewport_rect().size.y / 1080.0, 0.5)
 	var k := clampf(get_viewport_rect().size.y / 720.0, 1.0, 2.0)
-	_panel.pivot_offset = _panel.size * 0.5
-	_panel.scale = Vector2(k, k)
+	_center.pivot_offset = _center.size * 0.5
+	_center.scale = Vector2(k, k)
 	_hint.visible = _hint_left > 0.0 and not showing()
 	_hint.modulate.a = clampf(_hint_left / 0.4, 0.0, 1.0)
 	_hint.add_theme_font_size_override("font_size", roundi(FONT * _scale * 1.2))
@@ -145,6 +146,7 @@ func _build() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_center = center
 	_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(Palette.VOID, 0.9)

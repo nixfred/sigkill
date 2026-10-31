@@ -33,6 +33,7 @@ const ICON := 44
 const DESIGN_H := 720.0
 
 var _panel: PanelContainer
+var _center: CenterContainer
 var _no: Button
 var _yes: Button
 var _done := true
@@ -56,11 +57,12 @@ func _ready() -> void:
 	_fit()
 
 
-## Its size for the window's: 720 lines as drawn, larger windows larger.
+## Its size for the window's: 720 lines as drawn, larger windows larger (the centring container scaled about the
+## window's middle; a container sets its own children's scale back).
 func _fit() -> void:
 	var k := clampf(get_viewport_rect().size.y / DESIGN_H, 1.0, 2.0)
-	_panel.pivot_offset = _panel.size * 0.5
-	_panel.scale = Vector2(k, k)
+	_center.pivot_offset = _center.size * 0.5
+	_center.scale = Vector2(k, k)
 
 
 ## Up, the arena's look dimmed behind it, No focused (the highlighted default).
@@ -143,6 +145,8 @@ func _build() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_center = center
+	center.resized.connect(_fit)
 	_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(Palette.VOID, 0.94)
@@ -155,7 +159,6 @@ func _build() -> void:
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 12)
 	_panel.add_child(stack)
-	_panel.resized.connect(_fit)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 14)
 	stack.add_child(head)
