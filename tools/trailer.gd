@@ -45,18 +45,18 @@ const SUPERSAMPLE := 2.0
 const SHOTS := [
 	{"id": "01a-crash", "s": 4.1, "about": "The arena mid-fight, the cannon on the daemons; then the opener seizes the frame: it freezes, tears, glitches apart and cuts to black."},
 	{"id": "01b-thanks", "s": 3.0, "about": "The fake terminal: the prompt has typed itself (demo data: user@workstation), then: thanks for running me."},
-	{"id": "01c-install", "s": 4.6, "about": "The terminal types, with a typo taken back: you never read the install script, did you?"},
-	{"id": "01d-since", "s": 4.6, "about": "The folders scroll by (invented names), the uptime ticks, and it types: I've been in here since you booted."},
+	{"id": "01c-install", "s": 4.0, "about": "The terminal types, with a typo taken back: you never read the install script, did you?"},
+	{"id": "01d-since", "s": 4.2, "about": "The folders scroll by (invented names), the uptime ticks, and it types: I've been in here since you booted."},
 	{"id": "01e-reveal", "s": 3.4, "about": "The shrink-away: the camera pulls back and the terminal becomes one lit screen on a monolith in a city of your folders."},
 	{"id": "01f-fall", "s": 3.2, "about": "The fall into the directory tree: past the towers of the top terrace and their names, down toward the node_modules pit."},
-	{"id": "02a-skyline", "s": 4.0, "about": "Fly-through: from the dark megastructures of the skyline in over the arena's wall, its signs and code rain below."},
-	{"id": "02b-trails", "s": 4.0, "about": "Fly-through, low over the grid: three light trails racing across the floor, code rain pouring down the walls behind."},
-	{"id": "03a-rogue", "s": 3.2, "about": "rogue.d up close: the mantis-scorpion stalks in, rears in its tell and lunges, orbited low."},
-	{"id": "03b-zombie", "s": 3.0, "about": "A zombie process charges its cannon, bands lighting, and fires a glitch bolt past the camera."},
+	{"id": "02a-skyline", "s": 3.6, "about": "Fly-through: from the dark megastructures of the skyline in over the arena's wall, its signs and code rain below."},
+	{"id": "02b-trails", "s": 3.6, "about": "Fly-through, low over the grid: three light trails racing across the floor, code rain pouring down the walls behind."},
+	{"id": "03a-rogue", "s": 3.0, "about": "rogue.d up close: the mantis-scorpion stalks in, rears in its tell and lunges, orbited low."},
+	{"id": "03b-zombie", "s": 2.8, "about": "A zombie process charges its cannon, bands lighting, and fires a glitch bolt past the camera."},
 	{"id": "03c-runaway", "s": 2.8, "about": "The runaway swarm: drones whirling round their core as it hunts, the camera circling with them."},
 	{"id": "03d-pack", "s": 3.2, "about": "No two alike: a pack of seeded variants and an elite rogue.d charge the camera, tells flaring, attacks landing."},
 	{"id": "04a-ice", "s": 3.4, "about": "ICE: a white ICE wall seals the corridor; the cannon cracks it and a brute ICEbreaker smashes through it."},
-	{"id": "04b-black-ice", "s": 4.0, "about": "Black ICE: the arena's lights die and the machine's last defence grows out of the floor; the cannon only flashes it."},
+	{"id": "04b-black-ice", "s": 3.6, "about": "Black ICE: the arena's lights low, the machine's last defence grows out of the floor, spikes and all, the camera low and pushing in."},
 	{"id": "05-01-cannon", "s": 1.5, "about": "Weapon 1, the terminal cannon: rapid beams, daemons derezzing."},
 	{"id": "05-02-sigterm", "s": 1.5, "about": "Weapon 2, SIGTERM: violet bolts, a kill each."},
 	{"id": "05-03-rail", "s": 2.8, "about": "Weapon 3, the SIGKILL rail, the ult: its coils charge and one beam goes through a line of daemons."},
@@ -158,6 +158,7 @@ func _run() -> void:
 	GameSettings.current().set_value("gameplay", "practice", true)
 	_hide_hud()
 	_park_all()
+	process_frame.connect(_hide_tags)
 	await _frames(90)  # shaders compiled, the code rain running
 	var method := "_shot_" + _id.replace("-", "_")
 	await call(method)
@@ -233,6 +234,14 @@ func _fight(on: bool) -> void:
 
 
 # --- The frame, the HUD, the camera ------------------------------------------------------------------------------
+
+## The daemons' floating names: clutter on screen (the edit can title them). Hidden every frame before it is drawn, as
+## a daemon shows its own again when it comes back.
+func _hide_tags() -> void:
+	if _targets != null and is_instance_valid(_targets):
+		for dummy in _targets.get_children():
+			dummy.get("_tag").visible = false
+
 
 func _hide_hud() -> void:
 	var hud: Node = _main.get_node("Hud")
@@ -328,9 +337,6 @@ func _tick(move: Vector2 = Vector2.ZERO, fire: bool = false) -> void:
 		_player.drive_input(move, false, false, fire)
 	if _guard and _life != null and _life.alive() and _life.health() < 60.0:
 		_life.combat.states[SoloLife.ME]["health"] = _life.max_health()
-	if _targets != null:
-		for dummy in _targets.get_children():
-			dummy.get("_tag").visible = false  # the floating names: clutter on screen, the edit can title them
 	await physics_frame
 	if _rolled:
 		_clock += 1.0 / 60.0
@@ -455,8 +461,10 @@ func _opener_to(opener: Opener, seconds: float) -> void:
 
 
 ## An opener shot: the arena standing by, the opener from the menu, kept from its clock at `from` to `to`, in the
-## demo palette `palette`.
-func _opener_shot(from: float, to: float, palette: String) -> void:
+## demo palette `palette`. With `push` ([the screen point to hold, where it starts and ends on screen, the start and
+## end scale]), a slow push-in on the terminal: its layer scaled toward the line being typed, a camera move on the
+## real screen (nothing redrawn); only while the terminal is the 2D screen, never across the 3D swap.
+func _opener_shot(from: float, to: float, palette: String, push: Array = []) -> void:
 	await _stand(Vector3(0.8, 0.95, 14.4), Vector3(0.0, 1.0, 8.8))
 	var opener := _open_opener()
 	if opener == null:
@@ -465,7 +473,13 @@ func _opener_shot(from: float, to: float, palette: String) -> void:
 	opener.set_palette(OpenerPalette.named(palette))
 	await _opener_to(opener, from)
 	_roll()
-	await _opener_to(opener, to)
+	while is_instance_valid(opener) and opener.playing() and opener.elapsed() < to:
+		if not push.is_empty():
+			var u := ease_both((opener.elapsed() - from) / (to - from))
+			var scale: float = lerpf(push[3], push[4], u)
+			var held: Vector2 = push[1].lerp(push[2], u)
+			opener.transform = Transform2D(0.0, Vector2(scale, scale), 0.0, held - push[0] * scale)
+		await _tick()
 
 
 ## The arena mid-fight, the cannon on a rogue.d, then the opener seizes the frame, glitches it apart and cuts to black.
@@ -491,15 +505,15 @@ func _shot_01a_crash() -> void:
 
 
 func _shot_01b_thanks() -> void:
-	await _opener_shot(14.9, 17.9, "night")
+	await _opener_shot(14.9, 17.9, "night", [Vector2(12.0, 22.0), Vector2(150.0, 300.0), Vector2(110.0, 250.0), 1.9, 2.3])
 
 
 func _shot_01c_install() -> void:
-	await _opener_shot(18.35, 22.95, "night")
+	await _opener_shot(18.95, 22.95, "night", [Vector2(12.0, 30.0), Vector2(150.0, 300.0), Vector2(100.0, 260.0), 1.9, 2.25])
 
 
 func _shot_01d_since() -> void:
-	await _opener_shot(25.9, 30.5, "night")
+	await _opener_shot(26.3, 30.5, "night", [Vector2(12.0, 940.0), Vector2(60.0, 980.0), Vector2(110.0, 880.0), 1.15, 1.5])
 
 
 func _shot_01e_reveal() -> void:
@@ -715,17 +729,20 @@ func _shot_04b_black_ice() -> void:
 		for i in 3:
 			ice.hunter.hit(1000.0, Vector3.INF, Vector3.ZERO, "")
 	var spot: Vector3 = IceDirector.BLACK_SPOTS[3]
-	var me := spot + Vector3(2.6, 0.0, 7.0)
-	await _draw(0, me + Vector3.UP * 0.95, spot + Vector3.UP * 1.6)
+	var me := spot + Vector3(3.0, 0.0, 7.5)
+	await _stand(me + Vector3.UP * 0.95, spot + Vector3.UP * 2.0)
 	var b := ice.summon_black(3)
-	while b.phase_t < ice.black_tuning.tell_s - float(_shot["s"]) + 0.3:
+	while b.phase_t < ice.black_tuning.tell_s - float(_shot["s"]) + 0.4:
 		await _tick()
 	_roll()
+	var path := [spot + Vector3(2.8, 1.3, 5.4), spot + Vector3(2.0, 0.9, 4.2), spot + Vector3(1.3, 0.6, 3.2)]
+	var look := [spot + Vector3(0.0, 0.8, 0.0), spot + Vector3(0.0, 1.6, 0.0), spot + Vector3(0.0, 2.4, 0.0)]
+	_camera(path[0], look[0], 56.0)
 	var n := _length()
 	for i in n:
-		var u := float(i) / (n - 1)
-		_look_at(spot + Vector3.UP * lerpf(1.2, 2.6, ease_both(u)) + Vector3(sin(i * 0.05) * 0.25, 0.0, 0.0), 0.15)
-		await _tick(Vector2(-0.25, 0.3), u > 0.35 and i % 7 == 0)
+		var u := ease_both(float(i) / (n - 1))
+		_aim_camera(spline(path, u), spline(look, u))
+		await _tick()
 
 
 # --- The weapons --------------------------------------------------------------------------------------------------
@@ -786,7 +803,7 @@ func _shot_05_02_sigterm() -> void:
 func _shot_05_03_rail() -> void:
 	await _weapon_start(2, Vector3(0.4, 1.0, 8.0))
 	var first := _crowd(["E1", "R1", "Z1"], [Vector3(0.4, 0.0, 9.0), Vector3(0.3, 0.0, 6.0), Vector3(0.2, 0.0, 3.2)])
-	var second := _crowd(["R2", "R3", "S1"], [Vector3(-1.8, 0.0, 9.4), Vector3(-3.2, 0.0, 6.6), Vector3(-4.6, 1.0, 3.8)])
+	var second := _crowd(["R2", "R3", "S1"], [Vector3(-2.2, 0.0, 5.5), Vector3(-3.6, 0.0, 2.8), Vector3(-5.0, 1.0, 0.2)])
 	_fight(true)
 	_player.inventory.add_meter(_player.inventory.meter_full())
 	await _frames(12)
@@ -801,8 +818,8 @@ func _shot_05_03_rail() -> void:
 		var fire := false
 		if t != null:
 			_look_at(_middle(t), 0.25)
-			fire = _on_target(_middle(t), 0.35) and (i > 8 and not aim_second or i > 92)
-		await _tick(Vector2(0.0, 0.2), fire)
+			fire = _on_target(_middle(t), 0.35) and (i > 8 and not aim_second or i > 84)
+		await _tick(Vector2.ZERO, fire)
 
 
 ## The fork bomb: thrown into a crowd, forking, blasts everywhere; a second one after it.

@@ -12,7 +12,8 @@
 # What it leaves in <work-dir>:
 #   out/<id>.mp4      the clip: H.264 1920x1080 at 60 fps, the game's own sound as AAC 48 kHz stereo
 #   out/shots.json    every clip in the running order: its file, where it starts and ends in that order,
-#                     its length, a line on what is in it and its loudest moments (from its own sound)
+#                     its length, a line on what is in it, its loudest moments (from its own sound), its
+#                     kills and the commit it was rendered from
 #   out/sheets/<id>.png  eight frames of the clip side by side, to judge it at a glance
 #   movies/<id>.avi   the raw take, Movie Maker's own (Motion JPEG and PCM), warm-up included
 #   logs/<id>.log     Godot's output for the take
@@ -118,7 +119,7 @@ take() {
 	fi
 	local meta="$run/data/godot/app_userdata/SIGKILL/trailer/$id.json"
 	[ -f "$meta" ] || { echo "$id: the take wrote no $id.json" >&2; return 1; }
-	cp "$meta" "$work/out/.$id.take.json"
+	jq --arg commit "$commit" '. + {commit: $commit}' "$meta" > "$work/out/.$id.take.json" || { echo "$id: bad $id.json" >&2; return 1; }
 	# 48 kHz at 60 fps: 800 samples a frame.
 	ffmpeg -v error -y -i "$movie" \
 		-vf "trim=start_frame=$roll:end_frame=$cut,setpts=PTS-STARTPTS" \
@@ -129,14 +130,14 @@ take() {
 	local format
 	format=$(ffprobe -v error -show_entries stream=codec_type,width,height,r_frame_rate -of csv=p=0 "$work/out/$id.mp4" | sort | tr '\n' ' ')
 	[ "$format" = "audio,0/0 video,1920,1080,60/1 " ] || { echo "$id: the clip is not 1920x1080 at 60 fps with sound: $format" >&2; return 1; }
-	# The loudest moments: the sound's peak in every frame's 800 samples, the top six at least 0.3 s apart
-	# and within 24 dB of the loudest.
+	# The loudest moments: the sound's peak in every frame's 800 samples, the top six at least 0.3 s apart,
+	# within 24 dB of the loudest and louder than -30 dBFS (the arena's hum alone is quieter: no moments).
 	ffmpeg -v error -i "$work/out/$id.mp4" -vn \
 		-af "asetnsamples=n=800:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.Peak_level:file=-" \
 		-f null - 2>/dev/null \
 		| awk '/pts_time:/ { split($0, a, "pts_time:"); t = a[2] + 0 } /Peak_level=/ { split($0, b, "="); v = b[2]; if (v != "-inf") print t, v + 0 }' \
 		| sort -k2,2gr \
-		| awk 'NR == 1 { top = $2 } { if ($2 < top - 24) exit; ok = 1; for (i = 1; i <= n; i++) if ((ts[i] - $1) ^ 2 < 0.09) ok = 0; if (ok) { n++; ts[n] = $1; printf "{\"t\":%.3f,\"peak_db\":%.1f}\n", $1, $2 } if (n == 6) exit }' \
+		| awk 'NR == 1 { top = $2 } { if ($2 < top - 24 || $2 < -30) exit; ok = 1; for (i = 1; i <= n; i++) if ((ts[i] - $1) ^ 2 < 0.09) ok = 0; if (ok) { n++; ts[n] = $1; printf "{\"t\":%.3f,\"peak_db\":%.1f}\n", $1, $2 } if (n == 6) exit }' \
 		| jq -s 'sort_by(.t)' > "$work/out/.$id.peaks.json"
 	local frames
 	frames=$(ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 "$work/out/$id.mp4")
@@ -158,12 +159,12 @@ done
 			--argjson peaks "$(cat "$work/out/.$id.peaks.json" 2>/dev/null || echo '[]')" \
 			--arg duration "$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$work/out/$id.mp4")" \
 			--arg bytes "$(stat -c %s "$work/out/$id.mp4")" \
-			'{file: $file, id: $take.id, description: $take.description, duration: ($duration | tonumber), bytes: ($bytes | tonumber),
+			'{file: $file, id: $take.id, description: $take.description, commit: $take.commit, duration: ($duration | tonumber), bytes: ($bytes | tonumber),
 			  loudest: [$peaks[] | . as $p | $p + {sounds: [$take.sounds[] | select(.t >= $p.t - 0.12 and .t <= $p.t + 0.02) | .name] | unique}],
 			  events: $take.events}'
 	done
 } | jq -s 'reduce .[] as $c ({at: 0, clips: []}; .clips += [$c + {start: (.at * 1000 | round / 1000), end: ((.at + $c.duration) * 1000 | round / 1000)}] | .at += $c.duration)
-	| {about: "SIGKILL teaser footage (T1): real in-game clips on demo data, rendered by tools/trailer_capture.sh. start and end place each clip in the running order; loudest are the peaks of its own sound (seconds into the clip) with the sounds that started just before.", commit: $commit, fps: 60, width: 1920, height: 1080, total: (.at * 1000 | round / 1000), clips: .clips}' \
-	--arg commit "$commit" > "$work/out/shots.json"
+	| {about: "SIGKILL teaser footage (T1): real in-game clips on demo data, rendered by tools/trailer_capture.sh. start and end place each clip in the running order; loudest are the peaks of its own sound (seconds into the clip, louder than -30 dBFS) with the sounds that started just before; commit is the repository commit each clip was rendered from.", fps: 60, width: 1920, height: 1080, total: (.at * 1000 | round / 1000), clips: .clips}' \
+	> "$work/out/shots.json"
 echo "trailer: $(jq '.clips | length' "$work/out/shots.json") clips, $(jq .total "$work/out/shots.json") s, in $work/out (shots.json); $failed failed"
 [ "$failed" -eq 0 ]
