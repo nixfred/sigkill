@@ -85,7 +85,7 @@ Lots of guns. Every weapon is a signal or shell command made physical, and every
 | 4, or G to throw without drawing | Fork bomb | Splits 1, 2, 4, 8. It never hurts its thrower (producer, C19), and in a match the host owns the whole chain | C19 |
 | 5 | `fork()` | Pellets fly as fast projectiles and fork in two 4 m out | C24 |
 | 6 | `grep` | The seeker: hold aim to build locks, up to three marks (five as root), then one dart per mark | C25 |
-| 7 | `rm -rf` | A confirm wind-up, then a slow, heavy slug and a blast that can hurt its own side | C26 |
+| 7 | `rm -rf` | A confirm wind-up, then a slow, heavy slug whose blast hurts its shooter too, at half (the friendly-fire risk) | C26 |
 | 8 | `cron` | Timed mines: a stud armed after 1 s that runs three telegraphed blasts | C27 |
 | 9 | `ping` | A sonar ring through walls. Every daemon it meets is outlined for 4 s, and one caught mid-tell staggers. No damage | C28 |
 | Shift+1 | `chmod 000` | The freeze ray: hold the beam until the target freezes solid for 3 s | C29 |
@@ -407,7 +407,7 @@ Statuses are taken from `git log` (2026-10-31): **done**, **in progress**, **nex
 | C25 | `grep` seeker. | done | `23dd69b` |
 | C26 | `rm -rf` cannon. | done | `7a7c042` |
 | C27 | `cron` mines. | done | `eac8a86` |
-| C27b | Daemons fight back: AI with readable tells, solo health, difficulty and practice, the host's daemons in a match. | done | `7cbd5b2`, `3ae7dbe`, `0e6181c`, `a311cd6`, `51e1376` |
+| C27b | Daemons fight back: AI with readable tells, solo health, difficulty and practice, the host's daemons in a match. | done | `3ae7dbe`, `7cbd5b2`, `0e6181c`, `a311cd6`, `51e1376` |
 | C28 | `ping` sonar. | done | `f7f13ed`, `f05eeb8` |
 | C29 | `chmod 000` freeze ray, and the weapon strip's second bank. | done | `2ae2c88`, `1c0f53d`, `0728187` |
 | C30 | `pipe \|` chain beam. | done | `022762f`, `1fb849e`, `a10b20e` |
@@ -465,6 +465,8 @@ Statuses are taken from `git log` (2026-10-31): **done**, **in progress**, **nex
 |---|---|---|---|
 | T1 | Teaser footage (Fred, 2026-10-30 8:53 PM ET: a 70 second teaser of real in-game footage, demo data, for the top of playsigkill.com): tools/trailer_capture.sh renders the clips (docs/TRAILER.md); the edit and the original soundtrack are the producer's. | done | `b2392e8`, `f17ae86`, `bb82508`, `1087887`, `67e8e8c` |
 | D1 | Full PRD rewrite (this file, v0.3), README "Where we are", three community credits. | **in progress** | |
+
+T1 keeps 5.7's rule that trailers never show real machine data. The tool refuses to run without `--demo`, with the opener's real data on, or headless. It renders a `git archive` copy on a private virtual display, with fresh, empty user data for every take.
 
 The site is [playsigkill.com](https://playsigkill.com) (Fred, 2026-10-28 8:45 AM ET). It is built by the Website Builder Bot and kept current after every verified chunk. The teaser's edit and soundtrack are the producer's, outside this repository.
 
