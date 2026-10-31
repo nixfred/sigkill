@@ -3031,6 +3031,7 @@ func _unfire() -> void:
 	release.action = "fire"
 	release.pressed = false
 	root.push_input(release)
+	Input.action_release("fire")  # the player's held fire is read off Input too
 
 
 ## Mission 2 played on until `condition` (m2), at most `most` seconds (0: a minute): the daemons the objective running
