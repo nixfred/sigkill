@@ -9,13 +9,13 @@ extends Node3D
 const Palette = preload("res://scripts/palette.gd")
 
 ## Its slab: width, height, depth; how far it floats and bobs; how far down the floor is from its middle.
-const SLAB := Vector3(0.62, 0.42, 0.04)
-const FRAME_W := 0.022
+const SLAB := Vector3(0.86, 0.58, 0.05)
+const FRAME_W := 0.03
 const BOB_M := 0.07
 const BOB_HZ := 0.55
 const FLOOR_DROP := 0.93
-const COLUMN_H := 3.2
-const RING_R := 0.55
+const COLUMN_H := 4.5
+const RING_R := 0.7
 ## How fast it turns to face the camera (per second), and its bits' orbit.
 const TURN_RATE := 5.0
 const BITS := 4
@@ -47,15 +47,15 @@ func _ready() -> void:
 		_mesh(_slab, _box(edge[1]), _material(Palette.MINT, 1.0, true)).position = edge[0]
 	var text := Label3D.new()
 	text.font = Palette.mono_font()
-	text.font_size = 34
-	text.pixel_size = 0.0022
+	text.font_size = 40
+	text.pixel_size = 0.0026
 	text.modulate = Palette.MINT
 	text.outline_modulate = Color(Palette.VOID, 0.8)
 	text.outline_size = 6
 	text.shaded = false
 	text.double_sided = false
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	text.width = 250.0
+	text.width = 300.0
 	text.autowrap_mode = TextServer.AUTOWRAP_OFF
 	text.text = "> cat\n  %s\n_" % str(entry.get("name", "log"))
 	text.position = Vector3(-SLAB.x * 0.42, 0.04, SLAB.z * 0.5 + 0.004)

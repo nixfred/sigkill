@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41 or c42):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42 or c35):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -387,6 +387,16 @@ const C42_AFTER := [["c42-shot", 0.07], ["c42-derezz", 0.62], ["c42-feed", 1.45]
 const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-shot", "c42-derezz", "c42-feed", "c42-slam", "c42-title"]
 const C42_SHEET_COLUMNS := 3
 const C42_PAUSE_AT := 98.1
+## c35's sheet: the stills in the order a player meets them, three a row.
+const C35_SHEET := ["c35-missions", "c35-card", "c35-fight", "c35-hud", "c35-complete", "c35-failed"]
+const C35_SHEET_COLUMNS := 3
+## c35's views: the rogue.d in front of the lair and where the player stands to fight it; where the log is looked at
+## from; the lair's beacon from across the floor.
+const C35_ROGUE_AT := Vector3(2.0, 0.0, -3.0)
+const C35_FIGHT_FROM := Vector3(5.0, 0.95, 4.0)
+const C35_LOG_FROM := Vector3(-10.5, 0.95, 0.5)
+const C35_VENT_FROM := Vector3(4.5, 0.95, 1.5)
+const C35_VENT_LOOK := Vector3(0.0, 3.2, -14.0)
 const C42_SMALL_AFTER := 6.95
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
@@ -501,6 +511,11 @@ func _run() -> void:
 		return
 	if _set == "c42":
 		await _c42()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c35":
+		await _c35()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2418,6 +2433,126 @@ func _c42() -> void:
 		await process_frame
 		root.size = Vector2i(1920, 1080)
 		await _frames(6)
+
+
+## c35: the mission framework on demo progress, as a player meets it: the Missions screen from the Esc menu (nothing
+## done yet: mission 1 next, the six after it locked and redacted), again with mission 1 done and mission 2 chosen (its
+## ruins on the preview) and at 960x540; then mission 1 started from the screen (the arena reloads into it): its card; the
+## fight with the rogue.d (the objective panel, a kill's pip, your AI's line); the terminal log standing in the arena;
+## the log read (the reader, the Auditor's line); the objective HUD mid-mission with the beacon from across the floor
+## (c35-hud); the register shift; the end screen (the weapons handed over, the unlock toasts) and at 960x540; a death's
+## end screen, exit 137; and the sheet of six (c35-sequence).
+func _c35() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	var missions := MissionProgress.current()
+	missions.clear()
+	await _stand(C33_SHOT_FROM, _main.to_global(C33_SHOT_AT) + Vector3.UP)
+	menu.open()
+	menu.open_missions()
+	await _frames(80)
+	await _c35_save(sheet, "c35-missions")
+	missions.done["login"] = true
+	missions.best_s["login"] = 102.3
+	missions.best_logs["login"] = 1
+	menu.missions_screen().open()
+	menu.missions_screen().select(1)
+	await _frames(70)
+	await _c35_save(sheet, "c35-missions-ruins")
+	root.size = Vector2i(960, 540)
+	await _frames(12)
+	await _c35_save(sheet, "c35-missions-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(12)
+	missions.clear()
+	menu.missions_screen().open()
+	menu.missions_screen().select(0)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	print("capture: mission %s begun, try %d" % [runner.def.id if runner.def != null else "-", runner.attempt])
+	for i in 72:
+		await process_frame
+	await _c35_save(sheet, "c35-card")
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	var rogue: Node3D = _main.get_node("Arena/Targets/DummyA")
+	_c27b_place(rogue, _main.to_global(C35_ROGUE_AT))
+	await _stand(C35_FIGHT_FROM, _main.to_global(C35_ROGUE_AT) + Vector3(0, 1.0, 0))
+	runner.progress = runner.need() - 0.05  # the timeslice held (twenty seconds, shortened for the stills)
+	await _frames(6)
+	rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
+	while not rogue.is_alive():
+		await _frames(1)
+	_c27b_place(rogue, _main.to_global(C35_ROGUE_AT))
+	await _frames(300)
+	await _c35_save(sheet, "c35-fight")
+	rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
+	await _frames(20)
+	var at: Vector3 = runner.def.log_of("temporary")["at"]
+	await _stand(C35_LOG_FROM, at + Vector3(0, 0.25, 0))
+	await _c35_save(sheet, "c35-terminal")
+	_player.global_position = at
+	await _frames(3)
+	var to: Vector3 = _main.to_global(C35_VENT_LOOK) - _player.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y * 0.35, Vector2(to.x, to.z).length())
+	_player.global_position = at + Vector3(2.5, 0, -1.5)
+	await _frames(100)
+	await _c35_save(sheet, "c35-log")
+	await _stand(C35_VENT_FROM, _main.to_global(C35_VENT_LOOK))
+	await _c35_save(sheet, "c35-hud")
+	_player.global_position = runner.def.objectives[3]["at"]
+	await _frames(10)
+	await _c35_save(sheet, "c35-shift")
+	await _frames(150)
+	await _c35_save(sheet, "c35-complete")
+	root.size = Vector2i(960, 540)
+	await _frames(12)
+	await _c35_save(sheet, "c35-complete-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(12)
+	print("capture: login done %s, its weapons held %s" % [str(missions.is_done("login")), str(Progress.current().has_weapon("sigkill_rail"))])
+	# A death: the daemons fighting back for this one (practice off), the player derezzed in its first objective.
+	GameSettings.current().set_value("gameplay", "practice", false)
+	old = _main
+	runner.retry()
+	await _c35_reloaded(old)
+	runner = MissionRunner.of(_main)
+	while runner.state != MissionRunner.State.RUNNING:
+		await process_frame
+	var life: SoloLife = runner.life
+	life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	life.damage(10000.0, _main.get_node("Arena/Targets/DummyA"), Vector3.FORWARD)
+	await _frames(150)
+	await _c35_save(sheet, "c35-failed")
+	GameSettings.current().set_value("gameplay", "practice", true)
+	var stills: Array[Image] = []
+	for name in C35_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == C35_SHEET.size():
+		_save_grid("c35-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## A c35 still saved as `name`, and kept in `sheet` for the contact sheet.
+func _c35_save(sheet: Dictionary, name: String) -> void:
+	await _save(name)
+	sheet[name] = Image.load_from_file(OUT.path_join(name + ".png"))
+
+
+## The arena reloaded in place of `old` (a mission started or retried): the new one taken up as the stills' own.
+func _c35_reloaded(old: Node) -> void:
+	while current_scene == null or current_scene == old or not current_scene.has_node("Player") or not current_scene.is_node_ready():
+		await process_frame
+	_main = current_scene
+	_player = _main.get_node("Player")
+	_player.assume_captured = true
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	for i in 3:
+		await process_frame
 
 
 ## The fire action pressed, as the player's button does.

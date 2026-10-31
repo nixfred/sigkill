@@ -412,8 +412,9 @@ func _draw_pane() -> void:
 			why = LATER_WHY
 		"locked":
 			why = LOCKED_WHY % ("%02d" % (def.order - 1))
-	var why_y := START_RECT.position.y - 14.0
-	for line in MissionHud._wrap(why, 52):
+	var why_lines := MissionHud._wrap(why, 52)
+	var why_y := START_RECT.position.y - 12.0 - 14.0 * (why_lines.size() - 1)
+	for line in why_lines:
 		_text(Vector2(x, why_y), line, 11, _status_colour(status))
 		why_y += 14.0
 	var r := START_RECT
@@ -459,10 +460,17 @@ func _draw_preview(r: Rect2, def: MissionDef, locked: bool) -> void:
 func _preview_grid(r: Rect2) -> void:
 	var horizon := r.position.y + r.size.y * 0.38
 	var vp := Vector2(r.position.x + r.size.x * 0.5, horizon)
-	draw_rect(Rect2(r.position.x, horizon - 1, r.size.x, 2), Color(Palette.TEAL, 0.7))
+	for i in 5:
+		draw_rect(Rect2(r.position.x, horizon - 2.0 - i * 5.0, r.size.x, 5), Color(Palette.TEAL, 0.07 - i * 0.012))
+	draw_rect(Rect2(r.position.x, horizon - 1, r.size.x, 2), Color(Palette.TEAL, 0.9))
 	for i in range(-10, 11):
 		var foot := Vector2(vp.x + i * r.size.x * 0.12, r.end.y)
-		draw_line(vp, foot, Color(Palette.TEAL, 0.35), 1.0)
+		# Cut where it leaves the window's side: no line drawn past the preview's frame.
+		var end := foot
+		if foot.x < r.position.x or foot.x > r.end.x:
+			var edge := r.position.x if foot.x < r.position.x else r.end.x
+			end = vp.lerp(foot, (edge - vp.x) / (foot.x - vp.x))
+		draw_line(vp, end, Color(Palette.TEAL, 0.35), 1.0)
 	for j in 9:
 		var t := fposmod(float(j) / 9.0 + _age * 0.35, 1.0)
 		var y := horizon + (r.end.y - horizon) * t * t
@@ -495,7 +503,7 @@ func _preview_ruins(r: Rect2) -> void:
 	for i in 9:
 		var bw := 30.0 + float((i * 29) % 24)
 		var bh := 40.0 + float((i * 47) % 70)
-		var bx := r.position.x + i * 47.0 - 8.0
+		var bx := r.position.x + 6.0 + i * 45.0
 		draw_rect(Rect2(bx, base - bh, bw, bh), Color(Palette.BASE.lightened(0.04), 1.0))
 		draw_rect(Rect2(bx, base - bh, bw, bh), Color(Palette.TEAL, 0.18), false, 1.0)
 		var on := fmod(_age * (1.3 + i * 0.37) + i, 3.0) > 0.25
@@ -505,8 +513,8 @@ func _preview_ruins(r: Rect2) -> void:
 			draw_rect(Rect2(bx + 5, base + 6, bw - 10, 3), Color(sign_colour, 0.3))
 	draw_rect(Rect2(r.position.x, base, r.size.x, 1), Color(Palette.ROSE, 0.4))
 	for i in 46:
-		var sx := r.position.x + fposmod(float(i * 41) + _age * 30.0, r.size.x)
-		var sy := r.position.y + fposmod(float(i * 67) + _age * 260.0, r.size.y)
+		var sx := r.position.x + 6.0 + fposmod(float(i * 41) + _age * 30.0, r.size.x - 12.0)
+		var sy := r.position.y + fposmod(float(i * 67) + _age * 260.0, r.size.y - 14.0)
 		draw_line(Vector2(sx, sy), Vector2(sx - 4.0, sy + 12.0), Color(Palette.MINT, 0.22), 1.0)
 
 

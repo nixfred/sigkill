@@ -19,6 +19,8 @@ const DESIGN_H := 720.0
 const WIDTH := 660
 const MARGIN := 24
 const FONT := 14
+## Room kept clear round the panel, in pixels.
+const EDGE := 8.0
 const RETRY := "Retry"
 const NEXT := "Next: %s  %s"
 const NEXT_LATER := "%s  %s: in production"
@@ -133,6 +135,7 @@ func show_complete() -> void:
 	_second.text = MISSIONS
 	_third.text = FREE_PLAY
 	_open()
+	_fit.call_deferred()  # once its lines have their sizes
 
 
 func show_failed() -> void:
@@ -160,6 +163,7 @@ func show_failed() -> void:
 	_second.text = MISSIONS
 	_third.text = FREE_PLAY
 	_open()
+	_fit.call_deferred()
 
 
 func hide_screen() -> void:
@@ -256,31 +260,52 @@ func _draw() -> void:
 	var sweep := fposmod(_age * 0.25, 1.0) * view.y
 	draw_rect(Rect2(0, sweep, view.x, 2), Color(_accent, 0.08))
 	var glow := clampf(_age / GROW_S, 0.0, 1.0)
-	var c := view * 0.5
+	var top := _toast_clear()
+	var c := Vector2(view.x * 0.5, top + (view.y - top) * 0.5)
 	for i in 6:
 		var half := Vector2(WIDTH * 0.5 + 30 + i * 26, 190 + i * 22) * _scale()
 		draw_rect(Rect2(c - half, half * 2.0), Color(_accent, 0.022 * glow))
 
 
-## Its size for the window's: 720 lines as drawn, larger windows larger (up to twice).
+## Its size for the window's: 720 lines as drawn, larger windows larger (up to twice), centred in the room under the
+## unlock toast's strip (a mission's weapons are told there as the screen comes up), and shrunk whole when a small
+## window has less room than that: never clipped, never under the toast.
 func _fit() -> void:
-	if _center == null:
+	if _center == null or _panel == null:
 		return
+	var view := get_viewport_rect().size
+	var top := _toast_clear()
+	var need := _panel.get_combined_minimum_size()
 	var k := _scale()
-	_center.pivot_offset = _center.size * 0.5
+	if need.x > 0.0 and need.y > 0.0:
+		k = minf(k, minf((view.y - top - EDGE) / need.y, (view.x - 2.0 * EDGE) / need.x))
+	k = maxf(k, 0.2)
+	_center.pivot_offset = Vector2.ZERO
 	_center.scale = Vector2(k, k)
+	_center.position = Vector2(0.0, top)
+	_center.size = Vector2(view.x, view.y - top) / k
 
 
+## How much it is drawn up for the window: 1 at 720 lines, more above, never below 1 (_fit() shrinks a small one).
 func _scale() -> float:
 	return clampf(get_viewport_rect().size.y / DESIGN_H, 1.0, 2.0)
+
+
+## The top of the room it may take: under the unlock toast's strip as the toast draws it.
+func _toast_clear() -> float:
+	var k := clampf(get_viewport_rect().size.y / 720.0, 1.0, UnlockToast.SCALE_LAST)
+	return (UnlockToast.TOP_PX + UnlockToast.SIZE.y) * k + EDGE
+
+
+## Its panel's rectangle on screen, for the checks.
+func panel_rect() -> Rect2:
+	return Rect2(_panel.global_position, _panel.size * _center.scale)
 
 
 func _build() -> void:
 	_center = CenterContainer.new()
 	_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_center)
-	_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_center.resized.connect(_fit)
+	add_child(_center)  # placed and sized by _fit(), not by anchors
 	_panel = PanelContainer.new()
 	_style = StyleBoxFlat.new()
 	_style.bg_color = Color(Palette.VOID, 0.93)
@@ -342,8 +367,7 @@ func _chip(weapon: String) -> void:
 	style.set_content_margin_all(8)
 	chip.add_theme_stylebox_override("panel", style)
 	_chips.add_child(chip)
-	var words := _label(chip, "%s  [%s]" % [short_of(weapon), MissionHud.key_of(weapon)], 14, beam)
-	words.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_label(chip, "%s  [%s]" % [short_of(weapon), MissionHud.key_of(weapon)], 14, beam)
 
 
 ## The shipped weapon with id `weapon`, or null.
@@ -372,8 +396,10 @@ func _label(parent: Control, text: String, font_size: int, colour: Color) -> Lab
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", colour)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if parent == _stack:
+		# A line of the panel wraps at its width; a row's or a chip's words never wrap (a label with no width would
+		# break them a letter a line).
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		label.custom_minimum_size.x = WIDTH - 2 * MARGIN
 	parent.add_child(label)
 	return label

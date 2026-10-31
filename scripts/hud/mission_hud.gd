@@ -6,9 +6,9 @@ extends Control
 ##                        title; the objectives done struck through, the one running typed in with a cursor and
 ##                        its progress (a pip per kill, a draining bar to survive, the metres to walk); the logs
 ##                        found. A change flashes it and opens its corner brackets.
-##   the terminal         under it: the Auditor's lines in amber and `~`'s in its red, typed in, fading after a while;
-##                        a weapon handed over says so in teal.
-##   the log reader       left of centre: "$ cat <name>" and the log typed in, then it folds away.
+##   the terminal         under it: the Auditor's lines in amber and `~`'s in its red, typed in (held back under the
+##                        card), fading after a while; a weapon handed over says so in teal.
+##   the log reader       right of the crosshair: "$ cat <name>" and the log typed in, then it folds away.
 ##   the marker           where the running objective is (a reach point, a log still standing): a hexagon and the
 ##                        metres on screen, an arrow on the edge when it is off screen or behind.
 ##   the card             as it starts: the band across the screen, "MISSION 01", the title in glitched light, its
@@ -29,16 +29,23 @@ const TYPE_CPS := 46.0
 const FEED_CPS := 72.0
 const TILDE_CPS := 20.0
 const LOG_CPS := 110.0
+const GOAL_CPS := 120.0
 ## Seconds a terminal line stays (then fades over FADE_S), a log stays after it has typed, the shift shows.
 const FEED_S := 8.0
 const FADE_S := 1.0
 const LOG_S := 6.0
 const SHIFT_S := 1.8
+## Where the shift's words stand, a share of the screen's height.
+const SHIFT_AT := 0.36
+## Where the log reader's top stands, a share of the screen's height.
+const LOG_AT := 0.3
 ## Characters a terminal or log line wraps at.
 const FEED_WRAP := 64
 const LOG_WRAP := 54
 const FEED_LAST := 4
 const DONE_SHOWN := 2
+## How dense the panels are over the arena: the grid and the skyline must not read through the words.
+const PANEL_ALPHA := 0.84
 ## A story line's time in the guide panel: a floor and so much a character, and a cap, in ms.
 const STORY_MS_FLOOR := 3200.0
 const STORY_MS_PER_CHAR := 55.0
@@ -165,8 +172,9 @@ func _process(delta: float) -> void:
 	_pop = maxf(_pop - delta * 4.0, 0.0)
 	for d in _done:
 		d["age"] += delta
-	for line in _feed:
-		line["age"] += delta
+	if _card_age < 0.0:
+		for line in _feed:
+			line["age"] += delta  # held back under the card: it types in as the card goes
 	_feed = _feed.filter(func(line) -> bool: return line["age"] < _feed_life(line))
 	if _log_age >= 0.0:
 		_log_age += delta
@@ -312,7 +320,8 @@ func _draw() -> void:
 	if runner.state == MissionRunner.State.RUNNING:
 		_draw_marker(view)
 	var bottom := _draw_panel()
-	_draw_feed(Vector2(PANEL_AT.x, bottom + 12.0))
+	if _card_age < 0.0:
+		_draw_feed(Vector2(PANEL_AT.x, bottom + 12.0))
 	if _log_age >= 0.0:
 		_draw_log(view)
 	if _card_age >= 0.0:
@@ -341,7 +350,7 @@ func _draw_panel() -> float:
 	if _shift_age >= 0.0 and _shift_age < 0.45:
 		jitter = Vector2(sin(_age * 91.0) * 4.0, 0.0)
 	rect.position += jitter
-	draw_rect(rect, Color(Palette.VOID, 0.66))
+	draw_rect(rect, Color(Palette.VOID, PANEL_ALPHA))
 	draw_rect(Rect2(rect.position, Vector2(3, rect.size.y)), reg)
 	# A scan line down the panel every few seconds.
 	var scan := fposmod(_age * 0.33, 1.0)
@@ -369,11 +378,12 @@ func _draw_panel() -> float:
 	var row_y := p.y + 74
 	for d in _done:
 		var fresh := clampf(1.0 - d["age"] / 0.5, 0.0, 1.0)
-		var line := "[x] " + str(d["text"])
-		var colour := Color(Palette.MINT, 0.45).lerp(Palette.FLASH, fresh * 0.8)
-		_text(Vector2(p.x, row_y), _clip(line, 46), 12, colour)
-		var strike := minf(d["age"] / 0.25, 1.0) * _width(_clip(line, 46), 12)
-		draw_rect(Rect2(p.x, row_y - 4, strike, 1), Color(Palette.MINT, 0.6))
+		var words := _clip(str(d["text"]), 42)
+		_text(Vector2(p.x, row_y), "[x]", 12, Palette.MINT.lerp(Palette.FLASH, fresh))
+		var colour := Color(Palette.MINT, 0.62).lerp(Palette.FLASH, fresh * 0.8)
+		_text(Vector2(p.x + 34, row_y), words, 12, colour)
+		var strike := minf(d["age"] / 0.25, 1.0) * _width(words, 12)
+		draw_rect(Rect2(p.x + 34, row_y - 4, strike, 1), Color(Palette.MINT, 0.45))
 		row_y += 18
 	match runner.state:
 		MissionRunner.State.INTRO:
@@ -441,7 +451,7 @@ func _draw_feed(at: Vector2) -> void:
 		for part in _wrap(typed, FEED_WRAP):
 			y += 16.0
 			var w := _width(part, 12)
-			draw_rect(Rect2(at.x, y - 12, w + 10, 16), Color(Palette.VOID, 0.55 * alpha))
+			draw_rect(Rect2(at.x, y - 12, w + 10, 16), Color(Palette.VOID, PANEL_ALPHA * alpha))
 			_text(Vector2(at.x + 5, y), part, 12, Color(colour, alpha))
 		if typed.length() < full.length() or (line["prefix"] == TILDE_PREFIX and fmod(_age, 0.8) < 0.45):
 			var last: String = _wrap(typed, FEED_WRAP)[-1] if typed != "" else ""
@@ -460,9 +470,11 @@ func _draw_log(view: Vector2) -> void:
 	var open := clampf(_log_age / 0.22, 0.0, 1.0)
 	var close := clampf((life - _log_age) / 0.3, 0.0, 1.0)
 	var k := minf(open, close)
-	var at := Vector2(PANEL_AT.x + (1.0 - open) * -40.0, view.y * 0.44)
+	# Right of the crosshair, under the guide's corner and the unlock toast's strip: the objective panel and the
+	# terminal keep the left.
+	var at := Vector2(view.x - w - 18.0 + (1.0 - open) * 40.0, view.y * LOG_AT)
 	var rect := Rect2(at, Vector2(w, h * k))
-	draw_rect(rect, Color(Palette.VOID, 0.84))
+	draw_rect(rect, Color(Palette.VOID, 0.9))
 	draw_rect(Rect2(at, Vector2(w, 22 * k)), Color(Palette.MINT, 0.16))
 	draw_rect(rect, Color(Palette.MINT, 0.9), false, 1.0)
 	if k < 0.6:
@@ -535,7 +547,11 @@ func _draw_card(view: Vector2) -> void:
 	var reg := register_colour(def.register)
 	var band_h := 178.0
 	var top := view.y * 0.30
-	draw_rect(Rect2(0, top, view.x, band_h), Color(Palette.VOID, 0.74 * alpha))
+	draw_rect(Rect2(0, top, view.x, band_h), Color(Palette.VOID, 0.88 * alpha))
+	draw_rect(Rect2(0, top - 18, view.x, 18), Color(Palette.VOID, 0.4 * alpha))
+	draw_rect(Rect2(0, top + band_h, view.x, 18), Color(Palette.VOID, 0.4 * alpha))
+	var sweep := fposmod(t * 0.9, 1.0) * view.x
+	draw_rect(Rect2(sweep - 120.0, top + 2, 240.0, band_h - 4), Color(reg, 0.05 * alpha))
 	var spread := clampf(t / 0.5, 0.0, 1.0) * view.x * 0.5
 	for edge in [top, top + band_h]:
 		draw_rect(Rect2(view.x * 0.5 - spread, edge, spread * 2.0, 1.5), Color(reg, 0.9 * alpha))
@@ -547,10 +563,12 @@ func _draw_card(view: Vector2) -> void:
 		var slip := (0.5 - t) * 26.0
 		_centred(view.x * 0.5 + sin(t * 97.0) * slip, top + 108, title, title_size, Color(Palette.GLITCH_SPLIT, 0.55 * alpha))
 		_centred(view.x * 0.5 - cos(t * 71.0) * slip, top + 108, title, title_size, Color(Palette.TEAL, 0.55 * alpha))
+	for glow in [Vector2(-2, 0), Vector2(2, 0), Vector2(0, -2), Vector2(0, 2)]:
+		_centred(view.x * 0.5 + glow.x, top + 108 + glow.y, title, title_size, Color(reg, 0.22 * alpha))
 	_centred(view.x * 0.5, top + 108, title, title_size, Color(Palette.MINT.lerp(Palette.FLASH, clampf(1.0 - t * 2.0, 0.0, 1.0)), alpha))
 	var sub := "register: %s%s" % [def.register, ("   try %d" % runner.attempt) if runner.attempt > 1 else ""]
 	_centred(view.x * 0.5, top + 136, sub, 12, Color(reg, alpha))
-	_centred(view.x * 0.5, top + 160, _typed(def.goal, maxf(t - 0.35, 0.0), 70.0), 14, Color(Palette.MINT, 0.9 * alpha))
+	_centred(view.x * 0.5, top + 160, _typed(def.goal, maxf(t - 0.3, 0.0), GOAL_CPS), 14, Color(Palette.MINT, 0.9 * alpha))
 
 
 func _draw_shift(view: Vector2) -> void:
@@ -566,8 +584,9 @@ func _draw_shift(view: Vector2) -> void:
 			var x := float((seed * 11 + i * 29) % 140) - 70.0
 			draw_rect(Rect2(x, y, view.x, h), Color(colour, 0.32 * (1.0 - t / 0.4)))
 	var alpha := clampf((1.0 - t) * 2.0, 0.0, 1.0)
-	_centred(view.x * 0.5, view.y * 0.2, "REGISTER SHIFT", 12, Color(Palette.MINT, alpha))
-	_centred(view.x * 0.5, view.y * 0.2 + 34, "%s  >>  %s" % [_shift.get("from", ""), to], 28, Color(colour, alpha))
+	# Above the crosshair and under the unlock toast's strip, which a mission's end can bring at the same moment.
+	_centred(view.x * 0.5, view.y * SHIFT_AT, "REGISTER SHIFT", 12, Color(Palette.MINT, alpha))
+	_centred(view.x * 0.5, view.y * SHIFT_AT + 34, "%s  >>  %s" % [_shift.get("from", ""), to], 28, Color(colour, alpha))
 
 
 # --- Helpers. ---
