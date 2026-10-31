@@ -113,7 +113,7 @@ const LIFT_S := 0.1
 ## The screen's overall brightness in the machine, for luma_at(): the dark the panel shrinks into; the shot's flash at
 ## its brightest (C42); the title's own, and its slam's flash at its brightest.
 const MACHINE_LUMA := 0.3
-const SHOT_LUMA := 0.85
+const SHOT_LUMA := 0.62
 const TITLE_LUMA := 0.22
 const SLAM_LUMA := 0.75
 ## A frozen frame's stand-in when there is none to take (a headless run): near black.

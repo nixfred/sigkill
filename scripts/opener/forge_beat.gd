@@ -41,8 +41,8 @@ const DARE := "you won't."
 const CURSOR := "_"
 ## The letters in the air: how far ahead of the player, how far below the eye, a letter's height; each pixel's cells.
 const WORD_M := 2.3
-const WORD_DROP := 0.42
-const LETTER_M := 0.3
+const WORD_DROP := 0.46
+const LETTER_M := 0.38
 const SUB := 2
 const CELL_FILL := 0.82
 ## The stream: how long a cell takes to fly, at most and least; how high its curve swings.
@@ -64,7 +64,10 @@ const GRAVITY := 7.5
 const BURST_LIFE := Vector2(0.9, 2.4)
 ## The beam: how long it burns, its width.
 const BEAM_S := 0.42
-const BEAM_W := 0.13
+const BEAM_W := 0.16
+## The rifle's glow here, a share of its own: the machine's glow is tuned for its dark, and the rifle's full charge would
+## bloom into one white blur.
+const RIFLE_GLOW := 0.32
 const SEED := 4242
 
 var _t: OpenerTuning
@@ -296,7 +299,7 @@ func _build_cells() -> void:
 	_cells = MultiMeshInstance3D.new()
 	_cells.name = "Letters"
 	_cells.multimesh = many
-	_cells.material_override = _paint(0.0, 1.6)
+	_cells.material_override = _paint(0.0, 2.3)
 	_cells.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_cells.visible = false
 	add_child(_cells)
@@ -368,6 +371,7 @@ func _build_rifle() -> void:
 	_rifle = Viewmodel.make(def)
 	_rifle.name = "ForgedRifle"
 	_rifle.visible = false
+	_rifle.set_glow(def.viewmodel_glow_energy * RIFLE_GLOW)
 	var camera := _fall.camera()
 	if camera != null:
 		camera.add_child(_rifle)
@@ -411,7 +415,7 @@ func _print_of(own: Material) -> ShaderMaterial:
 	return paint
 
 
-func _wear_print(on: bool) -> void:
+func _wear_forging(on: bool) -> void:
 	if on == _printing:
 		return
 	_printing = on
@@ -440,7 +444,7 @@ func _step_rifle(elapsed: float) -> void:
 	var home: Vector3 = def.viewmodel_offset
 	var drop := elapsed - drop_at()
 	var printing := drop < 0.0
-	_wear_print(printing)
+	_wear_forging(printing)
 	if printing:
 		var u := smoothstep(print_from(), print_to(), elapsed)
 		var front := lerpf(BACK_Z + 0.02, MUZZLE_Z - 0.04, u)
@@ -571,6 +575,8 @@ func _step_shot(elapsed: float, camera: Transform3D) -> void:
 	var copy := _pit.copy()
 	if copy != null and not _hit and s >= 0.03:
 		_hit = true
+		if _rifle != null:
+			ParticleFx.fire_muzzle(_rifle.muzzle)
 		copy.react(target, (target - muzzle).normalized())
 		copy.set_unstable(0.55)
 	if copy != null and not _shattered and elapsed >= shatter_at():

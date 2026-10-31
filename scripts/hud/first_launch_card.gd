@@ -13,6 +13,8 @@ extends Control
 signal answered(yes: bool)
 
 const Palette = preload("res://scripts/palette.gd")
+## The brand's icon on its title row: the file itself, as it is.
+const LOGO := preload("res://packaging/linux/sigkill.svg")
 
 const TITLE := "SIGKILL // before the intro"
 const NOTE := "Content note: the intro fakes a crash and a break-in on this computer, with glitching visuals and loud music. It is all in the game: nothing is touched."
@@ -26,6 +28,9 @@ const WIDTH := 760
 const FONT := 15
 const HEAD_FONT := 18
 const MARGIN := 22
+const ICON := 44
+## It is drawn for 720 lines and grows with the window (up to twice), so it reads at any size.
+const DESIGN_H := 720.0
 
 var _panel: PanelContainer
 var _no: Button
@@ -47,6 +52,15 @@ func _ready() -> void:
 	theme_here.default_font_size = FONT
 	theme = theme_here
 	_build()
+	get_viewport().size_changed.connect(_fit)
+	_fit()
+
+
+## Its size for the window's: 720 lines as drawn, larger windows larger.
+func _fit() -> void:
+	var k := clampf(get_viewport_rect().size.y / DESIGN_H, 1.0, 2.0)
+	_panel.pivot_offset = _panel.size * 0.5
+	_panel.scale = Vector2(k, k)
 
 
 ## Up, the arena's look dimmed behind it, No focused (the highlighted default).
@@ -141,7 +155,22 @@ func _build() -> void:
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 12)
 	_panel.add_child(stack)
-	_line(stack, TITLE, HEAD_FONT, Palette.TEAL)
+	_panel.resized.connect(_fit)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 14)
+	stack.add_child(head)
+	var icon := TextureRect.new()
+	icon.texture = LOGO
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(ICON, ICON)
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(icon)
+	var title := _line(head, TITLE, HEAD_FONT + 2, Palette.TEAL)
+	title.custom_minimum_size.x = 0
+	title.autowrap_mode = TextServer.AUTOWRAP_OFF
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_line(stack, NOTE, FONT - 1, Palette.HOSTILE_AMBER)
 	_line(stack, QUESTION, HEAD_FONT, Palette.MINT)
 	_line(stack, DETAIL, FONT - 1, Color(Palette.MINT, 0.78))

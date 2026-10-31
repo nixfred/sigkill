@@ -105,10 +105,13 @@ func hint_showing() -> bool:
 	return _hint != null and _hint.visible
 
 
-## Moves the hint's clock on (real seconds).
+## Moves the hint's clock on (real seconds), and sizes the menu for the window (720 lines as drawn, larger larger).
 func step(delta: float) -> void:
 	_hint_left = maxf(_hint_left - delta, 0.0)
 	_scale = maxf(get_viewport_rect().size.y / 1080.0, 0.5)
+	var k := clampf(get_viewport_rect().size.y / 720.0, 1.0, 2.0)
+	_panel.pivot_offset = _panel.size * 0.5
+	_panel.scale = Vector2(k, k)
 	_hint.visible = _hint_left > 0.0 and not showing()
 	_hint.modulate.a = clampf(_hint_left / 0.4, 0.0, 1.0)
 	_hint.add_theme_font_size_override("font_size", roundi(FONT * _scale * 1.2))

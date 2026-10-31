@@ -6,7 +6,8 @@ extends Control
 ## nixfred hexagon, the brand's own icon file as it is (packaging/linux/sigkill.svg, the white >_ on the hexagon; never
 ## redrawn), slamming in on the score's beat (scripts/opener/opener_score.gd: SLAM_BEATS after the shot) out of the dark,
 ## the name hammered in a letter a sixteenth after it, the title punching on every beat of the riff, tearing on the
-## snare, and torn away at the end. Everything is a function of the opener's clock and the shot's moment. The user name is
+## snare, and torn away at the end; under it the machine's grid racing toward the player on the beat, a streak of its
+## light through the hexagon, and the last of the copy's voxels rising as embers. Everything is a function of the opener's clock and the shot's moment. The user name is
 ## handed in (the opener's, cleaned), shown, and dropped with the opener; nothing here reads anything.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -24,9 +25,13 @@ const LOGO_H := 0.4
 const LOGO_Y := 0.4
 const NAME_PX := 128
 const NAME_Y := 0.8
-const FEED_PX := 32
-const WHISPER_PX := 28
-const HINT_PX := 22
+const FEED_PX := 38
+const WHISPER_PX := 30
+const HINT_PX := 26
+## The grid under the title: its horizon (a share of the height), its lines; the embers.
+const HORIZON := 0.62
+const GRID_LINES := 22
+const EMBERS := 70
 const RETICLE_R := 24.0
 const EDGE := 48.0
 ## How long the slam takes to land, its shake, its colour split; the sparks; the snare's tear.
@@ -196,7 +201,7 @@ func _draw_reticle(view: Vector2) -> void:
 		var size := roundi(HINT_PX * _scale)
 		var w := _font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 		var pulse := 0.6 + 0.4 * beat
-		_text(Vector2((view.x - w) * 0.5, view.y * 0.88), hint, size, Color(Palette.MINT, pulse * smoothstep(0.4, 0.8, into)))
+		_text(Vector2((view.x - w) * 0.5, view.y * 0.86), hint, size, Color(Palette.ICE_HI, pulse * smoothstep(0.4, 0.8, into)))
 
 
 ## The kill feed, in the game's words, slammed in from the right at the bottom of the screen.
@@ -268,10 +273,17 @@ func _draw_title(view: Vector2) -> void:
 	var c := Vector2(view.x * 0.5, view.y * LOGO_Y) + shake
 	var rect := Rect2(c - Vector2(w, h) * 0.5, Vector2(w, h))
 	var fade := clampf(s / SLAM_S, 0.0, 1.0) * (1.0 - out)
-	# A glow of the brand's teal behind it.
+	_draw_grid(view, s, fade)
+	_draw_embers(view, s, fade)
+	# A glow of the brand's teal behind it, smooth, swelling with each punch.
+	for k in 16:
+		var r := h * (1.25 - 0.05 * k)
+		draw_circle(c, r, Color(Palette.TEAL, 0.012 * fade * (1.0 + 5.0 * punch)))
+	# A streak of its light straight through it, as a lens takes a bright light.
+	var streak := fade * (0.55 + 3.0 * punch)
 	for k in 4:
-		var r := h * (0.5 + 0.18 * k)
-		draw_circle(c, r, Color(Palette.TEAL, 0.05 * fade * (1.0 - 0.2 * k) * (1.0 + 4.0 * punch)))
+		var thick := (1.0 + 5.0 * k) * _scale
+		draw_rect(Rect2(0.0, c.y - thick * 0.5, view.x, thick), Color(Palette.MINT.lerp(Palette.TEAL, k / 3.0), 0.22 * streak / (1.0 + k)))
 	# Its colours split as it lands (and on the final hit), then the icon itself, torn into strips on the snare.
 	var split := SPLIT_PX * _scale * (exp(-s * 6.0) + (exp(-final_hit * 7.0) if final_hit >= 0.0 else 0.0)) + 40.0 * _scale * out
 	if split > 0.5:
@@ -310,15 +322,53 @@ func _draw_title(view: Vector2) -> void:
 			var hot := exp(-in_s * 9.0)
 			var y := view.y * NAME_Y + drop + shake.y * 0.6 + sin(i * 9.1 + floorf(s / TEAR_S)) * 10.0 * _scale * (_tear(s) + out * 2.0)
 			var colour := Palette.MINT.lerp(Color.WHITE, hot)
+			# Its ghosts a few pixels either side, the split of a signal not quite in step.
+			var ghost := (3.0 + 14.0 * hot + 30.0 * out) * _scale
+			draw_string(_font, Vector2(x - ghost, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Palette.CRIMSON, 0.35 * (1.0 - out)))
+			draw_string(_font, Vector2(x + ghost, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.2, 0.9, 1.0, 0.3 * (1.0 - out)))
 			draw_string_outline(_font, Vector2(x, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, roundi(22.0 * _scale), Color(Palette.TEAL, 0.22 * (1.0 - out)))
 			draw_string_outline(_font, Vector2(x, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, roundi(8.0 * _scale), Color(Palette.TEAL, 0.5 * (1.0 - out)))
 			draw_string(_font, Vector2(x, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(colour, 1.0 - out))
 		x += cw
-	# Scanlines over it all, and the slam's flash (the brightness model's).
+	# Scanlines over it all, and the slam's flash (the brightness model's): a burst of the hexagon's light out from it,
+	# white at its heart, never a grey wash over the dark.
 	for y in range(0, int(view.y), maxi(roundi(3.0 * _scale), 2)):
 		draw_line(Vector2(0.0, y), Vector2(view.x, y), Color(0.0, 0.0, 0.0, 0.12), 1.0)
 	if _flash > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, view), Color(1.0, 1.0, 1.0, _flash))
+		for k in 18:
+			var r := view.x * (0.9 - 0.048 * k)
+			draw_circle(c, r, Color(Palette.MINT.lerp(Color.WHITE, k / 17.0), _flash * 0.11))
+
+
+## The machine's grid under the title, in perspective, racing toward the player a cell each beat, fading to the horizon.
+func _draw_grid(view: Vector2, s: float, fade: float) -> void:
+	var horizon := view.y * HORIZON
+	var centre := view.x * 0.5
+	var colour := Color(Palette.TEAL, 0.0)
+	var beat := fposmod(maxf(s, 0.0) / OpenerScore.BEAT_S, 1.0)
+	for k in GRID_LINES:
+		var lean := (float(k) / (GRID_LINES - 1) - 0.5) * 2.0
+		colour.a = 0.16 * fade
+		draw_line(Vector2(centre + lean * view.x * 0.08, horizon), Vector2(centre + lean * view.x * 1.4, view.y), colour, 1.5 * _scale, true)
+	for k in 12:
+		var z := (k + 1.0 - beat) / 12.0
+		var y := horizon + (view.y - horizon) * pow(z, 2.6)
+		colour.a = 0.2 * fade * z
+		draw_line(Vector2(0.0, y), Vector2(view.x, y), colour, 1.5 * _scale, true)
+	# A haze along the horizon.
+	for k in 6:
+		draw_rect(Rect2(0.0, horizon - k * 3.0 * _scale, view.x, 6.0 * _scale), Color(Palette.TEAL, 0.03 * fade))
+
+
+## The last of the copy's voxels rising slowly as embers, crimson and teal, flickering out.
+func _draw_embers(view: Vector2, s: float, fade: float) -> void:
+	for i in EMBERS:
+		var speed := 0.03 + 0.05 * absf(sin(i * 4.13))
+		var y := view.y * (1.05 - fposmod(absf(sin(i * 2.71)) + maxf(s, 0.0) * speed, 1.1))
+		var x := view.x * absf(sin(i * 7.37)) + sin(s * 0.9 + i) * 12.0 * _scale
+		var size := (2.0 + 4.0 * absf(sin(i * 1.91))) * _scale
+		var a := fade * (0.35 + 0.35 * sin(s * 6.0 + i * 2.3)) * clampf(y / view.y * 1.4, 0.0, 1.0)
+		draw_rect(Rect2(x, y, size, size), Color(Palette.CRIMSON if i % 3 == 0 else Palette.TEAL, a))
 
 
 ## How hard the title tears now: on the snare (beats two and four of each bar of the riff), for TEAR_S.
