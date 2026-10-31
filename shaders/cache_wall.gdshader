@@ -43,7 +43,7 @@ uniform vec4 scan_color : source_color = vec4(0.92, 1.0, 0.95, 1.0);
 uniform float code_energy = 1.5;
 uniform float storm_energy = 2.6;
 uniform float edge_energy = 2.4;
-uniform float head_energy = 3.2;
+uniform float head_energy = 1.8;
 uniform float caret_energy = 3.4;
 // A `^C` pixel's side, metres, and its middle's height over the wall's middle.
 uniform float caret_px = 0.13;
@@ -169,7 +169,7 @@ void fragment() {
 		// The cache lines: a faint seam across it every half metre.
 		lit += code_color.rgb * 0.1 * smoothstep(0.475, 0.5, abs(fract(lp.y * 2.0) - 0.5));
 		if (!post && written < 1.0) {
-			float head = 1.0 - smoothstep(0.0, 0.022, abs(down - written));
+			float head = 1.0 - smoothstep(0.0, 0.012, abs(down - written));
 			lit += scan_color.rgb * head * head_energy;
 		}
 		lit += scan_color.rgb * hat * caret_energy;

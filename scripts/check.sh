@@ -166,6 +166,7 @@ run_godot "mission test" --fixed-fps 60 --script res://tests/mission_test.gd
 run_godot "ruins test" --fixed-fps 60 --script res://tests/ruins_test.gd
 run_godot "mission 1 test" --fixed-fps 60 --script res://tests/mission1_test.gd
 run_godot "mission 2 test" --fixed-fps 60 --script res://tests/mission2_test.gd
+run_godot "mission 3 test" --fixed-fps 60 --script res://tests/mission3_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

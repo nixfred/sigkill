@@ -37,9 +37,10 @@ const TARGET_GROUP := &"targets"
 ## A target dummy's middle above its origin (scenes/target_dummy.tscn); a remote player's
 ## origin is its middle already.
 const DUMMY_MIDDLE_M := 0.9
-## In the Matrix register (M3), where the world is the walls' own green, a silhouette takes its daemon's own colour and the
-## world dims toward MATRIX_TINT, nearer grey, so the silhouettes stand out of it: daemons stay readable in every register.
-const MATRIX_TINT := Color(0.34, 0.42, 0.36)
+## In the Matrix register (M3), where the world is the walls' own green, a silhouette takes its daemon's own colour (its
+## edge lit as a hologram's) and the world dims toward MATRIX_TINT, a plain grey that keeps that colour as it is, so the
+## silhouettes stand out of it: daemons stay readable in every register.
+const MATRIX_TINT := Color(0.4, 0.4, 0.4)
 ## The walls' glyph values the silhouettes take as they are.
 const RAIN_UNIFORMS := ["glyph_size", "column_density", "fall_speed_min", "fall_speed_max", "tail_length", "flicker_rate", "head_color", "tail_color"]
 

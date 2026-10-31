@@ -96,8 +96,10 @@ void fragment() {
 	vec3 r = rain(vec2(around, local_pos.y));
 	vec3 light = r * energy + tail_color.rgb * glow;
 	if (body_color.a > 0.0) {
+		// Its own colour, its edge lit bright as a hologram's, so its shape reads at once out of the green.
 		float lit = max(r.r, max(r.g, r.b));
-		light = body_color.rgb * (lit * energy * 1.8 + glow * 1.6) + vec3(lit) * 0.5;
+		float rim = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 2.2);
+		light = body_color.rgb * (lit * energy * 1.0 + glow * 1.2 + rim * 3.0);
 	}
 	ALBEDO = light * strength;
 	ALPHA = strength;

@@ -120,6 +120,8 @@ func show_complete() -> void:
 		_chips_head.text = HANDED
 		for w in granted:
 			_chip(w)
+		for a in def.abilities:
+			_ability_chip(a)  # M3: an ability it handed over, beside its weapons
 	elif not def.grants.is_empty():
 		var names := PackedStringArray()
 		for w in def.grants:
@@ -368,6 +370,19 @@ func _chip(weapon: String) -> void:
 	chip.add_theme_stylebox_override("panel", style)
 	_chips.add_child(chip)
 	_label(chip, "%s  [%s]" % [short_of(weapon), MissionHud.key_of(weapon)], 14, beam)
+
+
+## A chip for ability `id` the mission handed over (M3): its name and its key, in the code rain's green.
+func _ability_chip(id: String) -> void:
+	var chip := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.MATRIX_GREEN, 0.12)
+	style.border_color = Palette.MATRIX_GREEN
+	style.set_border_width_all(1)
+	style.set_content_margin_all(8)
+	chip.add_theme_stylebox_override("panel", style)
+	_chips.add_child(chip)
+	_label(chip, "%s  [%s]" % [MissionDef.ABILITIES.get(id, id), MissionHud.ability_key(id)], 14, Palette.MATRIX_GREEN)
 
 
 ## The shipped weapon with id `weapon`, or null.

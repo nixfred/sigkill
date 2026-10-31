@@ -3087,7 +3087,7 @@ func _m3() -> void:
 	_c37_render_info("storm")
 	# Pipe run down the storm as it comes out of the lines: aimed at the nearest of it in sight.
 	var waited := 0
-	while waited < 360 and stage.wave_daemons("storm").filter(func(d): return d.is_alive() and d.global_position.distance_to(_player.global_position) < 11.0).size() < 3:
+	while waited < 480 and stage.wave_daemons("storm").filter(func(d): return d.is_alive() and d.global_position.distance_to(_player.global_position) < 9.0).size() < 4:
 		await _frames(1)
 		waited += 1
 	var nearest: Node3D = null
@@ -3098,9 +3098,17 @@ func _m3() -> void:
 	if nearest != null:
 		_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), nearest.threat_point())
 	await _frames(2)
-	_fire()
-	await _frames(int(0.35 * Engine.physics_ticks_per_second))
 	await _m2_quiet()
+	_fire()
+	# Held on the nearest of it as it moves, so the stream lands and runs on down the chain.
+	for i in int(0.3 * Engine.physics_ticks_per_second):
+		nearest = null
+		for d in stage.wave_daemons("storm"):
+			if d.is_alive() and (nearest == null or d.global_position.distance_to(_player.global_position) < nearest.global_position.distance_to(_player.global_position)):
+				nearest = d
+		if nearest != null:
+			_m3_aim(nearest.threat_point())
+		await _frames(1)
 	await _c37_save(sheet, "m3-storm", runner)
 	_unfire()
 	await _m3_until(runner, func(): return runner.index >= 3, 0.0)
@@ -3113,9 +3121,12 @@ func _m3() -> void:
 	while stage.cores().size() < 4 or stage.cores().any(func(c): return c.climbing()):
 		await _frames(1)
 	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	# Outside the lines on their start's side, looking in across them at the nearest core: walls between.
 	var core: Node3D = stage.cores()[0]
-	var hidden := _m3_standpoint(field, core, true)
-	_c37_view(hidden, core.global_position + Vector3(0, 1.9, 0))
+	for c in stage.cores():
+		if c.global_position.z > core.global_position.z:
+			core = c
+	_c37_view(Vector3(core.global_position.x - 3.0, 0.0, edge.z + 2.0), core.global_position + Vector3(0, 1.9, 0))
 	await _frames(4)
 	_m3_vision(true)
 	await _frames(int(0.6 * Engine.physics_ticks_per_second))
@@ -3211,7 +3222,7 @@ func _m3_until(runner: MissionRunner, condition: Callable, most: float) -> void:
 
 
 ## Where to stand to see `core` (m3): of the cells round it (beside it, across a corner, two over), the one with the most
-## standing walls between it and the core (`hidden`: code-rain vision's still) or the fewest (its fight's), on the floor.
+## standing walls between it and the core (`hidden`) or the fewest, on the floor.
 func _m3_standpoint(field: CacheField, core: Node3D, hidden: bool) -> Vector3:
 	var best := Vector3.INF
 	var best_score := -INF
@@ -3258,6 +3269,14 @@ func _m3_walls_between(field: CacheField, a: Vector3, b: Vector3) -> int:
 		if Geometry2D.segment_intersects_segment(Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(p.x, p.z), Vector2(q.x, q.z)) != null:
 			n += 1
 	return n
+
+
+## The view turned onto `at` where the player stands (m3).
+func _m3_aim(at: Vector3) -> void:
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to: Vector3 = at - cam.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
 
 
 ## Code-rain vision held or let go (m3), as V does.
