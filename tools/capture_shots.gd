@@ -363,7 +363,7 @@ const C39_WIDE_AT := 26.8
 const C39_PALETTES_AT := 35.6
 ## c40's stills: [name, the opener's second], the one shot at 960x540, the sheet of the move (these, in order), and
 ## the frames measured for the cost (every frame from the reveal to the landing).
-const C40_SHOTS := [["c40-ignore", 38.3], ["c40-shrink", 41.9], ["c40-panel", 44.0], ["c40-machine", 46.6], ["c40-edge", 49.4], ["c40-drop", 52.0], ["c40-names", 55.0], ["c40-deep", 60.0], ["c40-pit", 64.5], ["c40-landed", 69.0]]
+const C40_SHOTS := [["c40-ignore", 38.3], ["c40-shrink", 41.9], ["c40-panel", 44.0], ["c40-machine", 46.6], ["c40-edge", 49.4], ["c40-drop", 52.0], ["c40-names", 55.0], ["c40-deep", 58.5], ["c40-pit", 62.5], ["c40-landed", 69.0]]
 const C40_SMALL_AT := 57.0
 const C40_SHEET := ["c40-shrink", "c40-panel", "c40-machine", "c40-edge", "c40-drop", "c40-names", "c40-deep", "c40-landed"]
 const C40_SHEET_COLUMNS := 4
