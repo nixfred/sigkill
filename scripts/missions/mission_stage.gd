@@ -264,15 +264,19 @@ func _wake(id: String) -> void:
 		return
 	wave["awake"] = true
 	var director := DaemonDirector.of(self)
+	var up: bool = wave["alive"].is_empty() or wave["state"] == "running"
 	for d in wave["alive"]:
 		if is_instance_valid(d):
 			d.hide_tag(w.get("tagged", true) == false)
 		if is_instance_valid(d) and d.brain != null:
 			d.brain.dormant = false
 			d.brain.relentless = true
+			if d.is_alive() or d.climbing():
+				up = true
 			if director != null and d.is_alive():
 				d.brain.alert(director)
-	woke.emit(id)
+	if up:
+		woke.emit(id)  # never for a wave put down in its sleep: nobody is left to have woken
 
 
 ## The next daemon of wave `id` climbs out of its next vent, or stands at its next spot or place in its queue (M2).
