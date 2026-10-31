@@ -6,12 +6,12 @@
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
 # headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence,
-# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall and trailer tests (tests/movement_test.gd,
+# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall, trailer and opener link tests (tests/movement_test.gd,
 # tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
 # Ollama for model loading) on 127.0.0.1. No real agent or model server is ever run or
 # reached. The settings and unlocks tests keep their settings and progress files in a temporary folder; no headless run
@@ -19,7 +19,10 @@
 # folder under user:// (fake theme, host and uptime files, a pinned clock) and removes it at the end; never the real one;
 # the opener fall test likewise, with fake homes of invented folders (or none) of its own. The trailer test renders
 # nothing: it checks the teaser tool's shot list and demo-only rules, keeps its one privacy file in its own folder under
-# user:// (never the player's settings), and runs the tool headless, where it refuses to draw. The relay test and the WebSocket relay test run the
+# user:// (never the player's settings), and runs the tool headless, where it refuses to draw. The opener link test (C41)
+# plays the opener on invented data with a guide link on a fake detector and stub adapters (the real Claude Code adapter
+# only on the stub CLI under tests/fixtures/ai/guide, recording its arguments in the test's own folder under user://,
+# removed at the end); no real agent is ever run. The relay test and the WebSocket relay test run the
 # relay (relay/) as its own process bound to 127.0.0.1 only, and stop it with its stop file. The net, combat, room, weapon, settings, rail, bullet time, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP and unlocks tests run a host and joiners in this one process over
 # ENet on 127.0.0.1 only, on ports the system hands out; the room test's fake rendezvous
 # is on 127.0.0.1 too. The main scene is the boot screen; under --headless, with
@@ -150,6 +153,7 @@ run_godot "opener test" --fixed-fps 60 --script res://tests/opener_test.gd
 run_godot "opener real-data test" --fixed-fps 60 --script res://tests/opener_real_test.gd
 run_godot "opener fall test" --fixed-fps 60 --script res://tests/opener_fall_test.gd
 run_godot "trailer test" --fixed-fps 60 --script res://tests/trailer_test.gd
+run_godot "opener link test" --fixed-fps 60 --script res://tests/opener_link_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

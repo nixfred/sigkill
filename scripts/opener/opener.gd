@@ -736,7 +736,7 @@ func _step_link(delta: float) -> void:
 		_link.step(_elapsed, delta * 1000.0, _t.answer_by)
 	if _link_beat == null or _pit == null:
 		return
-	if _link_beat.badge_text() == "" and _asked_at >= 0.0:
+	if _locked_at < 0.0 and _asked_at >= 0.0:
 		_link_beat.set_agent(_link.agent())
 	_link_beat.step(_elapsed)
 	if _elapsed >= _t.signal_at and event_time("signal") < 0.0:

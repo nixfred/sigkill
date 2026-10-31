@@ -155,23 +155,20 @@ static func stop_r() -> float:
 	return TreeLayout.LAND_R - STOP_GAP
 
 
-## How far it walks: STEPS whole strides.
+## How far it walks, metres across the ground (level, as its feet move under it, so a foot never slides on the
+## stair either): STEPS whole strides.
 static func walk_length() -> float:
 	return STEPS * CopyArt.STRIDE
 
 
-## Where the stair starts, from the axis: down in the pit, so that the climb and the floor add up to walk_length().
+## Where the stair starts, from the axis: down in the pit, walk_length() short of where it stops.
 static func start_r() -> float:
-	var floor_m := stop_r() - TreeLayout.PIT_R
-	return TreeLayout.PIT_R - (walk_length() - floor_m) / sqrt(1.0 + STAIR_SLOPE * STAIR_SLOPE)
+	return stop_r() - walk_length()
 
 
 ## How far from the axis it is, `d` metres along its walk.
 static func r_at(d: float) -> float:
-	var climb := (TreeLayout.PIT_R - start_r()) * sqrt(1.0 + STAIR_SLOPE * STAIR_SLOPE)
-	if d <= climb:
-		return start_r() + d / sqrt(1.0 + STAIR_SLOPE * STAIR_SLOPE)
-	return TreeLayout.PIT_R + (d - climb)
+	return start_r() + d
 
 
 ## The ground's height `r` metres from the axis: the stair up out of the pit, then the floor.

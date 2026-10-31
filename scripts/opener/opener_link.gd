@@ -60,7 +60,6 @@ var _line := ""
 var _live := false
 var _latency_ms := -1
 var _why := ""
-var _agent := ""
 var _demo := false
 var _demo_done_at := 0.0
 var _serial := -1
@@ -83,7 +82,6 @@ func begin(elapsed: float) -> void:
 	if guide == null:
 		_fall_back(WHY_NONE)
 		return
-	_agent = guide.display_name()
 	if guide.demo:
 		_demo = true
 		_demo_done_at = elapsed + DEMO_LATENCY_MS / 1000.0
@@ -219,9 +217,10 @@ func why() -> String:
 	return _why
 
 
-## The agent's name for the badge, from the guide link's known list ("claude", "local", ...), or "".
+## The agent's name for the badge, from the guide link's known list ("claude", "local", ...; demo data's "claude"), or
+## "" (no link, or none chosen yet).
 func agent() -> String:
-	return _agent
+	return guide.display_name() if guide != null else ""
 
 
 ## True once a call was started (never under demo data, never when the link refused).
