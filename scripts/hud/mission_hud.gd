@@ -69,7 +69,12 @@ const AUDIT_PREFIX := ""
 const TILDE_PREFIX := "~ $ "
 const HANDED_LINE := ">> %s handed to you  [%s]"
 const LOG_HEAD := "$ cat %s"
-const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway core", "any": "daemons"}
+## The action each ability a mission hands over runs on (M3), for its key.
+const ABILITY_ACTIONS := {"code_rain_vision": "code_rain_vision", "sigstop": "sigstop", "sudo": "sudo_overcharge", "breakers": "run_breaker"}
+## The cache meter (M3): its words, and the share past which it reads hot.
+const CACHE_WORDS := "cache"
+const CACHE_HOT := 0.75
+const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "any": "daemons"}
 
 ## The runner whose mission this shows, the guide panel your AI's lines go to, and the player (for the metres).
 var runner: MissionRunner = null
@@ -114,7 +119,7 @@ func _ready() -> void:
 func set_runner(r: MissionRunner) -> void:
 	runner = r
 	_end.runner = r
-	for pair in [["began", _on_began], ["objective_began", _on_objective_began], ["objective_done", _on_objective_done], ["progressed", _on_progressed], ["line_said", _on_line], ["log_found", _on_log], ["handed", _on_handed], ["register_shifted", _on_shift], ["failed", _on_failed], ["completed", _on_completed], ["ended", _on_ended]]:
+	for pair in [["began", _on_began], ["objective_began", _on_objective_began], ["objective_done", _on_objective_done], ["progressed", _on_progressed], ["line_said", _on_line], ["log_found", _on_log], ["handed", _on_handed], ["ability_handed", _on_ability_handed], ["register_shifted", _on_shift], ["failed", _on_failed], ["completed", _on_completed], ["ended", _on_ended]]:
 		if not r.is_connected(pair[0], pair[1]):
 			r.connect(pair[0], pair[1])
 
@@ -140,6 +145,8 @@ func shown_text() -> PackedStringArray:
 		out.append(progress_text())
 		if hint_text() != "":
 			out.append(hint_text())
+		if cache_text() != "":
+			out.append(cache_text())
 	for line in _feed:
 		out.append(_typed(str(line["prefix"]) + str(line["text"]), line["age"], line["cps"]))
 	if _log_age >= 0.0:
@@ -165,6 +172,13 @@ func progress_text() -> String:
 			var at := runner.target_point()
 			return ("find %s  %d m" % [str(entry.get("name", "the log")), roundi(_metres_to(at))]) if at != Vector3.INF else "read"
 	return ""
+
+
+## The loop's cache in words (M3): "cache  41%  i=3"; "" while no loop runs.
+func cache_text() -> String:
+	if runner == null or runner.cache_share() < 0.0 or runner.state != MissionRunner.State.RUNNING:
+		return ""
+	return "%s  %d%%  i=%d" % [CACHE_WORDS, floori(runner.cache_share() * 100.0), runner.passes()]
 
 
 ## The running objective's hint (C37), its "{action}" keys as bound now; "" for none.
@@ -315,6 +329,18 @@ func _on_handed(weapon: String) -> void:
 			_push_feed("", HANDED_LINE % [def.short_name, key_of(def.id)], Palette.TEAL, FEED_CPS)
 
 
+func _on_ability_handed(ability: String) -> void:
+	_push_feed("", HANDED_LINE % [MissionDef.ABILITIES.get(ability, ability), ability_key(ability)], Palette.TEAL, FEED_CPS)
+
+
+## The key that runs ability `id` as bound now ("V"), from its action (M3).
+static func ability_key(id: String) -> String:
+	var action: String = ABILITY_ACTIONS.get(id, "")
+	if action == "":
+		return ""
+	return Controls.bind_label(GameSettings.current().bind(action))
+
+
 func _on_shift(from: String, to: String) -> void:
 	_shift = {"from": from, "to": to}
 	_shift_age = 0.0
@@ -416,6 +442,8 @@ func _draw_panel() -> float:
 		rows += 48.0
 		if hint_text() != "":
 			rows += 18.0
+		if cache_text() != "":
+			rows += 20.0
 	elif runner.state == MissionRunner.State.INTRO:
 		rows += 20.0
 	else:
@@ -474,6 +502,8 @@ func _draw_panel() -> float:
 			var hint := hint_text()
 			if hint != "":
 				_text(Vector2(p.x + 16, row_y + 45), _clip(hint, MissionDef.HINT_LAST + 2), 11, Color(Palette.MINT, 0.55))
+			if cache_text() != "":
+				_draw_cache(Vector2(p.x + 16, row_y + (63.0 if hint != "" else 45.0)), w - 44)
 		MissionRunner.State.FAILED:
 			_text(Vector2(p.x, row_y), "exit 137  " + runner.reason, 13, Palette.HOSTILE_RED)
 		MissionRunner.State.COMPLETE:
@@ -515,6 +545,24 @@ func _draw_progress(at: Vector2, w: float) -> void:
 		_:
 			var arrow := _arrow_word()
 			_text(at, words + ("  " + arrow if arrow != "" else ""), 12, Palette.MINT)
+
+
+## The loop's cache filling (M3): a bar from green to the runaway's magenta as it fills, its per cent and the loop's i.
+func _draw_cache(at: Vector2, w: float) -> void:
+	var share := clampf(runner.cache_share(), 0.0, 1.0)
+	var hot := smoothstep(0.35, 1.0, share)
+	var colour := Palette.MATRIX_GREEN.lerp(Palette.HOT_MAGENTA, hot)
+	if share >= CACHE_HOT and fmod(_age, 0.6) < 0.3:
+		colour = Palette.FLASH
+	_text(Vector2(at.x, at.y), CACHE_WORDS, 11, Color(Palette.MINT, 0.75))
+	var x := at.x + _width(CACHE_WORDS, 11) + 8.0
+	var bar := w - (x - at.x) - 92.0
+	draw_rect(Rect2(x, at.y - 8, bar, 6), Color(Palette.TEAL, 0.25))
+	draw_rect(Rect2(x, at.y - 8, bar * share, 6), colour)
+	for k in [0.25, 0.5, 0.75]:
+		draw_rect(Rect2(x + bar * k, at.y - 10, 1, 10), Color(Palette.MINT, 0.35))
+	var words := "%d%%  i=%d" % [floori(share * 100.0), runner.passes()]
+	_text(Vector2(x + bar + 8.0, at.y), words, 11, colour)
 
 
 ## The terminal: the Auditor's and `~`'s lines, a weapon handed over.

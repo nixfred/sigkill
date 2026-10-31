@@ -34,6 +34,15 @@ extends RefCounted
 ##                its log stands), "queue" (the head of a line beside the door), "queue_1" and "queue_2" along that line
 ##                and "queue_end" its points, the line running straight out from the shop as far as the floor lets it
 ##                (cover is kept off every one of them, so the line stands clear)
+## A set with a field (M3) adds, as the route is made (so the ruins plan round it, and only its own plan changes):
+##   the field    a square of field_cells by field_cells floor cells round the plaza (clamped inside the floor, off the
+##                start's and the exit's rows), and a ring of floor a cell wide round it, never a ruin, a hole or cover;
+##                its cells' sides are a lattice of walls (`field.walls`, built and rewritten at play by scripts/ruins/
+##                cache_field.gd, never in `boxes`: they come and go), a post at every corner of the lattice (in `boxes`,
+##                kind "post"); "field" (its middle cell), "field_edge" (just outside it, on the start's side) and core_0
+##                to core_3 (four cells round the middle, a cell in from each corner) its points, every cell of it taken
+##                from the other points. field_pattern() says which walls stand written, which are mid-rewrite and which
+##                are gone on each pass of a rewrite: seeded, every cell always reachable from outside it.
 ##
 ## Fiction only: the folder names and sign words are the set's demo text.
 
@@ -105,6 +114,10 @@ var breach_cell := Vector2i(-1, -1)
 ## middle on the floor line), out: Vector3 (the way it faces), along: Vector3 (its front's length, left to right as
 ## seen from the street), width (its front's length, metres)}; {} for none.
 var shop := {}
+## The field (M3): {rect: Rect2i, middle: Vector2i, cores: [Vector2i] (four), walls: [{at: Vector3 (its middle on the floor),
+## yaw (0: along x, PI/2: along z), length, a: Vector2i, b: Vector2i (the cells either side; (-1, -1) outside it)}],
+## posts: [Vector3] (the floor under each)}; {} for none.
+var field := {}
 var gate := {}
 var pocket := {}
 var gangway := {}
@@ -131,6 +144,7 @@ func _init(from: RuinsSet) -> void:
 	_edges()
 	_points()
 	_floor_boxes()
+	_field_lattice()
 	_cover()
 	_breach()
 	_scenery()
@@ -214,11 +228,14 @@ func _route() -> void:
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			_put(plaza_cell + Vector2i(dx, dz), Cell.FLOOR)
+	_field_cells()
 
 
 func _reserved(c: Vector2i) -> bool:
 	if route.has(c):
 		return true
+	if not field.is_empty() and (field["rect"] as Rect2i).grow(1).has_point(c):
+		return true  # the field and its ring (M3): never a ruin or a hole
 	if absi(c.x - plaza_cell.x) <= 1 and absi(c.y - plaza_cell.y) <= 1:
 		return true
 	for keep in [start_cell, exit_cell]:
@@ -405,6 +422,8 @@ func _points() -> void:
 	var taken: Array[Vector2i] = [start_cell, exit_cell, plaza_cell]
 	if not shop.is_empty():
 		_shop_points(taken)
+	if not field.is_empty():
+		_field_points(taken)
 	# Logs: tucked against a ruin or an edge, away from each other.
 	var nooks: Array[Vector2i] = []
 	for c in open:
@@ -511,6 +530,151 @@ func _spread(from: Array, count: int, away: Array, taken: Array[Vector2i]) -> Ar
 	return out
 
 
+# --- The field (M3). ---
+
+## The field's walls: how tall, how thick; its posts' side and how far over the walls they stand.
+const FIELD_WALL_H := 4.0
+const FIELD_WALL_T := 0.3
+const FIELD_POST_M := 0.5
+const FIELD_POST_OVER := 0.25
+## A field wall's states on a pass of a rewrite (field_pattern()): gone (nothing but its seam on the floor), mid-rewrite
+## (standing as a storm of code, no collision: walked and shot through, seen through only by code-rain vision), written
+## (solid: it stops a step, a shot and a look).
+enum Wall { GONE, DIRTY, WRITTEN }
+## The odds of each state for a wall beside a core's cell (screening it) and for any other, as [gone, mid-rewrite]
+## (written the rest).
+const SCREEN_ODDS := Vector2(0.08, 0.42)
+const OPEN_ODDS := Vector2(0.4, 0.22)
+
+
+## The field's cells (M3), as the route is made: a square round the plaza, clamped inside the floor and off the start's
+## and the exit's rows, made floor with the cell on its start's side (where "field_edge" stands).
+func _field_cells() -> void:
+	if ruins.field == "":
+		return
+	var n := ruins.field_cells
+	var at := Vector2i(clampi(plaza_cell.x - n / 2, 1, size.x - 1 - n), clampi(plaza_cell.y - n / 2, 2, size.y - 2 - n))
+	var rect := Rect2i(at, Vector2i(n, n))
+	for x in range(rect.position.x, rect.end.x):
+		for z in range(rect.position.y, rect.end.y):
+			_put(Vector2i(x, z), Cell.FLOOR)
+	var middle := rect.position + Vector2i(n / 2, n / 2)
+	_put(Vector2i(middle.x, rect.end.y), Cell.FLOOR)
+	var cores: Array[Vector2i] = [rect.position + Vector2i(1, 1), rect.position + Vector2i(n - 2, 1), rect.position + Vector2i(1, n - 2), rect.position + Vector2i(n - 2, n - 2)]
+	field = {"rect": rect, "middle": middle, "cores": cores, "walls": [], "posts": []}
+
+
+func _reserved_field(c: Vector2i) -> bool:
+	return not field.is_empty() and (field["rect"] as Rect2i).grow(1).has_point(c)
+
+
+## The field's lattice (M3): a wall on every side of every cell of it, a post at every corner (their boxes, kind "post").
+func _field_lattice() -> void:
+	if field.is_empty():
+		return
+	var rect: Rect2i = field["rect"]
+	var walls: Array = []
+	var length := CELL_M - FIELD_POST_M
+	var none := Vector2i(-1, -1)
+	# Along x (a wall between a cell and the one north of it), then along z (between a cell and the one west of it).
+	for z in range(rect.position.y, rect.end.y + 1):
+		for x in range(rect.position.x, rect.end.x):
+			var a := Vector2i(x, z - 1) if z > rect.position.y else none
+			var b := Vector2i(x, z) if z < rect.end.y else none
+			walls.append({"at": center(Vector2i(x, z)) - Vector3(0, 0, CELL_M * 0.5), "yaw": 0.0, "length": length, "a": a if a != none else b, "b": b if a != none else none})
+	for x in range(rect.position.x, rect.end.x + 1):
+		for z in range(rect.position.y, rect.end.y):
+			var a := Vector2i(x - 1, z) if x > rect.position.x else none
+			var b := Vector2i(x, z) if x < rect.end.x else none
+			walls.append({"at": center(Vector2i(x, z)) - Vector3(CELL_M * 0.5, 0, 0), "yaw": PI * 0.5, "length": length, "a": a if a != none else b, "b": b if a != none else none})
+	field["walls"] = walls
+	var posts: Array = []
+	for z in range(rect.position.y, rect.end.y + 1):
+		for x in range(rect.position.x, rect.end.x + 1):
+			var at := center(Vector2i(x, z)) - Vector3(CELL_M * 0.5, 0, CELL_M * 0.5)
+			posts.append(at)
+			var tall := FIELD_WALL_H + FIELD_POST_OVER
+			boxes.append({"xform": Transform3D(Basis.IDENTITY, at + Vector3(0, tall * 0.5, 0)), "size": Vector3(FIELD_POST_M, tall, FIELD_POST_M), "kind": "post"})
+	field["posts"] = posts
+
+
+## The field's points (M3): its middle, just outside it on the start's side, its four cores' cells; every cell of it taken.
+func _field_points(taken: Array[Vector2i]) -> void:
+	var rect: Rect2i = field["rect"]
+	var middle: Vector2i = field["middle"]
+	points["field"] = center(middle) + Vector3(0, STAND_Y, 0)
+	points["field_edge"] = center(Vector2i(middle.x, rect.end.y)) + Vector3(0, STAND_Y, CELL_M * 0.1)
+	for i in field["cores"].size():
+		points["core_%d" % i] = center(field["cores"][i])
+	for x in range(rect.position.x - 1, rect.end.x + 1):
+		for z in range(rect.position.y - 1, rect.end.y + 1):
+			var c := Vector2i(x, z)
+			if rect.has_point(c) and not taken.has(c):
+				taken.append(c)
+
+
+## Which of the field's walls stand in which state on pass `turn` of a rewrite (M3), one byte each (Wall): seeded by the
+## set and the pass, so every machine rewrites the same, the walls beside a core's cell more often standing (screening
+## it) than the rest; then any cell a written wall shuts off from outside the field opened (the first such wall in order
+## turned mid-rewrite, so it still screens) until every cell can be walked to. Empty without a field.
+func field_pattern(turn: int) -> PackedByteArray:
+	var out := PackedByteArray()
+	if field.is_empty():
+		return out
+	var walls: Array = field["walls"]
+	var cores: Array = field["cores"]
+	out.resize(walls.size())
+	for i in walls.size():
+		var w: Dictionary = walls[i]
+		var odds := SCREEN_ODDS if cores.has(w["a"]) or cores.has(w["b"]) else OPEN_ODDS
+		var roll := fposmod(sin(float(ruins.seed % 100003) * 0.0131 + float(turn) * 12.9898 + float(i) * 78.233) * 43758.5453, 1.0)
+		out[i] = Wall.GONE if roll < odds.x else Wall.DIRTY if roll < odds.x + odds.y else Wall.WRITTEN
+	while true:
+		var reached := _field_reached(out)
+		var opened := false
+		for i in walls.size():
+			if out[i] != Wall.WRITTEN:
+				continue
+			var w: Dictionary = walls[i]
+			var a_in: bool = reached.has(w["a"])
+			var b_in: bool = w["b"] == Vector2i(-1, -1) or reached.has(w["b"])
+			if a_in != b_in:
+				out[i] = Wall.DIRTY
+				opened = true
+				break
+		if not opened:
+			break
+	return out
+
+
+## The field's cells a player can reach from outside it, past every wall of `states` that is not written.
+func _field_reached(states: PackedByteArray) -> Dictionary:
+	var walls: Array = field["walls"]
+	var seen := {}
+	var todo: Array[Vector2i] = []
+	for i in walls.size():
+		var w: Dictionary = walls[i]
+		if w["b"] == Vector2i(-1, -1) and states[i] != Wall.WRITTEN and not seen.has(w["a"]):
+			seen[w["a"]] = true
+			todo.append(w["a"])
+	while not todo.is_empty():
+		var c: Vector2i = todo.pop_back()
+		for i in walls.size():
+			var w: Dictionary = walls[i]
+			if states[i] == Wall.WRITTEN or w["b"] == Vector2i(-1, -1):
+				continue
+			var other: Vector2i = w["b"] if w["a"] == c else w["a"] if w["b"] == c else Vector2i(-1, -1)
+			if other != Vector2i(-1, -1) and not seen.has(other):
+				seen[other] = true
+				todo.append(other)
+	return seen
+
+
+## True when every cell of the field can be reached from outside it on `states` (the checks).
+func field_open(states: PackedByteArray) -> bool:
+	return field.is_empty() or _field_reached(states).size() == (field["rect"] as Rect2i).get_area()
+
+
 ## Every point's name, sorted.
 func point_names() -> PackedStringArray:
 	var out := PackedStringArray(points.keys())
@@ -521,7 +685,7 @@ func point_names() -> PackedStringArray:
 # --- Cover. ---
 
 func _cover() -> void:
-	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell)
+	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell and not _reserved_field(c))
 	for t in ruins.cover * 3:
 		if cover.size() >= ruins.cover or open.is_empty():
 			break

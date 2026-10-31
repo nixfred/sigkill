@@ -109,6 +109,9 @@ var _shop_lamp: OmniLight3D = null
 var _shop_t := -1.0
 var _shop_dark_t := -1.0
 var _shop_power := 0.0
+## The cache field (M3), or null; and how long the weather holds still (the rain stopping for a second).
+var _field: CacheField = null
+var _hush_left := 0.0
 
 static var _kept := {}
 static var _materials := {}
@@ -209,6 +212,7 @@ func _process(delta: float) -> void:
 	_step_sparks(delta)
 	_step_remnant(delta)
 	_step_shop(delta)
+	_step_hush(delta)
 	_feed_rain()
 
 
@@ -631,6 +635,10 @@ func _show() -> void:
 		_spark_at(tips[(i * 5) % tips.size()])
 	_show_breach()
 	_show_shop()
+	if not layout.field.is_empty():
+		_field = CacheField.new()
+		_field.layout = layout
+		add_child(_field)
 
 
 ## The shop's storefront (M2), its light on its timer.
@@ -727,6 +735,39 @@ func walk_route(from: Vector3, to: Vector3) -> PackedVector3Array:
 		out[k] = to_global(out[k])
 		out[k].y = from.y
 	return out
+
+
+# --- The cache field (M3). ---
+
+## Its cache field (scripts/ruins/cache_field.gd), or null for a district without one.
+func field() -> CacheField:
+	return _field if _field != null and is_instance_valid(_field) else null
+
+
+## The rain stops for `seconds` (M3, docs/STORY.md mission 3's end beat: "the last core dies and the rain stops for one
+## second"): every drop and glyph of its weather held where it hangs, and the arena's shader clock held with it, so the code
+## in its walls stops falling too; then all of it runs on.
+func hush(seconds: float) -> void:
+	_hush_left = maxf(_hush_left, seconds)
+	ArenaArt.hold_clock(seconds)
+	for p in [_rain, _motes, _glyphs]:
+		if p != null:
+			(p as GPUParticles3D).speed_scale = 0.0
+
+
+## True while its weather holds still.
+func hushed() -> bool:
+	return _hush_left > 0.0
+
+
+func _step_hush(delta: float) -> void:
+	if _hush_left <= 0.0:
+		return
+	_hush_left -= delta
+	if _hush_left <= 0.0:
+		for p in [_rain, _motes, _glyphs]:
+			if p != null:
+				(p as GPUParticles3D).speed_scale = 1.0
 
 
 # --- The shop (M2). ---

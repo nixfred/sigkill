@@ -37,6 +37,9 @@ const TARGET_GROUP := &"targets"
 ## A target dummy's middle above its origin (scenes/target_dummy.tscn); a remote player's
 ## origin is its middle already.
 const DUMMY_MIDDLE_M := 0.9
+## In the Matrix register (M3), where the world is the walls' own green, a silhouette takes its daemon's own colour and the
+## world dims toward MATRIX_TINT, nearer grey, so the silhouettes stand out of it: daemons stay readable in every register.
+const MATRIX_TINT := Color(0.34, 0.42, 0.36)
 ## The walls' glyph values the silhouettes take as they are.
 const RAIN_UNIFORMS := ["glyph_size", "column_density", "fall_speed_min", "fall_speed_max", "tail_length", "flicker_rate", "head_color", "tail_color"]
 
@@ -186,7 +189,7 @@ func _step_look(real: float) -> void:
 		return  # settled: nothing to write this frame
 	_look = look
 	_restyle = false
-	_cover.color = Color.WHITE.lerp(_t.tint, look_strength())
+	_cover.color = Color.WHITE.lerp(MATRIX_TINT if _in_matrix() else _t.tint, look_strength())
 	_cover.visible = _look > 0.0
 	_paint.set_shader_parameter("strength", _look)
 
@@ -198,7 +201,8 @@ func _comfort() -> bool:
 
 
 ## Every enemy body within range_m of this player, nearest first, at most MARKERS_LAST, each
-## with its middle: [body, middle].
+## with its middle and its silhouette's scale: [body, middle, distance, scale]. A rooted daemon bigger than the silhouette
+## (M3: a loop's core, M2's parent) has it stretched round its body, at its body's middle.
 func _enemies_in_sight() -> Array:
 	var player := get_parent() as Node3D
 	if player == null:
@@ -206,9 +210,17 @@ func _enemies_in_sight() -> Array:
 	var seen := []
 	for body in _enemies():
 		var middle: Vector3 = body.global_position + (Vector3.UP * DUMMY_MIDDLE_M if body.is_in_group(TARGET_GROUP) else Vector3.ZERO)
+		var stretch := Vector3.ONE
+		var art = body.call("art_node") if body.has_method("art_node") and body.has_method("sessile") and body.call("sessile") else null
+		if art != null and is_instance_valid(art):
+			var box: Vector3 = art.body_box_size() * art.global_transform.basis.get_scale()
+			var round_w := _t.marker_radius_m * 2.0
+			if box.x > round_w * 1.3 or box.y > _t.marker_height_m * 1.3:
+				middle = art.global_transform * art.body_box().origin
+				stretch = Vector3(maxf(box.x, box.z) / round_w, box.y / _t.marker_height_m, maxf(box.x, box.z) / round_w)
 		var far := middle.distance_to(player.global_position)
 		if far <= _t.range_m:
-			seen.append([body, middle, far])
+			seen.append([body, middle, far, stretch])
 	seen.sort_custom(func(a, b): return a[2] < b[2])
 	return seen.slice(0, TuningScript.MARKERS_LAST)
 
@@ -232,16 +244,29 @@ func _enemies() -> Array[Node3D]:
 	return out
 
 
-## Stands a silhouette on each of `seen` ([body, middle] each), hides the rest.
+## True while the player stands in ruins in the Matrix register (M3).
+func _in_matrix() -> bool:
+	var world := RuinsWorld.of(self) if is_inside_tree() else null
+	return world != null and world.register == "matrix"
+
+
+## Stands a silhouette on each of `seen` ([body, middle] each), hides the rest; in the Matrix register each in its
+## daemon's own colour (M3).
 func _show_markers(seen: Array) -> void:
 	while _markers.size() < seen.size():
 		_markers.append(_marker())
 	_marked.clear()
+	var matrix := _in_matrix() and not seen.is_empty()
 	for i in _markers.size():
 		var shown := i < seen.size()
 		_markers[i].visible = shown
 		if shown:
 			_markers[i].global_position = seen[i][1]
+			_markers[i].scale = seen[i][3] if seen[i].size() > 3 else Vector3.ONE
+			var own := Color(0, 0, 0, 0)
+			if matrix and seen[i][0].has_method("art_node") and seen[i][0].call("art_node") != null:
+				own = Color(seen[i][0].call("art_node").core_color, 1.0)
+			_markers[i].set_instance_shader_parameter("body_color", own)
 			_marked.append(seen[i][0])
 
 

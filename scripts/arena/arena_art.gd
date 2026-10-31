@@ -98,6 +98,8 @@ var _lamp_nodes: Array[OmniLight3D] = []
 var _danger_nodes: Array[OmniLight3D] = []
 static var _clock := 0.0
 static var _clock_frame := -1
+## Seconds the clock still holds still (M3).
+static var _hold_left := 0.0
 ## The arena's light level (I3): 1 normal, down while Black ICE is out (scripts/ice/blackout.gd sets it);
 ## the lair's pulsing danger lights take it here, as they are set every frame.
 static var light_level := 1.0
@@ -125,18 +127,32 @@ func _process(delta: float) -> void:
 		light.light_energy = Palette.DANGER_LIGHT_ENERGY * glow * light_level
 
 
-## The arena's shader clock: stepped once a frame by whichever dressing is drawn first.
+## The arena's shader clock: stepped once a frame by whichever dressing is drawn first; held still while hold_clock() holds
+## it (M3: the rain stopping for a second).
 static func step_clock(delta: float) -> void:
 	var frame := Engine.get_process_frames()
 	if frame == _clock_frame:
 		return
 	_clock_frame = frame
+	if _hold_left > 0.0:
+		_hold_left -= delta
+		return
 	_clock = fmod(_clock + delta, CLOCK_WRAP)
 	RenderingServer.global_shader_parameter_set(SHADER_CLOCK, _clock)
 
 
 static func clock() -> float:
 	return _clock
+
+
+## The clock held still for `seconds` of game time from now (M3), every shader on it with it.
+static func hold_clock(seconds: float) -> void:
+	_hold_left = maxf(_hold_left, seconds)
+
+
+## True while the clock is held.
+static func clock_held() -> bool:
+	return _hold_left > 0.0
 
 
 ## The warm lamps by the big signs and the lair's two danger lights (A4), for the checks.

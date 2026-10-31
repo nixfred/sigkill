@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "cache_lines"
+title = "the cache lines"
+seed = 270413
+register = "matrix"
+cells = Vector2i(11, 14)
+blocks = 7
+holes = 3
+cover = 12
+towers = 32
+giants = 26
+cables = 18
+signs = 14
+folders = PackedStringArray("tmp", "page_cache", "swap.0", "shm", "run", "loop.out", "core.2271", "dirty_pages", "evict.q")
+words = PackedStringArray("PAGE CACHE", "TMPFS", "VOLATILE", "NO PERSIST", "L2 MISS", "WRITE BACK", "EVICTED", "HOT PATH", "SWAPPED OUT")
+field = "plaza"
+field_cells = 5
+field_code = "while true; do|  fork &|  sleep 0|done|# TODO: exit|i=$((i+1))"

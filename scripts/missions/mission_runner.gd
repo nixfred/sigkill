@@ -31,6 +31,9 @@ extends Node
 ## ICEbreakers locked at their director); the HUD shows the rest locked. All of it lifted when it ends where it stands.
 ## Mission 2's (M2): an objective's "arms" are in hand as it begins (handed, as "gives" are when it is done), and a
 ## dormant wave waking is the trigger "woke:<id>".
+## Mission 3's (M3): an objective's "unlocks" are abilities handed over as it begins (ability_handed; refused until then:
+## the gate opened for them), a line's "wait" holds it that long after its trigger, the stage's loop says how full the
+## cache is ("cache:<n>", and cache_share() for the HUD), and the cache full fails it: out of memory.
 ## Story lines leave here as line_said() for the HUD (scripts/hud/mission_hud.gd): your AI's to the guide panel, the
 ## Auditor's and `~`'s to the mission's terminal. Nothing here calls an AI, reads the player's machine or writes a
 ## file of its own (the one save is MissionProgress's).
@@ -42,6 +45,8 @@ signal progressed(index: int)
 signal line_said(who: String, text: String)
 signal log_found(entry: Dictionary)
 signal handed(weapon: String)
+## An ability put in hand as the objective that teaches it begins (M3).
+signal ability_handed(ability: String)
 signal register_shifted(from: String, to: String)
 signal failed(reason: String)
 signal completed(result: Dictionary)
@@ -69,6 +74,7 @@ const DEREZZED := "derezzed by %s"
 const DEREZZED_PLAIN := "derezzed"
 const FLATLINED := "flatlined by %s"
 const TIMED_OUT := "the timeslice ran out"
+const CACHE_FULL := "the cache filled: out of memory"
 ## What follows a reload, for main.gd.
 const AFTER_MISSIONS := "missions"
 
@@ -114,6 +120,8 @@ var logs_found := PackedStringArray()
 var register := "tron"
 ## What the player may carry now (the loadout and what objectives handed over).
 var carried := PackedStringArray()
+## The abilities objectives have handed over this try (M3).
+var unlocked := PackedStringArray()
 ## The end: {"seconds", "kills", "logs", "logs_total", "attempt", "first", "best", "best_s", "granted", "reason"}.
 var result := {}
 ## Why it failed, in words ("" while it has not).
@@ -127,6 +135,8 @@ var _pickups := {}
 var _parked: Array = []
 ## This try's kills by wave (M2): a kill objective's own waves' daemons put down before it begins count toward it as it does.
 var _downed_by_wave := {}
+## Lines waiting out their "wait" (M3): [seconds left, who, text].
+var _waiting: Array = []
 var _beacon: MissionBeacon = null
 var _targets: Array = []
 
@@ -250,6 +260,8 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	_fired = {}
 	_timed = []
 	_downed_by_wave = {}
+	_waiting = []
+	unlocked = PackedStringArray()
 	for on in _triggers_of(d):
 		if on.begins_with("at:"):
 			_timed.append([on, float(on.trim_prefix("at:"))])
@@ -302,7 +314,7 @@ static func _triggers_of(d: MissionDef) -> PackedStringArray:
 			if on != "" and not out.has(on):
 				out.append(on)
 	for p in d.props:
-		for key in ["opens", "lights"]:
+		for key in ["opens", "lights", "runs", "on"]:
 			var on := str(p.get(key, ""))
 			if on != "" and not out.has(on):
 				out.append(on)
@@ -374,6 +386,26 @@ func _make_stage(d: MissionDef) -> void:
 	stage.wave_began.connect(func(id: String) -> void: _fire("wave:" + id))
 	stage.wave_cleared.connect(func(id: String) -> void: _fire("cleared:" + id))
 	stage.woke.connect(func(id: String) -> void: _fire("woke:" + id))
+	stage.cache_marked.connect(func(percent: int) -> void: _fire("cache:%d" % percent))
+	stage.cache_full.connect(_on_cache_full)
+
+
+## The cache full (M3): out of memory, the mission failed.
+func _on_cache_full() -> void:
+	if running():
+		_fail(CACHE_FULL)
+
+
+## How full its loop's cache is (M3), 0 to 1; -1 while no loop has run.
+func cache_share() -> float:
+	if stage == null or not is_instance_valid(stage) or (not stage.loop_running and not stage.loop_broken_now):
+		return -1.0
+	return stage.cache
+
+
+## Its loop's passes so far (M3), 0 without one.
+func passes() -> int:
+	return stage.passes if stage != null and is_instance_valid(stage) else 0
 
 
 func _on_spawned(dummy: Node3D) -> void:
@@ -385,7 +417,7 @@ func _on_spawned(dummy: Node3D) -> void:
 ## The weapons' and abilities' gate (C37): on, the mission's allowed abilities only and the ICEbreakers locked unless
 ## handed over; off, everything back.
 func _gate(on: bool) -> void:
-	var allowed := def.allowed_abilities() if on and def != null else PackedStringArray()
+	var allowed := def.abilities_at_start() + unlocked if on and def != null else PackedStringArray()
 	if player != null and is_instance_valid(player) and player.has_method("set_abilities"):
 		player.set_abilities(allowed, on)
 	if breakers != null and is_instance_valid(breakers):
@@ -470,6 +502,7 @@ func engaged() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	_step_waiting(delta)
 	if not running():
 		return
 	if _online():
@@ -553,6 +586,16 @@ func _next_objective() -> void:
 			carried.append(w)
 			handed.emit(w)
 	_carry()
+	# Its abilities for the beat that teaches them (M3): the gate opened for them as it begins.
+	var opened := false
+	for a in o.get("unlocks", []):
+		if not unlocked.has(str(a)):
+			unlocked.append(str(a))
+			opened = true
+	if opened:
+		_gate(true)
+		for a in o.get("unlocks", []):
+			ability_handed.emit(str(a))
 	if o.get("kind") == "reach":
 		_beacon = MissionBeacon.new()
 		_beacon.label = str(o.get("label", ""))
@@ -668,7 +711,11 @@ func _fire(trigger: String) -> void:
 	_fired[trigger] = true
 	for line in def.lines:
 		if line.get("on") == trigger:
-			line_said.emit(str(line["who"]), str(line["text"]))
+			var wait := float(line.get("wait", 0.0))
+			if wait > 0.0:
+				_waiting.append([wait, str(line["who"]), str(line["text"])])
+			else:
+				line_said.emit(str(line["who"]), str(line["text"]))
 	for shift in def.transitions:
 		if shift.get("on") == trigger and shift.get("to") != register:
 			var from := register
@@ -678,6 +725,20 @@ func _fire(trigger: String) -> void:
 			register_shifted.emit(from, register)
 	if stage != null and is_instance_valid(stage):
 		stage.fire(trigger)
+
+
+## Lines whose wait is over said (M3), whatever the mission's state: a wait is the beat's, and outlasts it.
+func _step_waiting(delta: float) -> void:
+	if _waiting.is_empty():
+		return
+	var due: Array = []
+	for line in _waiting:
+		line[0] -= delta
+		if line[0] <= 0.0:
+			due.append(line)
+	for line in due:
+		_waiting.erase(line)
+		line_said.emit(line[1], line[2])
 
 
 func _carry() -> void:
@@ -738,6 +799,7 @@ func end_here() -> void:
 		_pending_try = 1
 	state = State.IDLE
 	_clear_world()
+	_waiting = []
 	carried = PackedStringArray()
 	_carry()
 	_gate(false)

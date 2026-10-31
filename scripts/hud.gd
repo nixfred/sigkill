@@ -354,14 +354,19 @@ func set_mission_runner(runner: MissionRunner) -> void:
 	# The arena's "daemons down" counter is the arena's: a mission's own panel counts what it needs (C36).
 	runner.began.connect(func(_def): _status.visible = false)
 	runner.ended.connect(func(): _status.visible = true)
-	# A weapon put in hand mid-mission says so at the top as an unlock does (M2): "IN HAND".
+	# A weapon put in hand mid-mission says so at the top as an unlock does (M2): "IN HAND"; an ability too (M3).
 	runner.handed.connect(_on_handed)
+	runner.ability_handed.connect(_on_ability_handed)
 
 
 func _on_handed(weapon: String) -> void:
 	for def in WeaponKit.shipped_defs():
 		if def.id == weapon:
 			_toast.show_unlock(weapon, UnlockToast.HANDED, "%s  [%s]" % [def.display_name, MissionHud.key_of(weapon)])
+
+
+func _on_ability_handed(ability: String) -> void:
+	_toast.show_unlock("", UnlockToast.ABILITY, "%s  [%s]" % [MissionDef.ABILITIES.get(ability, ability), MissionHud.ability_key(ability)])
 
 
 ## True while the arena's "daemons down" counter shows (hidden while a mission runs).

@@ -46,6 +46,13 @@ extends Resource
 @export var shop := ""
 @export var shop_sign := ""
 @export var shop_screen := ""
+## Its cache field (M3), "plaza" or "" for none: a square of field_cells by field_cells floor cells round the plaza, kept
+## clear of ruins, holes and cover, its cells' sides a lattice of walls of code that rewrite themselves (written, mid-
+## rewrite, or gone; scripts/ruins/cache_field.gd), a post at every corner of the lattice; and the lines of code its walls
+## show, a "|" between two (fiction, in the mono font).
+@export var field := ""
+@export var field_cells := 5
+@export var field_code := ""
 
 
 ## What is wrong with it; empty when it is good.
@@ -76,6 +83,20 @@ func problems() -> PackedStringArray:
 		out.append("%s: shop \"%s\" (only by the plaza)" % [id, shop])
 	if shop != "" and (shop_sign.strip_edges() == "" or shop_screen.strip_edges() == ""):
 		out.append("%s: a shop with no sign or no screen" % id)
+	if field != "" and field != "plaza":
+		out.append("%s: field \"%s\" (only round the plaza)" % [id, field])
+	if field != "" and (field_cells != 5 or cells.x < field_cells + 2 or cells.y < field_cells + 5):
+		out.append("%s: field_cells %d (5: a middle cell and a core a cell in from each corner; and room round it)" % [id, field_cells])
+	if field != "" and field_code.strip_edges() == "":
+		out.append("%s: a field with no code on its walls" % id)
+	if field != "" and shop != "":
+		out.append("%s: a field and a shop (one set piece a district)" % id)
+	for line in field_code.split("|", false):
+		if line.length() > RuinsLayout.NAME_LAST:
+			out.append("%s: field code \"%s\" is longer than %d" % [id, line, RuinsLayout.NAME_LAST])
+		for word in RuinsLayout.NEVER_SHOWN:
+			if line.to_lower().contains(word):
+				out.append("%s: \"%s\" gives the story away (\"%s\")" % [id, line, word])
 	var texts := folders + words
 	if remnant != "":
 		texts.append(remnant)

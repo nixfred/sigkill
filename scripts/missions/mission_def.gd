@@ -64,12 +64,33 @@ extends Resource
 ## facing its head) and "shop" (its ruins' dead storefront, the district must have one: "dark", the trigger that stops its
 ## timer and puts its lights out for good).
 ##
+## Mission 3's machinery (M3). The "core" type is a loop's core (scripts/daemons/loop_core.gd): rooted as a parent is, its
+## forks doing the fighting. Props add:
+##   "loop"    its ruins' cache field must have one: "cores" (a wave of cores), "forks" (a wave of runaways the loop forks),
+##             "runs" (the trigger it starts on), "pass_s" and "pass_least_s" (seconds between two passes with every core
+##             running, and with one left), "fill_s" (seconds the cache takes to fill with every core running), "each" (the
+##             most children a core forks) and "standing" (the most of one core's children standing at once). From "runs"
+##             on, every pass rewrites the field and every core standing forks one runaway at its hub (within "each" and
+##             "standing", and the forks wave's count); the cache fills while any core runs, faster the more of them; each
+##             core down scatters its own children (reaped: init again, no kill credited) and runs the rest hotter (their
+##             passes quicker), and the last one down breaks the loop: every fork left reaped, the field frozen, `^C` over
+##             its walls. The cache full fails the mission (out of memory: "exit 137"). Its triggers: "cache:<n>", the
+##             cache n per cent full (25, 50, 75)
+##   "hush"    "on" (a trigger), "after" (seconds), "seconds": the rain stops (every drop and glyph of the district's
+##             weather held where it hangs, the code in its walls with it), then runs on
+##   "prompt"  "on", "after": a red `>_` blinking on a wall of the field in front of the player (its ruins must have a field)
+## A wave may add "by": a loop's id, its daemons forked by that loop (no "on", "after" or "from": they come off a core's hub);
+## a wave's "tag" may hold "{n}", its daemon's place in the wave ("cpu{n}": cpu0, cpu1...). An objective may add "unlocks":
+## abilities (of this mission's `abilities`) handed over as it begins, refused until then; any of them no objective
+## unlocks is allowed from the start, as before. A line may add "wait": seconds after its trigger before it is said (your
+## AI going quiet a moment).
+##
 ## Fiction only: nothing here reads, names or touches anything on the player's machine (STORY.md, pick 8).
 
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
 const KINDS := ["kill", "reach", "log", "survive"]
-const DAEMONS := ["rogue", "zombie", "swarm", "parent", "any"]
+const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "any"]
 ## Who says a line: your AI (the guide panel), the Auditor (the audit log), or `~` (its own terminal, from mission 3 on).
 const WHO := ["ai", "auditor", "tilde"]
 ## A reach objective's radius when its data names none, in metres.
@@ -84,8 +105,8 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## The abilities a mission may hand over (C37), by id, with the words the menus show.
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
-const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent"]
-const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop"]
+const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core"]
+const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
 ## A dormant wave wakes as the player comes this near one of its daemons, metres (M2).
@@ -94,6 +115,10 @@ const WAKE_M := 7.0
 const TAG_LAST := 24
 ## A queue's gap between two places, metres (M2).
 const QUEUE_GAP := Vector2(0.9, 3.0)
+## The longest a line may wait after its trigger, seconds (M3).
+const WAIT_LAST := 10.0
+## The cache marks a loop says, per cent (M3: the triggers "cache:25", "cache:50", "cache:75").
+const CACHE_MARKS := [25, 50, 75]
 
 ## Its own name, a file's worth: "login".
 @export var id := ""
@@ -192,6 +217,9 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 			out.append("%s: line by \"%s\" (ai, auditor or tilde)" % [id, line.get("who")])
 		if not (line.get("text") is String) or line["text"].strip_edges() == "" or line["text"].length() > TEXT_LAST:
 			out.append("%s: a line needs 1 to %d characters" % [id, TEXT_LAST])
+		var wait = line.get("wait", 0.0)
+		if not (wait is float or wait is int) or wait < 0.0 or wait > WAIT_LAST:
+			out.append("%s: a line's wait (0 to %.0f seconds)" % [id, WAIT_LAST])
 	for shift in transitions:
 		if not (shift is Dictionary) or not trigger_ok(str(shift.get("on", "")), objective_ids, log_ids, wave_ids) or not REGISTERS.has(shift.get("to")):
 			out.append("%s: a transition needs a good trigger and a register" % id)
@@ -261,6 +289,13 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 				out.append("%s: objective %s needs 1 to 900 seconds" % [id, oid])
 		_:
 			out.append("%s: objective %s kind \"%s\"" % [id, oid, o.get("kind")])
+	var unlocks = o.get("unlocks", [])
+	if not (unlocks is Array):
+		out.append("%s: objective %s unlocks: a list of ability ids" % [id, oid])
+	else:
+		for a in unlocks:
+			if not abilities.has(str(a)):
+				out.append("%s: objective %s unlocks \"%s\", which is not one of its abilities" % [id, oid, a])
 	for key in ["gives", "arms"]:
 		var list = o.get(key, [])
 		if not (list is Array):
@@ -275,7 +310,8 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 
 
 ## True for a trigger that names something it has: "start", "complete", "fail", "begin:<objective>",
-## "done:<objective>", "log:<log>", "at:<seconds>", and (C37) "wave:<wave>" and "cleared:<wave>".
+## "done:<objective>", "log:<log>", "at:<seconds>", (C37) "wave:<wave>" and "cleared:<wave>", (M2) "woke:<wave>", and (M3)
+## "cache:<per cent>", one of CACHE_MARKS.
 static func trigger_ok(trigger: String, objective_ids: PackedStringArray, log_ids: PackedStringArray, wave_ids: PackedStringArray = PackedStringArray()) -> bool:
 	if trigger in ["start", "complete", "fail"]:
 		return true
@@ -291,6 +327,8 @@ static func trigger_ok(trigger: String, objective_ids: PackedStringArray, log_id
 			return parts[1].is_valid_float() and float(parts[1]) >= 0.0
 		"wave", "cleared", "woke":
 			return wave_ids.has(parts[1])
+		"cache":
+			return parts[1].is_valid_int() and CACHE_MARKS.has(int(parts[1]))
 	return false
 
 
@@ -309,6 +347,29 @@ func prop_ids(kind: String = "") -> PackedStringArray:
 	for p in props:
 		if p is Dictionary and (kind == "" or p.get("kind") == kind):
 			out.append(str(p.get("id", "")))
+	return out
+
+
+## Its loop (M3), or {}: the one prop of kind "loop".
+func loop_prop() -> Dictionary:
+	for p in props:
+		if p is Dictionary and p.get("kind") == "loop":
+			return p
+	return {}
+
+
+## The abilities it may use as it starts (M3): what allowed_abilities() allows, less its own that an objective unlocks
+## later (refused until that objective begins).
+func abilities_at_start() -> PackedStringArray:
+	var later := PackedStringArray()
+	for o in objectives:
+		if o is Dictionary and o.get("unlocks") is Array:
+			for a in o["unlocks"]:
+				later.append(str(a))
+	var out := PackedStringArray()
+	for a in allowed_abilities():
+		if not later.has(a):
+			out.append(a)
 	return out
 
 
@@ -388,6 +449,21 @@ func _prop_problems() -> PackedStringArray:
 				var t := str(p.get("dark", ""))
 				if t != "" and not trigger_ok(t, _objective_ids(), _log_ids(), wave_ids()):
 					out.append("%s: shop %s dark trigger \"%s\"" % [id, p["id"], t])
+			"loop":
+				out.append_array(_loop_problems(p))
+			"hush", "prompt":
+				var t := str(p.get("on", ""))
+				if not trigger_ok(t, _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: %s %s trigger \"%s\"" % [id, p["kind"], p["id"], t])
+				var after = p.get("after", 0.0)
+				if not (after is float or after is int) or after < 0.0 or after > WAIT_LAST:
+					out.append("%s: %s %s after (0 to %.0f seconds)" % [id, p["kind"], p["id"], WAIT_LAST])
+				if p["kind"] == "hush":
+					var secs = p.get("seconds", 1.0)
+					if not (secs is float or secs is int) or secs < 0.2 or secs > 5.0:
+						out.append("%s: hush %s seconds (0.2 to 5)" % [id, p["id"]])
+				elif not _has_field():
+					out.append("%s: prompt %s, but its ruins have no field" % [id, p["id"]])
 			"breach":
 				var s := RuinsBook.of(ruins) if ruins != "" else null
 				if s == null or s.breach == "":
@@ -399,6 +475,47 @@ func _prop_problems() -> PackedStringArray:
 			_:
 				out.append("%s: prop %s kind \"%s\" (%s)" % [id, p["id"], p.get("kind"), ", ".join(PROP_KINDS)])
 	return out
+
+
+## True when its ruins have a cache field (M3).
+func _has_field() -> bool:
+	var s := RuinsBook.of(ruins) if ruins != "" else null
+	return s != null and s.field != ""
+
+
+func _loop_problems(p: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	var pid := str(p["id"])
+	if not _has_field():
+		out.append("%s: loop %s, but its ruins have no field" % [id, pid])
+	var cores := _wave_of(str(p.get("cores", "")))
+	var forks := _wave_of(str(p.get("forks", "")))
+	if cores.get("kind") != "core":
+		out.append("%s: loop %s cores: a wave of kind core" % [id, pid])
+	if forks.get("kind") != "swarm" or str(forks.get("by", "")) != pid:
+		out.append("%s: loop %s forks: a wave of runaways (swarm) forked by it (\"by\": \"%s\")" % [id, pid, pid])
+	if not trigger_ok(str(p.get("runs", "")), _objective_ids(), _log_ids(), wave_ids()):
+		out.append("%s: loop %s runs on trigger \"%s\"" % [id, pid, p.get("runs")])
+	for pair in [["pass_s", 2.0, 60.0], ["pass_least_s", 1.0, 60.0], ["fill_s", 30.0, 3600.0]]:
+		var v = p.get(pair[0])
+		if not (v is float or v is int) or v < pair[1] or v > pair[2]:
+			out.append("%s: loop %s %s (%.0f to %.0f seconds)" % [id, pid, pair[0], pair[1], pair[2]])
+	var fast = p.get("pass_least_s")
+	var slow = p.get("pass_s")
+	if (fast is float or fast is int) and (slow is float or slow is int) and float(fast) > float(slow):
+		out.append("%s: loop %s runs slower on one core than on all of them" % [id, pid])
+	for key in ["each", "standing"]:
+		var v = p.get(key)
+		if not (v is int) or v < 1 or v > WAVE_LAST:
+			out.append("%s: loop %s %s (1 to %d)" % [id, pid, key, WAVE_LAST])
+	return out
+
+
+func _wave_of(wave_id: String) -> Dictionary:
+	for w in waves:
+		if w is Dictionary and w.get("id") == wave_id:
+			return w
+	return {}
 
 
 func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray) -> PackedStringArray:
@@ -421,8 +538,18 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		var elites = w.get("elites", 0)
 		if not (elites is int) or elites < 0 or (count is int and elites > count):
 			out.append("%s: wave %s elites (0 to its count)" % [id, wid])
+		var by := str(w.get("by", ""))
+		if by != "":
+			var loop := prop_of(by)
+			if loop.get("kind") != "loop" or str(loop.get("forks", "")) != wid:
+				out.append("%s: wave %s forked by \"%s\", which is not a loop forking it" % [id, wid, by])
+			for key in ["on", "after", "from", "dormant", "wakes", "sealed"]:
+				if w.has(key):
+					out.append("%s: wave %s is forked by a loop: no \"%s\"" % [id, wid, key])
 		var from = w.get("from", [])
-		if not (from is Array) or from.is_empty():
+		if by != "":
+			pass  # forked by its loop at a core's hub: nothing to climb out of
+		elif not (from is Array) or from.is_empty():
 			out.append("%s: wave %s needs \"from\": the vents it climbs out of" % [id, wid])
 		else:
 			for v in from:
@@ -433,7 +560,9 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 			out.append("%s: wave %s every (0.1 to 30 seconds)" % [id, wid])
 		var on := str(w.get("on", ""))
 		var after := str(w.get("after", ""))
-		if (on == "") == (after == ""):
+		if by != "":
+			pass
+		elif (on == "") == (after == ""):
 			out.append("%s: wave %s needs one of \"on\" (a trigger) or \"after\" (a wave)" % [id, wid])
 		elif on != "" and not trigger_ok(on, objective_ids, log_ids, ids):
 			out.append("%s: wave %s trigger \"%s\"" % [id, wid, on])

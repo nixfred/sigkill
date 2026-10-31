@@ -34,6 +34,9 @@ uniform vec4 tail_color : source_color = vec4(0.0, 1.0, 0.255, 1.0);
 uniform float energy = 3.0;
 uniform float glow = 0.15;
 uniform float strength : hint_range(0.0, 1.0) = 1.0;
+// In the Matrix register (M3) its daemon's own colour (its alpha 1), so it stands out of a world of the same green; alpha 0
+// keeps the walls' greens.
+instance uniform vec4 body_color : source_color = vec4(0.0);
 
 varying vec3 local_pos;
 
@@ -90,7 +93,12 @@ vec3 rain(vec2 uv) {
 
 void fragment() {
 	float around = atan(local_pos.z, local_pos.x) * length(local_pos.xz);
-	vec3 light = rain(vec2(around, local_pos.y)) * energy + tail_color.rgb * glow;
+	vec3 r = rain(vec2(around, local_pos.y));
+	vec3 light = r * energy + tail_color.rgb * glow;
+	if (body_color.a > 0.0) {
+		float lit = max(r.r, max(r.g, r.b));
+		light = body_color.rgb * (lit * energy * 1.8 + glow * 1.6) + vec3(lit) * 0.5;
+	}
 	ALBEDO = light * strength;
 	ALPHA = strength;
 }

@@ -74,11 +74,14 @@ extends RefCounted
 ##
 ## Mission 2's (M2): `dormant` it stands at home and does not look for anyone (a job queued at a dead door) until its
 ## mission wakes it (scripts/missions/mission_stage.gd) or a hit rouses it; a "parent" (scripts/daemons/
-## parent_process.gd) never moves, looks, strikes or is roused: its children do the fighting.
+## parent_process.gd) never moves, looks, strikes or is roused: its children do the fighting. Mission 3's loop core (M3,
+## scripts/daemons/loop_core.gd) is rooted the same way (ROOTED); its forks fight.
 ##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
+## The kinds rooted where they stand, never moving, looking, striking or roused (M2's parent, M3's loop core).
+const ROOTED := ["parent", "core"]
 const STATE_NAMES := ["home", "hunt", "tell", "strike", "recover", "return", "scatter", "down"]
 ## The level: what blocks sight, a bolt and a step.
 const LEVEL_MASK := 1
@@ -244,7 +247,7 @@ func step(delta: float, d) -> void:
 	if state == State.DOWN:
 		state = State.HOME
 		state_t = 0.0
-	if kind == "parent":
+	if ROOTED.has(kind):
 		velocity = Vector3.ZERO
 		art.drive(DaemonArt.Act.IDLE)
 		return  # rooted (M2): it stands; its children fight
@@ -296,7 +299,7 @@ func rest(delta: float, d) -> void:
 		_down(d)
 		art.displays = true
 		return
-	if kind == "parent":
+	if ROOTED.has(kind):
 		art.displays = true
 		art.drive(DaemonArt.Act.IDLE)
 		return
@@ -329,7 +332,7 @@ func rest(delta: float, d) -> void:
 ## A hit that did not kill it, from `point` (world space): the swarm scatters (any dive off, its
 ## burst over); anything at home or going home is roused and hunts whoever is nearest in sight.
 func on_hit(point: Vector3, d) -> void:
-	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE or kind == "parent":
+	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE or ROOTED.has(kind):
 		return  # a confused daemon (C32) is too busy reloading to be roused; a parent (M2) is never roused
 	dormant = false  # a hit wakes a sleeper (M2): its mission wakes the rest of its wave
 	if kind == "swarm":
@@ -443,8 +446,8 @@ func _step_hunt(delta: float, d) -> void:
 		velocity = Vector3.ZERO  # never seen yet this hunt: nowhere to go (Codex review)
 		return
 	var goal := _hunt_goal(chase, delta, d)
-	if relentless and not sees and (kind == "rogue" or kind == "zombie"):
-		goal = _route_goal(chase, delta, goal)
+	if relentless and not sees and (kind == "rogue" or kind == "zombie" or kind == "swarm"):
+		goal = _route_goal(chase, delta, goal)  # M3: a runaway too, round a field's written walls
 	_walk(goal, _speed(d), delta, d)
 	_face(target if sees else goal, delta, d)
 	if sees and cooldown <= 0.0 and _in_range(target, d) and d.prey_attackable(prey) and d.take_slot(self, prey):
@@ -1010,7 +1013,7 @@ func _down(d) -> void:
 ## A mission's daemon out of its vent (C37): it hunts the first player it may, knowing where they are, wherever it
 ## is; only where the brains decide, never mid-attack, confused or down. True when it took up the hunt.
 func alert(d) -> bool:
-	if d == null or not d.runs() or dummy == null or not dummy.is_alive() or hup != Hup.NONE or kind == "parent":
+	if d == null or not d.runs() or dummy == null or not dummy.is_alive() or hup != Hup.NONE or ROOTED.has(kind):
 		return false
 	dormant = false
 	if state != State.HOME and state != State.RETURN and state != State.DOWN:

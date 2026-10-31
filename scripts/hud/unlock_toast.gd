@@ -22,6 +22,9 @@ const WHERE_CAMPAIGN := "%s is yours: every mission after this one carries it"
 const HANDED := "handed"
 const HANDED_HEAD := "IN HAND"
 const WHERE_HANDED := "%s for this mission: finish it to keep it"
+## An ability a mission hands over as the beat that teaches it begins (M3): `weapon` empty, `item` ABILITY.
+const ABILITY := "ability"
+const WHERE_ABILITY := "%s: this mission and every one after it"
 ## Seconds: dropping in, held in all, fading out; how far it drops, pixels; its size and place.
 const IN_S := 0.18
 const SHOW_S := 3.4
@@ -125,12 +128,15 @@ func _next() -> void:
 	for def in WeaponKit.shipped_defs():
 		if def.id == got[0]:
 			weapon_name = def.short_name
-	var handed: bool = got[1] == HANDED
+	var ability: bool = got[1] == ABILITY
+	if ability:
+		weapon_name = short.get_slice("  [", 0)
+	var handed: bool = got[1] == HANDED or ability
 	_head.text = HANDED_HEAD if handed else HEAD
 	_head.add_theme_color_override("font_color", _body)
 	_title.text = short
 	_title.add_theme_color_override("font_color", _beam)
-	_where.text = (WHERE_HANDED if handed else WHERE_CAMPAIGN if got[1] == Progress.CAMPAIGN else WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
+	_where.text = (WHERE_ABILITY if ability else WHERE_HANDED if handed else WHERE_CAMPAIGN if got[1] == Progress.CAMPAIGN else WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
 	_where.add_theme_color_override("font_color", Palette.MINT)
 	_left = SHOW_S
 	_age = 0.0

@@ -9,41 +9,229 @@ order = 3
 title = "while true"
 register = "matrix"
 goal = "Cut a runaway loop off at its cores before it fills the cache."
-loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain")
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun")
 grants = PackedStringArray("grep_seeker", "pipe_chain")
 abilities = PackedStringArray("code_rain_vision")
 objectives = [{
+"arms": ["grep_seeker"],
 "count": 3,
 "daemon": "swarm",
-"id": "cores",
+"hint": "6 grep: aim to mark, then fire: it seeks",
+"id": "hot",
 "kind": "kill",
-"text": "Cut the loop at its cores"
+"of": ["hot"],
+"text": "Find what's running hot"
 }, {
+"at": "field_edge",
+"hint": "written walls are solid; the rest are not",
+"id": "lines",
+"kind": "reach",
+"label": "the cache lines",
+"radius": 5.0,
+"text": "Follow the heat to the cache lines"
+}, {
+"arms": ["pipe_chain"],
+"count": 8,
+"daemon": "swarm",
+"hint": "Shift+2 pipe |: one shot runs down a line",
+"id": "storm",
+"kind": "kill",
+"of": ["storm"],
+"text": "Break the fork storm"
+}, {
+"hint": "in the middle of the lines",
 "id": "signed",
 "kind": "log",
 "log": "signed",
 "text": "Read what the loop left you"
 }, {
-"id": "cache",
-"kind": "survive",
-"seconds": 45.0,
-"text": "Hold while the cache rewrites"
+"count": 4,
+"daemon": "core",
+"hint": "{code_rain_vision}: see cores through walls",
+"id": "cores",
+"kind": "kill",
+"of": ["cores"],
+"text": "Cut the loop at its cores",
+"unlocks": ["code_rain_vision"]
 }]
 logs = [{
-"at": Vector3(-10, 0.95, -4),
+"at": "field",
 "id": "signed",
-"name": "loop.log",
+"name": "motd",
 "text": "it was your loop. i only let it run. ~"
+}, {
+"at": "log_2",
+"id": "swap",
+"name": "swap.log",
+"text": "page 0x7f3a evicted.\npage 0x7f3a requested.\npage 0x7f3a evicted.\npage 0x7f3a requested.\npage 0x7f3a evicted."
+}, {
+"at": "log_1",
+"id": "tmp",
+"name": "README",
+"text": "this directory is cleared at every reboot.\nlast reboot: never."
 }]
 lines = [{
+"on": "start",
+"text": "audit: user=? action=enter path=/var/cache result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "begin:hot",
+"text": "Runaways. Loops with no exit, running hot. Don't chase them: mark them. grep finds its match.",
+"who": "ai"
+}, {
+"on": "begin:lines",
+"text": "Rain's getting greener this way. Whatever lives here doesn't get written to disk.",
+"who": "ai"
+}, {
+"on": "begin:lines",
+"text": "audit: user=? action=read path=/var/cache/lines result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "begin:storm",
+"text": "It's forking. A whole storm of them, in a line. Pipe them: one shot runs down the chain.",
+"who": "ai"
+}, {
+"on": "done:storm",
+"text": "Something in the middle of the lines. A file. It wasn't there before.",
+"who": "ai"
+}, {
 "on": "log:signed",
 "text": "It signed it. Of course it signed it.",
+"wait": 3.0,
+"who": "ai"
+}, {
+"on": "begin:cores",
+"text": "audit: pid 2271 (while true) running on cpu0-cpu3. cache filling.",
+"who": "auditor"
+}, {
+"on": "begin:cores",
+"text": "Four cores, one loop. Walls mid-rewrite aren't solid: look through them, shoot through them.",
+"wait": 4.0,
+"who": "ai"
+}, {
+"on": "cache:50",
+"text": "Cache is half full. When it fills, the machine kills whatever's biggest. That's us.",
+"who": "ai"
+}, {
+"on": "cache:75",
+"text": "Three quarters. Faster would be good.",
+"who": "ai"
+}, {
+"on": "log:swap",
+"text": "Evicted, requested, evicted. It's a loop too. Everything in here is.",
+"who": "ai"
+}, {
+"on": "log:tmp",
+"text": "'Last reboot: never.' That explains a lot.",
+"who": "ai"
+}, {
+"on": "done:cores",
+"text": "audit: pid 2271 (while true) interrupted. exit 130. cache flushed.",
+"wait": 2.6,
+"who": "auditor"
+}, {
+"on": "complete",
+"text": "...Tell me you saw that too.",
+"wait": 2.2,
+"who": "ai"
+}, {
+"on": "fail",
+"text": "It never stops on its own. That's the whole point of it. Again.",
 "who": "ai"
 }]
 transitions = []
+waves = [{
+"count": 3,
+"every": 0.4,
+"from": ["hot_1", "hot_2", "hot_3"],
+"health": 50.0,
+"id": "hot",
+"kind": "swarm",
+"on": "start"
+}, {
+"count": 8,
+"every": 0.25,
+"from": ["core_a", "core_b", "core_c", "core_d"],
+"health": 25.0,
+"id": "storm",
+"kind": "swarm",
+"on": "begin:storm",
+"tagged": false
+}, {
+"count": 4,
+"every": 0.5,
+"from": ["core_a", "core_b", "core_c", "core_d"],
+"health": 300.0,
+"hit_cap": 100.0,
+"id": "cores",
+"kind": "core",
+"on": "begin:cores",
+"tag": "cpu{n}"
+}, {
+"by": "loop",
+"count": 12,
+"health": 40.0,
+"id": "kids",
+"kind": "swarm",
+"tagged": false
+}]
+props = [{
+"at": "spawn_3",
+"id": "hot_1",
+"kind": "spot"
+}, {
+"at": "breaker_0",
+"id": "hot_2",
+"kind": "spot"
+}, {
+"at": "daemon_3",
+"id": "hot_3",
+"kind": "spot"
+}, {
+"at": "core_0",
+"id": "core_a",
+"kind": "spot"
+}, {
+"at": "core_1",
+"id": "core_b",
+"kind": "spot"
+}, {
+"at": "core_2",
+"id": "core_c",
+"kind": "spot"
+}, {
+"at": "core_3",
+"id": "core_d",
+"kind": "spot"
+}, {
+"cores": "cores",
+"each": 3,
+"fill_s": 330.0,
+"forks": "kids",
+"id": "loop",
+"kind": "loop",
+"pass_least_s": 6.0,
+"pass_s": 11.0,
+"runs": "begin:cores",
+"standing": 2
+}, {
+"after": 0.5,
+"id": "silence",
+"kind": "hush",
+"on": "done:cores",
+"seconds": 1.0
+}, {
+"after": 0.8,
+"id": "watching",
+"kind": "prompt",
+"on": "done:cores"
+}]
+end_hold_s = 6.5
+restores = true
 ice = false
+ruins = "cache_lines"
 fail_time_s = 0.0
 next = "permission_denied"
-playable = false
+playable = true
 draft = false
 hidden = false

@@ -392,6 +392,8 @@ const C37_SHEET := ["c37-opening", "c37-plaza", "c37-gate", "c37-shift", "c37-re
 const C37_GPU_FRAMES := 180
 ## m2's sheet: mission 2 as a player meets it, three a row.
 const M2_SHEET := ["m2-opening", "m2-queue", "m2-crowd", "m2-guard", "m2-reap", "m2-exit0"]
+## m3's sheet: mission 3 as a player meets it, three a row.
+const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores", "m3-finish"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
 const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
@@ -528,6 +530,11 @@ func _run() -> void:
 		return
 	if _set == "c37":
 		await _c37()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m3":
+		await _m3()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -3008,6 +3015,257 @@ func _m2() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M2_SHEET.size():
 		_save_grid("m2-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## m3: mission 3 (while true), built, as a player plays it, started from the Missions screen with missions 1 and 2 done
+## (the arena reloads into the cache lines): its card; the opening, runaways coming in over the cache, grep just put in
+## hand, the cache lines rewriting ahead (m3-opening); the lines from their edge, walls writing in behind their write heads
+## and draining away (m3-lines, the set piece); the fork storm pouring out of them and pipe | run down it (m3-storm; its
+## GPU time printed); the cores, code-rain vision on, their silhouettes through walls mid-rewrite and the cache filling on
+## the panel (m3-vision, the ability beat); a core forking, its children coming off it over the walls (m3-cores; the
+## busiest fight, its GPU time printed; the same at 960x540); the last core down, `^C` over the frozen walls, the rain
+## stopped, a red `>_` on a wall (m3-finish); the exit 0 card; the Missions screen with missions 1 to 3 done; and the
+## sheet of six (m3-sequence). The player is shielded through it (the shield off the HUD for each still); the daemons each
+## beat counts are shot down as a sure shot would, and the others are left as they stand. The log that names its author is
+## never one of its stills (the README shows them before the mission is played).
+func _m3() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	MissionProgress.current().record(MissionBook.at(2), 171.0, 3)
+	UnlockToast.drop_waiting()  # missions 1 and 2 marked done by hand: their weapons' toasts belong to their own ends
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(2)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "while_true":
+		printerr("capture: mission 3 did not start in its ruins")
+		return
+	print("capture: mission %s in the ruins %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var field := world.field()
+	var start := world.point("start")
+	var middle := world.point("field")
+	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 0), middle + Vector3(0, 2.4, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m3-card", runner)
+	# The opening: the runaways coming in over the cache, grep drawn as it is put in hand, the lines rewriting ahead.
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 2.0), middle + Vector3(1.5, 2.0, 0))
+	_player.select_slot(int(_player.inventory.slot_of("grep_seeker")))
+	field.rewrite()
+	await _frames(int(1.25 * Engine.physics_ticks_per_second))
+	print("capture: m3-opening, %d runaways standing, %d walls solid" % [stage.standing().size(), field.solid_count()])
+	await _c37_save(sheet, "m3-opening", runner)
+	await _m3_until(runner, func(): return runner.index >= 1, 0.0)
+	# The cache lines from their edge, just out of reach of the beat that wakes the storm: walls writing in and draining.
+	var edge := world.point("field_edge")
+	_c37_view(edge - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-4.6, 0, 4.4), middle + Vector3(0.8, 1.2, 0))
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	field.rewrite()
+	await _frames(int(0.75 * Engine.physics_ticks_per_second))
+	print("capture: m3-lines, pass %d, %d walls solid" % [field.turn, field.solid_count()])
+	await _c37_save(sheet, "m3-lines", runner)
+	# The fork storm, out of the lines and coming: pipe drawn, run down the chain (its busiest stretch's GPU time first).
+	_c37_view(edge - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-1.0, 0, 1.5), middle + Vector3(0, 1.0, 0))
+	while runner.index < 2:
+		await _frames(1)
+	_player.select_slot(int(_player.inventory.slot_of("pipe_chain")))
+	await _frames(int(1.3 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m3 the storm at %dx%d, %d of mission 3's daemons standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("storm")
+	# Pipe run down the storm as it comes out of the lines: aimed at the nearest of it in sight.
+	var waited := 0
+	while waited < 360 and stage.wave_daemons("storm").filter(func(d): return d.is_alive() and d.global_position.distance_to(_player.global_position) < 11.0).size() < 3:
+		await _frames(1)
+		waited += 1
+	var nearest: Node3D = null
+	for d in stage.wave_daemons("storm"):
+		if d.is_alive() and (nearest == null or d.global_position.distance_to(_player.global_position) < nearest.global_position.distance_to(_player.global_position)):
+			nearest = d
+	print("capture: m3-storm after %d frames, %d of the storm within 11 m" % [waited, stage.wave_daemons("storm").filter(func(d): return d.is_alive() and d.global_position.distance_to(_player.global_position) < 11.0).size()])
+	if nearest != null:
+		_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), nearest.threat_point())
+	await _frames(2)
+	_fire()
+	await _frames(int(0.35 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	await _c37_save(sheet, "m3-storm", runner)
+	_unfire()
+	await _m3_until(runner, func(): return runner.index >= 3, 0.0)
+	_player.global_position = runner.log_place("signed")
+	await _m3_until(runner, func(): return runner.index >= 4, 0.0)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	while mh.showing_log():
+		await _frames(1)
+	# The cores: code-rain vision on from outside a core's cell, its silhouette through walls mid-rewrite, the cache filling.
+	while stage.cores().size() < 4 or stage.cores().any(func(c): return c.climbing()):
+		await _frames(1)
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	var core: Node3D = stage.cores()[0]
+	var hidden := _m3_standpoint(field, core, true)
+	_c37_view(hidden, core.global_position + Vector3(0, 1.9, 0))
+	await _frames(4)
+	_m3_vision(true)
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	print("capture: m3-vision, %d marked, cache %.0f%%, pass %d" % [_player.vision.marked().size(), runner.cache_share() * 100.0, runner.passes()])
+	await _m2_quiet()
+	await _c37_save(sheet, "m3-vision", runner)
+	_m3_vision(false)
+	# A core forking, its children coming off it: seen from the cell next to it, after a pass.
+	var passes := runner.passes()
+	while runner.passes() == passes:
+		await _frames(1)
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	# Close on a core through a gap in its cell (a wall gone this pass), its hub filling the view, its forks about it.
+	var gap := {}
+	var tries := 0
+	while gap.is_empty() and tries < 4:
+		gap = _m3_gap(field, stage.cores())
+		if gap.is_empty():
+			passes = runner.passes()
+			while runner.passes() == passes:
+				await _frames(1)
+			await _frames(int(1.2 * Engine.physics_ticks_per_second))
+		tries += 1
+	var lit: Node3D = gap.get("core", stage.cores()[0])
+	var hub: Vector3 = lit.art_node().hub()
+	_c37_view(gap.get("at", _m3_standpoint(field, lit, false)), hub + Vector3(0, 0.25, 0))
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	gpu = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m3 the cores' fight at %dx%d, %d standing (%d forks): the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), stage.forks_made.filter(func(k): return is_instance_valid(k) and k.is_alive()).size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("cores")
+	await _m2_quiet()
+	await _c37_save(sheet, "m3-cores", runner)
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m3-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	# The finish: three cores down, then the last, seen over the lines from their edge; `^C`, the rain stopped, the prompt.
+	while stage.cores().size() > 1:
+		var c: Node3D = stage.cores()[0]
+		c.hit(1000.0, c.global_position + Vector3.UP * 2.0, Vector3.FORWARD, "sigkill_rail")
+		await _frames(1)
+	for d in stage.standing():
+		if d.is_alive() and not d.sessile():
+			d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	var last: Node3D = stage.cores()[0]
+	_c37_view(edge - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(1.0, 0, 1.0), last.global_position.lerp(middle, 0.5) + Vector3(0, 1.6, 0))
+	await _frames(4)
+	await _m2_quiet()
+	while last.is_alive():
+		last.hit(1000.0, last.global_position + Vector3.UP * 2.0, Vector3.FORWARD, "sigkill_rail")
+		await _frames(1)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	print("capture: m3-finish, the field frozen %s, the rain held %s, the prompt %s" % [field.frozen, world.hushed(), field.prompt_node() != null])
+	await _c37_save(sheet, "m3-finish", runner)
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "m3-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(2)
+	await _frames(70)
+	await _save("m3-missions")
+	var stills: Array[Image] = []
+	for name in M3_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M3_SHEET.size():
+		_save_grid("m3-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 3 played on until `condition` (m3), at most `most` seconds (0: a minute): the daemons the objective running
+## counts shot down as they stand, and any runaway hunting; never a core before its own beat.
+func _m3_until(runner: MissionRunner, condition: Callable, most: float) -> void:
+	var left := int((most if most > 0.0 else 60.0) * Engine.physics_ticks_per_second)
+	while left > 0 and not condition.call():
+		var of: Array = runner.objective().get("of", [])
+		for d in runner.stage.standing():
+			var counted := of.has(str(d.get_meta(&"wave", "")))
+			if d.is_alive() and (counted or not d.sessile()):
+				d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await _frames(1)
+		left -= 1
+
+
+## Where to stand to see `core` (m3): of the cells round it (beside it, across a corner, two over), the one with the most
+## standing walls between it and the core (`hidden`: code-rain vision's still) or the fewest (its fight's), on the floor.
+func _m3_standpoint(field: CacheField, core: Node3D, hidden: bool) -> Vector3:
+	var best := Vector3.INF
+	var best_score := -INF
+	var at: Vector3 = core.global_position
+	for offset in [Vector3(4, 0, 0), Vector3(-4, 0, 0), Vector3(0, 0, 4), Vector3(0, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4), Vector3(4, 0, -4), Vector3(-4, 0, -4), Vector3(8, 0, 0), Vector3(-8, 0, 0), Vector3(0, 0, 8), Vector3(0, 0, -8), Vector3(8, 0, 4), Vector3(-8, 0, -4)]:
+		var from: Vector3 = at + offset * 0.95
+		var between := _m3_walls_between(field, from, at)
+		var score := float(between) * (1.0 if hidden else -1.0) - 0.3 * absf(offset.length() - (8.0 if hidden else 5.0))
+		if score > best_score:
+			best_score = score
+			best = from
+	return Vector3(best.x, 0.0, best.z)
+
+
+## A core of `cores` with a side of its cell open this pass (its wall gone) and where to stand in that gap, a little out
+## from the cell, looking in (m3): {core, at}; {} for none.
+func _m3_gap(field: CacheField, cores: Array) -> Dictionary:
+	for core in cores:
+		var at: Vector3 = core.global_position
+		for i in field.wall_count():
+			var st := field.wall_state(i)
+			if st["fill"] > 0.05 or st["storm"] > 0.05:
+				continue
+			var node := field.wall_node(i)
+			var mid := Vector3(node.global_position.x, 0.0, node.global_position.z)
+			if Vector2(mid.x - at.x, mid.z - at.z).length() > 2.2:
+				continue  # not a side of this core's cell
+			var out := Vector3(mid.x - at.x, 0.0, mid.z - at.z).normalized()
+			return {"core": core, "at": Vector3(at.x, 0.0, at.z) + out * 3.3}
+	return {}
+
+
+## How many of the field's standing walls (written, or mid-rewrite) cross the line from `a` to `b` on the floor (m3).
+func _m3_walls_between(field: CacheField, a: Vector3, b: Vector3) -> int:
+	var n := 0
+	for i in field.wall_count():
+		var st := field.wall_state(i)
+		if st["fill"] < 0.5 and st["storm"] < 0.5:
+			continue
+		var node := field.wall_node(i)
+		var along: Vector3 = node.global_transform.basis.x.normalized() * (node.mesh as BoxMesh).size.x * 0.5
+		var p: Vector3 = node.global_position - along
+		var q: Vector3 = node.global_position + along
+		if Geometry2D.segment_intersects_segment(Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(p.x, p.z), Vector2(q.x, q.z)) != null:
+			n += 1
+	return n
+
+
+## Code-rain vision held or let go (m3), as V does.
+func _m3_vision(on: bool) -> void:
+	var e := InputEventAction.new()
+	e.action = "code_rain_vision"
+	e.pressed = on
+	root.push_input(e)
 
 
 ## No toast over a still (m2): a skin a sure shot's kills earned mid-fight is a real unlock, but not the beat's subject.

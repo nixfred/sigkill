@@ -234,9 +234,10 @@ func hide_tag(hidden: bool) -> void:
 		_tag.visible = not hidden and state == State.ALIVE
 
 
-## True for a daemon rooted where it stands (M2: a mission's parent): it never moves, strikes, freezes or hangs up.
+## True for a daemon rooted where it stands (M2: a mission's parent; M3: a loop's core): it never moves, strikes, freezes
+## or hangs up.
 func sessile() -> bool:
-	return _art != null and _art.ai_kind == "parent"
+	return _art != null and DaemonBrain.ROOTED.has(_art.ai_kind)
 
 
 ## Reaped (M2): its parent gone, init adopts it and it drops where it stands, a derezz credited to nobody (no kill, no
