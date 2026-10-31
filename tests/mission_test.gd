@@ -142,7 +142,7 @@ func _data_checks() -> void:
 	var skeletons := true
 	for i in range(1, defs.size()):
 		skeletons = skeletons and not defs[i].playable and not defs[i].draft and not defs[i].objectives.is_empty()
-	_check("mission 1 is a playable first cut on today's arena (C37 builds it for real); 2 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and defs[0].draft and skeletons)
+	_check("mission 1 is a playable first cut, in its ruins (C37 builds it for real); 2 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and defs[0].draft and skeletons)
 	var t := MissionBook.test_range()
 	var kinds := {}
 	var gives := false

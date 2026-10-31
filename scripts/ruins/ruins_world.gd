@@ -38,8 +38,11 @@ const SHIFT_S := 1.4
 ## system each, the haze).
 const BUDGET_TRIANGLES := 520000
 const BUDGET_DRAW_CALLS := 190
+## Debris drifting round the district in the void: two rings turning opposite ways, degrees a second.
+const DRIFT_PIECES := 26
+const DRIFT_TURN := [0.55, -0.32]
 ## How many lamps of each kind, at most.
-const SIGN_LAMPS := 8
+const SIGN_LAMPS := 12
 const TERMINAL_LAMPS := 6
 const SPARKS := 8
 ## The weather's particles at the high particle level (the settings' level takes a share of them).
@@ -73,6 +76,7 @@ var _shift_t := 0.0
 var _shift_s := 0.0
 var _built := {}
 var _giants: Array[MeshInstance3D] = []
+var _drift: Array[Node3D] = []
 var _rain: GPUParticles3D = null
 var _motes: GPUParticles3D = null
 var _glyphs: GPUParticles3D = null
@@ -174,6 +178,8 @@ func _process(delta: float) -> void:
 			mix = _to
 			tear = 0.0
 		_push()
+	for i in _drift.size():
+		_drift[i].rotate_y(deg_to_rad(DRIFT_TURN[i % DRIFT_TURN.size()]) * delta)
 	_follow_camera()
 	_step_sparks(delta)
 	_feed_rain()
@@ -373,9 +379,13 @@ func _build() -> Dictionary:
 			meshes.append({"mesh": light, "shadow": false, "far": far, "name": "Light %s" % str(key)})
 			surfaces += 1
 	var haze := _haze_mesh()
+	surfaces += 2 * DRIFT_TURN.size()
 	triangles += 2 * int(haze.get_meta(&"cards", 0))
 	out["meshes"] = meshes
 	out["haze"] = haze
+	out["drift"] = _drift_meshes()
+	for m in out["drift"]:
+		triangles += m.get_meta(&"triangles", 0)
 	var shapes := []
 	for box in layout.boxes:
 		var shape := BoxShape3D.new()
@@ -386,6 +396,41 @@ func _build() -> Dictionary:
 	out["surfaces"] = surfaces
 	out["pylons"] = pylons
 	out["ms"] = Time.get_ticks_msec() - started
+	return out
+
+
+## The debris drifting in the void round the district: broken slabs and torn-off rack modules, two rings of them, each
+## a mesh turned about the district's middle as it is drawn (nothing rebuilt).
+func _drift_meshes() -> Array:
+	var out := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%d:drift" % ruins.seed)
+	var ext := layout.half_extent()
+	var mats := materials()
+	for ring in DRIFT_TURN.size():
+		var kit := ShapeKit.new()
+		var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
+		for i in DRIFT_PIECES / DRIFT_TURN.size():
+			var a := rng.randf() * TAU
+			var d := rng.randf_range(maxf(ext.x, ext.y) + 22.0, maxf(ext.x, ext.y) + 95.0)
+			var at := Vector3(sin(a) * d, rng.randf_range(-36.0, 30.0), cos(a) * d)
+			var turn := Basis.from_euler(Vector3(rng.randf_range(-1.2, 1.2), rng.randf() * TAU, rng.randf_range(-1.2, 1.2)))
+			kit.pose = Transform3D(turn, at)
+			if rng.randf() < 0.5:
+				RuinsPieces.paint_body(kit, 0.6, 0.8)
+				kit.box(b["body"], Vector3.ZERO, Vector3(rng.randf_range(2.0, 6.0), rng.randf_range(0.4, 0.7), rng.randf_range(1.5, 4.0)))
+				RuinsPieces.paint_light(kit, rng.randf(), rng.randf_range(0.4, 1.0), RuinsPieces.Slot.STRIP, 1.6)
+				kit.box(b["light"], Vector3(0, 0.36, 0), Vector3(rng.randf_range(0.8, 2.0), 0.04, 0.05))
+			else:
+				var w := rng.randf_range(1.8, 3.0)
+				RuinsPieces._rack_module(kit, b, w, w * 0.6, rng.randf_range(1.8, 2.6), rng, rng.randf_range(0.3, 0.9), true, false, rng.randf())
+		var mesh := ArrayMesh.new()
+		for part in ["body", "light"]:
+			if kit.count(b[part]) > 0:
+				kit.commit(b[part], mesh)
+				mesh.surface_set_material(mesh.get_surface_count() - 1, mats[part])
+		mesh.set_meta(&"triangles", (kit.count(b["body"]) + kit.count(b["light"])) / 3)
+		out.append(mesh)
 	return out
 
 
@@ -433,6 +478,13 @@ func _show() -> void:
 		add_child(node)
 		if m["far"]:
 			_giants.append(node)
+	for i in _built["drift"].size():
+		var ring := MeshInstance3D.new()
+		ring.name = "Drift%d" % i
+		ring.mesh = _built["drift"][i]
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(ring)
+		_drift.append(ring)
 	var haze := MeshInstance3D.new()
 	haze.name = "Haze"
 	haze.mesh = _built["haze"]
@@ -451,7 +503,7 @@ func _show() -> void:
 	_lamps.clear()
 	for i in mini(_built["signs"].size(), SIGN_LAMPS):
 		var s: Array = _built["signs"][i]
-		_lamp(s[0], s[1], 5.0, 22.0)
+		_lamp(s[0], s[1], 7.0, 26.0)
 	for i in mini(_built["terminals"].size(), TERMINAL_LAMPS):
 		_lamp(_built["terminals"][i], RuinsPieces.Slot.SCREEN, 0.9, 4.5)
 	for mid in _built["holes"]:

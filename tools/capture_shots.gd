@@ -2579,9 +2579,13 @@ func _c36() -> void:
 		await _c35_save(sheet, "c36-" + register)
 	world.set_register("cyberpunk", 0.0)
 	await _frames(60)
-	var cam := _free_camera(Vector3(ext.x + 46.0, 34.0, ext.y + 52.0), Vector3(-ext.x * 0.1, 2.0, -ext.y * 0.2), A3_OVERVIEW_FOV)
+	var cam := _free_camera(Vector3(ext.x + 26.0, 58.0, ext.y + 38.0), Vector3(-ext.x * 0.05, -2.0, -ext.y * 0.1), A3_OVERVIEW_FOV)
 	await _frames(40)
 	await _c35_save(sheet, "c36-wide")
+	world.set_register("tron", 0.0)
+	await _frames(30)
+	await _save("c36-wide-tron")
+	world.set_register("cyberpunk", 0.0)
 	_free_camera_done(cam)
 	if world.has_point("vista_0"):
 		var vista := world.point("vista_0")
@@ -2616,17 +2620,16 @@ func _c36() -> void:
 	var exit := world.point("exit")
 	await _stand(_main.to_local(plaza + (plaza - exit).normalized() * 3.0), exit + Vector3(0, 2.0, 0))
 	await _c35_save(sheet, "c36-mission")
-	await _stand(_main.to_local(exit + (plaza - exit).normalized() * 3.2), plaza + Vector3(0, 3.0, 0))
-	_player.global_position = exit + (plaza - exit).normalized() * 1.0
-	await _frames(24)
-	await _save("c36-shift")
-	await _frames(140)
-	await _stand(_main.to_local(exit + Vector3(0, 0, 4.0)), plaza + Vector3(0, 3.0, 0))
 	root.size = Vector2i(960, 540)
 	await _frames(20)
 	await _save("c36-960")
 	root.size = Vector2i(1920, 1080)
 	await _frames(12)
+	await _stand(_main.to_local(exit + (plaza - exit).normalized() * 3.2), plaza + Vector3(0, 3.0, 0))
+	_player.global_position = exit + (plaza - exit).normalized() * 1.0
+	await _frames(24)
+	await _save("c36-shift")
+	await _frames(140)
 	var stills: Array[Image] = []
 	for name in C36_SHEET:
 		if sheet.has(name):

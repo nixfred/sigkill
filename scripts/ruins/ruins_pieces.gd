@@ -620,14 +620,14 @@ static func sign(kit: ShapeKit, b: Dictionary, t: Dictionary, s: Dictionary, rng
 			var y0 := size.y * 0.5 - px - i * SignFont.LINE * px
 			var lh := health if i != dead_letter else 0.35
 			for run in SignFont.runs(letter):
-				paint_light(kit, rng.randf() * 0.05 + i * 0.07, lh, slot, 3.4)
+				paint_light(kit, rng.randf() * 0.05 + i * 0.07, lh, slot, 2.3)
 				var x: float = (-SignFont.COLS * 0.5 * px + (float(run[0]) + float(run[2]) * 0.5) * px) * flip
 				kit.box(b["light"], Vector3(x, y0 - (float(run[1]) + 0.5) * px, -0.1), Vector3(float(run[2]) * px, px * 0.88, 0.03))
 	else:
 		var tw := SignFont.width(text) * px
 		for run in SignFont.runs(text):
 			var i: int = int(run[0]) / SignFont.ADVANCE
-			paint_light(kit, rng.randf() * 0.05 + i * 0.07, health if i != dead_letter else 0.35, slot, 3.4)
+			paint_light(kit, rng.randf() * 0.05 + i * 0.07, health if i != dead_letter else 0.35, slot, 2.3)
 			var x: float = (-tw * 0.5 + (float(run[0]) + float(run[2]) * 0.5) * px) * flip
 			kit.box(b["light"], Vector3(x, (SignFont.ROWS * 0.5 - float(run[1]) - 0.5) * px, -0.1), Vector3(float(run[2]) * px, px * 0.88, 0.03))
 	return base * Vector3(0, 0, -2.5)

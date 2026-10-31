@@ -72,7 +72,7 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 @export var next := ""
 ## Its content exists and it can be started. A skeleton (a later chunk builds it) is listed but not started.
 @export var playable := false
-## A stand-in, playable on today's arena, for what a later chunk builds (C37 builds mission 1 for real).
+## A stand-in, playable now (mission 1 in its ruins since C36), for what a later chunk builds (C37 builds mission 1 for real).
 @export var draft := false
 ## Never listed (the test range): started by the tests, or with --demo and --mission=<id>.
 @export var hidden := false

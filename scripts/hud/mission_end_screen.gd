@@ -30,7 +30,7 @@ const COMPLETE := "COMPLETE"
 const FAILED := "FAILED"
 const HANDED := "HANDED TO YOU"
 const ALREADY := "already yours: %s"
-const DRAFT_NOTE := "a first cut on today's arena: the full mission lands in a later build"
+const DRAFT_NOTE := "a first cut in its ruins: the full mission lands in a later build"
 const KEYS := "Enter chooses   Esc: missions"
 ## Seconds: the panel growing in, and between one line and the next.
 const GROW_S := 0.24

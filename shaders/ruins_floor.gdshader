@@ -22,6 +22,7 @@ uniform vec3 crack_energy = vec3(1.3, 0.55, 0.75);
 uniform vec4 glyph_head : source_color = vec4(0.784, 1.0, 0.816, 1.0);
 uniform vec4 glyph_tail : source_color = vec4(0.0, 1.0, 0.255, 1.0);
 uniform vec4 puddle_tint : source_color = vec4(0.82, 0.29, 1.0, 1.0);
+uniform vec4 puddle_tint_b : source_color = vec4(1.0, 0.478, 0.102, 1.0);
 uniform float cell_m = 4.0;
 // Where the cells' edges fall: the district's grid is offset by this from the world's.
 uniform vec2 grid_offset = vec2(0.0);
@@ -115,7 +116,10 @@ void fragment() {
 			float ring = ruins_line(abs(length(dp) - age * 0.45), 0.02) * (1.0 - age) * step(0.6, ruins_hash(dc.x, dc.y, 32));
 			rough = mix(rough, 0.02, wet * w3.y);
 			albedo *= mix(1.0, 0.55, wet * w3.y);
-			glow += puddle_tint.rgb * (wet * (0.03 + ring * 0.5)) * w3.y;
+			// The signs' neon held in the water: magenta here, amber there, smeared along the puddle.
+			vec3 neon = mix(puddle_tint.rgb, puddle_tint_b.rgb, smoothstep(0.4, 0.6, ruins_noise(p * 0.08 + 21.0)));
+			float smear = 0.6 + 0.4 * ruins_noise(vec2(p.x * 1.7, p.y * 0.25));
+			glow += neon * (wet * (0.09 * smear + ring * 0.5)) * w3.y;
 		}
 		// Matrix: code rain trickling over the floor.
 		if (w3.z > 0.01) {

@@ -44,7 +44,7 @@ const FOES := [Palette.CRIMSON, Palette.HOSTILE_AMBER, Palette.HOT_MAGENTA, Pale
 ## motes and the falling glyphs, 0 to 1, and how the fog runs: its depth's end and its density).
 const ENV := {
 	"tron": {"fog": Color(0.012, 0.071, 0.078), "fog_density": 0.82, "fog_end": 520.0, "horizon": Color(0.012, 0.063, 0.071), "abyss": Color(0.004, 0.016, 0.02), "glow": Palette.TEAL, "points": Palette.MINT, "glow_energy": 0.35, "ambient": Palette.TEAL, "ambient_energy": 0.05, "sun": Color(0.72, 1.0, 0.94), "sun_energy": 0.55, "rain": 0.0, "motes": 1.0, "glyphs": 0.0},
-	"cyberpunk": {"fog": Color(0.05, 0.02, 0.078), "fog_density": 0.93, "fog_end": 360.0, "horizon": Color(0.085, 0.022, 0.1), "abyss": Color(0.012, 0.004, 0.02), "glow": NEON_MAGENTA, "points": NEON_AMBER, "glow_energy": 0.55, "ambient": RAIN_VIOLET, "ambient_energy": 0.07, "sun": Color(0.55, 0.5, 1.0), "sun_energy": 0.32, "rain": 1.0, "motes": 0.15, "glyphs": 0.0},
+	"cyberpunk": {"fog": Color(0.1, 0.038, 0.15), "fog_density": 0.92, "fog_end": 340.0, "horizon": Color(0.13, 0.035, 0.15), "abyss": Color(0.012, 0.004, 0.02), "glow": NEON_MAGENTA, "points": NEON_AMBER, "glow_energy": 0.55, "ambient": RAIN_VIOLET, "ambient_energy": 0.07, "sun": Color(0.55, 0.5, 1.0), "sun_energy": 0.32, "rain": 1.0, "motes": 0.15, "glyphs": 0.0},
 	"matrix": {"fog": Color(0.0, 0.05, 0.016), "fog_density": 0.88, "fog_end": 420.0, "horizon": Color(0.0, 0.055, 0.02), "abyss": Color(0.0, 0.012, 0.004), "glow": Palette.MATRIX_GREEN, "points": Palette.MATRIX_HEAD, "glow_energy": 0.3, "ambient": Palette.MATRIX_GREEN, "ambient_energy": 0.04, "sun": Color(0.55, 1.0, 0.65), "sun_energy": 0.34, "rain": 0.0, "motes": 0.2, "glyphs": 1.0},
 }
 
@@ -126,6 +126,7 @@ static func dress(body: ShaderMaterial, light: ShaderMaterial, floor: ShaderMate
 	floor.set_shader_parameter("glyph_head", Palette.MATRIX_HEAD)
 	floor.set_shader_parameter("glyph_tail", Palette.MATRIX_GREEN)
 	floor.set_shader_parameter("puddle_tint", NEON_MAGENTA)
+	floor.set_shader_parameter("puddle_tint_b", NEON_AMBER)
 	haze.set_shader_parameter("haze_tron", Color(0.06, 0.4, 0.4))
 	haze.set_shader_parameter("haze_cyber", Color(0.42, 0.16, 0.6))
 	haze.set_shader_parameter("haze_matrix", Color(0.0, 0.42, 0.1))
