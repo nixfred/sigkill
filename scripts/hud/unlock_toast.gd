@@ -29,8 +29,8 @@ const SCALE_LAST := 1.6
 var _queue: Array = []
 var _left := 0.0
 var _age := 0.0
-## Until when (the engine's ticks, ms) a toast waits (C37).
-static var _held_until := 0
+## Seconds of game time a toast still waits (C37), counted down by the toast as it runs.
+static var _hold_left := 0.0
 var _body := Palette.MINT
 var _beam := Palette.MINT
 var _head: Label
@@ -65,14 +65,14 @@ func show_unlock(weapon: String, item: String, title: String) -> void:
 		_next()
 
 
-## Toasts wait `seconds` from now (C37): a mission's end held a beat before its end screen.
+## Toasts wait `seconds` of game time from now (C37): a mission's end held a beat before its end screen.
 static func hold(seconds: float) -> void:
-	_held_until = Time.get_ticks_msec() + int(maxf(seconds, 0.0) * 1000.0)
+	_hold_left = maxf(_hold_left, seconds)
 
 
 ## True while toasts wait.
 static func held() -> bool:
-	return Time.get_ticks_msec() < _held_until
+	return _hold_left > 0.0
 
 
 ## Where it is on screen now, scaled (for the checks).
@@ -121,6 +121,7 @@ func _next() -> void:
 
 
 func _process(delta: float) -> void:
+	_hold_left = maxf(_hold_left - delta, 0.0)
 	if _left <= 0.0:
 		if not _queue.is_empty() and not held():
 			_next()

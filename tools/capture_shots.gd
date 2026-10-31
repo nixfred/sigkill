@@ -2489,6 +2489,9 @@ func _c35() -> void:
 	await _c35_reloaded(old)
 	var runner := MissionRunner.of(_main)
 	print("capture: mission %s begun, try %d" % [runner.def.id if runner.def != null else "-", runner.attempt])
+	if not _main.has_node("Arena/Targets/DummyA"):
+		printerr("capture: c35 shoots mission 1 as C35 built it (the arena's own daemons); C37 gave it its own: shoot c35 from a copy of a commit before C37 (e812d09)")
+		return
 	for i in 72:
 		await process_frame
 	await _c35_save(sheet, "c35-card")
@@ -2573,6 +2576,9 @@ func _c36() -> void:
 		return
 	print("capture: mission %s in the ruins %s, register %s; %s" % [runner.def.id if runner.def != null else "-", world.ruins.id, world.register, str(world.stats())])
 	print(world.layout.ascii())
+	if not _main.has_node("Arena/Targets/DummyA"):
+		printerr("capture: c36 shoots mission 1 as C36 built it (the arena's own daemons); C37 gave it its own: shoot c36 from a copy of a commit before C37 (e812d09)")
+		return
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	var ext := world.layout.half_extent()
@@ -2682,13 +2688,13 @@ func _c37() -> void:
 	await _frames(50)
 	await _c37_save(sheet, "c37-card", runner)
 	# The opening: the first rogue.d climbing out of a vent, the timeslice running.
-	var near := east + (start - east).normalized() * 6.5
+	var near := east + (start - east).normalized() * 5.2
 	await _stand(_main.to_local(Vector3(near.x, start.y, near.z)), east + Vector3(0, 0.9, 0))
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	while runner.stage.made.is_empty():
 		await _frames(1)
-	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	await _frames(int(0.75 * Engine.physics_ticks_per_second))
 	await _c37_save(sheet, "c37-opening", runner)
 	await _c37_until(runner, func(): return runner.index >= 1, 0.0)
 	# The plaza: the pack climbing out of its vents and coming at the player, who stepped back south of it to meet them.
@@ -2704,6 +2710,11 @@ func _c37() -> void:
 	while waited < 360 and not _c37_spread(runner, 5.0, 10.0):
 		await _frames(1)
 		waited += 1
+	var middle := Vector3.ZERO
+	for d in runner.stage.standing():
+		middle += d.global_position / float(runner.stage.standing().size())
+	_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), middle + Vector3(0, 1.4, 0))
+	await _frames(2)
 	print("capture: c37-plaza after %d frames, %d of the pack standing" % [waited, runner.stage.standing().size()])
 	await _c37_save(sheet, "c37-plaza", runner)
 	root.size = Vector2i(960, 540)
@@ -2731,12 +2742,19 @@ func _c37() -> void:
 	_player.respawn_at(gate)
 	while runner.index < 5:
 		await _frames(1)
-	_c37_view(near_exit + Vector3(6.0, 0, 3.5), near_exit + Vector3(-0.6, 1.3, -2.2))
+	_c37_view(near_exit + Vector3(9.5, 0, -1.2), near_exit.lerp(gate, 0.45) + Vector3(0, 1.2, 0))
 	while not runner.stage.standing().any(func(d): return String(d.name).begins_with("Mission_surge") and d.climbing()):
 		await _frames(1)
 	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	await _c37_save({}, "c37-vent", runner)
-	# The surge held: the grid splits under the vent, the world tearing into the ruins.
+	# The surge held: the grid splits under the vent, the world tearing into the ruins (the stage stopped and its last
+	# daemons' shards gone first, so nothing bursts in front of the view).
+	runner.stage.stop()
+	for i in int(3.0 * Engine.physics_ticks_per_second):
+		for d in runner.stage.standing():
+			if d.is_alive():
+				d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await _frames(1)
 	await _stand(_main.to_local(breach + Vector3(2.6, 0, 3.6)), breach + Vector3(0, -0.9, 0))
 	await _c37_until(runner, func(): return runner.index >= 6, 0.0)
 	await _frames(int(0.36 * Engine.physics_ticks_per_second))

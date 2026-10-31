@@ -360,6 +360,8 @@ func _build() -> Dictionary:
 		var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 		var r: RandomNumberGenerator = dice.call("pylon", i)
 		var t := {"at": layout.center(e["cell"]) + Vector3(side.x, 0, side.y) * 0.6, "tall": -RuinsLayout.SLAB_M - 0.05, "foot": r.randf_range(90.0, 170.0), "width": r.randf_range(2.2, 3.4), "depth": r.randf_range(1.6, 2.4), "yaw": atan2(side.x, side.y), "lean": Vector2(r.randf_range(-2.0, 2.0), r.randf_range(-2.0, 2.0)), "inside": false}
+		if layout.in_breach_way(t["at"], maxf(float(t["width"]), float(t["depth"])) * 0.75):
+			continue  # never down through a breach's pocket (C37)
 		var at: Array = near_kit.call(t["at"])
 		RuinsPieces.rack_tower(at[0], at[1], t, r, false)
 		pylons += 1

@@ -580,7 +580,7 @@ func _breach() -> void:
 
 
 ## True when a tower `reach` metres round at `at` would stand in the breach's pocket, its gangway or its remnant (C37).
-func _in_breach_way(at: Vector3, reach: float) -> bool:
+func in_breach_way(at: Vector3, reach: float) -> bool:
 	if pocket.is_empty():
 		return false
 	var deck: Vector3 = pocket["center"]
@@ -613,7 +613,7 @@ func _scenery() -> void:
 		var depth := _rng.randf_range(1.6, 3.2)
 		if not _over_void(at, maxf(width, depth) * 0.75 + 1.0):
 			continue
-		if _in_breach_way(at, maxf(width, depth) * 0.75):
+		if in_breach_way(at, maxf(width, depth) * 0.75):
 			continue
 		var crowded := false
 		for t in towers:
