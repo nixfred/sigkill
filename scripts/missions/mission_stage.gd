@@ -240,11 +240,14 @@ func _alive(wave: Dictionary) -> int:
 	return n
 
 
-## True when a dormant wave should wake (M2): one of it hurt or roused by a hit, or the player near one of it.
+## True when a dormant wave should wake (M2): one of it hurt, roused by a hit or put down outright (a sleeper railed in
+## one shot wakes the rest of its line), or the player near one of it.
 func _stirred(wave: Dictionary) -> bool:
 	var near: bool = player != null and is_instance_valid(player) and player.get("alive") != false
 	for d in wave["alive"]:
-		if not is_instance_valid(d) or not d.is_alive():
+		if not is_instance_valid(d) or d.is_queued_for_deletion() or (not d.is_alive() and not d.climbing()):
+			return true
+		if not d.is_alive():
 			continue
 		if d.health() < d.max_health or (d.brain != null and not d.brain.dormant):
 			return true

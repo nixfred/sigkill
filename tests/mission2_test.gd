@@ -339,6 +339,11 @@ func _run_checks() -> void:
 	var rain_a: Array = stage.wave_daemons("rain_a")
 	player.global_position = rain_a[0].global_position + Vector3(3.0, RuinsLayout.STAND_Y, 0.0)
 	await _frames(3)
+	var rain_c: Array = stage.wave_daemons("rain_c")
+	rain_c[0].hit(1000.0, rain_c[0].global_position + Vector3.UP, Vector3.FORWARD, "sigkill_rail")
+	await _frames(3)
+	var railed: bool = stage.wave_awake("rain_c") and is_instance_valid(rain_c[1]) and not rain_c[1].brain.dormant
+	_check("a sleeper put down outright in one shot wakes the rest of its wave", railed)
 	_check("a sleeping wave wakes as the player comes near, all of it at once, and hunts (the trigger woke:rain_a, your AI's line)", stage.wave_awake("rain_a") and not stage.wave_awake("rain_b") and rain_a.all(func(d): return not d.brain.dormant and d.brain.relentless) and _fired.has("Zombies. Dead, never reaped. Nobody told them."))
 	await _play_until(main, func(): return runner.index >= 1)
 	_check("find them in the rain: six zombies down, the rain's waves all woken and cleared", runner.index == 1 and stage.wave_state("rain_a") == "cleared" and stage.wave_state("rain_b") == "cleared" and stage.wave_state("rain_c") == "cleared" and not stage.wave_awake("queue"))
