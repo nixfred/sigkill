@@ -2861,9 +2861,8 @@ func _c37_render_info(label: String) -> void:
 
 ## m2: mission 2 (defunct), built, as a player plays it, started from the Missions screen with mission 1 done (the arena
 ## reloads into the closed terminals): its card in the rain; the opening, zombies standing asleep in the rain down the
-## street, ping's ring lighting them and their threads arcing away to their parent (m2-opening); every zombie's thread
-## running down the street to the parent standing sealed at its end (m2-threads); the dead storefront with its queue
-## lined up at its door under the OPEN sign (m2-queue, the set piece); the queue awake and coming, a fork bomb thrown
+## street, ping just put in hand, their threads arcing away to their parent (m2-opening); the dead storefront with its
+## queue lined up asleep at its door under the OPEN sign (m2-queue, the set piece); the queue awake and coming, a fork bomb thrown
 ## into it (m2-crowd; the GPU's time a frame over its busiest stretch printed, at 1920x1080); the same at 960x540; the
 ## parent's guard, the crimson elite, before the sealed tower (m2-guard); the parent opened and forking (m2-parent;
 ## its GPU time printed too); the reap, every zombie standing dropping at once as the parent derezzes, its owner field
@@ -2898,20 +2897,16 @@ func _m2() -> void:
 	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 0), nest + Vector3(0, 4.0, 0))
 	await _frames(132)
 	await _c37_save(sheet, "m2-card", runner)
-	# The opening: the rain's sleepers down the street, ping's ring lighting them and their threads.
+	# The opening: the rain's sleepers down the street, their threads arcing away.
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	var first: Node3D = stage.wave_daemons("rain_a")[0]
 	var view_at := start + (first.global_position - start) * 0.25 + Vector3(-3.0, -RuinsLayout.STAND_Y, 0.0)
 	_c37_view(view_at, first.global_position.lerp(nest, 0.25) + Vector3(0, 1.6, 0))
 	await _frames(20)
+	# Ping drawn, just handed over (its toast up), nothing fired: a shot's muzzle would fill the still.
 	_player.select_slot(int(_player.inventory.slot_of("ping_sonar")))
-	await _frames(int(0.4 * Engine.physics_ticks_per_second))
-	_fire()
-	await _frames(4)
-	_unfire()
-	_player.select_slot(int(_player.inventory.slot_of("terminal_cannon")))  # the ring out in the world, its burst in hand gone
-	await _frames(int(0.9 * Engine.physics_ticks_per_second))
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
 	print("capture: m2-opening with %d zombies threaded, %d threads drawn" % [stage.children().size(), stage.threads().drawn()])
 	await _c37_save(sheet, "m2-opening", runner)
 	# The dead storefront, its queue lined up at its door under the OPEN sign, asleep (while the rain is still being hunted,
