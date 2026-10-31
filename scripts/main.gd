@@ -18,6 +18,9 @@ extends Node3D
 ## queued names a ruins district (or a set is queued with no mission: --ruins=<id> with --demo, the tests', the
 ## captures'), the arena stands in it, staged before anything else is made (scripts/ruins/ruins_stage.gd): its level
 ## gone, the ruins built in its place, the player, its spawns, the daemons and the ICEbreakers' pickups at their points.
+## A mission's own daemons (C37) count as the arena's: each one its runner says climbed out (daemon_spawned) is watched
+## like the scene's own (a kill toward sudo, the kill count, the feats), and the runner holds the ICEbreakers' director
+## to lock it while the mission has not handed them over.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -115,6 +118,8 @@ func _ready() -> void:
 	runner.ice = ice
 	runner.rounds = _hud.round_hud()
 	runner.world = ruins
+	runner.breakers = breakers
+	runner.daemon_spawned.connect(_on_mission_daemon)
 	add_child(runner)
 	if ruins != null and MissionRunner.pending() == "":
 		ice.stand_down = true  # ruins with no mission: ICE's walls and nodes stand where the arena's level was
@@ -266,6 +271,17 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_target_downed(dummy: Node3D) -> void:
 	# Every daemon down counts on the screen; only this player's kills count as its own (C27b: in
 	# a match where they fight, another player's kill of the host's daemon is not).
+	_credit_kill(dummy)
+	_remaining -= 1
+	_hud.set_targets(_remaining, _total)
+
+
+## A mission's own daemon down (C37): this player's kill, as any; the arena's counter is not its.
+func _on_mission_downed(dummy: Node3D) -> void:
+	_credit_kill(dummy)
+
+
+func _credit_kill(dummy: Node3D) -> void:
 	if dummy.get("credited") != false:
 		_player.on_dummy_downed()  # alone, a kill toward a sudo charge (C22)
 		_hud.note_kill()
@@ -275,8 +291,13 @@ func _on_target_downed(dummy: Node3D) -> void:
 			Progress.judged_feat(self, "kills_" + weapon)
 		if dummy.get("shattered_last") == true:
 			Progress.judged_feat(self, "shatters")
-	_remaining -= 1
-	_hud.set_targets(_remaining, _total)
+
+
+## A mission's own daemon climbed out (C37): watched as the scene's own, and on the top table.
+func _on_mission_daemon(dummy: Node3D) -> void:
+	if not dummy.is_connected("downed", _on_mission_downed):
+		dummy.connect("downed", _on_mission_downed)
+	_hud.set_round_targets(get_tree().get_nodes_in_group("targets"))
 
 
 func _process(delta: float) -> void:

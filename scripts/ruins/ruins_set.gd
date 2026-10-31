@@ -33,6 +33,12 @@ extends Resource
 ## Demo folder names for the directory monoliths, and demo company words for the signs: fiction.
 @export var folders := PackedStringArray()
 @export var words := PackedStringArray()
+## Its breach (C37), "exit" or "" for none: the point whose floor cell a mission can split open (built loose, a hatch over a
+## shaft leaking green code, the exit side onto the void a gate), the depth of the pocket below it the player drops
+## into, and the words on the remnant's sign beside that pocket (a dead megacorp's, dark until a mission lights it).
+@export var breach := ""
+@export var breach_depth := 14.0
+@export var remnant := ""
 
 
 ## What is wrong with it; empty when it is good.
@@ -53,7 +59,16 @@ func problems() -> PackedStringArray:
 		out.append("%s: fewer than 3 folder names for its monoliths" % id)
 	if words.size() < 2:
 		out.append("%s: fewer than 2 sign words" % id)
-	for text in folders + words:
+	if breach != "" and breach != "exit":
+		out.append("%s: breach \"%s\" (only the exit: its cell is never under cover, and its gate meets the void)" % [id, breach])
+	if breach != "" and (breach_depth < 6.0 or breach_depth > 24.0):
+		out.append("%s: breach_depth %.1f outside 6 to 24" % [id, breach_depth])
+	if breach != "" and remnant.strip_edges() == "":
+		out.append("%s: a breach with no remnant sign" % id)
+	var texts := folders + words
+	if remnant != "":
+		texts.append(remnant)
+	for text in texts:
 		if not RuinsLayout.legible(text):
 			out.append("%s: \"%s\" has letters the sign font has not, or is longer than %d" % [id, text, RuinsLayout.NAME_LAST])
 		for word in RuinsLayout.NEVER_SHOWN:

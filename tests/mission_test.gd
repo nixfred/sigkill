@@ -15,8 +15,8 @@ extends SceneTree
 ## into the next try, the mission's own time limit failing it. The Esc menu mid-mission (resume, restart, quit to the
 ## Missions screen; the clock held and the player shielded), R restarting it. The Missions screen: locked ones
 ## redacted, Enter starting the next one (the arena reloaded into it), whole on screen at 960x540. Net modes refused,
-## and a match starting mid-mission ending it. Mission 1 played through: the rail handed over, the three weapons kept,
-## mission 2 open. The opener's score stopping at once when the game quits (the C42 leftover). Its files live in its own
+## and a match starting mid-mission ending it. Mission 1 played through (every beat of it is step 56's, C37,
+## tests/mission1_test.gd): the rail handed over, the three weapons kept, mission 2 open. The opener's score stopping at once when the game quits (the C42 leftover). Its files live in its own
 ## folder under user://, removed at the end; nothing of the player's is read or written. Frames counted, outcomes printed.
 
 const MainScene = preload("res://scenes/main.tscn")
@@ -142,7 +142,7 @@ func _data_checks() -> void:
 	var skeletons := true
 	for i in range(1, defs.size()):
 		skeletons = skeletons and not defs[i].playable and not defs[i].draft and not defs[i].objectives.is_empty()
-	_check("mission 1 is a playable first cut, in its ruins (C37 builds it for real); 2 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and defs[0].draft and skeletons)
+	_check("mission 1 is built for real (C37: playable, no longer a draft), in its ruins; 2 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and not defs[0].draft and skeletons)
 	var t := MissionBook.test_range()
 	var kinds := {}
 	var gives := false
@@ -558,22 +558,23 @@ func _login_checks() -> void:
 	var player = main.get_node("Player")
 	_check("acceptance (C36): mission 1 begun on the plain arena reloads into its ruins and runs there: the scheduler's breach built, the arena's own floor gone", reloading and runner.world != null and runner.world.ruins.id == login.ruins and not main.has_node("Arena/Floor") and runner.def == login)
 	await _until(func(): return runner.state == MissionRunner.State.RUNNING)
-	_check("mission 1 starts with the cannon and SIGTERM in hand (the rail not yet), the floor to hold for 20 s, \"MISSION 01\" on the panel", player.carried == PackedStringArray(["terminal_cannon", "sigterm"]) and not player.select_slot(2) and runner.objective()["id"] == "floor" and _shown_has(mh, "MISSION 01"))
+	_check("mission 1 starts with the cannon and SIGTERM in hand (the rail not yet), the floor to hold for a timeslice, \"MISSION 01\" on the panel", player.carried == PackedStringArray(["terminal_cannon", "sigterm"]) and not player.select_slot(2) and runner.objective()["id"] == "floor" and _shown_has(mh, "MISSION 01"))
 	_check("your AI's first line: \"Arena's quiet...\"", await _until(func(): return hud.guide().panel_text().contains("Arena's quiet.")))
-	await _until(func(): return runner.index == 1)
-	_check("20 seconds of play hold the floor", runner.index == 1 and runner.clock >= 20.0)
-	var rogue = main.get_node("Arena/Targets/DummyA")
-	for i in 2:
-		await _until(func(): return rogue.is_alive())
-		rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
-		await _frames(2)
-	_check("two rogue.d down: the rail is handed over (\"kill -9 handed to you\") and draws on 3", runner.index == 2 and runner.carried.has("sigkill_rail") and player.select_slot(2) and await _until(func(): return _shown_has(mh, ">> kill -9 handed to you")))
+	# Played through as tests/mission1_test.gd plays it (step 56 checks every beat): a sure shot, the points walked to.
+	runner.life.shield(LONG_ROUND_S)
+	await _login_until(runner, func(): return runner.index == 1)
+	_check("the floor held: the rail is handed over (\"kill -9 handed to you\") and draws on 3", runner.index == 1 and runner.carried.has("sigkill_rail") and player.select_slot(2) and await _until(func(): return _shown_has(mh, ">> kill -9 handed to you")))
+	player.global_position = runner.world.point("plaza")
+	await _login_until(runner, func(): return runner.index == 3)
 	player.global_position = runner.log_place("temporary")
-	await _frames(3)
-	_check("the first log: \"# temporary. remove after the migration.\" in the reader", runner.index == 3 and await _until(func(): return _shown_has(mh, "# temporary. remove after the migration.")))
-	player.global_position = runner.reach_place(3)
-	await _frames(3)
-	_check("acceptance: mission 1 completes at the vent: the grid splits into the ruins (the register shifts to cyberpunk, the ruins themselves with it)", runner.state == MissionRunner.State.COMPLETE and runner.register == "cyberpunk" and runner.world.register == "cyberpunk")
+	await _login_until(runner, func(): return runner.index == 4)
+	_check("the first log: \"# temporary. remove after the migration.\" in the reader", runner.index == 4 and await _until(func(): return _shown_has(mh, "# temporary. remove after the migration.")))
+	player.global_position = runner.world.point("gate")
+	await _login_until(runner, func(): return runner.index == 6)
+	player.global_position = runner.world.point("breach") + Vector3(0, 0.6, 0)
+	player.velocity = Vector3.ZERO
+	await _login_until(runner, func(): return runner.state == MissionRunner.State.COMPLETE)
+	_check("acceptance: mission 1 completes in the rain below the vent: the grid split into the ruins (the register shifted to cyberpunk, the ruins themselves with it)", runner.state == MissionRunner.State.COMPLETE and runner.register == "cyberpunk" and runner.world.register == "cyberpunk")
 	var held := true
 	for w in HANDOUT[0]:
 		held = held and Progress.current().has_weapon(w)
@@ -600,6 +601,19 @@ func _login_checks() -> void:
 	Progress.current().path = ""
 	Progress.current().clear()
 	await _drop(main)
+
+
+## Frames until `condition` holds, mission 1's daemons shot down as they come out of their vents.
+func _login_until(runner: MissionRunner, condition: Callable) -> bool:
+	var frames := 0
+	while frames < MOST_FRAMES and not condition.call():
+		if runner.stage != null:
+			for d in runner.stage.standing():
+				if d.is_alive():
+					d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await process_frame
+		frames += 1
+	return condition.call()
 
 
 func _loadout_campaign(main: Node) -> bool:

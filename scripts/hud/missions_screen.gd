@@ -393,12 +393,13 @@ func _draw_pane() -> void:
 		_text(Vector2(cx + 8, cy + 16), words, 12, beam)
 		cx += cw + 8.0
 	for ability in def.abilities:
-		var cw := _width(ability, 12) + 16.0
+		var words: String = MissionDef.ABILITIES.get(ability, ability)
+		var cw := _width(words, 12) + 16.0
 		if cx + cw > x + PANE_W:
 			cx = x
 			cy += 28.0
 		draw_rect(Rect2(cx, cy, cw, 22), Color(Palette.MINT, 0.6), false, 1.0)
-		_text(Vector2(cx + 8, cy + 16), ability, 12, Palette.MINT)
+		_text(Vector2(cx + 8, cy + 16), words, 12, Palette.MINT)
 		cx += cw + 8.0
 	if def.grants.is_empty() and def.abilities.is_empty():
 		_text(Vector2(cx, cy + 16), "nothing new: everything you have", 12, Color(Palette.MINT, 0.7))

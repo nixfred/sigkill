@@ -25,6 +25,10 @@ extends RefCounted
 ##   slab         a cell of the floor
 ##   cable        a bundle of cables between two towers, a cut one dangling from each, its ends hot
 ##   sign         a dead megacorp's neon sign on a tower, upright or wide, some letters gone
+## and a breach's (C37): the gate (a portal of two pylons and a lintel on the exit's side onto the void, a low
+## barrier across it) and the gangway past it out into the void, broken off at its end; the shaft under the breach's
+## hatch (its rim, its walls going down, green code leaking up them); the pocket's deck and parapets (slab_at(),
+## edge_at(): the floor's and the parapets' own pieces, at any place).
 ## Fiction only: the names are the set's demo text.
 
 const SignFont = preload("res://scripts/arena/arena_font.gd")
@@ -470,8 +474,14 @@ static func cover(kit: ShapeKit, b: Dictionary, p: Dictionary, rng: RandomNumber
 static func edge(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, rng: RandomNumberGenerator) -> void:
 	var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 	var out := Vector3(side.x, 0, side.y)
+	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng)
+
+
+## A parapet (or an overlook) a cell long, its middle on the floor's edge at `line`, facing `out` (C37: anywhere, the
+## pocket's own; edge() puts one on a plan's edge).
+static func edge_at(kit: ShapeKit, b: Dictionary, line: Vector3, out: Vector3, over_hole: bool, overlook: bool, rng: RandomNumberGenerator) -> void:
+	var e := {"hole": over_hole, "overlook": overlook}
 	var along := Vector3(out.z, 0, -out.x)  # right-handed with up and out: never a mirror, so faces keep their winding
-	var line := layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5
 	var base := Transform3D(Basis(along, Vector3.UP, out), line)
 	var half := RuinsLayout.CELL_M * 0.5 + 0.1
 	var t := RuinsLayout.PARAPET_T
@@ -542,9 +552,113 @@ static func hole(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, h: Dictionar
 
 ## Floor cell `c` of `layout` as its slab, `damage` its cracks, `rims` its sides meeting the void (a bit each).
 static func slab(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, c: Vector2i, damage: float, rims: int) -> void:
+	slab_at(kit, b, layout.center(c), damage, rims)
+
+
+## A cell's slab with its top's middle at `at` (C37: anywhere, the pocket's deck).
+static func slab_at(kit: ShapeKit, b: Dictionary, at: Vector3, damage: float, rims: int) -> void:
 	kit.pose = Transform3D.IDENTITY
 	paint_floor(kit, damage, rims)
-	kit.box(b["floor"], layout.center(c) - Vector3(0, RuinsLayout.SLAB_M * 0.5, 0), Vector3(RuinsLayout.CELL_M, RuinsLayout.SLAB_M, RuinsLayout.CELL_M))
+	kit.box(b["floor"], at - Vector3(0, RuinsLayout.SLAB_M * 0.5, 0), Vector3(RuinsLayout.CELL_M, RuinsLayout.SLAB_M, RuinsLayout.CELL_M))
+
+
+# --- The breach (C37). ---
+
+## The gate (layout.gate): the exit's side onto the void as a portal: a pylon each side with neon up its inner face, a
+## lintel over them with a beacon, and a low barrier across (the parapet's box still stands there).
+static func gate(kit: ShapeKit, b: Dictionary, g: Dictionary, rng: RandomNumberGenerator) -> void:
+	var out: Vector3 = g["out"]
+	var along := Vector3(out.z, 0, -out.x)
+	var base := Transform3D(Basis(along, Vector3.UP, out), g["at"])
+	var half := RuinsLayout.CELL_M * 0.5
+	var tall := rng.randf_range(6.2, 7.4)
+	for sx in [-1.0, 1.0]:
+		kit.pose = base * Transform3D(Basis(Vector3.BACK, deg_to_rad(rng.randf_range(-1.5, 1.5))), Vector3(sx * (half - 0.2), 0, 0.2))
+		paint_body(kit, 0.45, 0.95)
+		kit.box(b["body"], Vector3(0, tall * 0.5, 0), Vector3(0.8, tall, 0.9))
+		kit.frustum(b["body"], Vector3(0, tall, 0), Vector2(0.8, 0.9), Vector2(0.5, 0.6), 0.5)
+		paint_light(kit, rng.randf(), 1.0, Slot.STRIP, 3.0)
+		kit.box(b["light"], Vector3(-sx * 0.41, tall * 0.5, 0), Vector3(0.03, tall - 0.6, 0.12))
+		for k in 5:
+			paint_light(kit, rng.randf(), _health(rng, 0.8), Slot.LED, 2.4)
+			light_quad(kit, b["light"], Vector3(rng.randf_range(-0.25, 0.25), 0.8 + k * 1.1, -0.46), Vector2(0.14, 0.06), Vector3.FORWARD)
+	kit.pose = base
+	paint_body(kit, 0.4, 0.95)
+	kit.box(b["body"], Vector3(0, tall - 0.35, 0.2), Vector3(half * 2.0 + 0.4, 0.7, 0.8))
+	paint_light(kit, rng.randf(), 1.0, Slot.STRIP, 3.0)
+	kit.box(b["light"], Vector3(0, tall - 0.72, 0.2), Vector3(half * 2.0 - 0.8, 0.04, 0.5))
+	paint_light(kit, rng.randf(), 1.0, Slot.BEACON, 5.0)
+	kit.box(b["light"], Vector3(0, tall + 0.1, 0.2), Vector3(0.3, 0.2, 0.3))
+	# The low barrier: posts and two bars, under a jump's reach.
+	paint_body(kit, 0.5, 0.8)
+	for k in 5:
+		kit.box(b["body"], Vector3(-half + 0.5 + k * (half * 2.0 - 1.0) / 4.0, 0.55, 0.15), Vector3(0.08, 1.1, 0.08))
+	kit.box(b["body"], Vector3(0, 1.08, 0.15), Vector3(half * 2.0 - 0.6, 0.06, 0.06))
+	kit.box(b["body"], Vector3(0, 0.6, 0.15), Vector3(half * 2.0 - 0.6, 0.05, 0.05))
+
+
+## The gangway (layout.gangway): plates out from the gate into the void, rails lit along both sides, struts under it,
+## and its far end broken off: the last plates bent down, one gone, cables hanging from where it tore.
+static func gangway(kit: ShapeKit, b: Dictionary, g: Dictionary, rng: RandomNumberGenerator) -> void:
+	var out: Vector3 = g["out"]
+	var along := Vector3(out.z, 0, -out.x)
+	var base := Transform3D(Basis(along, Vector3.UP, out), g["at"])
+	var length: float = g["length"]
+	var width: float = g["width"]
+	var plate := 1.5
+	var n := int(length / plate)
+	for i in n:
+		var z := RuinsLayout.PARAPET_T + (i + 0.5) * plate
+		var bend := 0.0
+		var drop := 0.0
+		if i >= n - 3:
+			var k := float(i - (n - 3) + 1)
+			bend = deg_to_rad(9.0 * k + rng.randf_range(0.0, 6.0))
+			drop = 0.35 * k * k
+		if i == n - 2 and rng.randf() < 0.7:
+			continue
+		kit.pose = base * Transform3D(Basis(Vector3.RIGHT, bend) * Basis(Vector3.BACK, deg_to_rad(rng.randf_range(-2.0, 2.0))), Vector3(0, -0.15 - drop, z))
+		paint_body(kit, rng.randf_range(0.3, 0.7), 0.85)
+		kit.box(b["body"], Vector3.ZERO, Vector3(width, 0.18, plate - 0.06))
+		for sx in [-1.0, 1.0]:
+			kit.box(b["body"], Vector3(sx * width * 0.5, 0.55, 0), Vector3(0.06, 1.1, 0.06))
+			kit.box(b["body"], Vector3(sx * width * 0.5, 1.1, 0), Vector3(0.07, 0.07, plate))
+			paint_light(kit, rng.randf(), _health(rng, 0.85), Slot.STRIP, 2.2)
+			kit.box(b["light"], Vector3(sx * (width * 0.5 - 0.06), 0.12, 0), Vector3(0.03, 0.03, plate * 0.92))
+			paint_body(kit, rng.randf_range(0.3, 0.7), 0.85)
+		if i % 2 == 0:
+			kit.box(b["body"], Vector3(0, -1.2, 0), Vector3(0.25, 2.2, 0.25), Vector3(rad_to_deg(0.35), 0, 0))
+	# Torn ends: cables hanging from the break.
+	kit.pose = base * Transform3D(Basis.IDENTITY, Vector3(0, -0.3, RuinsLayout.PARAPET_T + (n - 3) * plate))
+	for k in rng.randi_range(2, 4):
+		var from := Vector3(rng.randf_range(-width, width) * 0.4, 0, 0)
+		_spill(kit, b, from, rng.randf_range(3.0, 7.0), rng)
+
+
+## The shaft under a breach's hatch (layout.breach_cell): a rim round the opening, its walls going down `deep` metres,
+## lit in seams, and the glow far down where it opens over the pocket.
+static func shaft(kit: ShapeKit, b: Dictionary, top: Vector3, opening: float, deep: float, rng: RandomNumberGenerator) -> void:
+	var half := RuinsLayout.CELL_M * 0.5
+	var inner := opening * 0.5
+	var rim := half - inner
+	kit.pose = Transform3D(Basis.IDENTITY, top)
+	paint_floor(kit, 0.4, 0)
+	for side in 4:
+		var o := Vector3(RuinsLayout.SIDES[side].x, 0, RuinsLayout.SIDES[side].y)
+		var across := Vector3(absf(o.z), 0, absf(o.x))
+		var size := across * (RuinsLayout.CELL_M if side % 2 == 0 else opening) + o.abs() * rim + Vector3(0, RuinsLayout.SLAB_M, 0)
+		kit.box(b["floor"], o * (inner + rim * 0.5) - Vector3(0, RuinsLayout.SLAB_M * 0.5, 0), size)
+	paint_body(kit, 0.35, 1.0)
+	for side in 4:
+		var o := Vector3(RuinsLayout.SIDES[side].x, 0, RuinsLayout.SIDES[side].y)
+		var across := Vector3(absf(o.z), 0, absf(o.x))
+		# A raised lip round the opening, and the walls going down.
+		kit.box(b["body"], o * (inner + 0.09), across * (opening + 0.36) + o.abs() * 0.18 + Vector3(0, 0.1, 0))
+		kit.box(b["body"], o * (inner + 0.1) + Vector3(0, -deep * 0.5, 0), across * (opening + 0.2) + o.abs() * 0.2 + Vector3(0, deep, 0))
+		for k in 3:
+			paint_light(kit, rng.randf(), 1.0, Slot.STRIP, 2.6)
+			kit.box(b["light"], o * (inner - 0.01) + across * rng.randf_range(-inner, inner) * 0.8 + Vector3(0, -0.6 - k * deep * 0.3, 0), across * 0.04 + Vector3(0, deep * 0.22, 0) + o.abs() * 0.02)
+			paint_body(kit, 0.35, 1.0)
 
 
 # --- Cables and signs. ---

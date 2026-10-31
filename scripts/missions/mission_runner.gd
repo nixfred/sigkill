@@ -22,6 +22,13 @@ extends Node
 ## ruins/ruins_stage.gd, as the arena loads); begun on an arena that is not, it is queued and the arena reloaded into
 ## them. There its places may be the district's points by name (place()), and its register shifts change the world
 ## itself (the ruins' set_register()), not just the HUD.
+## Its own daemons and set pieces (C37): a mission with waves or props gets a stage (scripts/missions/mission_stage.gd)
+## as it begins; with waves, the arena's own four are taken away first, so every daemon in it is one of its own (each
+## told as daemon_spawned, its kills counted as any); the stage's waves add the triggers "wave:<id>" and
+## "cleared:<id>", and every trigger reaches the stage (its waves, its breach). The weapons and abilities it has not
+## handed over (C37): the player carries only its loadout and what it hands over, and may use only the abilities this
+## mission and those before it hand over (MissionDef.allowed_abilities(): SIGSTOP, code-rain vision, sudo; the
+## ICEbreakers locked at their director); the HUD shows the rest locked. All of it lifted when it ends where it stands.
 ## Story lines leave here as line_said() for the HUD (scripts/hud/mission_hud.gd): your AI's to the guide panel, the
 ## Auditor's and `~`'s to the mission's terminal. Nothing here calls an AI, reads the player's machine or writes a
 ## file of its own (the one save is MissionProgress's).
@@ -38,6 +45,8 @@ signal failed(reason: String)
 signal completed(result: Dictionary)
 ## Ended where it stood: a match starting, or end_here().
 signal ended
+## One of its own daemons climbed out of a vent (C37): scripts/main.gd counts its kills as the arena's.
+signal daemon_spawned(dummy: Node3D)
 
 enum State { IDLE, INTRO, RUNNING, FAILED, COMPLETE }
 
@@ -79,6 +88,10 @@ var rounds: Node = null
 var session: Node = null
 ## The ruins the arena stands in (C36, set by main.gd), or null on the arena itself.
 var world: RuinsWorld = null
+## The ICEbreakers' director (C37, set by main.gd): locked while a mission has not handed them over.
+var breakers: Node = null
+## The running mission's own daemons and set pieces (C37), or null.
+var stage: MissionStage = null
 
 var def: MissionDef = null
 var state: State = State.IDLE
@@ -208,8 +221,7 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	result = {}
 	_fired = {}
 	_timed = []
-	for item in d.lines + d.transitions:
-		var on := str(item.get("on", ""))
+	for on in _triggers_of(d):
 		if on.begins_with("at:"):
 			_timed.append([on, float(on.trim_prefix("at:"))])
 	# Still queued while it runs: R reloads the arena into its next try.
@@ -221,6 +233,9 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 		ice.stand_down = not d.ice
 	carried = d.loadout.duplicate()
 	_carry()
+	_gate(true)
+	if not d.waves.is_empty():
+		_retire_arena_daemons()
 	_targets = get_tree().get_nodes_in_group("targets")
 	for dummy in _targets:
 		if dummy.has_signal("downed") and not dummy.downed.is_connected(_on_downed):
@@ -238,9 +253,69 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 		add_child(pickup)
 		pickup.global_position = place(entry["at"])
 		_pickups[entry["id"]] = pickup
+	if not d.waves.is_empty() or not d.props.is_empty():
+		_make_stage(d)
 	began.emit(d)
 	_fire("start")
 	return true
+
+
+## Every trigger `d` names: its lines', its transitions', its waves' and its breach's (C37).
+static func _triggers_of(d: MissionDef) -> PackedStringArray:
+	var out := PackedStringArray()
+	for item in d.lines + d.transitions + d.waves:
+		var on := str(item.get("on", ""))
+		if on != "" and not out.has(on):
+			out.append(on)
+	for p in d.props:
+		for key in ["opens", "lights"]:
+			var on := str(p.get(key, ""))
+			if on != "" and not out.has(on):
+				out.append(on)
+	return out
+
+
+## The arena's own daemons go (C37): a mission with waves has only its own. Out of the tree at once, then freed.
+func _retire_arena_daemons() -> void:
+	var host := get_parent()
+	for dummy in get_tree().get_nodes_in_group("targets"):
+		if host != null and host.is_ancestor_of(dummy) and (stage == null or not stage.made.has(dummy)):
+			dummy.remove_from_group("targets")
+			dummy.get_parent().remove_child(dummy)
+			dummy.queue_free()
+
+
+## Its stage (C37): its vents and walls up, its waves waiting for their triggers.
+func _make_stage(d: MissionDef) -> void:
+	stage = MissionStage.new()
+	stage.place = place
+	stage.world = world
+	stage.player = player
+	var host := get_parent()
+	stage.targets = host.get_node_or_null("Arena/Targets") as Node3D if host != null else null
+	if stage.targets == null:
+		stage.targets = stage
+	add_child(stage)
+	stage.build(d)
+	stage.spawned.connect(_on_spawned)
+	stage.wave_began.connect(func(id: String) -> void: _fire("wave:" + id))
+	stage.wave_cleared.connect(func(id: String) -> void: _fire("cleared:" + id))
+
+
+func _on_spawned(dummy: Node3D) -> void:
+	if dummy.has_signal("downed") and not dummy.downed.is_connected(_on_downed):
+		dummy.downed.connect(_on_downed)
+	daemon_spawned.emit(dummy)
+
+
+## The weapons' and abilities' gate (C37): on, the mission's allowed abilities only and the ICEbreakers locked unless
+## handed over; off, everything back.
+func _gate(on: bool) -> void:
+	var allowed := def.allowed_abilities() if on and def != null else PackedStringArray()
+	if player != null and is_instance_valid(player) and player.has_method("set_abilities"):
+		player.set_abilities(allowed, on)
+	if breakers != null and is_instance_valid(breakers):
+		breakers.set("locked", on and not allowed.has("breakers"))
 
 
 ## True when the arena stands in ruins `id`.
@@ -431,6 +506,9 @@ func _on_downed(dummy: Node3D) -> void:
 	var want: String = o["daemon"]
 	if want != "any" and want != kind_of(dummy):
 		return
+	var of: Array = o.get("of", [])
+	if not of.is_empty() and not of.has(str(dummy.get_meta(&"wave", ""))):
+		return  # not one of the waves it counts (C37)
 	progress = minf(progress + 1.0, need())
 	progressed.emit(index)
 	if progress >= need():
@@ -455,6 +533,8 @@ func _on_flatlined(cause: String) -> void:
 
 func _fail(why: String) -> void:
 	state = State.FAILED
+	if stage != null and is_instance_valid(stage):
+		stage.stop()
 	reason = why
 	result = {"seconds": clock, "kills": kills, "logs": logs_found.size(), "logs_total": def.logs.size(), "attempt": attempt, "reason": why}
 	_clear_world()
@@ -464,6 +544,8 @@ func _fail(why: String) -> void:
 
 func _complete() -> void:
 	state = State.COMPLETE
+	if stage != null and is_instance_valid(stage):
+		stage.stop()
 	_pending = ""
 	_pending_try = 1
 	var kept := MissionProgress.current().record(def, clock, logs_found.size())
@@ -489,6 +571,8 @@ func _fire(trigger: String) -> void:
 			if world != null and is_instance_valid(world):
 				world.set_register(register)
 			register_shifted.emit(from, register)
+	if stage != null and is_instance_valid(stage):
+		stage.fire(trigger)
 
 
 func _carry() -> void:
@@ -550,6 +634,9 @@ func end_here() -> void:
 	_clear_world()
 	carried = PackedStringArray()
 	_carry()
+	_gate(false)
+	if stage != null and is_instance_valid(stage):
+		stage.stop()
 	if rounds != null and is_instance_valid(rounds) and rounds.has_method("hold"):
 		rounds.hold(false)
 	if ice != null and is_instance_valid(ice):

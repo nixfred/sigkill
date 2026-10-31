@@ -11,7 +11,7 @@ register = "cyberpunk"
 goal = "Go down to the oldest directory in the machine and find the shell that never hung up."
 loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon", "sighup", "dev_null")
 grants = PackedStringArray("sighup", "dev_null")
-abilities = PackedStringArray("SIGSTOP bullet time")
+abilities = PackedStringArray("sigstop")
 objectives = [{
 "at": Vector3(0, 0.95, -14),
 "id": "down",

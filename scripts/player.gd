@@ -191,6 +191,8 @@ signal jumped
 signal slid
 ## Emitted on Esc when nothing else took the key: the HUD opens the menu (C16b).
 signal menu_requested
+## A key pressed for a weapon (its id) or an ability (its id) a mission has not handed over (C37): the HUD says so.
+signal locked(what: String)
 ## Emitted for each target a rail shot of this player derezzes (C17): a dummy here at once,
 ## another player once the host confirms the kill. `headshot` when the rail struck it in the
 ## head zone.
@@ -244,6 +246,12 @@ var breakers: Node = null
 ## The weapons a mission lets this player carry (C35, scripts/missions/mission_runner.gd), by id: only those draw,
 ## cycle, swap back or throw. Empty (the arena, a match): every one, as ever.
 var carried := PackedStringArray()
+## The abilities a mission lets this player use (C37, MissionDef.allowed_abilities()), by id: SIGSTOP ("sigstop"),
+## code-rain vision ("code_rain_vision"), sudo ("sudo") and the ICEbreakers ("breakers"). Not gated (the arena, a
+## match): every one, as ever. Gated, a press of one it has not been handed does nothing but say so (`locked`), and its
+## kills earn no sudo charge.
+var abilities_gated := false
+var abilities := PackedStringArray()
 ## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
 ## read keyboard and mouse input as if it were captured. Never set by the game.
 var assume_captured := false
@@ -518,24 +526,35 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif frozen_now() and (event.is_action_pressed("sigstop") or event.is_action_pressed("sudo_overcharge") or event.is_action_pressed("run_breaker") or event.is_action_pressed("cycle_breaker")):
 		pass  # read-only while chmod 000 holds it (C29): no ability runs
 	elif event.is_action_pressed("sigstop"):
-		sigstop.press()
+		if _ability_pressed("sigstop"):
+			sigstop.press()
 	elif event.is_action_pressed("code_rain_vision"):
-		vision.hold(true)
+		if _ability_pressed("code_rain_vision"):
+			vision.hold(true)
 	elif event.is_action_pressed("sudo_overcharge"):
-		sudo.press()
+		if _ability_pressed("sudo"):
+			sudo.press()
 	elif event.is_action_pressed("throw_bomb"):
-		_throw_queued = true
+		var bomb := inventory.thrown_slot()
+		if bomb >= 0 and not slot_carried(bomb):
+			locked.emit(inventory.defs[bomb].id)  # not handed over in this mission (C37)
+		else:
+			_throw_queued = true
 	elif event.is_action_pressed("run_breaker"):
-		if breakers != null and is_instance_valid(breakers):
+		if breakers != null and is_instance_valid(breakers) and _ability_pressed("breakers"):
 			breakers.press_run()
 	elif event.is_action_pressed("cycle_breaker"):
-		if breakers != null and is_instance_valid(breakers):
+		if breakers != null and is_instance_valid(breakers) and _ability_pressed("breakers"):
 			breakers.press_cycle()
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):
 				# The bank key held, the same key draws bank 2's weapon (C29).
-				select_slot(i + (Arsenal.BANK_SLOTS if bank_held() else 0))
+				var slot := i + (Arsenal.BANK_SLOTS if bank_held() else 0)
+				if slot < inventory.slot_count() and not slot_carried(slot):
+					locked.emit(inventory.defs[slot].id)  # not handed over in this mission (C37)
+				else:
+					select_slot(slot)
 				break
 
 
@@ -981,6 +1000,32 @@ func cycle_weapon(step: int) -> bool:
 ## Back to the weapon drawn before this one: Q.
 func swap_to_last() -> bool:
 	return select_slot(inventory.last)
+
+
+## True when ability `id` (MissionDef.ABILITIES) may be used: every one, unless a mission gates them (C37).
+func ability_ok(id: String) -> bool:
+	return not abilities_gated or abilities.has(id)
+
+
+## A mission's abilities (C37): only `ids` may be used while `gated` (off lifts it). One running that it takes away
+## stops at once: SIGSTOP ends, vision lets go, root ends.
+func set_abilities(ids: PackedStringArray, gated: bool) -> void:
+	abilities = ids.duplicate()
+	abilities_gated = gated
+	if not ability_ok("sigstop") and sigstop != null and sigstop.is_on():
+		end_sigstop()
+	if not ability_ok("code_rain_vision") and vision != null:
+		vision.end_now()
+	if not ability_ok("sudo") and sudo != null and sudo.state != null:
+		sudo.end_root()
+
+
+## A press of ability `id`: true when it may run; else said (`locked`) and nothing runs.
+func _ability_pressed(id: String) -> bool:
+	if ability_ok(id):
+		return true
+	locked.emit(id)
+	return false
 
 
 ## True when the weapon in `slot` may be drawn: every one, unless a mission says what is carried (C35).
@@ -2147,7 +2192,7 @@ func _judges_daemons() -> bool:
 
 ## A daemon of this arena went down: alone, a kill toward a sudo charge (C22).
 func on_dummy_downed() -> void:
-	if sudo != null and sudo.state != null:
+	if sudo != null and sudo.state != null and ability_ok("sudo"):
 		sudo.local_kill()
 
 

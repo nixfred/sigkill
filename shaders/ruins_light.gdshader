@@ -26,6 +26,9 @@ uniform vec4 matrix_slots[8];
 uniform vec3 decay = vec3(0.0, 0.62, 0.4);
 // How bright each register's lights are, on the whole.
 uniform vec3 register_energy = vec3(1.0, 1.0, 0.9);
+// The whole surface's power (C37): 1 lit; a breach's remnant sign has a material of its own, dark until a mission
+// lights it.
+uniform float power = 1.0;
 
 varying vec3 world_pos;
 varying vec4 paint;
@@ -86,5 +89,5 @@ void fragment() {
 	float reg = dot(register_energy, w3);
 	float tear = ruins_tear_band(world_pos);
 	on = mix(on, step(0.5, fract(world_pos.x * 2.0 + t * 30.0)), tear * 0.6);
-	ALBEDO = col * (energy * on * reg) * arena_light;
+	ALBEDO = col * (energy * on * reg) * arena_light * power;
 }

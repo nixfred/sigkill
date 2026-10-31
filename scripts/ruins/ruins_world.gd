@@ -20,6 +20,11 @@ extends Node3D
 ## cut cables spark now and then, each with a flash of light. The daemons' code rain (scripts/code_rain_driver.gd's
 ## slots, the nearest daemons) is fed to its bodies' shader, so the walls bleed code where daemons are near.
 ## Its places: point() (the plan's, in world space). Visual and collision only: it reads nothing, runs nothing.
+##
+## A breach (C37, a set's `breach`): its cell built as a shaft under a hatch (scripts/ruins/ruins_vent.gd, made here,
+## breach()), the exit's side a gate onto a gangway out into the void, and below, the pocket the player drops into:
+## its deck and parapets, a dead terminal, and the remnant, a tower with a dead megacorp's sign facing the deck, dark
+## (its light surface a material of its own, `power` 0) until a mission lights it (light_remnant(): it flickers on).
 
 const Palette = preload("res://scripts/palette.gd")
 const BODY_SHADER := preload("res://shaders/ruins_body.gdshader")
@@ -30,7 +35,7 @@ const HAZE_SHADER := preload("res://shaders/ruins_haze.gdshader")
 const GROUP := &"ruins_world"
 const NODE_NAME := "Ruins"
 ## Bumped whenever the pieces or the build change, so a kept build is never reused for a different one.
-const BUILD_VERSION := 1
+const BUILD_VERSION := 2
 const CHUNK_M := 16.0
 ## Seconds a register shift takes.
 const SHIFT_S := 1.4
@@ -86,9 +91,19 @@ var _spark_rng := RandomNumberGenerator.new()
 var _driver: Node = null
 var _driver_uploads := -1
 var _env_dirty := true
+## The breach (C37): its hatch, the remnant sign's own light material and lamp, how far its lighting has gone (-1 not
+## yet, then seconds).
+var _hatch: RuinsVent = null
+var _remnant_light: ShaderMaterial = null
+var _remnant_lamp: OmniLight3D = null
+var _remnant_t := -1.0
+var _remnant_power := 0.0
+## The seconds a remnant's sign takes to flicker on.
+const REMNANT_S := 1.9
 
 static var _kept := {}
 static var _materials := {}
+static var _atlas: ImageTexture = null
 
 
 func _init(from: RuinsSet = null) -> void:
@@ -182,6 +197,7 @@ func _process(delta: float) -> void:
 		_drift[i].rotate_y(deg_to_rad(DRIFT_TURN[i % DRIFT_TURN.size()]) * delta)
 	_follow_camera()
 	_step_sparks(delta)
+	_step_remnant(delta)
 	_feed_rain()
 
 
@@ -209,12 +225,7 @@ func _push() -> void:
 		# Black ICE (I3) dims the sun from its own base; the base follows the register.
 		sun.set_meta(&"blackout_base", env["sun_energy"])
 		sun.light_energy = env["sun_energy"] * ArenaArt.light_level
-	var s := RuinsRegister.shares(mix)
-	for lamp in _lamps:
-		var light: OmniLight3D = lamp["light"]
-		var col := _slot_colour(lamp["slot"], s)
-		light.light_color = col
-		light.light_energy = lamp["energy"] * (1.0 - 0.75 * s.x * float(lamp["slot"] == RuinsPieces.Slot.SIGN_A or lamp["slot"] == RuinsPieces.Slot.SIGN_B))
+	_push_lamps()
 	if _rain != null:
 		_rain.amount_ratio = clampf(env["rain"], 0.0, 1.0)
 		_rain.emitting = env["rain"] > 0.01
@@ -224,6 +235,15 @@ func _push() -> void:
 	if _glyphs != null:
 		_glyphs.amount_ratio = clampf(env["glyphs"], 0.0, 1.0)
 		_glyphs.emitting = env["glyphs"] > 0.01
+
+
+func _push_lamps() -> void:
+	var s := RuinsRegister.shares(mix)
+	for lamp in _lamps:
+		var light: OmniLight3D = lamp["light"]
+		var col := _slot_colour(lamp["slot"], s)
+		light.light_color = col
+		light.light_energy = lamp["energy"] * (1.0 - 0.75 * s.x * float(lamp["slot"] == RuinsPieces.Slot.SIGN_A or lamp["slot"] == RuinsPieces.Slot.SIGN_B))
 
 
 func _slot_colour(slot: int, s: Vector3) -> Color:
@@ -291,10 +311,16 @@ func _build() -> Dictionary:
 			var r: RandomNumberGenerator = dice.call("slab", z * 64 + x)
 			var damage := clampf(r.randf_range(0.05, 0.45) + near_void * 0.22, 0.0, 1.0)
 			var at: Array = near_kit.call(layout.center(c))
+			if c == layout.breach_cell:
+				RuinsPieces.shaft(at[0], at[1], layout.center(c), RuinsLayout.BREACH_OPENING, 3.6, r)  # its hatch is breach()'s (C37)
+				continue
 			RuinsPieces.slab(at[0], at[1], layout, c, damage, rims if kind == RuinsLayout.Cell.FLOOR else 0)
 	for i in layout.edges.size():
 		var e: Dictionary = layout.edges[i]
 		var at: Array = near_kit.call(layout.center(e["cell"]))
+		if e.get("gate", false):
+			RuinsPieces.gate(at[0], at[1], layout.gate, dice.call("edge", i))
+			continue
 		RuinsPieces.edge(at[0], at[1], layout, e, dice.call("edge", i))
 	for i in layout.holes.size():
 		var h: Dictionary = layout.holes[i]
@@ -352,6 +378,7 @@ func _build() -> Dictionary:
 		var at: Array = near_kit.call(t["at"])
 		var lamp := RuinsPieces.sign(at[0], at[1], t, s, dice.call("sign", i))
 		out["signs"].append([lamp, RuinsPieces.Slot.SIGN_A if s["slot"] == 0 else RuinsPieces.Slot.SIGN_B])
+	_build_breach(near_kit, dice, out)
 	# Commit: per chunk, a solid mesh (bodies and the floor, throwing shadows unless far) and a light mesh.
 	var mats := materials()
 	var meshes := []
@@ -388,6 +415,8 @@ func _build() -> Dictionary:
 		triangles += m.get_meta(&"triangles", 0)
 	var shapes := []
 	for box in layout.boxes:
+		if box["kind"] == "hatch":
+			continue  # the breach's hatch stands on a box of its own (C37)
 		var shape := BoxShape3D.new()
 		shape.size = box["size"]
 		shapes.append([box["xform"], shape])
@@ -397,6 +426,61 @@ func _build() -> Dictionary:
 	out["pylons"] = pylons
 	out["ms"] = Time.get_ticks_msec() - started
 	return out
+
+
+## The breach's pieces (C37), when the plan has one: the gangway out from the gate; the pocket's deck (its slabs on the
+## district's grid), its parapets, a dead terminal and drives on it, the void's glow far under it; the remnant's tower
+## (in its chunk) and its sign, a mesh of its own (out["remnant"]: its body and its light, the light given a material
+## of its own as it is shown) with its lamp's place.
+func _build_breach(near_kit: Callable, dice: Callable, out: Dictionary) -> void:
+	if not layout.gangway.is_empty():
+		var at: Array = near_kit.call(layout.gangway["at"])
+		RuinsPieces.gangway(at[0], at[1], layout.gangway, dice.call("gangway", 0))
+	if layout.pocket.is_empty():
+		return
+	var deck: Vector3 = layout.pocket["center"]
+	var cells := int(RuinsLayout.POCKET_M / RuinsLayout.CELL_M)
+	for z in cells:
+		for x in cells:
+			var mid := deck + Vector3((x - (cells - 1) * 0.5) * RuinsLayout.CELL_M, 0, (z - (cells - 1) * 0.5) * RuinsLayout.CELL_M)
+			var rims := (1 if z == 0 else 0) | (2 if x == cells - 1 else 0) | (4 if z == cells - 1 else 0) | (8 if x == 0 else 0)
+			var r: RandomNumberGenerator = dice.call("deck", z * 8 + x)
+			var at: Array = near_kit.call(mid)
+			RuinsPieces.slab_at(at[0], at[1], mid, clampf(r.randf_range(0.35, 0.8), 0.0, 1.0), rims)
+			for side in 4:
+				if rims & (1 << side) == 0:
+					continue
+				var o := Vector3(RuinsLayout.SIDES[side].x, 0, RuinsLayout.SIDES[side].y)
+				RuinsPieces.edge_at(at[0], at[1], mid + o * RuinsLayout.CELL_M * 0.5, o, false, false, dice.call("deck_edge", z * 32 + x * 4 + side))
+	var gr: RandomNumberGenerator = dice.call("deck_gear", 0)
+	var out_way := (deck - layout.center(layout.breach_cell)) * Vector3(1, 0, 1)
+	out_way = out_way.normalized() if out_way.length() > 0.1 else Vector3(0, 0, -1)
+	var side_way := Vector3(-out_way.z, 0, out_way.x)
+	var terminal := {"kind": "terminal", "at": deck + out_way * 3.6 + side_way * 3.2, "yaw": atan2(out_way.x, out_way.z) + PI, "size": RuinsLayout.COVER[1][1], "seed": gr.randi()}
+	var drives := {"kind": "drives", "at": deck + out_way * 4.2 - side_way * 3.6, "yaw": gr.randf_range(-0.4, 0.4), "size": RuinsLayout.COVER[2][1], "seed": gr.randi()}
+	var rubble := {"kind": "rubble", "at": deck - side_way * 3.8 - out_way * 2.0, "yaw": gr.randf_range(-0.3, 0.3) + PI * 0.5, "size": RuinsLayout.COVER[3][1], "seed": gr.randi()}
+	for p in [terminal, drives, rubble]:
+		var at: Array = near_kit.call(p["at"])
+		RuinsPieces.cover(at[0], at[1], p, dice.call("deck_cover", int(p["seed"]) & 0xffff))
+	out["terminals"].append(Transform3D(Basis(Vector3.UP, terminal["yaw"]), terminal["at"]) * Vector3(0, 1.1, -0.5))
+	var void_at: Array = near_kit.call(deck)
+	var vk: ShapeKit = void_at[0]
+	vk.pose = Transform3D(Basis.IDENTITY, deck + Vector3(0, -30.0, 0))
+	RuinsPieces.paint_light(vk, gr.randf(), 1.0, RuinsPieces.Slot.VOID, 1.4)
+	RuinsPieces.light_quad(vk, void_at[1]["light"], Vector3.ZERO, Vector2.ONE * RuinsLayout.POCKET_M * 2.0, Vector3.UP)
+	var t: Dictionary = layout.remnant["tower"]
+	var tower_at: Array = near_kit.call(t["at"])
+	RuinsPieces.rack_tower(tower_at[0], tower_at[1], t, dice.call("remnant", 0), false)
+	var kit := ShapeKit.new()
+	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
+	var lamp := RuinsPieces.sign(kit, b, t, layout.remnant["sign"], dice.call("remnant_sign", 0))
+	var mesh := ArrayMesh.new()
+	var mats := materials()
+	kit.commit(b["body"], mesh)
+	mesh.surface_set_material(0, mats["body"])
+	kit.commit(b["light"], mesh)
+	mesh.surface_set_material(1, mats["light"])
+	out["remnant"] = {"mesh": mesh, "lamp": lamp}
 
 
 ## The debris drifting in the void round the district: broken slabs and torn-off rack modules, two rings of them, each
@@ -512,6 +596,88 @@ func _show() -> void:
 	var tips: Array = _built["tips"]
 	for i in mini(tips.size(), SPARKS):
 		_spark_at(tips[(i * 5) % tips.size()])
+	_show_breach()
+
+
+## The breach's hatch over its shaft, and the remnant's sign, dark (C37).
+func _show_breach() -> void:
+	if layout.breach_cell == Vector2i(-1, -1):
+		return
+	_hatch = RuinsVent.new()
+	_hatch.name = "Breach"
+	_hatch.hatch = true
+	_hatch.size = RuinsLayout.BREACH_OPENING
+	_hatch.position = layout.center(layout.breach_cell)
+	add_child(_hatch)
+	if not _built.has("remnant"):
+		return
+	var sign := MeshInstance3D.new()
+	sign.name = "Remnant"
+	sign.mesh = _built["remnant"]["mesh"]
+	_remnant_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_remnant_light.set_shader_parameter("power", 0.0)
+	sign.set_surface_override_material(1, _remnant_light)
+	add_child(sign)
+	_remnant_lamp = OmniLight3D.new()
+	_remnant_lamp.name = "RemnantLamp"
+	_remnant_lamp.position = _built["remnant"]["lamp"]
+	_remnant_lamp.omni_range = 30.0
+	_remnant_lamp.omni_attenuation = 1.2
+	_remnant_lamp.shadow_enabled = false
+	_remnant_lamp.light_energy = 0.0
+	add_child(_remnant_lamp)
+	_lamps.append({"light": _remnant_lamp, "slot": RuinsPieces.Slot.SIGN_A, "energy": 0.0, "remnant": true})
+
+
+# --- The breach (C37). ---
+
+## The breach's hatch (a RuinsVent), or null in a district without one.
+func breach() -> RuinsVent:
+	return _hatch
+
+
+## The grid splits: the breach's hatch swings open over its shaft (nothing, without one). True when it opened now.
+func open_breach() -> bool:
+	if _hatch == null or _hatch.is_open():
+		return false
+	_hatch.open()
+	return true
+
+
+## The remnant's sign flickers on in the dark, over REMNANT_S (nothing, without one, or when it is already lit).
+func light_remnant() -> bool:
+	if _remnant_light == null or _remnant_t >= 0.0:
+		return false
+	_remnant_t = 0.0
+	return true
+
+
+## How lit the remnant's sign is, 0 to 1 (0 without one).
+func remnant_power() -> float:
+	return _remnant_power
+
+
+func _step_remnant(delta: float) -> void:
+	if _remnant_t < 0.0 or _remnant_light == null:
+		return
+	_remnant_t += delta
+	var k := clampf(_remnant_t / REMNANT_S, 0.0, 1.0)
+	# A dead tube catching: dark, a stutter of flashes coming quicker, a drop out, then lit, a last flicker now and then.
+	var tick := int(floor(_remnant_t * 22.0))
+	var dice := fposmod(sin(float(tick) * 12.9898) * 43758.5453, 1.0)
+	var on := 0.0
+	if k < 1.0:
+		on = 1.0 if dice < k * k * 1.2 else 0.04
+		if k > 0.62 and k < 0.7:
+			on = 0.04
+	else:
+		on = 0.35 if dice < 0.015 else 1.0
+	_remnant_power = on
+	_remnant_light.set_shader_parameter("power", on)
+	for lamp in _lamps:
+		if lamp.get("remnant", false):
+			lamp["energy"] = 9.0 * on
+	_push_lamps()
 
 
 func _lamp(at: Vector3, slot: int, energy: float, reach: float) -> void:
@@ -553,13 +719,13 @@ func _emitter(label: String, amount: int, life: float, process: ParticleProcessM
 	return p
 
 
-func _quad(size: Vector2) -> QuadMesh:
+static func _quad(size: Vector2) -> QuadMesh:
 	var q := QuadMesh.new()
 	q.size = size
 	return q
 
 
-func _particle_material(colour: Color, billboard: int, texture: Texture2D) -> StandardMaterial3D:
+static func _particle_material(colour: Color, billboard: int, texture: Texture2D) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -636,8 +802,11 @@ func _glyph_process() -> ParticleProcessMaterial:
 	return p
 
 
-## 64 code-rain glyphs, made here from seeded bits (the code rain's 4 by 6 grid, mirrored), never a font file.
-func _glyph_atlas() -> ImageTexture:
+## 64 code-rain glyphs, made here from seeded bits (the code rain's 4 by 6 grid, mirrored), never a font file; made
+## once a run (the weather's and the vents' glyphs, C37).
+static func _glyph_atlas() -> ImageTexture:
+	if _atlas != null:
+		return _atlas
 	var image := Image.create(64, 80, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
 	var rng := RandomNumberGenerator.new()
@@ -650,7 +819,8 @@ func _glyph_atlas() -> ImageTexture:
 				if rng.randf() < 0.5:
 					image.set_pixel(ox + 2 + x, oy + 2 + y, Color.WHITE)
 					image.set_pixel(ox + 5 - x, oy + 2 + y, Color.WHITE)
-	return ImageTexture.create_from_image(image)
+	_atlas = ImageTexture.create_from_image(image)
+	return _atlas
 
 
 func _spark_at(tip: Vector3) -> void:

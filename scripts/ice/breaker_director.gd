@@ -67,6 +67,9 @@ signal cloak_ended
 
 ## Where its pickups stand, in arena space: SPOTS, or (C36) an arena stood in ruins hands in theirs before it is ready.
 var spots: Array = SPOTS
+## A mission that has not handed the ICEbreakers over (C37, scripts/missions/mission_runner.gd): none carried, no
+## pickups laid, the keys doing nothing here, as in practice.
+var locked := false
 ## A BreakerTuning; null for resources/breakers.tres. Set before the node enters the tree.
 var tuning: BreakerTuning
 ## The daemons' director (who the intruders are, where, alive, sight), ICE's director, the local player,
@@ -174,8 +177,10 @@ func _ready() -> void:
 # --- Its mode. ---
 
 ## True while breakers are carried: not practice (alone and hosting, the settings'; on a joiner, the
-## host's word). The ICE setting has no say: with ICE off they work on the daemons.
+## host's word), and not locked by a mission (C37). The ICE setting has no say: with ICE off they work on the daemons.
 func breakers_on() -> bool:
+	if locked:
+		return false
 	if _online() and not session.is_hosting():
 		return session.host_practice != true
 	return GameSettings.current().value("gameplay", "practice") != true

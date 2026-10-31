@@ -41,6 +41,11 @@ extends StaticBody3D
 ## scripts/fight/daemon_brain.gd) and its look shows it (scripts/fx/hup_look.gd: the "reloading config" tag,
 ## then the "?", its seams cycling in the carrier green, its pose stuttering). In practice the old dummy
 ## reloads and wanders too. On a joiner its confusion is the host's word, carried beside its life.
+##
+## A mission's own (C37, scripts/missions/mission_stage.gd): `respawns` off, it never comes back: once its derezz is
+## done it is gone for good (`gone`, then freed), so a mission's daemons are finite. It climbs out of a spawn vent
+## (spawn_in(): risen from under the floor as it grows back from nothing, not hittable until it is whole), and
+## `seed_wanted` fixes the seed its art is built from (a mission's elites are seeds that roll its type's elite).
 
 const Palette = preload("res://scripts/palette.gd")
 const Derezz = preload("res://scripts/derezz_tuning.gd")
@@ -57,6 +62,8 @@ enum State { ALIVE, DEREZZING, RESPAWNING }
 signal downed(dummy: Node3D)
 ## Emitted when the dummy is back: alive, hittable and at full health.
 signal respawned(dummy: Node3D)
+## Emitted once by a dummy that does not respawn (C37), as its derezz ends, just before it is freed.
+signal gone(dummy: Node3D)
 
 ## Smallest body scale while rematerialising, so its transform never collapses to zero.
 const MIN_BODY_SCALE := 0.001
@@ -72,6 +79,11 @@ static var _elite_health := -1.0
 @export var derezz: Resource
 ## How the daemon looks (A2): a script extending scripts/daemons/daemon_art.gd. Visual only.
 @export var art: Script = preload("res://scripts/daemons/rogue_daemon.gd")
+## Whether it comes back after its derezz (C37): the arena's do; a mission's own never do.
+@export var respawns := true
+## The seed its art is built from (C37), when 0 or more: a mission's daemons, chosen by the mission's stage; below 0
+## the usual seed (fixed by its name in demo, test and capture runs, else a new roll at each spawn).
+var seed_wanted := -1
 
 var state: State = State.ALIVE
 
@@ -114,6 +126,11 @@ var shatters := 0
 var _hup_look: HupLook
 ## Its own sounds (C42).
 var voice: DaemonVoice
+## Its climb out of a spawn vent (C37): the seconds it takes (0 for none), and where its body stands when whole.
+var _climb_s := 0.0
+var _body_rest := Vector3.ZERO
+## How far under the floor a daemon climbing out of a vent starts, metres.
+const CLIMB_DEPTH_M := 1.6
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -123,6 +140,7 @@ var voice: DaemonVoice
 func _ready() -> void:
 	_base_health = max_health
 	_hex = _body.mesh as CylinderMesh
+	_body_rest = _body.position
 	# The hex is the volume, drawn by no camera; the art under it is what is seen (A2).
 	_body.layers = 0
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -344,14 +362,24 @@ func _physics_process(delta: float) -> void:
 	var own := not _follows()
 	if state == State.DEREZZING:
 		if own and _state_time >= _d.respawn_delay:
-			_begin_rematerialise()
+			if respawns:
+				_begin_rematerialise()
+			else:
+				_retire()
 	elif state == State.RESPAWNING:
 		var grown := 1.0
-		if _d.rematerialise_seconds > 0.0:
-			grown = clampf(_state_time / _d.rematerialise_seconds, 0.0, 1.0)
+		var takes := _climb_s if _climb_s > 0.0 else _d.rematerialise_seconds
+		if takes > 0.0:
+			grown = clampf(_state_time / takes, 0.0, 1.0)
 		_body.scale = Vector3.ONE * maxf(grown, MIN_BODY_SCALE)
+		if _climb_s > 0.0:
+			# Out of the vent (C37): risen from under the floor, fastest at first.
+			var rise := 1.0 - pow(1.0 - grown, 2.0)
+			_body.position = _body_rest + Vector3.DOWN * CLIMB_DEPTH_M * (1.0 - rise)
 		_art.set_unstable(1.0 - grown)  # it glitches as it comes back (A2)
 		if grown >= 1.0 and own:
+			_climb_s = 0.0
+			_body.position = _body_rest
 			_finish_respawn()
 
 
@@ -475,6 +503,8 @@ func _hide_down() -> void:
 func reset_for_round() -> void:
 	if _follows():
 		return  # a joiner's copy of the host's daemon: the host's word owns its life (C27b)
+	if not respawns:
+		return  # a mission's own (C37): no round brings it back
 	var director := DaemonDirector.of(self)
 	if director != null and brain != null:
 		director.stop_bolts_of(brain)  # a new round leaves none of its bolts flying (Codex review)
@@ -538,9 +568,43 @@ func follow_seed(seed: int) -> void:
 		_build_art(seed)
 
 
-## The seed for its next spawn (A5): fixed by its name in demo, test and capture runs, else a new
-## roll.
+## Climbs out of a spawn vent where it stands (C37): taken as its home, it starts from nothing under the floor and
+## grows and rises over `seconds`, glitching, not hittable until it is whole (then `respawned`, as any spawn).
+func spawn_in(seconds: float) -> void:
+	if brain != null:
+		brain.take_home()
+	_go_down()
+	state = State.RESPAWNING
+	_state_time = 0.0
+	_climb_s = maxf(seconds, 0.05)
+	_body.scale = Vector3.ONE * MIN_BODY_SCALE
+	_body.position = _body_rest + Vector3.DOWN * CLIMB_DEPTH_M
+	_body.visible = true
+	_art.set_unstable(1.0)
+
+
+## True while it climbs out of a vent (C37).
+func climbing() -> bool:
+	return state == State.RESPAWNING and _climb_s > 0.0
+
+
+## A dummy that does not respawn (C37): its derezz done, it is gone for good.
+func _retire() -> void:
+	if is_queued_for_deletion():
+		return
+	var director := DaemonDirector.of(self)
+	if director != null and brain != null:
+		director.stop_bolts_of(brain)
+		director.release_slot(brain)
+	gone.emit(self)
+	queue_free()
+
+
+## The seed for its next spawn (A5): the one wanted (C37), else fixed by its name in demo, test and capture runs,
+## else a new roll.
 func _spawn_seed() -> int:
+	if seed_wanted >= 0:
+		return seed_wanted & DaemonArt.SEED_LAST
 	if fixed_seeds:
 		return DaemonArt.seed_of(tag_text)
 	return randi() & DaemonArt.SEED_LAST

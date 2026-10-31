@@ -11,7 +11,7 @@ register = "tron"
 goal = "Break into the machine's own records and learn who owns the daemons."
 loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000")
 grants = PackedStringArray("chmod_000")
-abilities = PackedStringArray("ICEbreakers")
+abilities = PackedStringArray("breakers")
 objectives = [{
 "at": Vector3(0, 0.95, -14),
 "id": "sector",

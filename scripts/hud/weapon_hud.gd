@@ -65,6 +65,12 @@ extends Control
 ## pipe | (weapon 11, C30) is bank 2's second ("Shift+ 1 [2 pipe]"). Drawn, its ammo line is its buffer
 ## ("pipe  buffer 24K/64K", "pipe  BLOCKED"), its third line the buffer filling ("buffer [####......]" in
 ## its brass text colour, or "blocked [########..]" in amber while it drains back to its share).
+##
+## A mission's gate (C37): a weapon it has not handed over is a faint dash in its slot, and the ult's meter line waits
+## until the rail is handed over (the keys line instead); SIGSTOP's and vision's lines read "F SIGSTOP  locked" and
+## "V vision  locked", dimmed, while the mission has not handed them over; and a key pressed for anything locked (a
+## weapon's slot, the fork bomb's throw, an ability's key) puts "<name>: not handed to you yet" on the third line in
+## amber for LOCKED_S.
 
 const Palette = preload("res://scripts/palette.gd")
 const WeaponDefScript = preload("res://scripts/weapons/weapon_def.gd")
@@ -116,6 +122,12 @@ const BUFFER_LINE := "buffer [%s%s]"
 ## /dev/null's next charge coming back (C31).
 const RECHARGE_LINE := "recharge [%s%s]"
 const BLOCKED_LINE := "blocked [%s%s]"
+## A mission's gate (C37).
+const LOCKED_LINE := "%s: not handed to you yet"
+const STOP_LOCKED := "%s SIGSTOP  locked"
+const VISION_LOCKED := "%s vision  locked"
+const LOCKED_S := 1.8
+const LOCKED_DIM := 0.45
 ## A bank's row while the other is active.
 ## A slot a mission's loadout does not carry (C35): a dash, faint.
 const UNCARRIED := "-"
@@ -145,6 +157,10 @@ var _meter_ready := false
 var _state: Label
 var _stop: Label
 var _vision: Label
+## The last locked key's words and how long they stay (C37).
+var _locked_text := ""
+var _locked_left := 0.0
+var _locked_from: Node = null
 
 
 func _ready() -> void:
@@ -173,8 +189,28 @@ func _ready() -> void:
 	_refresh()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_locked_left = maxf(_locked_left - delta, 0.0)
+	if player != _locked_from and player != null and is_instance_valid(player) and player.has_signal("locked"):
+		player.locked.connect(_on_locked)
+		_locked_from = player
 	_refresh()
+
+
+## A key pressed for something a mission has not handed over (C37): its name on the third line for a moment.
+func _on_locked(what: String) -> void:
+	var name: String = MissionDef.ABILITIES.get(what, "")
+	if name == "":
+		var inv = player.get("inventory") if player != null and is_instance_valid(player) else null
+		var slot: int = inv.slot_of(what) if inv != null else -1
+		name = inv.defs[slot].short_name if slot >= 0 else what
+	_locked_text = LOCKED_LINE % name
+	_locked_left = LOCKED_S
+
+
+## The locked note on the third line now (C37), or "".
+func locked_text() -> String:
+	return _locked_text if _locked_left > 0.0 else ""
 
 
 ## The strip itself (I1: an ICE field's HUD corruption scrambles it, and the jam's notice sits over it).
@@ -272,6 +308,8 @@ func _refresh() -> void:
 		label.modulate = Color(1, 1, 1, DIM if ult and not inv.meter_ready() else 1.0)
 	_refresh_banks(inv)
 	var ult_slot: int = inv.ult_slot()
+	if ult_slot >= 0 and not _carried(ult_slot):
+		ult_slot = -1  # a mission that has not handed the rail over yet (C37): no meter line
 	_meter_text = ""
 	_meter_ready = ult_slot >= 0 and inv.meter_ready()
 	if ult_slot >= 0:
@@ -306,7 +344,10 @@ func _refresh() -> void:
 	var color := skin_tint(def)
 	var state_color := Palette.TEAL
 	var charging: bool = player.has_method("is_charging") and player.is_charging()
-	if inv.is_reloading():
+	if _locked_left > 0.0:
+		_state.text = _locked_text
+		state_color = Palette.HOSTILE_AMBER
+	elif inv.is_reloading():
 		var cells := roundi(inv.reload_progress() * BAR_CELLS)
 		_state.text = RELOAD_LINE % [BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
 	elif charging and def.charge_prompt != "":
@@ -411,8 +452,13 @@ func _refresh_stop() -> void:
 	_stop.visible = stop != null and is_instance_valid(stop) and stop.meter != null
 	if not _stop.visible:
 		return
-	var cells := roundi(stop.meter.share() * BAR_CELLS)
 	var key := Controls.bind_label(GameSettings.current().bind("sigstop"))
+	if player.has_method("ability_ok") and not player.ability_ok("sigstop"):
+		_stop.text = STOP_LOCKED % key  # a mission that has not handed it over (C37)
+		_stop.add_theme_color_override("font_color", Palette.TEAL)
+		_stop.modulate = Color(1, 1, 1, LOCKED_DIM)
+		return
+	var cells := roundi(stop.meter.share() * BAR_CELLS)
 	var on: bool = stop.is_on()
 	_stop.text = (STOP_ON_LINE if on else STOP_LINE) % [key, BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
 	_stop.add_theme_color_override("font_color", Palette.MINT if on else Palette.TEAL)
@@ -424,8 +470,13 @@ func _refresh_vision() -> void:
 	_vision.visible = vision != null and is_instance_valid(vision) and vision.meter != null
 	if not _vision.visible:
 		return
-	var cells := roundi(vision.meter.share() * BAR_CELLS)
 	var key := Controls.bind_label(GameSettings.current().bind("code_rain_vision"))
+	if player.has_method("ability_ok") and not player.ability_ok("code_rain_vision"):
+		_vision.text = VISION_LOCKED % key  # a mission that has not handed it over (C37)
+		_vision.add_theme_color_override("font_color", Palette.MATRIX_GREEN)
+		_vision.modulate = Color(1, 1, 1, LOCKED_DIM)
+		return
+	var cells := roundi(vision.meter.share() * BAR_CELLS)
 	var on: bool = vision.is_on()
 	_vision.text = (VISION_ON_LINE if on else VISION_LINE) % [key, BAR_FULL.repeat(cells), BAR_EMPTY.repeat(BAR_CELLS - cells)]
 	_vision.add_theme_color_override("font_color", Palette.MATRIX_HEAD if on else Palette.MATRIX_GREEN)

@@ -158,7 +158,7 @@ func _build_checks() -> void:
 		await physics_frame
 		await physics_frame
 		var st := w.stats()
-		_check("acceptance: %s builds headless, inside its budgets: %d triangles (of %d), %d draw calls (of %d), %d collision boxes, %d lamps, %d emitters, built in %d ms" % [s.id, st["triangles"], RuinsWorld.BUDGET_TRIANGLES, st["draw_calls"], RuinsWorld.BUDGET_DRAW_CALLS, st["boxes"], st["lamps"], st["emitters"], st["ms"]], st["triangles"] > 50000 and st["triangles"] <= RuinsWorld.BUDGET_TRIANGLES and st["draw_calls"] <= RuinsWorld.BUDGET_DRAW_CALLS and st["boxes"] == w.layout.boxes.size() and st["emitters"] >= 3)
+		_check("acceptance: %s builds headless, inside its budgets: %d triangles (of %d), %d draw calls (of %d), %d collision boxes, %d lamps, %d emitters, built in %d ms" % [s.id, st["triangles"], RuinsWorld.BUDGET_TRIANGLES, st["draw_calls"], RuinsWorld.BUDGET_DRAW_CALLS, st["boxes"], st["lamps"], st["emitters"], st["ms"]], st["triangles"] > 50000 and st["triangles"] <= RuinsWorld.BUDGET_TRIANGLES and st["draw_calls"] <= RuinsWorld.BUDGET_DRAW_CALLS and st["boxes"] == w.layout.boxes.filter(func(b): return b["kind"] != "hatch").size() and st["emitters"] >= 3)
 		var space := w.get_world_3d().direct_space_state
 		var floorless := PackedStringArray()
 		var blocked := PackedStringArray()
@@ -343,7 +343,7 @@ func _arena_checks() -> void:
 	var runner := MissionRunner.of(main)
 	hud = main.get_node("Hud")
 	await _until(func(): return runner.running())
-	_check("acceptance: mission 1 runs in its ruins: the scheduler's breach, in its own register (tron), its log at the ruins' log_0 and its vent at their exit", runner.world != null and runner.world.ruins.id == "scheduler_breach" and runner.world.register == "tron" and runner.log_place("temporary").is_equal_approx(runner.world.point("log_0")) and runner.reach_place(3).is_equal_approx(runner.world.point("exit")) and runner.pickup("temporary") != null and runner.pickup("temporary").global_position.is_equal_approx(runner.world.point("log_0")))
+	_check("acceptance: mission 1 runs in its ruins: the scheduler's breach, in its own register (tron), its first log at the ruins' log_1 and its vent at their gate (C37)", runner.world != null and runner.world.ruins.id == "scheduler_breach" and runner.world.register == "tron" and runner.log_place("temporary").is_equal_approx(runner.world.point("log_1")) and runner.reach_place(4).is_equal_approx(runner.world.point("gate")) and runner.pickup("temporary") != null and runner.pickup("temporary").global_position.is_equal_approx(runner.world.point("log_1")))
 	_check("the C35 leftover: the arena's \"daemons down\" counter is hidden while a mission runs (its own panel counts)", not hud.targets_shown())
 	var mh: MissionHud = hud.mission_hud()
 	_check("the C35 leftover: an arena the runner reloaded comes in from black, not a blink (the cut %.2f a moment in)" % mh.cut_left(), mh.cut_left() > 0.0 and mh.cut_left() < 1.0)
@@ -363,7 +363,7 @@ func _mission_checks() -> void:
 	bad.ice = true
 	_check("a mission in ruins with ICE is refused by name (ICE's spots are the arena's)", Array(bad.problems(MissionBook.weapon_ids())).any(func(p): return p.contains("ICE in ruins")))
 	var lost: MissionDef = login.duplicate(true)
-	lost.objectives[3]["at"] = "nowhere"
+	lost.objectives[4]["at"] = "nowhere"
 	_check("a reach naming a point its ruins have not is refused", Array(lost.problems(MissionBook.weapon_ids())).any(func(p): return p.contains("a point of its ruins")))
 	var plain: MissionDef = login.duplicate(true)
 	plain.ruins = ""

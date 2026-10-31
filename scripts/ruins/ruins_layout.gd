@@ -20,6 +20,14 @@ extends RefCounted
 ##   the scenery   towers in the void round the edge, giants far out, cables between towers (cut ones dangling, never
 ##                 lower over the floor than CABLE_LOW_M), neon signs on the towers
 ## and `boxes`, the district's whole collision: the floor, the parapets, the blocks and the cover, every one a box.
+## A set with a breach (C37) adds, after the cover (so nothing of it changes where the cover goes):
+##   the breach   its cell's floor is no part of the merged floor (its own box, kind "hatch", which a mission can open)
+##   the gate     the exit's side onto the void, a portal onto a gangway out into the void (still a parapet's box)
+##   the pocket   a deck breach_depth under it, a little out toward the void, closed in by parapets (kind "pocket"):
+##                where the player lands when the grid splits; "breach", "below" and "gate" (just inside the gate) its
+##                points
+##   the remnant  a tower in the void past the pocket, a dead megacorp's sign on it facing the deck
+## and keeps the void's towers out of the pocket and the gangway. A set with none is planned as it always was.
 ##
 ## Fiction only: the folder names and sign words are the set's demo text.
 
@@ -83,6 +91,14 @@ var cables: Array = []
 var signs: Array = []
 ## Name -> Vector3.
 var points := {}
+## The breach (C37): its cell ((-1, -1) for none); the gate {cell, side, out: Vector3, at: Vector3 (its middle on the
+## floor line)}; the pocket {center: Vector3 (its deck's top middle), size: Vector2}; the gangway {at, out, length,
+## width}; the remnant {tower, sign} (a tower's and a sign's dictionaries, as `towers` and `signs` hold). {} for none.
+var breach_cell := Vector2i(-1, -1)
+var gate := {}
+var pocket := {}
+var gangway := {}
+var remnant := {}
 ## [{at: Vector3, out: Vector3}] for each vista_<n>: where it stands and the way it looks.
 var vistas: Array = []
 ## [{xform: Transform3D, size: Vector3, kind: "floor"|"parapet"|"block"|"cover"}]
@@ -104,6 +120,7 @@ func _init(from: RuinsSet) -> void:
 	_points()
 	_floor_boxes()
 	_cover()
+	_breach()
 	_scenery()
 
 
@@ -276,6 +293,20 @@ func _edges() -> void:
 			var n := cell(c + SIDES[side])
 			if n == Cell.VOID or n == Cell.HOLE:
 				edges.append({"cell": c, "side": side, "hole": n == Cell.HOLE, "overlook": n == Cell.VOID and _rng.randf() < 0.45, "seed": _rng.randi()})
+	if ruins.breach != "":
+		# The exit's side onto the void (the far side first) is the gate: a portal onto a gangway, no overlook.
+		for side in [0, 3, 1]:
+			var found := false
+			for e in edges:
+				if e["cell"] == exit_cell and e["side"] == side and not e["hole"]:
+					e["overlook"] = false
+					e["gate"] = true
+					var out := Vector3(SIDES[side].x, 0, SIDES[side].y)
+					gate = {"cell": exit_cell, "side": side, "out": out, "at": center(exit_cell) + out * CELL_M * 0.5}
+					found = true
+					break
+			if found:
+				break
 	for e in edges:
 		var at := center(e["cell"]) + Vector3(SIDES[e["side"]].x, 0.0, SIDES[e["side"]].y) * (CELL_M * 0.5 + PARAPET_T * 0.5)
 		var along_x: bool = e["side"] % 2 == 0
@@ -291,14 +322,29 @@ func _edges() -> void:
 
 
 func _floor_boxes() -> void:
+	if ruins.breach != "" and points.has(ruins.breach):
+		breach_cell = cell_at(points[ruins.breach])
 	for z in size.y:
 		var x := 0
 		while x < size.x:
 			if cell(Vector2i(x, z)) != Cell.FLOOR and cell(Vector2i(x, z)) != Cell.BLOCK:
 				x += 1
 				continue
+			if Vector2i(x, z) == breach_cell:
+				# The breach (C37): its rim round the opening is floor; the opening's box is the hatch's own, which a
+				# mission can open.
+				var mid := center(breach_cell) - Vector3(0, SLAB_M * 0.5, 0)
+				var rim := (CELL_M - BREACH_OPENING) * 0.5
+				for side in 4:
+					var o := Vector3(SIDES[side].x, 0, SIDES[side].y)
+					var across := Vector3(absf(o.z), 0, absf(o.x))
+					var size := across * (CELL_M if side % 2 == 0 else BREACH_OPENING) + o.abs() * rim + Vector3(0, SLAB_M, 0)
+					boxes.append({"xform": Transform3D(Basis.IDENTITY, mid + o * (BREACH_OPENING * 0.5 + rim * 0.5)), "size": size, "kind": "floor"})
+				boxes.append({"xform": Transform3D(Basis.IDENTITY, mid), "size": Vector3(BREACH_OPENING, SLAB_M, BREACH_OPENING), "kind": "hatch"})
+				x += 1
+				continue
 			var run := 0
-			while x + run < size.x and (cell(Vector2i(x + run, z)) == Cell.FLOOR or cell(Vector2i(x + run, z)) == Cell.BLOCK):
+			while x + run < size.x and (cell(Vector2i(x + run, z)) == Cell.FLOOR or cell(Vector2i(x + run, z)) == Cell.BLOCK) and Vector2i(x + run, z) != breach_cell:
 				run += 1
 			var mid := (center(Vector2i(x, z)) + center(Vector2i(x + run - 1, z))) * 0.5
 			boxes.append({"xform": Transform3D(Basis.IDENTITY, mid - Vector3(0, SLAB_M * 0.5, 0)), "size": Vector3(run * CELL_M, SLAB_M, CELL_M), "kind": "floor"})
@@ -439,7 +485,7 @@ func unreachable() -> PackedStringArray:
 		for i in n.x:
 			var w := Vector3(-ext.x + (i + 0.5) * WALK_M, 0, -ext.y + (j + 0.5) * WALK_M)
 			open[j * n.x + i] = 1 if cell(cell_at(w)) == Cell.FLOOR else 0
-	var solid: Array = boxes.filter(func(b): return b["kind"] != "floor" and b["size"].y > STEP_H)
+	var solid: Array = boxes.filter(func(b): return not ["floor", "hatch", "pocket"].has(b["kind"]) and b["size"].y > STEP_H)
 	for p in cover:
 		solid.append({"xform": Transform3D(Basis(Vector3.UP, p["yaw"]), p["at"]), "size": p["size"]})
 	# Each box drawn onto the squares under it, grown by a player's radius.
@@ -474,10 +520,71 @@ func unreachable() -> PackedStringArray:
 				todo.append(m)
 	var out := PackedStringArray()
 	for name in points:
+		if (points[name] as Vector3).y < FLOOR_Y - 1.0:
+			continue  # the pocket under a breach (C37): reached by falling, never walked to
 		var g: Vector2i = at_of.call(points[name])
 		if seen[g.y * n.x + g.x] == 0:
 			out.append(name)
 	return out
+
+
+# --- The breach (C37). ---
+
+## The breach's opening (the hatch over it), metres square; the rest of its cell is floor round it.
+const BREACH_OPENING := 3.2
+## The gate's point stands this far inside the exit's side (where a wall across it stands, clear of the parapet).
+const GATE_IN_M := 0.7
+## The pocket's deck: so many metres square; how far out toward the void its middle stands from under the breach.
+const POCKET_M := 12.0
+const POCKET_OUT_M := 4.0
+## The gangway out from the gate, and the remnant's tower out past the pocket's far edge.
+const GANGWAY_M := Vector2(15.0, 3.2)
+const REMNANT_OUT_M := 7.5
+
+
+func _breach() -> void:
+	if breach_cell == Vector2i(-1, -1):
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%d:breach" % ruins.seed)
+	var top := center(breach_cell)
+	var out: Vector3 = gate.get("out", Vector3(0, 0, -1)) if gate.get("cell") == breach_cell else Vector3(0, 0, -1)
+	var deck := top + out * POCKET_OUT_M + Vector3(0, -ruins.breach_depth, 0)
+	pocket = {"center": deck, "size": Vector2(POCKET_M, POCKET_M)}
+	points["breach"] = top + Vector3(0, STAND_Y, 0)
+	points["below"] = Vector3(top.x, deck.y + STAND_Y, top.z)
+	if not gate.is_empty():
+		points["gate"] = (gate["at"] as Vector3) - (gate["out"] as Vector3) * GATE_IN_M + Vector3(0, STAND_Y, 0)
+	boxes.append({"xform": Transform3D(Basis.IDENTITY, deck - Vector3(0, SLAB_M * 0.5, 0)), "size": Vector3(POCKET_M, SLAB_M, POCKET_M), "kind": "pocket"})
+	for side in 4:
+		var o := Vector3(SIDES[side].x, 0, SIDES[side].y)
+		var along_x: bool = side % 2 == 0
+		var box := Vector3(POCKET_M + PARAPET_T * 2.0, PARAPET_H, PARAPET_T) if along_x else Vector3(PARAPET_T, PARAPET_H, POCKET_M + PARAPET_T * 2.0)
+		boxes.append({"xform": Transform3D(Basis.IDENTITY, deck + o * (POCKET_M * 0.5 + PARAPET_T * 0.5) + Vector3(0, PARAPET_H * 0.5, 0)), "size": box, "kind": "pocket"})
+	if not gate.is_empty():
+		gangway = {"at": gate["at"], "out": gate["out"], "length": GANGWAY_M.x, "width": GANGWAY_M.y}
+	var tower_at := deck + out * (POCKET_M * 0.5 + REMNANT_OUT_M)
+	var tower := {"at": tower_at, "tall": ruins.breach_depth + rng.randf_range(16.0, 24.0), "foot": 70.0, "width": rng.randf_range(4.2, 5.2), "depth": rng.randf_range(2.6, 3.2), "yaw": atan2(out.x, out.z), "lean": Vector2(rng.randf_range(-1.5, 1.5), rng.randf_range(-1.5, 1.5)), "seed": rng.randi(), "inside": false}
+	remnant = {"tower": tower, "sign": {"tower": -1, "height": rng.randf_range(5.6, 6.6), "text": ruins.remnant, "slot": 0, "upright": false, "seed": rng.randi()}}
+
+
+## True when a tower `reach` metres round at `at` would stand in the breach's pocket, its gangway or its remnant (C37).
+func _in_breach_way(at: Vector3, reach: float) -> bool:
+	if pocket.is_empty():
+		return false
+	var deck: Vector3 = pocket["center"]
+	var half := POCKET_M * 0.5 + reach + 1.5
+	if absf(at.x - deck.x) < half and absf(at.z - deck.z) < half:
+		return true
+	if not gangway.is_empty():
+		var o: Vector3 = gangway["out"]
+		var rel: Vector3 = at - (gangway["at"] as Vector3)
+		var along := rel.dot(o)
+		var across := absf(rel.dot(Vector3(-o.z, 0, o.x)))
+		if along > -reach and along < float(gangway["length"]) + reach + 2.0 and across < float(gangway["width"]) * 0.5 + reach + 1.5:
+			return true
+	var t: Vector3 = remnant["tower"]["at"]
+	return Vector2(at.x - t.x, at.z - t.z).length() < reach + 6.0
 
 
 # --- Scenery. ---
@@ -494,6 +601,8 @@ func _scenery() -> void:
 		var width := _rng.randf_range(2.4, 5.0)
 		var depth := _rng.randf_range(1.6, 3.2)
 		if not _over_void(at, maxf(width, depth) * 0.75 + 1.0):
+			continue
+		if _in_breach_way(at, maxf(width, depth) * 0.75):
 			continue
 		var crowded := false
 		for t in towers:

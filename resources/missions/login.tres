@@ -8,40 +8,77 @@ id = "login"
 order = 1
 title = "login"
 register = "tron"
-goal = "Survive your first timeslices on the scheduler's floor, then follow the daemons' spawn trail down."
+goal = "Survive your first timeslices on the scheduler's floor, then follow the spawn trail down to where they come from."
 loadout = PackedStringArray("terminal_cannon", "sigterm")
 grants = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail")
 abilities = PackedStringArray()
 objectives = [{
+"hint": "1 cannon never runs dry. 2 SIGTERM: get close",
 "id": "floor",
 "kind": "survive",
-"seconds": 20.0,
-"text": "Hold the floor for one timeslice"
+"seconds": 25.0,
+"text": "Hold the floor for one timeslice",
+"gives": ["sigkill_rail"]
 }, {
+"at": "plaza",
+"hint": "the vents leak green where they climb out",
+"id": "trail",
+"kind": "reach",
+"label": "spawn trail",
+"radius": 3.5,
+"text": "Follow the spawn trail"
+}, {
+"count": 7,
 "daemon": "rogue",
-"count": 2,
-"gives": ["sigkill_rail"],
-"id": "rogue",
+"hint": "kills fill the rail's meter: 3 once it's lit",
+"id": "pack",
+"of": ["pack_a", "pack_b", "lead"],
 "kind": "kill",
-"text": "Take down the rogue.d"
+"text": "Hold the plaza against the pack"
 }, {
+"hint": "walk through a terminal to read it",
 "id": "temporary",
 "kind": "log",
 "log": "temporary",
-"text": "Pick up the terminal log"
+"text": "Read the terminal log"
 }, {
-"at": "exit",
-"id": "vent",
+"at": "gate",
+"id": "gate",
 "kind": "reach",
 "label": "spawn vent",
-"radius": 2.5,
+"radius": 3.0,
 "text": "Follow the spawn trail to the vent"
+}, {
+"count": 4,
+"daemon": "rogue",
+"hint": "{reload} reloads",
+"id": "surge",
+"of": ["surge"],
+"kind": "kill",
+"text": "Hold the vent while it opens"
+}, {
+"at": "below",
+"id": "drop",
+"kind": "reach",
+"label": "the drop",
+"radius": 7.0,
+"text": "Drop into the vent"
 }]
 logs = [{
-"at": "log_0",
+"at": "log_1",
 "id": "temporary",
 "name": "migrate.sh",
 "text": "#!/bin/sh\n# temporary. remove after the migration.\nexec ./watchdog --respawn --forever"
+}, {
+"at": "log_3",
+"id": "sched",
+"name": "sched.log",
+"text": "tick 8813904  grant 10ms  rogue.d\ntick 8813905  grant 10ms  rogue.d\ntick 8813906  grant 10ms  rogue.d\n47 processes this tick. none of them started by a session."
+}, {
+"at": "log_2",
+"id": "watchdog",
+"name": "watchdog.conf",
+"text": "# restart whatever stops. TODO: say what to watch.\nwatch =\nrestart = always\nmax_restarts = unlimited\nnotify = nobody"
 }]
 lines = [{
 "on": "start",
@@ -52,34 +89,195 @@ lines = [{
 "text": "Arena's quiet. That's not a compliment. Quiet is when they're planning.",
 "who": "ai"
 }, {
-"on": "begin:rogue",
+"on": "wave:first",
 "text": "Rogue's rearing. Back up or it opens you.",
 "who": "ai"
 }, {
-"on": "done:rogue",
+"on": "done:floor",
 "text": "That's the rail you forged on the way in. Fill the meter and it fires.",
 "who": "ai"
+}, {
+"on": "begin:trail",
+"text": "See the vents? They're leaking. Whatever's under this floor is spawning them.",
+"who": "ai"
+}, {
+"on": "wave:pack_a",
+"text": "That's a pack. Keep moving. Standing still is how they flank.",
+"who": "ai"
+}, {
+"on": "wave:lead",
+"text": "That one's running at the highest priority. Bigger. Same answer.",
+"who": "ai"
+}, {
+"on": "done:pack",
+"text": "Nice shot. I'd tell you your accuracy, but you'd stop trusting me.",
+"who": "ai"
+}, {
+"on": "begin:temporary",
+"text": "audit: user=? action=read path=/scheduler/logs result=DENIED reason=\"no session\"",
+"who": "auditor"
 }, {
 "on": "log:temporary",
 "text": "Found a log. Your handwriting. Well. Your comment style.",
 "who": "ai"
 }, {
-"on": "begin:vent",
+"on": "log:sched",
+"text": "Every tick it hands them time. Nobody asked it to. Nobody told it not to.",
+"who": "ai"
+}, {
+"on": "log:watchdog",
+"text": "A watchdog with nothing to watch. So it watches whatever moves. Us.",
+"who": "ai"
+}, {
+"on": "begin:gate",
 "text": "audit: user=? action=follow path=/scheduler/spawn result=DENIED reason=\"no session\"",
 "who": "auditor"
+}, {
+"on": "done:gate",
+"text": "White ICE. Policy, made solid. We're not getting through that today.",
+"who": "ai"
+}, {
+"on": "begin:surge",
+"text": "The vent's opening. Something's coming up first.",
+"who": "ai"
+}, {
+"on": "done:surge",
+"text": "audit: path=/scheduler/spawn status=BREACHED. floor reallocated.",
+"who": "auditor"
+}, {
+"on": "begin:drop",
+"text": "Floor's giving. Down's where they come from. So, down.",
+"who": "ai"
 }, {
 "on": "complete",
 "text": "Well. That's not in the arena brochure.",
 "who": "ai"
+}, {
+"on": "fail",
+"text": "Up. Again. It's one timeslice.",
+"who": "ai"
 }]
 transitions = [{
-"on": "done:vent",
+"on": "done:surge",
 "to": "cyberpunk"
 }]
+waves = [{
+"count": 2,
+"every": 1.2,
+"from": ["east", "west"],
+"id": "first",
+"kind": "rogue",
+"on": "at:5"
+}, {
+"count": 1,
+"from": ["trail"],
+"id": "second",
+"kind": "rogue",
+"on": "at:15"
+}, {
+"count": 1,
+"from": ["plaza_w"],
+"id": "ambush",
+"kind": "rogue",
+"on": "begin:trail"
+}, {
+"count": 3,
+"every": 0.8,
+"from": ["plaza_n", "plaza_e", "plaza_w"],
+"id": "pack_a",
+"kind": "rogue",
+"on": "begin:pack"
+}, {
+"after": "pack_a",
+"count": 3,
+"every": 0.9,
+"from": ["plaza_e", "plaza_n", "plaza_w"],
+"id": "pack_b",
+"kind": "rogue",
+"left": 1
+}, {
+"after": "pack_b",
+"count": 1,
+"elites": 1,
+"from": ["plaza_n"],
+"id": "lead",
+"kind": "rogue",
+"left": 1
+}, {
+"count": 2,
+"every": 2.5,
+"from": ["mid_w"],
+"id": "stray",
+"kind": "rogue",
+"on": "begin:temporary"
+}, {
+"count": 2,
+"every": 1.5,
+"from": ["near_exit", "far"],
+"id": "guard",
+"kind": "rogue",
+"on": "begin:gate"
+}, {
+"count": 4,
+"every": 1.6,
+"from": ["near_exit", "far"],
+"id": "surge",
+"kind": "rogue",
+"on": "begin:surge"
+}]
+props = [{
+"at": "spawn_1",
+"id": "east",
+"kind": "vent"
+}, {
+"at": "daemon_3",
+"id": "west",
+"kind": "vent"
+}, {
+"at": "spawn_3",
+"id": "trail",
+"kind": "vent"
+}, {
+"at": "spawn_4",
+"id": "plaza_w",
+"kind": "vent"
+}, {
+"at": "daemon_5",
+"id": "plaza_n",
+"kind": "vent"
+}, {
+"at": "breaker_3",
+"id": "plaza_e",
+"kind": "vent"
+}, {
+"at": "daemon_1",
+"id": "mid_w",
+"kind": "vent"
+}, {
+"at": "daemon_4",
+"id": "near_exit",
+"kind": "vent"
+}, {
+"at": "daemon_0",
+"id": "far",
+"kind": "vent"
+}, {
+"at": "gate",
+"id": "gate_ice",
+"kind": "ice_wall",
+"span": Vector2(3.2, 4.2),
+"yaw": 0.0
+}, {
+"id": "breach",
+"kind": "breach",
+"lights": "done:drop",
+"opens": "done:surge"
+}]
+end_hold_s = 4.5
 ice = false
 ruins = "scheduler_breach"
 fail_time_s = 0.0
 next = "defunct"
 playable = true
-draft = true
+draft = false
 hidden = false

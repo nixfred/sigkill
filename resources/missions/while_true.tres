@@ -11,7 +11,7 @@ register = "matrix"
 goal = "Cut a runaway loop off at its cores before it fills the cache."
 loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain")
 grants = PackedStringArray("grep_seeker", "pipe_chain")
-abilities = PackedStringArray("code-rain vision")
+abilities = PackedStringArray("code_rain_vision")
 objectives = [{
 "count": 3,
 "daemon": "swarm",

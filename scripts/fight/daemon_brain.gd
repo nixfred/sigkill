@@ -67,6 +67,11 @@ extends RefCounted
 ## is in (take_hup_word()), so every screen draws it confused. Hunter ICE's brain is this one: it is
 ## confused the same way, and never lashes.
 ##
+## A mission's own (C37, scripts/missions/mission_stage.gd): out of its spawn vent it hunts at once (alert(): it knows
+## where the player is, it came out for them), and `relentless` it never gives up: no leash takes it home, and when it
+## has lost sight for lose_s it hears where the player is now and goes there. A kill objective never stalls on a
+## daemon standing at its vent.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -108,6 +113,8 @@ const WANDER_LEASH := 0.8
 
 var dummy: Node3D
 var art: DaemonArt
+## A mission's daemon (C37): no leash, and a lost prey heard again rather than given up.
+var relentless := false
 ## "rogue", "zombie" or "swarm": its art's.
 var kind := "rogue"
 var state: State = State.HOME
@@ -399,7 +406,11 @@ func _step_hunt(delta: float, d) -> void:
 		unseen_t = 0.0
 	else:
 		unseen_t += delta
-	if unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m:
+	if relentless and unseen_t > d.tuning.lose_s:
+		# A mission's daemon (C37) hears where its prey is now, and goes on.
+		last_seen = target
+		unseen_t = 0.0
+	elif unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m:
 		_go_home()
 		return
 	var chase: Vector3 = target if sees or d.is_decoy(prey) else last_seen
@@ -967,6 +978,20 @@ func _down(d) -> void:
 		_enter(State.DOWN)
 	velocity = Vector3.ZERO
 	art.drive(DaemonArt.Act.IDLE)
+
+
+## A mission's daemon out of its vent (C37): it hunts the first player it may, knowing where they are, wherever it
+## is; only where the brains decide, never mid-attack, confused or down. True when it took up the hunt.
+func alert(d) -> bool:
+	if d == null or not d.runs() or dummy == null or not dummy.is_alive() or hup != Hup.NONE:
+		return false
+	if state != State.HOME and state != State.RETURN and state != State.DOWN:
+		return false
+	for id in d.prey_ids():
+		if d.prey_valid(id) and not d.prey_hidden(id):
+			_hunt(id, d.prey_point(id))
+			return true
+	return false
 
 
 ## Hunts player `id`, last seen at `seen` (where it was spotted).

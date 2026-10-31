@@ -5,7 +5,8 @@ extends Control
 ## beside "user$". As root starts, the badge shows the cosmetic
 ## "[sudo] password for user: ********" for a moment first. Fiction only: nothing is asked
 ## for, typed or checked, and "user" is a fixed word, never anyone's name. It reads the
-## player's sudo node every frame and changes nothing.
+## player's sudo node every frame and changes nothing. In a mission that has not handed sudo
+## over (C37), "sudo: locked" sits dim beside "user$".
 
 const Palette = preload("res://scripts/palette.gd")
 const Controls = preload("res://scripts/controls.gd")
@@ -14,6 +15,9 @@ const USER := "user$"
 const ROOT := "root#"
 const PASSWORD := "[sudo] password for user: ********"
 const READY := "sudo ready: %s"
+const LOCKED := "sudo: locked"
+## How dim the locked note is (C37).
+const LOCKED_DIM := 0.5
 const LEFT := "%.0fs"
 const FONT := 16
 const SMALL_FONT := 12
@@ -81,6 +85,10 @@ func _refresh() -> void:
 		_prompt.text = ROOT
 		_detail.text = LEFT % ceilf(sudo.root_left())
 		_detail.visible = true
+	elif player.has_method("ability_ok") and not player.ability_ok("sudo"):
+		_prompt.text = USER
+		_detail.text = LOCKED  # a mission that has not handed sudo over (C37)
+		_detail.visible = true
 	else:
 		_prompt.text = USER
 		_detail.text = READY % Controls.bind_label(GameSettings.current().bind("sudo_overcharge"))
@@ -88,6 +96,7 @@ func _refresh() -> void:
 	var color := Palette.HOSTILE_RED if root else Palette.MINT
 	_prompt.add_theme_color_override("font_color", color)
 	_detail.add_theme_color_override("font_color", color)
+	_detail.modulate = Color(1, 1, 1, LOCKED_DIM if _detail.text == LOCKED else 1.0)
 
 
 func _label(size: int, color: Color) -> Label:

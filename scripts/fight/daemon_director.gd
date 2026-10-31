@@ -138,6 +138,11 @@ func brains() -> Array:
 	return _brains
 
 
+## The brains are looked for again at the next step (C37): a mission's daemon climbed out of a vent.
+func forget_brains() -> void:
+	_brains = []
+
+
 func _all_valid() -> bool:
 	for brain in _brains:
 		if not is_instance_valid(brain.dummy) or not brain.dummy.is_inside_tree():

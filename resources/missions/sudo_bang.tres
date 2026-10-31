@@ -11,7 +11,7 @@ register = "tron"
 goal = "Earn root and read the one log only root may read: the oldest one."
 loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon")
 grants = PackedStringArray("cron_mines", "rm_rf_cannon")
-abilities = PackedStringArray("sudo and root#")
+abilities = PackedStringArray("sudo")
 objectives = [{
 "count": 3,
 "daemon": "any",

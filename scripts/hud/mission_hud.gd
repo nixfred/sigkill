@@ -17,9 +17,13 @@ extends Control
 ##   the cut              an arena reloaded by the runner (a start, a retry, the next mission, back to the Missions
 ##                        screen) comes in from black over CUT_S (C36), where it used to blink.
 ## Your AI's lines go to the guide panel (GuideHud.story_line(): "your AI", one voice), in turn, each shown for a
-## time that fits its length. The end screens are scripts/hud/mission_end_screen.gd. Cosmetic: it changes nothing.
+## time that fits its length. The end screens are scripts/hud/mission_end_screen.gd, up end_hold_s after the last
+## objective (C37: the place holds a beat first). Since C37 an objective's hint is a dim line under its progress
+## ("{reload}" and the like are the keys as bound), and the register chip is the world's live register in ruins (the
+## place itself), so it never reads one thing while the world shows another. Cosmetic: it changes nothing.
 
 const Palette = preload("res://scripts/palette.gd")
+const Controls = preload("res://scripts/controls.gd")
 
 const DESIGN_H := 720.0
 const SCALE_LAST := 1.5
@@ -126,6 +130,8 @@ func shown_text() -> PackedStringArray:
 	if not o.is_empty() and runner.state == MissionRunner.State.RUNNING:
 		out.append("> " + _typed(str(o["text"]), _obj_age, TYPE_CPS))
 		out.append(progress_text())
+		if hint_text() != "":
+			out.append(hint_text())
 	for line in _feed:
 		out.append(_typed(str(line["prefix"]) + str(line["text"]), line["age"], line["cps"]))
 	if _log_age >= 0.0:
@@ -151,6 +157,28 @@ func progress_text() -> String:
 			var at := runner.target_point()
 			return ("find %s  %d m" % [str(entry.get("name", "the log")), roundi(_metres_to(at))]) if at != Vector3.INF else "read"
 	return ""
+
+
+## The running objective's hint (C37), its "{action}" keys as bound now; "" for none.
+func hint_text() -> String:
+	var o := runner.objective() if runner != null else {}
+	var hint := str(o.get("hint", ""))
+	if hint == "":
+		return ""
+	for pair in Controls.REBINDABLE:
+		var tag := "{%s}" % pair[0]
+		if hint.contains(tag):
+			hint = hint.replace(tag, Controls.bind_label(GameSettings.current().bind(pair[0])))
+	return "# " + hint
+
+
+## The register the panel's chip shows (C37): the world's live one in ruins, else the mission's.
+func register_shown() -> String:
+	if runner == null:
+		return ""
+	if runner.world != null and is_instance_valid(runner.world) and runner.world.register != "":
+		return runner.world.register
+	return runner.register
 
 
 ## True while the mission's card is up.
@@ -285,7 +313,7 @@ func _on_failed(_reason: String) -> void:
 
 func _on_completed(_result: Dictionary) -> void:
 	_end_kind = "complete"
-	_end_in = 1.5
+	_end_in = runner.def.end_hold_s if runner != null and runner.def != null else 1.5
 
 
 func _on_ended() -> void:
@@ -358,13 +386,15 @@ func _draw_mission() -> void:
 ## The objective panel; returns its bottom edge.
 func _draw_panel() -> float:
 	var def := runner.def
-	var reg := register_colour(runner.register)
+	var reg := register_colour(register_shown())
 	var x := PANEL_AT.x
 	var y := PANEL_AT.y
 	var w := PANEL_W
 	var rows := 92.0 + 18.0 * _done.size()
 	if runner.state == MissionRunner.State.RUNNING:
 		rows += 48.0
+		if hint_text() != "":
+			rows += 18.0
 	elif runner.state == MissionRunner.State.INTRO:
 		rows += 20.0
 	else:
@@ -382,7 +412,7 @@ func _draw_panel() -> float:
 	_brackets(rect.grow(2.0 + 6.0 * _flash), Color(Palette.TEAL, 0.55 + 0.45 * _flash), 12.0)
 	var p := rect.position + Vector2(14, 0)
 	_text(p + Vector2(0, 19), "MISSION %s" % def.number(), 11, Palette.TEAL)
-	var chip := runner.register.to_upper()
+	var chip := register_shown().to_upper()
 	var chip_w := _width(chip, 10) + 12.0
 	var clock := _clock(runner.clock)
 	var clock_w := _width(clock, 13)
@@ -420,6 +450,9 @@ func _draw_panel() -> float:
 				var cx := p.x + _width("> " + typed, 15) + 2.0
 				draw_rect(Rect2(cx, row_y - 10, 8, 14), Color(Palette.MINT, 0.85))
 			_draw_progress(Vector2(p.x + 16, row_y + 26), w - 44)
+			var hint := hint_text()
+			if hint != "":
+				_text(Vector2(p.x + 16, row_y + 45), _clip(hint, MissionDef.HINT_LAST + 2), 11, Color(Palette.MINT, 0.55))
 		MissionRunner.State.FAILED:
 			_text(Vector2(p.x, row_y), "exit 137  " + runner.reason, 13, Palette.HOSTILE_RED)
 		MissionRunner.State.COMPLETE:
@@ -533,8 +566,11 @@ func _draw_marker(view: Vector2) -> void:
 	if camera.global_position.distance_to(aim) < 0.3:
 		return  # standing on it: nothing to point at (and no point to project)
 	var metres := "%d m" % roundi(_metres_to(point))
-	var behind := camera.is_position_behind(aim)
-	var screen := camera.unproject_position(aim) / _k
+	# Behind, or on the camera's own plane (straight under it as it falls, C37): pointed at from its place in the
+	# camera's space, never projected (a point on that plane has no place on the screen).
+	var local := camera.global_transform.affine_inverse() * aim
+	var behind := local.z > -0.05
+	var screen := camera.unproject_position(aim) / _k if not behind else view * 0.5
 	var margin := 46.0
 	var inside := Rect2(Vector2(margin, margin), view - Vector2(margin, margin) * 2.0)
 	var pulse := 0.5 + 0.5 * sin(_age * TAU * 1.2)
@@ -549,9 +585,7 @@ func _draw_marker(view: Vector2) -> void:
 		_text(screen + Vector2(-_width(metres, 12) * 0.5, r + 16), metres, 12, Palette.MINT)
 		return
 	var centre := view * 0.5
-	var dir := (screen - centre)
-	if behind:
-		dir = -dir
+	var dir := (screen - centre) if not behind else Vector2(local.x, -local.y)
 	if dir.length() < 0.01:
 		dir = Vector2(0, 1)
 	dir = dir.normalized()
