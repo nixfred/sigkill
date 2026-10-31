@@ -21,7 +21,7 @@ tools/trailer_capture.sh ~/.cache/sigkill-trailer --list                 # the s
 The work folder must exist and be empty the first time; after that the script recognises its own (it keeps a
 marker file there) and re-renders into it. It renders from a `git archive` copy of this repository's HEAD (set
 `TRAILER_COMMIT=<ref>` for another commit), so uncommitted changes are not in the footage. The first run imports
-that copy (about a minute). A full render took 50 minutes on the development laptop; the opener's clips are the slow
+that copy (about a minute). A full render takes 45 to 50 minutes on the development laptop; the opener's clips are the slow
 ones, as each take plays the opener from its start up to its moment (the fall's take is about 55 seconds of opener).
 
 It needs Godot 4.7 (Vulkan), `Xvnc` (TigerVNC), `xauth`, `mcookie`, `ffmpeg` and `ffprobe`, `jq`, `git` and `tar`.
