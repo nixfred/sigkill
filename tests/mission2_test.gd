@@ -77,6 +77,7 @@ func _run() -> void:
 	await _gate_checks()
 	await _run_checks()
 	await _fail_checks()
+	await _early_checks()
 	await _leftover_checks()
 	await _cleanup()
 	print("MISSION 2: %d checks" % _checks)
@@ -424,6 +425,44 @@ func _fail_checks() -> void:
 	var end := mh.end_screen()
 	_check("acceptance (fail card): a death fails it, \"exit 137\" and why, Retry focused, your AI's line on it", runner.state == MissionRunner.State.FAILED and runner.reason.begins_with("derezzed") and await _until(func(): return end.is_up()) and end.kind() == "failed" and _text_has(end.shown_text(), "exit 137") and end.buttons()[0].text == "Retry")
 	_check("its daemons stop coming once it has failed", runner.stage.stopped)
+	await _drop(main)
+
+
+# --- Never stalled by its finite daemons. ---
+
+func _early_checks() -> void:
+	var main := await _arena()
+	var runner := MissionRunner.of(main)
+	var old_id := main.get_instance_id()
+	runner.begin(MissionBook.at(2))
+	main = await _after_reload(old_id)
+	runner = MissionRunner.of(main)
+	var player = main.get_node("Player")
+	var world := runner.world
+	await _until(func(): return runner.state == MissionRunner.State.RUNNING)
+	runner.life.shield(LONG_ROUND_S)
+	var stage := runner.stage
+	for d in stage.wave_daemons("queue"):
+		d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+	for id in ["rain_a", "rain_b", "rain_c"]:
+		for d in stage.wave_daemons(id):
+			d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+	await _until(func(): return runner.index >= 1)
+	player.global_position = world.point("plaza")
+	var skipped := await _until(func(): return runner.index >= 3)
+	_check("acceptance: its finite daemons never stall it: the queue shot down asleep before its beat counts as the beat begins, which is done at once (no queue left to kill, nothing to wait on)", runner.index == 3 and stage.wave_state("queue") == "cleared" and skipped)
+	var zombie: Node3D = stage.wave_daemons("strays")[0]
+	var plan := world.layout
+	var hole: Dictionary = plan.holes[0]
+	var block: Dictionary = plan.blocks.filter(func(b): return b["kind"] != "shop")[0]
+	var open := world.to_global(plan.center(plan.start_cell))
+	var into_hole := world.to_global(plan.center(hole["rect"].position))
+	var into_block := world.to_global(plan.center(block["rect"].position))
+	var next_open := world.to_global(plan.center(plan.route[1]))
+	var director := DaemonDirector.of(main)
+	var brain: DaemonBrain = zombie.brain
+	brain.relentless = true
+	_check("acceptance: a mission's walker never steps off open floor (a zombie pushed into a hole or a ruin's footprint could never be reached, and its beat never finish): from the floor onto a hole refused, onto a block refused, floor to floor allowed, and one already off it may walk back", not brain.call("_on_open_floor", open, into_hole, director) and not brain.call("_on_open_floor", open, into_block, director) and brain.call("_on_open_floor", open, next_open, director) and brain.call("_on_open_floor", into_hole, open, director))
 	await _drop(main)
 
 

@@ -8,7 +8,7 @@
 # copy with no import cache is imported headless first. <work-dir> must exist and be empty: the
 # display's socket, Godot's user data, settings and caches all live in it, so nothing of the
 # player's own is read or written. [set] picks the stills (tools/capture_shots.gd): a1, the default,
-# a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37. CAPTURE_AT=<s>,<s>,... (c40, c41 and c42 only, an aid for tuning
+# a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37 or m2. CAPTURE_AT=<s>,<s>,... (c40, c41 and c42 only, an aid for tuning
 # the look) shoots the opener at those seconds instead. This script deletes nothing; remove <work-dir> yourself.
 #
 # Safety: Xvnc on display :97 (CAPTURE_DISPLAY to change it) with no TCP listener at all, its VNC
@@ -23,7 +23,7 @@ work=$(cd "${2:-}" 2>/dev/null && pwd) || { echo "usage: $0 <project-copy> <work
 [ -f "$copy/project.godot" ] || { echo "no project.godot in $copy" >&2; exit 2; }
 [ -z "$(ls -A "$work")" ] || { echo "$work is not empty" >&2; exit 2; }
 shot_set="${3:-a1}"
-[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37" >&2; exit 2; }
+[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37 or m2" >&2; exit 2; }
 at_arg=()
 if [ -n "${CAPTURE_AT:-}" ]; then
 	[[ "$CAPTURE_AT" =~ ^[0-9.,]+$ ]] || { echo "CAPTURE_AT is seconds and commas" >&2; exit 2; }
@@ -65,7 +65,7 @@ xvnc_pid=$(tr -d ' \n' < "/tmp/.X$display-lock" 2>/dev/null)
 	|| { echo "Xvnc did not start: see $work/xvnc.log" >&2; exit 1; }
 trap 'kill "$xvnc_pid" 2>/dev/null; for _ in $(seq 1 50); do kill -0 "$xvnc_pid" 2>/dev/null || break; sleep 0.1; done' EXIT
 
-"${private[@]}" DISPLAY=":$display" nice -n 10 timeout 600 godot --display-driver x11 \
+"${private[@]}" DISPLAY=":$display" nice -n 10 timeout 900 godot --display-driver x11 \
 	--rendering-driver vulkan --audio-driver Dummy --resolution 1920x1080 --position 0,0 \
 	--fixed-fps 60 --path "$copy" --script res://tools/capture_shots.gd -- --demo "--set=$shot_set" "${at_arg[@]}" \
 	> "$work/capture.log" 2>&1

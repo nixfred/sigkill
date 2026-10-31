@@ -123,6 +123,8 @@ var _fired := {}
 ## Its "at:<seconds>" triggers, [trigger, seconds], found once as it begins.
 var _timed: Array = []
 var _pickups := {}
+## This try's kills by wave (M2): a kill objective's own waves' daemons put down before it begins count toward it as it does.
+var _downed_by_wave := {}
 var _beacon: MissionBeacon = null
 var _targets: Array = []
 
@@ -245,6 +247,7 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	result = {}
 	_fired = {}
 	_timed = []
+	_downed_by_wave = {}
 	for on in _triggers_of(d):
 		if on.begins_with("at:"):
 			_timed.append([on, float(on.trim_prefix("at:"))])
@@ -517,6 +520,22 @@ func _next_objective() -> void:
 		_beacon.global_position = place(o["at"])
 	objective_began.emit(index)
 	_fire("begin:" + str(o["id"]))
+	# Its own waves' daemons already down (M2: a sleeper in its queue shot before it began) count as it begins.
+	if running() and o.get("kind") == "kill" and not o.get("of", []).is_empty():
+		var already := 0
+		for wid in o["of"]:
+			already += int(_downed_by_wave.get(str(wid), 0))
+		if already > 0:
+			progress = minf(float(already), need())
+			progressed.emit(index)
+			if progress >= need():
+				_done_if.call_deferred(index)
+
+
+## Objective `i` done, if it is still the one running and has all it needs (M2: its count met before it began).
+func _done_if(i: int) -> void:
+	if state == State.RUNNING and index == i and progress >= need():
+		_objective_done()
 
 
 func _objective_done() -> void:
@@ -535,7 +554,12 @@ func _objective_done() -> void:
 
 
 func _on_downed(dummy: Node3D) -> void:
-	if state != State.RUNNING or dummy.get("credited") == false:
+	if not running() or dummy.get("credited") == false:
+		return
+	var wave := str(dummy.get_meta(&"wave", ""))
+	if wave != "":
+		_downed_by_wave[wave] = int(_downed_by_wave.get(wave, 0)) + 1
+	if state != State.RUNNING:
 		return
 	kills += 1
 	var o := objective()

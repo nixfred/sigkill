@@ -16,7 +16,7 @@ objectives = [{
 "arms": ["ping_sonar"],
 "count": 6,
 "daemon": "zombie",
-"hint": "{weapon_9} ping: everything it reaches answers",
+"hint": "9 ping: everything it reaches answers",
 "id": "rain",
 "kind": "kill",
 "of": ["rain_a", "rain_b", "rain_c"],
@@ -33,7 +33,7 @@ objectives = [{
 "arms": ["fork_bomb", "fork_shotgun"],
 "count": 10,
 "daemon": "zombie",
-"hint": "{weapon_4} fork bomb  {weapon_5} fork()",
+"hint": "4 fork bomb: crowds  5 fork(): up close",
 "id": "queue",
 "kind": "kill",
 "of": ["queue"],
@@ -176,7 +176,7 @@ waves = [{
 "id": "rain_a",
 "kind": "zombie",
 "on": "start",
-"wakes": "at:60"
+"wakes": "at:120"
 }, {
 "count": 2,
 "dormant": true,
@@ -186,7 +186,7 @@ waves = [{
 "id": "rain_b",
 "kind": "zombie",
 "on": "start",
-"wakes": "at:75"
+"wakes": "at:150"
 }, {
 "count": 2,
 "dormant": true,
@@ -196,7 +196,7 @@ waves = [{
 "id": "rain_c",
 "kind": "zombie",
 "on": "start",
-"wakes": "at:90"
+"wakes": "at:180"
 }, {
 "count": 10,
 "dormant": true,
@@ -231,7 +231,7 @@ waves = [{
 "count": 1,
 "epitaph": "4087  owner: you",
 "from": ["nest"],
-"health": 900.0,
+"health": 750.0,
 "hit_cap": 150.0,
 "id": "nest",
 "kind": "parent",
@@ -240,39 +240,30 @@ waves = [{
 "sealed": "done:guard",
 "tag": "<parent> 4087"
 }, {
-"count": 3,
-"every": 1.6,
-"from": ["fork_1", "fork_2", "fork_3"],
+"count": 2,
+"every": 2.0,
+"from": ["fork_1", "fork_3"],
 "health": 75.0,
 "id": "fork_a",
 "kind": "zombie",
 "on": "begin:guard"
 }, {
-"after": "fork_a",
-"count": 3,
-"every": 1.4,
-"from": ["fork_4", "fork_1", "fork_3"],
-"health": 75.0,
-"id": "fork_b",
-"kind": "zombie",
-"left": 1
-}, {
-"count": 3,
-"every": 1.2,
-"from": ["fork_2", "fork_4", "fork_1"],
+"count": 2,
+"every": 2.0,
+"from": ["fork_2", "fork_4"],
 "health": 75.0,
 "id": "fork_c",
 "kind": "zombie",
 "on": "begin:parent"
 }, {
 "after": "fork_c",
-"count": 3,
-"every": 1.2,
-"from": ["fork_3", "fork_2", "fork_4"],
+"count": 2,
+"every": 2.0,
+"from": ["fork_3", "fork_1"],
 "health": 75.0,
 "id": "fork_d",
 "kind": "zombie",
-"left": 1
+"left": 0
 }]
 props = [{
 "at": "breaker_5",

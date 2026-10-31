@@ -82,6 +82,11 @@ static func hold(seconds: float) -> void:
 	_hold_left = maxf(_hold_left, seconds)
 
 
+## Every toast waiting dropped (M2: the tests and the stills, when they set a save up by hand).
+static func drop_waiting() -> void:
+	_queue.clear()
+
+
 ## True while toasts wait.
 static func held() -> bool:
 	return _hold_left > 0.0

@@ -1,7 +1,8 @@
 extends SceneTree
-## Mission 1 (login) played start to finish by a scripted first-timer (C37), headless, to measure how long it takes:
+## A mission played start to finish by a scripted first-timer (C37, mission 1; M2 any built one), headless, to measure
+## how long it takes:
 ##
-##   godot --headless --path . --fixed-fps 60 --script res://tools/pace_run.gd [-- --seed=<n>]
+##   godot --headless --path . --fixed-fps 60 --script res://tools/pace_run.gd [-- --seed=<n>] [--mission=<n>]
 ##
 ## The player is driven as the keyboard and mouse would drive it (scripts/player.gd drive_input(), its view turned at
 ## a hand's pace, never snapped): it walks the walk grid's shortest way to each objective (scripts/ruins/ruins_layout.gd
@@ -11,7 +12,9 @@ extends SceneTree
 ## rogue.d inside its reach, and takes every hit as it lands; a death fails the mission, and it reads the card and
 ## retries. It prints the mission's clock of its clear, its deaths and retries, its kills, and the minutes in all from
 ## the first card to "exit 0". Demo data and the scripted guide (no AI call); it reads nothing of the machine and writes
-## nothing. The numbers it plays by are the constants below.
+## nothing. The numbers it plays by are the constants below. Since M2: --mission=<n> plays campaign mission n (1 by
+## default); it goes after the daemons the objective running counts (a sleeper wakes as it comes near, as a player's
+## would), never wastes shots on one that is sealed, and walks through a terminal it passes near (an optional log).
 
 const MainScene = preload("res://scenes/main.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
@@ -39,6 +42,8 @@ const MOST_S := 900.0
 ## How near a waypoint counts as reached, and how far ahead it looks along its way, metres.
 const WAYPOINT_M := 0.45
 const LOOK_AHEAD_M := 1.2
+## An optional log this near, with nothing to fight in sight, is walked to and read (M2), metres.
+const SIDE_LOG_M := 12.0
 
 var _rng := RandomNumberGenerator.new()
 var _main: Node = null
@@ -59,6 +64,7 @@ var _logs_seen := 0
 var _side_logs: Array = []
 var _hurt := 0.0
 var _lowest := 100.0
+var _mission := 1
 
 
 func _initialize() -> void:
@@ -72,6 +78,8 @@ func _run() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seed="):
 			_rng.seed = int(arg.trim_prefix("--seed="))
+		if arg.begins_with("--mission="):
+			_mission = int(arg.trim_prefix("--mission="))
 	Controls.ensure()
 	GameSettings.current().reset()
 	GameSettings.current().set_value("gameplay", "practice", false)
@@ -86,7 +94,7 @@ func _run() -> void:
 	current_scene = _main
 	await _frames(3)
 	var old := _main
-	MissionRunner.of(_main).begin(MissionBook.at(1))
+	MissionRunner.of(_main).begin(MissionBook.at(_mission))
 	await _take_arena(old)
 	var started := _clock
 	while _clock - started < MOST_S:
@@ -107,7 +115,7 @@ func _run() -> void:
 			var goal := _goal()
 			print("pace: trace %.0f s: at %s, goal %s, %d waypoints, threat %s, pause %.1f, standing %d" % [_runner.clock, str(_player.global_position.snapped(Vector3.ONE * 0.1)), str(goal.snapped(Vector3.ONE * 0.1)) if goal.is_finite() else "-", _path.size(), str(_target.global_position.snapped(Vector3.ONE * 0.1)) if _target != null and is_instance_valid(_target) else "-", _pause, _runner.stage.standing().size() if _runner.stage != null else 0])
 	var done := _runner.state == MissionRunner.State.COMPLETE
-	print("pace: %s after %.1f game seconds (%.2f minutes) from the first card; its clear %.1f s of its clock (try %d), %d deaths, %d kills in the clear, %d of 3 logs; %.0f damage taken in all, its health down to %.0f at worst" % ["DONE" if done else "GAVE UP", _clock - started, (_clock - started) / 60.0, _runner.clock, _runner.attempt, _deaths, _runner.kills, _runner.logs_found.size(), _hurt, _lowest])
+	print("pace: %s after %.1f game seconds (%.2f minutes) from the first card; its clear %.1f s of its clock (try %d), %d deaths, %d kills in the clear, %d of %d logs; %.0f damage taken in all, its health down to %.0f at worst" % ["DONE" if done else "GAVE UP", _clock - started, (_clock - started) / 60.0, _runner.clock, _runner.attempt, _deaths, _runner.kills, _runner.logs_found.size(), _runner.def.logs.size(), _hurt, _lowest])
 	if is_instance_valid(_main):
 		_main.free()
 	await _frames(3)
@@ -134,7 +142,14 @@ func _take_arena(old: Node) -> void:
 	_path_to = Vector3.INF
 	_target = null
 	_last_index = -1
-	_side_logs = ["sched", "watchdog"]
+	# The logs no objective asks for: a first-timer finds them by walking past (M2: any mission's, where C37 named login's).
+	_side_logs = []
+	for entry in _runner.def.logs:
+		var asked := false
+		for o in _runner.def.objectives:
+			asked = asked or (o.get("kind") == "log" and o.get("log") == entry["id"])
+		if not asked:
+			_side_logs.append(entry["id"])
 	await _frames(2)
 
 
@@ -187,8 +202,8 @@ func _threat() -> Node3D:
 	var best: Node3D = null
 	var best_d := ENGAGE_M
 	for d in _runner.stage.standing():
-		if not d.is_alive():
-			continue
+		if not d.is_alive() or d.sealed:
+			continue  # a sealed one (M2) takes nothing: a first-timer stops wasting shots on it
 		var at: Vector3 = d.threat_point()
 		var dist := eye.distance_to(at)
 		if dist < best_d and _clear(eye, at):
@@ -206,6 +221,12 @@ func _clear(from: Vector3, to: Vector3) -> bool:
 ## Where the objective running wants it: a reach's point, its log, the plaza while a pack is coming, a side log on the way.
 func _goal() -> Vector3:
 	var o := _runner.objective()
+	if o.get("kind") != "survive":
+		# A terminal glowing near the way (M2): walked through and read, as a first-timer would.
+		for id in _side_logs:
+			var p := _runner.pickup(id)
+			if p != null and p.global_position.distance_to(_player.global_position) <= SIDE_LOG_M:
+				return p.global_position
 	match o.get("kind"):
 		"reach":
 			if o.get("id") == "drop":
@@ -214,15 +235,23 @@ func _goal() -> Vector3:
 		"log":
 			return _runner.log_place(str(o["log"]))
 		"kill":
+			# The nearest it counts, else the nearest standing (M2: a sleeper it walks up to wakes, as a player's would).
 			var standing: Array = _runner.stage.standing() if _runner.stage != null else []
-			if not standing.is_empty():
-				return (standing[0] as Node3D).global_position
-			return Vector3.INF
+			var of: Array = o.get("of", [])
+			var best: Node3D = null
+			for d in standing:
+				if d.sealed or (not of.is_empty() and not of.has(str(d.get_meta(&"wave", "")))):
+					continue
+				if best == null or d.global_position.distance_to(_player.global_position) < best.global_position.distance_to(_player.global_position):
+					best = d
+			if best == null and not standing.is_empty():
+				best = standing[0]
+			return best.global_position if best != null else Vector3.INF
 		"survive":
 			# Looking round the start as the timeslice runs: the log tucked by the start is found on the way.
 			for id in _side_logs:
 				var p := _runner.pickup(id)
-				if p != null and id == "sched":
+				if p != null:
 					return p.global_position
 			return Vector3.INF
 	return Vector3.INF

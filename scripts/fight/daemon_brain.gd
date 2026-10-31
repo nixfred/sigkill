@@ -121,6 +121,8 @@ var art: DaemonArt
 var relentless := false
 ## Asleep at home (M2): no looking round, no hunting, until woken (alert()) or roused by a hit.
 var dormant := false
+## The ruins it walks in (M2), found once, for its steps' floor.
+var _ruins_world: RuinsWorld = null
 ## "rogue", "zombie" or "swarm": its art's.
 var kind := "rogue"
 var state: State = State.HOME
@@ -1230,6 +1232,9 @@ func _shove(step: Vector3, d, fly: bool = false) -> bool:
 		velocity = Vector3.ZERO
 		return false
 	var next := here + free
+	if relentless and not fly and (kind == "rogue" or kind == "zombie") and not _on_open_floor(here, next, d):
+		velocity = Vector3.ZERO
+		return false
 	if kind == "swarm" and has_home:
 		# It flies between a little under its spot's height and a little over it, its nest never
 		# lower than a crouching player's middle.
@@ -1242,6 +1247,21 @@ func _shove(step: Vector3, d, fly: bool = false) -> bool:
 	var dt := maxf(dummy.get_physics_process_delta_time(), 0.0001)
 	velocity = free / dt
 	return true
+
+
+## False for a step from `here` to `next` that leaves open floor (M2, a mission's walker): in ruins, onto a cell of their
+## plan that is not floor (a hole, a block's footprint, the void), as the plan says; elsewhere, off anything to stand on.
+## A zombie pushed into a hole or a ruin could never be reached or seen again, and its objective would never finish. One
+## already off the floor may step anywhere, so it can walk back on.
+func _on_open_floor(here: Vector3, next: Vector3, d) -> bool:
+	if _ruins_world == null or not is_instance_valid(_ruins_world):
+		_ruins_world = RuinsWorld.of(dummy)
+	if _ruins_world != null and _ruins_world.layout != null:
+		var plan := _ruins_world.layout
+		var from := plan.cell(plan.cell_at(_ruins_world.to_local(here)))
+		var to := plan.cell(plan.cell_at(_ruins_world.to_local(next)))
+		return from != RuinsLayout.Cell.FLOOR or to == RuinsLayout.Cell.FLOOR
+	return not d.cast(next + Vector3.UP * 0.6, next + Vector3.DOWN * 1.2).is_empty()
 
 
 ## `step` from `from`, cut short or slid along the level so the body (RADIUS_M round) stays clear.

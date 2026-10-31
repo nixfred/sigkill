@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37 or m2):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -390,6 +390,12 @@ const C42_PAUSE_AT := 98.1
 ## c37's sheet: mission 1 as a player meets it, three a row; the frames its busiest fight's GPU time is averaged over.
 const C37_SHEET := ["c37-opening", "c37-plaza", "c37-gate", "c37-shift", "c37-remnant", "c37-exit0"]
 const C37_GPU_FRAMES := 180
+## m2's sheet: mission 2 as a player meets it, three a row.
+const M2_SHEET := ["m2-opening", "m2-queue", "m2-crowd", "m2-guard", "m2-reap", "m2-exit0"]
+## Where m2's queue is seen from: down its line from the street's west side, past waking distance; and where its
+## parent's yard is, inside the threads' reach (so its guard's beat begins).
+const M2_QUEUE_VIEW := Vector3(-5.5, 0.0, -5.0)
+const M2_PARENT_VIEW := Vector3(6.5, 0.0, -19.5)
 ## c36's sheet, three a row; how many frames each register's GPU time is averaged over.
 const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide-tron", "c36-fight", "c36-mission"]
 const C36_GPU_FRAMES := 120
@@ -522,6 +528,11 @@ func _run() -> void:
 		return
 	if _set == "c37":
 		await _c37()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m2":
+		await _m2()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2847,6 +2858,169 @@ func _c37_render_info(label: String) -> void:
 		for info in [Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME]:
 			drawn.append(root.get_render_info(kind, info))
 	print("capture: c37 %s drew %d draw calls, %d primitives; shadows %d draw calls, %d primitives" % ([label] + drawn))
+
+## m2: mission 2 (defunct), built, as a player plays it, started from the Missions screen with mission 1 done (the arena
+## reloads into the closed terminals): its card in the rain; the opening, zombies standing asleep in the rain down the
+## street, ping's ring lighting them and their threads arcing away to their parent (m2-opening); every zombie's thread
+## running down the street to the parent standing sealed at its end (m2-threads); the dead storefront with its queue
+## lined up at its door under the OPEN sign (m2-queue, the set piece); the queue awake and coming, a fork bomb thrown
+## into it (m2-crowd; the GPU's time a frame over its busiest stretch printed, at 1920x1080); the same at 960x540; the
+## parent's guard, the crimson elite, before the sealed tower (m2-guard); the parent opened and forking (m2-parent;
+## its GPU time printed too); the reap, every zombie standing dropping at once as the parent derezzes, its owner field
+## over it (m2-reap, the finish); the exit 0 card; the Missions screen with missions 1 and 2 done; and the sheet of six
+## (m2-sequence). The player is shielded through it (the shield off the HUD for each still); the daemons each beat
+## counts are shot down as a sure shot would, and the others are left as they stand.
+func _m2() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	UnlockToast.drop_waiting()  # mission 1 marked done by hand: its weapons' toasts belong to its own end, not this start
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(1)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "defunct":
+		printerr("capture: mission 2 did not start in its ruins")
+		return
+	print("capture: mission %s in the ruins %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var start := world.point("start")
+	var nest: Vector3 = stage.parent.global_position
+	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 0), nest + Vector3(0, 4.0, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m2-card", runner)
+	# The opening: the rain's sleepers down the street, ping's ring lighting them and their threads.
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	var first: Node3D = stage.wave_daemons("rain_a")[0]
+	var view_at := start + (first.global_position - start) * 0.25 + Vector3(-3.0, -RuinsLayout.STAND_Y, 0.0)
+	_c37_view(view_at, first.global_position.lerp(nest, 0.25) + Vector3(0, 1.6, 0))
+	await _frames(20)
+	_player.select_slot(int(_player.inventory.slot_of("ping_sonar")))
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	_fire()
+	await _frames(int(1.15 * Engine.physics_ticks_per_second))
+	print("capture: m2-opening with %d zombies threaded, %d threads drawn" % [stage.children().size(), stage.threads().drawn()])
+	await _c37_save(sheet, "m2-opening", runner)
+	await _m2_until(runner, func(): return runner.index >= 1, 0.0)
+	# The dead storefront, its queue lined up at its door under the OPEN sign: seen from down the line, off to one side,
+	# out of reach of waking it.
+	var shop: Dictionary = world.layout.shop
+	var door: Vector3 = shop["face"] + shop["along"] * shop["width"] * RuinsLayout.SHOP_DOOR
+	_c37_view(M2_QUEUE_VIEW, door + Vector3(-1.5, 1.6, -0.6))
+	await _frames(40)
+	print("capture: m2-queue, %d in the line, the shop lit %.2f" % [stage.wave_daemons("queue").size(), world.shop_power()])
+	await _c37_save(sheet, "m2-queue", runner)
+	# The queue awake and coming as the player reaches where they queued (its busiest fight: its GPU time), then a fork
+	# bomb thrown into it.
+	_c37_view(world.point("plaza") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-2.5, 0, 2.5), world.point("queue_1"))
+	while runner.index < 2:
+		await _frames(1)
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m2 the queue's fight at %dx%d, %d of mission 2's daemons standing (%d awake): the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), stage.standing().filter(func(d): return d.brain != null and not d.brain.dormant).size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("queue")
+	_player.select_slot(int(_player.inventory.slot_of("fork_bomb")))
+	var crowd := Vector3.ZERO
+	var line := stage.wave_daemons("queue").filter(func(d): return d.is_alive())
+	for d in line:
+		crowd += d.global_position / float(line.size())
+	_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), crowd + Vector3(0, 1.0, 0))
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	_fire()
+	await _frames(int(0.75 * Engine.physics_ticks_per_second))
+	await _c37_save(sheet, "m2-crowd", runner)
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m2-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	await _m2_until(runner, func(): return runner.index >= 3, 0.0)
+	_player.global_position = runner.log_place("storefront")
+	await _m2_until(runner, func(): return runner.index >= 4, 0.0)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	await _m2_until(runner, func(): return not mh.showing_log(), 0.0)
+	# The guard, the crimson elite, before the sealed tower, coming as its beat begins; the forks climbing out round it.
+	_c37_view(M2_PARENT_VIEW, nest.lerp(world.point("vista_0"), 0.5) + Vector3(0, 2.2, 0))
+	while runner.index < 5:
+		await _frames(1)
+	await _frames(int(1.3 * Engine.physics_ticks_per_second))
+	var guard: Node3D = stage.wave_daemons("guard")[0]
+	_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), guard.global_position.lerp(nest, 0.35) + Vector3(0, 2.0, 0))
+	await _frames(4)
+	await _c37_save(sheet, "m2-guard", runner)
+	# The guard down: the parent opens and forks.
+	await _m2_until(runner, func(): return runner.index >= 6, 0.0)
+	while stage.parent.art_node().opened() < 0.98:
+		await _frames(1)
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))
+	_c37_view(Vector3(6.5, 0.0, -21.0), nest + Vector3(0, 2.6, 0))
+	await _frames(6)
+	await _c37_save({}, "m2-parent", runner)
+	gpu = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m2 the parent's fight at %dx%d, %d standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("parent")
+	# The reap: its children standing round it as it derezzes, every one dropping at once.
+	var waited := 0
+	while waited < 600 and stage.children().filter(func(d): return d.is_alive()).size() < 3:
+		await _frames(1)
+		waited += 1
+	_c37_view(Vector3(5.5, 0.0, -19.0), nest + Vector3(0, 2.4, 0))
+	await _frames(2)
+	var parent: Node3D = stage.parent
+	while parent.is_alive():
+		parent.hit(1000.0, parent.global_position + Vector3.UP * 2.0, Vector3.FORWARD, "sigkill_rail")
+		await _frames(1)
+	await _frames(int(0.45 * Engine.physics_ticks_per_second))
+	print("capture: m2-reap, %d reaped" % stage.reaped_count)
+	await _c37_save(sheet, "m2-reap", runner)
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "m2-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(1)
+	await _frames(70)
+	await _save("m2-missions")
+	var stills: Array[Image] = []
+	for name in M2_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M2_SHEET.size():
+		_save_grid("m2-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 2 played on until `condition` (m2), at most `most` seconds (0: a minute): the daemons the objective running
+## counts shot down as they stand, and any awake and hunting; never a sleeper it does not count, never the parent before
+## its own beat.
+func _m2_until(runner: MissionRunner, condition: Callable, most: float) -> void:
+	var left := int((most if most > 0.0 else 60.0) * Engine.physics_ticks_per_second)
+	while left > 0 and not condition.call():
+		var of: Array = runner.objective().get("of", [])
+		for d in runner.stage.standing():
+			var counted := of.has(str(d.get_meta(&"wave", "")))
+			if d.is_alive() and (counted or (not d.sessile() and d.brain != null and not d.brain.dormant)):
+				d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await _frames(1)
+		left -= 1
+
 
 
 ## A c35 still saved as `name`, and kept in `sheet` for the contact sheet.

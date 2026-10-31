@@ -131,6 +131,8 @@ var voice: DaemonVoice
 var sealed := false
 ## The most one hit takes off it (M2, a mission wave's "hit_cap"; 0 for no limit): a parent outlasts a single kill -9.
 var hit_cap := 0.0
+## Its name tag kept hidden (M2): a sleeper standing in the rain is found by ping or by its waking, not by a label.
+var tag_hidden := false
 ## Its climb out of a spawn vent (C37): the seconds it takes (0 for none), and where its body stands when whole.
 var _climb_s := 0.0
 var _body_rest := Vector3.ZERO
@@ -223,6 +225,13 @@ func hold_in_hole(seconds: float) -> void:
 	if sessile():
 		return  # rooted (M2): a hole hurts it, never holds it
 	_held_until = maxi(_held_until, Engine.get_physics_frames() + ceili(seconds * Engine.physics_ticks_per_second))
+
+
+## Its name tag hidden or shown again (M2), while it stands.
+func hide_tag(hidden: bool) -> void:
+	tag_hidden = hidden
+	if _tag != null:
+		_tag.visible = not hidden and state == State.ALIVE
 
 
 ## True for a daemon rooted where it stands (M2: a mission's parent): it never moves, strikes, freezes or hangs up.
@@ -482,7 +491,7 @@ func _finish_respawn() -> void:
 		frost.clear()
 	_body.scale = Vector3.ONE
 	_art.set_unstable(0.0)
-	_tag.visible = true
+	_tag.visible = not tag_hidden
 	_shape.set_deferred("disabled", false)
 	if _box != null:
 		_box.set_deferred("disabled", false)
