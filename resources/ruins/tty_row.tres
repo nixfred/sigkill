@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "tty_row"
+title = "the closed terminals"
+seed = 41201
+register = "cyberpunk"
+cells = Vector2i(8, 17)
+blocks = 6
+holes = 2
+cover = 16
+towers = 30
+giants = 22
+cables = 22
+signs = 16
+folders = PackedStringArray("bg_jobs", "spool.old", "sessions", "thumbs_tmp", "exports_2019", "sync_mirror", "at_queue", "logs.1", "pts_cache")
+words = PackedStringArray("TTY ROW", "FG + BG", "SIGCHLD", "WAIT4 INC", "REAPCO", "LAST LOGIN", "DETACHED", "OPEN 24H", "BAUD MART")
+shop = "plaza"
+shop_sign = "PTS/4"
+shop_screen = "$ JOBS|1 RUNNING|2 RUNNING|3 RUNNING|$ LOGOUT"

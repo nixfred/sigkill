@@ -19,7 +19,8 @@ extends Control
 ##                        (C37) a black frame with the command typed on it ("$ login"), so a district's first build
 ##                        happens behind black, never as a frozen frame of the menu that started it.
 ## Your AI's lines go to the guide panel (GuideHud.story_line(): "your AI", one voice), each shown for a time that fits
-## its length, the newest winning (C37: a waiting line gives way to it, the one on show after STORY_LEAST_MS). The end screens are scripts/hud/mission_end_screen.gd, up end_hold_s after the last
+## its length, each in its turn (M2: a waiting one takes over once the one on show has had STORY_LEAST_MS, and at most
+## STORY_WAITING wait, so two beats close together both play). The end screens are scripts/hud/mission_end_screen.gd, up end_hold_s after the last
 ## objective (C37: the place holds a beat first). Since C37 an objective's hint is a dim line under its progress
 ## ("{reload}" and the like are the keys as bound), and the register chip is the world's live register in ruins (the
 ## place itself), so it never reads one thing while the world shows another. Cosmetic: it changes nothing.
@@ -62,6 +63,8 @@ const STORY_MS_PER_CHAR := 55.0
 const STORY_MS_LAST := 9000.0
 ## A line on show this long gives way to a newer one (C37): your AI keeps up with what is happening, never a line behind.
 const STORY_LEAST_MS := 1800.0
+## How many of your AI's lines may wait their turn at once (M2).
+const STORY_WAITING := 2
 const AUDIT_PREFIX := ""
 const TILDE_PREFIX := "~ $ "
 const HANDED_LINE := ">> %s handed to you  [%s]"
@@ -230,6 +233,8 @@ func _process(delta: float) -> void:
 		if _shift_age > SHIFT_S:
 			_shift_age = -1.0
 	_story_hold -= delta * 1000.0
+	if not _story.is_empty() and _story_hold > 0.0 and _story_ms - _story_hold >= STORY_LEAST_MS:
+		_story_hold = 0.0  # a line waiting: the one on show has had its moment
 	if not _story.is_empty() and _story_hold <= 0.0 and guide != null and is_instance_valid(guide) and guide.has_method("story_line"):
 		var text: String = _story[0]
 		var ms := clampf(STORY_MS_FLOOR + STORY_MS_PER_CHAR * text.length(), STORY_MS_FLOOR, STORY_MS_LAST)
@@ -288,10 +293,11 @@ func _on_progressed(_index: int) -> void:
 func _on_line(who: String, text: String) -> void:
 	match who:
 		"ai":
-			# The newest wins (C37): a line still waiting gives way to it, and the one on show once it has had its moment.
-			_story = [text]
-			if _story_hold > 0.0 and _story_ms - _story_hold >= STORY_LEAST_MS:
-				_story_hold = 0.0
+			# It waits its turn (M2, where C37 let the newest win and skip one): the one on show gives way once it has had
+			# STORY_LEAST_MS, and no more than STORY_WAITING wait, the oldest of them dropped past that.
+			_story.append(text)
+			while _story.size() > STORY_WAITING:
+				_story.pop_front()
 		"tilde":
 			_push_feed(TILDE_PREFIX, text, Palette.CRIMSON, TILDE_CPS)
 		_:

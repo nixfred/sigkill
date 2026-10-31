@@ -29,6 +29,10 @@ extends RefCounted
 ## barrier across it) and the gangway past it out into the void, broken off at its end; the shaft under the breach's
 ## hatch (its rim, its walls going down, green code leaking up them); the pocket's deck and parapets (slab_at(),
 ## edge_at(): the floor's and the parapets' own pieces, at any place).
+## And a shop's (M2): the storefront, a closed terminal as a dead shop built into a block on the floor's edge: a tall
+## dark mass set back over a shopfront of two pillars and a fascia, its name lit along the fascia, a torn awning, its
+## window a pane of dark glass with the terminal's last screen frozen on it and an OPEN sign in its corner, its door a
+## roller shutter half down with light leaking out under it onto the street, a few dead windows up its front.
 ## Fiction only: the names are the set's demo text.
 
 const SignFont = preload("res://scripts/arena/arena_font.gd")
@@ -745,3 +749,98 @@ static func sign(kit: ShapeKit, b: Dictionary, t: Dictionary, s: Dictionary, rng
 			var x: float = (-tw * 0.5 + (float(run[0]) + float(run[2]) * 0.5) * px) * flip
 			kit.box(b["light"], Vector3(x, (SignFont.ROWS * 0.5 - float(run[1]) - 0.5) * px, -0.1), Vector3(float(run[2]) * px, px * 0.88, 0.03))
 	return base * Vector3(0, 0, -2.5)
+
+
+## The storefront (M2): a closed terminal as a dead shop, `s` the plan's shop (scripts/ruins/ruins_layout.gd), built into
+## `kit`'s buckets `b` (its body and its light: the world gives its light a material of its own, on a timer), its name
+## `sign` over the door and its window's last screen `screen` (lines, "|" between two). Returns where its light falls
+## (in front of its door, at a lamp's height), the district's space.
+static func storefront(kit: ShapeKit, b: Dictionary, s: Dictionary, sign: String, screen: String, rng: RandomNumberGenerator) -> Vector3:
+	var w: float = s["width"]
+	var depth := RuinsLayout.CELL_M - RuinsLayout.BLOCK_INSET * 2.0
+	var tall := rng.randf_range(6.6, 7.4)
+	var back := 0.36
+	# Its own frame: -z is the street, +z into the shop; read from the street, +x is on the reader's left.
+	kit.pose = Transform3D(Basis.looking_at(s["out"], Vector3.UP), s["face"])
+	var door_x := -w * RuinsLayout.SHOP_DOOR
+	var window_x := w * 0.24
+	var window_w := w * 0.4
+	# The mass over it, set back from the shopfront; a cornice; a dead box and a bent mast on the roof.
+	paint_body(kit, rng.randf_range(0.25, 0.5), 0.75, Mat.STONE)
+	kit.box(b["body"], Vector3(0, tall * 0.5, back + (depth - back) * 0.5), Vector3(w, tall, depth - back))
+	paint_body(kit, 0.3, 0.95, Mat.METAL)
+	kit.box(b["body"], Vector3(0, tall + 0.16, depth * 0.5 - 0.12), Vector3(w + 0.36, 0.32, depth + 0.3))
+	kit.box(b["body"], Vector3(w * 0.22, tall + 0.75, depth * 0.55), Vector3(1.6, 0.9, 1.2), Vector3(0, rng.randf_range(-0.2, 0.2), 0))
+	kit.prism(b["body"], Vector3(-w * 0.3, tall + 1.6, depth * 0.4), 0.05, 2.6, 6, Vector3(0, 0, rng.randf_range(0.1, 0.25)))
+	# The shopfront: two pillars, the fascia across the top, a riser under the window.
+	paint_body(kit, rng.randf_range(0.2, 0.45), 1.0, Mat.METAL)
+	for side in [-1.0, 1.0]:
+		kit.box(b["body"], Vector3(side * (w * 0.5 - 0.26), 1.95, 0.17), Vector3(0.52, 3.9, 0.36))
+	kit.box(b["body"], Vector3(0, 4.3, 0.12), Vector3(w, 0.96, 0.26))
+	kit.box(b["body"], Vector3(window_x, 0.32, 0.2), Vector3(window_w + 0.3, 0.64, 0.32))
+	# The window: a pane of dark glass in a frame.
+	paint_body(kit, 0.1, 0.9, Mat.GLASS)
+	kit.box(b["body"], Vector3(window_x, 1.75, 0.3), Vector3(window_w, 2.2, 0.05))
+	paint_body(kit, 0.35, 1.0, Mat.METAL)
+	for side in [-1.0, 1.0]:
+		kit.box(b["body"], Vector3(window_x + side * (window_w * 0.5 + 0.05), 1.75, 0.27), Vector3(0.1, 2.3, 0.12))
+	kit.box(b["body"], Vector3(window_x, 2.9, 0.27), Vector3(window_w + 0.2, 0.1, 0.12))
+	# The door: a lintel, the dark inside, the roller shutter half down (a slat or two knocked askew).
+	kit.box(b["body"], Vector3(door_x, 2.95, 0.18), Vector3(2.0, 0.3, 0.3))
+	paint_body(kit, 0.6, 0.2, Mat.STONE)
+	kit.box(b["body"], Vector3(door_x, 1.4, 0.75), Vector3(1.8, 2.8, 0.1))
+	paint_body(kit, rng.randf_range(0.3, 0.6), 0.85, Mat.METAL)
+	var slats := 13
+	for k in slats:
+		var y := 2.72 - k * 0.115
+		var skew := Vector3(0, 0, rng.randf_range(-0.05, 0.05)) if rng.randf() < 0.2 else Vector3.ZERO
+		kit.box(b["body"], Vector3(door_x, y, 0.26), Vector3(1.78, 0.1, 0.05), skew)
+	kit.box(b["body"], Vector3(door_x, 2.72 - slats * 0.115, 0.24), Vector3(1.82, 0.08, 0.1))
+	# The awning, torn: most of it on its brackets, sloping out over the street, a flap hanging lower.
+	paint_body(kit, rng.randf_range(0.4, 0.7), 0.6, Mat.CABLE)
+	kit.box(b["body"], Vector3(w * 0.12, 3.55, -0.62), Vector3(w * 0.7, 0.05, 1.45), Vector3(-0.32, 0, 0))
+	kit.box(b["body"], Vector3(-w * 0.34, 3.35, -0.55), Vector3(w * 0.2, 0.05, 1.2), Vector3(-0.75, 0, 0.12))
+	for x in [-w * 0.4, w * 0.45]:
+		kit.box(b["body"], Vector3(x, 3.75, -0.5), Vector3(0.06, 0.06, 1.1), Vector3(-0.32, 0, 0))
+	# Its light: its name along the fascia in a tube, the frozen screen, the OPEN sign, the leak under the shutter, a few
+	# dead windows up its front.
+	var name_px := minf(0.19, (w - 1.0) / maxf(float(SignFont.width(sign.to_upper())), 1.0))
+	_letters(kit, b, sign.to_upper(), Vector3(0, 4.32, -0.03), name_px, Slot.SIGN_A, 2.8, rng.randi_range(0, sign.length() - 1))
+	paint_light(kit, rng.randf(), 1.0, Slot.SIGN_A, 2.0)
+	for y in [3.86, 4.78]:
+		kit.box(b["light"], Vector3(0, y, -0.02), Vector3(w - 0.3, 0.04, 0.04))
+	var lines := screen.split("|")
+	var screen_px := minf(0.034, (window_w - 0.4) / float(SignFont.width("M".repeat(10))))
+	for i in lines.size():
+		var line: String = lines[i].strip_edges().to_upper()
+		var lx := window_x + window_w * 0.5 - 0.2 - SignFont.width(line) * screen_px * 0.5
+		_letters(kit, b, line, Vector3(lx, 2.6 - i * SignFont.LINE * screen_px, 0.26), screen_px, Slot.SCREEN, 1.6, -1)
+	var open_px := 0.05
+	var open_at := Vector3(window_x - window_w * 0.5 + 0.18 + SignFont.width("OPEN") * open_px * 0.5, 0.98, 0.22)
+	_letters(kit, b, "OPEN", open_at, open_px, Slot.SIGN_B, 3.0, -1)
+	paint_light(kit, 0.4, 1.0, Slot.SIGN_B, 2.4)
+	var ow := SignFont.width("OPEN") * open_px + 0.16
+	var oh := SignFont.ROWS * open_px + 0.16
+	for edge in [[Vector3(0, oh * 0.5, 0), Vector3(ow, 0.03, 0.03)], [Vector3(0, -oh * 0.5, 0), Vector3(ow, 0.03, 0.03)], [Vector3(ow * 0.5, 0, 0), Vector3(0.03, oh, 0.03)], [Vector3(-ow * 0.5, 0, 0), Vector3(0.03, oh, 0.03)]]:
+		kit.box(b["light"], open_at + edge[0], edge[1])
+	paint_light(kit, 0.7, 1.0, Slot.SIGN_B, 2.6)
+	light_quad(kit, b["light"], Vector3(door_x, 0.62, 0.68), Vector2(1.7, 1.2), Vector3.FORWARD)
+	paint_light(kit, 0.7, 1.0, Slot.SIGN_B, 0.9)
+	light_quad(kit, b["light"], Vector3(door_x, 0.03, -0.9), Vector2(1.9, 1.7), Vector3.UP)
+	for k in rng.randi_range(4, 7):
+		var at := Vector3(rng.randf_range(-w * 0.42, w * 0.42), rng.randf_range(5.2, tall - 0.6), back - 0.01)
+		paint_light(kit, rng.randf(), rng.randf_range(0.15, 0.6), Slot.SCREEN if rng.randf() < 0.5 else Slot.STRIP, 0.8)
+		light_quad(kit, b["light"], at, Vector2(rng.randf_range(0.5, 0.9), rng.randf_range(0.35, 0.6)), Vector3.FORWARD)
+	return kit.pose * Vector3(door_x, 2.4, -1.6)
+
+
+## `text` in the sign font, steady (M2's storefront: every letter lit but `dim`, which gutters), its middle at `at` on a
+## face looking down -z in the kit's pose, `px` a pixel; the reader's left is +x, so the letters run toward -x.
+static func _letters(kit: ShapeKit, b: Dictionary, text: String, at: Vector3, px: float, slot: int, energy: float, dim: int) -> void:
+	var tw := SignFont.width(text) * px
+	for run in SignFont.runs(text):
+		var i: int = int(run[0]) / SignFont.ADVANCE
+		paint_light(kit, 0.03 * i, 0.35 if i == dim else 1.0, slot, energy)
+		var x: float = -(-tw * 0.5 + (float(run[0]) + float(run[2]) * 0.5) * px)
+		var y: float = (SignFont.ROWS * 0.5 - float(run[1]) - 0.5) * px
+		kit.box(b["light"], at + Vector3(x, y, 0), Vector3(float(run[2]) * px, px * 0.9, 0.025))

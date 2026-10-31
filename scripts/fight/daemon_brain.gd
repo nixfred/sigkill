@@ -72,6 +72,10 @@ extends RefCounted
 ## has lost sight for lose_s it hears where the player is now and goes there. A kill objective never stalls on a
 ## daemon standing at its vent.
 ##
+## Mission 2's (M2): `dormant` it stands at home and does not look for anyone (a job queued at a dead door) until its
+## mission wakes it (scripts/missions/mission_stage.gd) or a hit rouses it; a "parent" (scripts/daemons/
+## parent_process.gd) never moves, looks, strikes or is roused: its children do the fighting.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
@@ -115,6 +119,8 @@ var dummy: Node3D
 var art: DaemonArt
 ## A mission's daemon (C37): no leash, and a lost prey heard again rather than given up.
 var relentless := false
+## Asleep at home (M2): no looking round, no hunting, until woken (alert()) or roused by a hit.
+var dormant := false
 ## "rogue", "zombie" or "swarm": its art's.
 var kind := "rogue"
 var state: State = State.HOME
@@ -230,6 +236,10 @@ func step(delta: float, d) -> void:
 	if state == State.DOWN:
 		state = State.HOME
 		state_t = 0.0
+	if kind == "parent":
+		velocity = Vector3.ZERO
+		art.drive(DaemonArt.Act.IDLE)
+		return  # rooted (M2): it stands; its children fight
 	if _held_by_chmod(d):
 		return  # chmod 000: frozen, its clock and every timer held
 	if hup_pending:
@@ -278,6 +288,10 @@ func rest(delta: float, d) -> void:
 		_down(d)
 		art.displays = true
 		return
+	if kind == "parent":
+		art.displays = true
+		art.drive(DaemonArt.Act.IDLE)
+		return
 	if _held_by_chmod(d):
 		return  # frozen in practice too (C29): it stands where the beam caught it
 	if hup_pending:
@@ -307,8 +321,9 @@ func rest(delta: float, d) -> void:
 ## A hit that did not kill it, from `point` (world space): the swarm scatters (any dive off, its
 ## burst over); anything at home or going home is roused and hunts whoever is nearest in sight.
 func on_hit(point: Vector3, d) -> void:
-	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE:
-		return  # a confused daemon (C32) is too busy reloading to be roused
+	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE or kind == "parent":
+		return  # a confused daemon (C32) is too busy reloading to be roused; a parent (M2) is never roused
+	dormant = false  # a hit wakes a sleeper (M2): its mission wakes the rest of its wave
 	if kind == "swarm":
 		_release(d)
 		burst_left = 0
@@ -385,6 +400,8 @@ func _step_home(delta: float, d) -> void:
 	else:
 		take_home()
 	art.drive(DaemonArt.Act.IDLE)
+	if dormant:
+		return  # asleep (M2): it looks for no one until woken
 	_look -= delta
 	if _look > 0.0:
 		return
@@ -983,8 +1000,9 @@ func _down(d) -> void:
 ## A mission's daemon out of its vent (C37): it hunts the first player it may, knowing where they are, wherever it
 ## is; only where the brains decide, never mid-attack, confused or down. True when it took up the hunt.
 func alert(d) -> bool:
-	if d == null or not d.runs() or dummy == null or not dummy.is_alive() or hup != Hup.NONE:
+	if d == null or not d.runs() or dummy == null or not dummy.is_alive() or hup != Hup.NONE or kind == "parent":
 		return false
+	dormant = false
 	if state != State.HOME and state != State.RETURN and state != State.DOWN:
 		return false
 	for id in d.prey_ids():

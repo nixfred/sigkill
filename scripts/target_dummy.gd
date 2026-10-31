@@ -126,6 +126,11 @@ var shatters := 0
 var _hup_look: HupLook
 ## Its own sounds (C42).
 var voice: DaemonVoice
+## Sealed (M2, a mission wave's "sealed"): armoured shut, nothing hurts it (no hit lands, no freeze, no hangup) until
+## its mission's trigger opens it.
+var sealed := false
+## The most one hit takes off it (M2, a mission wave's "hit_cap"; 0 for no limit): a parent outlasts a single kill -9.
+var hit_cap := 0.0
 ## Its climb out of a spawn vent (C37): the seconds it takes (0 for none), and where its body stands when whole.
 var _climb_s := 0.0
 var _body_rest := Vector3.ZERO
@@ -215,7 +220,27 @@ func is_head_hit(point: Vector3) -> bool:
 ## /dev/null (C31): a hole holds it for `seconds` more (renewed each step it is held): while held its brain
 ## does nothing of its own and the hole moves it.
 func hold_in_hole(seconds: float) -> void:
+	if sessile():
+		return  # rooted (M2): a hole hurts it, never holds it
 	_held_until = maxi(_held_until, Engine.get_physics_frames() + ceili(seconds * Engine.physics_ticks_per_second))
+
+
+## True for a daemon rooted where it stands (M2: a mission's parent): it never moves, strikes, freezes or hangs up.
+func sessile() -> bool:
+	return _art != null and _art.ai_kind == "parent"
+
+
+## Reaped (M2): its parent gone, init adopts it and it drops where it stands, a derezz credited to nobody (no kill, no
+## feat, no sudo charge). Nothing while it is down or climbing out.
+func reap() -> bool:
+	if state != State.ALIVE or _follows():
+		return false
+	_credit = false
+	_killer = 0
+	killed_with = ""
+	_start_derezz(Vector3.INF, Vector3.ZERO)
+	_credit = true
+	return true
 
 
 ## True while a hole holds it.
@@ -232,7 +257,7 @@ func hole_pull_scale() -> float:
 ## scripts/fight/daemon_brain.gd hangup()). True when it took it; never on a joiner's copy of the host's
 ## daemon (the host judges) or while it is down.
 func take_hup(t: SighupTuning, by: int = 0) -> bool:
-	if state != State.ALIVE or brain == null or _follows():
+	if state != State.ALIVE or brain == null or _follows() or sealed or sessile():
 		return false
 	var took := brain.hangup(t, by, DaemonDirector.of(self))
 	_show_hup()
@@ -263,7 +288,7 @@ func _show_hup() -> void:
 ## On a joiner in a match where the daemons fight (C27b), the host's daemons follow its word and
 ## this machine's shots land nothing on them: false.
 func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
-	if state != State.ALIVE or _follows():
+	if state != State.ALIVE or _follows() or sealed:
 		return false
 	# An exploit breaker's bonus on a weak seam (I2): this machine's own shot, or the joiner's the host
 	# is judging.
@@ -277,7 +302,10 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 		scale *= frost.tuning.frozen_hit_scale
 		if damage >= frost.tuning.shatter_damage:
 			_health = 0.0
-	_health -= damage * scale
+	var dealt := damage * scale
+	if hit_cap > 0.0:
+		dealt = minf(dealt, hit_cap)
+	_health -= dealt
 	var ice := IceDirector.of(self)
 	if ice != null:
 		ice.note_damage(source, damage)  # the system learns which weapon hits it hardest (I1)
@@ -297,7 +325,7 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 ## chmod 000's beam on it for `seconds` (C29): its freeze meter builds; true when that froze it just now.
 ## Nothing while it is down, and nothing on a joiner's copy of the host's daemon (the host judges).
 func chill(seconds: float, _point: Vector3 = Vector3.INF, _direction: Vector3 = Vector3.ZERO, _source: String = "") -> bool:
-	if state != State.ALIVE or _follows() or frost == null:
+	if state != State.ALIVE or _follows() or frost == null or sealed or sessile():
 		return false
 	var froze := frost.beam(seconds)
 	if froze:
@@ -398,7 +426,9 @@ func _start_derezz(point: Vector3, direction: Vector3, shattered: bool = false) 
 	var fx := DerezzFx.new()
 	_fx_root().add_child(fx)
 	# In its type's colour (A5); a frozen daemon's shatter in the frost opal, in a storm of frost (C29).
-	fx.start(global_position, _hex.top_radius, _hex.height, shot, _d, 0, Palette.FROST if shattered else _art.core_color)
+	# A parent (M2) stands far over the cylinder: its voxels fill its body box.
+	var box := _art.box_size() if sessile() else Vector3.ZERO
+	fx.start(global_position, maxf(_hex.top_radius, maxf(box.x, box.z) * 0.5), maxf(_hex.height, box.y), shot, _d, 0, Palette.FROST if shattered else _art.core_color)
 	_art.shatter(fx, shot)  # the creature's own parts burst apart with the voxels, and go with them (A2b)
 	if voice != null:
 		voice.death()

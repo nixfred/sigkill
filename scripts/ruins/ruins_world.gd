@@ -35,7 +35,7 @@ const HAZE_SHADER := preload("res://shaders/ruins_haze.gdshader")
 const GROUP := &"ruins_world"
 const NODE_NAME := "Ruins"
 ## Bumped whenever the pieces or the build change, so a kept build is never reused for a different one.
-const BUILD_VERSION := 2
+const BUILD_VERSION := 3
 const CHUNK_M := 16.0
 ## Seconds a register shift takes.
 const SHIFT_S := 1.4
@@ -100,6 +100,15 @@ var _remnant_t := -1.0
 var _remnant_power := 0.0
 ## The seconds a remnant's sign takes to flicker on.
 const REMNANT_S := 1.9
+## The shop's light (M2): its timer's turn, its last stutter's seconds, its lamp's energy.
+const SHOP_TIMER_S := 9.0
+const SHOP_DARK_S := 1.4
+const SHOP_LAMP := 5.0
+var _shop_light: ShaderMaterial = null
+var _shop_lamp: OmniLight3D = null
+var _shop_t := -1.0
+var _shop_dark_t := -1.0
+var _shop_power := 0.0
 
 static var _kept := {}
 static var _materials := {}
@@ -198,6 +207,7 @@ func _process(delta: float) -> void:
 	_follow_camera()
 	_step_sparks(delta)
 	_step_remnant(delta)
+	_step_shop(delta)
 	_feed_rain()
 
 
@@ -341,6 +351,8 @@ func _build() -> Dictionary:
 				RuinsPieces.monolith(at[0], at[1], lo, hi, layout.folder_name(bl["seed"]), dice.call("monolith", i))
 			"fallen":
 				RuinsPieces.fallen(at[0], at[1], lo, hi, dice.call("fallen", i))
+			"shop":
+				_build_shop(dice.call("shop", i), out)
 	for i in layout.cover.size():
 		var p: Dictionary = layout.cover[i]
 		var at: Array = near_kit.call(p["at"])
@@ -407,6 +419,9 @@ func _build() -> Dictionary:
 		if light.get_surface_count() > 0:
 			meshes.append({"mesh": light, "shadow": false, "far": far, "name": "Light %s" % str(key)})
 			surfaces += 1
+	if out.has("shop"):
+		triangles += int(out["shop"]["triangles"])  # the storefront's own mesh (M2)
+		surfaces += 2
 	var haze := _haze_mesh()
 	surfaces += 2 * DRIFT_TURN.size()
 	triangles += 2 * int(haze.get_meta(&"cards", 0))
@@ -428,6 +443,21 @@ func _build() -> Dictionary:
 	out["pylons"] = pylons
 	out["ms"] = Time.get_ticks_msec() - started
 	return out
+
+
+## The shop (M2): its storefront a mesh of its own (out["shop"]: its body and its light, the light given a material of its
+## own as it is shown, on its timer) with its lamp's place.
+func _build_shop(rng: RandomNumberGenerator, out: Dictionary) -> void:
+	var kit := ShapeKit.new()
+	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
+	var lamp := RuinsPieces.storefront(kit, b, layout.shop, ruins.shop_sign, ruins.shop_screen, rng)
+	var mesh := ArrayMesh.new()
+	var mats := materials()
+	kit.commit(b["body"], mesh)
+	mesh.surface_set_material(0, mats["body"])
+	kit.commit(b["light"], mesh)
+	mesh.surface_set_material(1, mats["light"])
+	out["shop"] = {"mesh": mesh, "lamp": lamp, "triangles": (kit.count(b["body"]) + kit.count(b["light"])) / 3}
 
 
 ## The breach's pieces (C37), when the plan has one: the gangway out from the gate; the pocket's deck (its slabs on the
@@ -599,6 +629,29 @@ func _show() -> void:
 	for i in mini(tips.size(), SPARKS):
 		_spark_at(tips[(i * 5) % tips.size()])
 	_show_breach()
+	_show_shop()
+
+
+## The shop's storefront (M2), its light on its timer.
+func _show_shop() -> void:
+	if not _built.has("shop"):
+		return
+	var front := MeshInstance3D.new()
+	front.name = "Shop"
+	front.mesh = _built["shop"]["mesh"]
+	_shop_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	front.set_surface_override_material(1, _shop_light)
+	add_child(front)
+	_shop_lamp = OmniLight3D.new()
+	_shop_lamp.name = "ShopLamp"
+	_shop_lamp.position = _built["shop"]["lamp"]
+	_shop_lamp.omni_range = 11.0
+	_shop_lamp.omni_attenuation = 1.3
+	_shop_lamp.shadow_enabled = false
+	add_child(_shop_lamp)
+	_lamps.append({"light": _shop_lamp, "slot": RuinsPieces.Slot.SIGN_B, "energy": SHOP_LAMP, "shop": true})
+	_shop_t = 0.0
+	_step_shop(0.0)
 
 
 ## The breach's hatch over its shaft, and the remnant's sign, dark (C37).
@@ -662,6 +715,60 @@ func remnant_power() -> float:
 ## Where the remnant's sign is (the place in front of its face, world space), or Vector3.INF without one.
 func remnant_at() -> Vector3:
 	return _remnant_lamp.global_position if _remnant_lamp != null else Vector3.INF
+
+
+# --- The shop (M2). ---
+
+## The shop's lights go out for good (its timer stopped: init owns it now): a last stutter, then dark. True when they
+## were lit; nothing in a district without a shop.
+func shop_dark() -> bool:
+	if _shop_light == null or _shop_dark_t >= 0.0:
+		return false
+	_shop_dark_t = 0.0
+	return true
+
+
+## How lit the shop is now, 0 to 1 (0 without one).
+func shop_power() -> float:
+	return _shop_power
+
+
+## Where the shop's light falls (in front of its door, world space), or Vector3.INF without one.
+func shop_at() -> Vector3:
+	return _shop_lamp.global_position if _shop_lamp != null else Vector3.INF
+
+
+## The shop's timer (M2): lit most of each SHOP_TIMER_S, stuttering out, dark a moment, stuttering back; once dark, a last
+## stutter over SHOP_DARK_S and out.
+func _step_shop(delta: float) -> void:
+	if _shop_light == null:
+		return
+	var tick := int(floor((_shop_t + _shop_dark_t) * 24.0))
+	var dice := fposmod(sin(float(tick) * 78.233) * 43758.5453, 1.0)
+	var on := 1.0
+	if _shop_dark_t >= 0.0:
+		_shop_dark_t += delta
+		var k := clampf(_shop_dark_t / SHOP_DARK_S, 0.0, 1.0)
+		on = (0.0 if dice < 0.25 + k else 1.0 - k) if k < 1.0 else 0.0
+	else:
+		_shop_t = fmod(_shop_t + delta, SHOP_TIMER_S)
+		var u := _shop_t / SHOP_TIMER_S
+		if u > 0.8 and u < 0.86:
+			on = 1.0 if dice < 0.5 else 0.1
+		elif u >= 0.86 and u < 0.93:
+			on = 0.06
+		elif u >= 0.93:
+			on = 1.0 if dice < 0.7 else 0.1
+		elif dice < 0.012:
+			on = 0.4
+	if on == _shop_power and delta > 0.0:
+		return
+	_shop_power = on
+	_shop_light.set_shader_parameter("power", on)
+	for lamp in _lamps:
+		if lamp.get("shop", false):
+			lamp["energy"] = SHOP_LAMP * on
+	_push_lamps()
 
 
 func _step_remnant(delta: float) -> void:

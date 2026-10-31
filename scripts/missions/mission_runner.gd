@@ -29,6 +29,8 @@ extends Node
 ## handed over (C37): the player carries only its loadout and what it hands over, and may use only the abilities this
 ## mission and those before it hand over (MissionDef.allowed_abilities(): SIGSTOP, code-rain vision, sudo; the
 ## ICEbreakers locked at their director); the HUD shows the rest locked. All of it lifted when it ends where it stands.
+## Mission 2's (M2): an objective's "arms" are in hand as it begins (handed, as "gives" are when it is done), and a
+## dormant wave waking is the trigger "woke:<id>".
 ## Story lines leave here as line_said() for the HUD (scripts/hud/mission_hud.gd): your AI's to the guide panel, the
 ## Auditor's and `~`'s to the mission's terminal. Nothing here calls an AI, reads the player's machine or writes a
 ## file of its own (the one save is MissionProgress's).
@@ -289,6 +291,11 @@ static func _triggers_of(d: MissionDef) -> PackedStringArray:
 		var on := str(item.get("on", ""))
 		if on != "" and not out.has(on):
 			out.append(on)
+	for w in d.waves:
+		for key in ["wakes", "sealed"]:
+			var on := str(w.get(key, ""))
+			if on != "" and not out.has(on):
+				out.append(on)
 	for p in d.props:
 		for key in ["opens", "lights"]:
 			var on := str(p.get(key, ""))
@@ -322,6 +329,7 @@ func _make_stage(d: MissionDef) -> void:
 	stage.spawned.connect(_on_spawned)
 	stage.wave_began.connect(func(id: String) -> void: _fire("wave:" + id))
 	stage.wave_cleared.connect(func(id: String) -> void: _fire("cleared:" + id))
+	stage.woke.connect(func(id: String) -> void: _fire("woke:" + id))
 
 
 func _on_spawned(dummy: Node3D) -> void:
@@ -495,6 +503,12 @@ func _next_objective() -> void:
 		_complete()
 		return
 	var o := objective()
+	# Its weapons for the beat that teaches them (M2): in hand as it begins.
+	for w in o.get("arms", []):
+		if not carried.has(w):
+			carried.append(w)
+			handed.emit(w)
+	_carry()
 	if o.get("kind") == "reach":
 		_beacon = MissionBeacon.new()
 		_beacon.label = str(o.get("label", ""))
@@ -539,7 +553,7 @@ func _on_downed(dummy: Node3D) -> void:
 		_objective_done()
 
 
-## A daemon's type as the objectives name it: "rogue", "zombie" or "swarm" (its art's).
+## A daemon's type as the objectives name it: "rogue", "zombie", "swarm" or (M2) "parent" (its art's).
 static func kind_of(dummy: Node) -> String:
 	var art = dummy.art_node() if dummy.has_method("art_node") else null
 	return String(art.ai_kind) if art != null else "rogue"

@@ -39,6 +39,13 @@ extends Resource
 @export var breach := ""
 @export var breach_depth := 14.0
 @export var remnant := ""
+## Its dead storefront (M2), "plaza" or "" for none: a closed terminal as a shop standing on the floor's edge nearest the
+## plaza, its front to the street (a block of kind "shop": its window a terminal frozen on its last screen, a shutter half
+## down with light leaking under it, its name over the door, an OPEN sign, all of its light on a timer nobody owns), the
+## words over its door, and its window's last screen (lines in the sign font, a "|" between two).
+@export var shop := ""
+@export var shop_sign := ""
+@export var shop_screen := ""
 
 
 ## What is wrong with it; empty when it is good.
@@ -65,9 +72,17 @@ func problems() -> PackedStringArray:
 		out.append("%s: breach_depth %.1f outside 6 to 24" % [id, breach_depth])
 	if breach != "" and remnant.strip_edges() == "":
 		out.append("%s: a breach with no remnant sign" % id)
+	if shop != "" and shop != "plaza":
+		out.append("%s: shop \"%s\" (only by the plaza)" % [id, shop])
+	if shop != "" and (shop_sign.strip_edges() == "" or shop_screen.strip_edges() == ""):
+		out.append("%s: a shop with no sign or no screen" % id)
 	var texts := folders + words
 	if remnant != "":
 		texts.append(remnant)
+	if shop != "":
+		texts.append(shop_sign)
+		for line in shop_screen.split("|"):
+			texts.append(line.strip_edges() if line.strip_edges() != "" else "?")
 	for text in texts:
 		if not RuinsLayout.legible(text):
 			out.append("%s: \"%s\" has letters the sign font has not, or is longer than %d" % [id, text, RuinsLayout.NAME_LAST])

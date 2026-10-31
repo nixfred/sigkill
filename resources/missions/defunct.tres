@@ -9,46 +9,348 @@ order = 2
 title = "defunct"
 register = "cyberpunk"
 goal = "Find where the zombies come from and kill their parent, so init can adopt and reap them all."
-loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun")
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail")
 grants = PackedStringArray("ping_sonar", "fork_bomb", "fork_shotgun")
 abilities = PackedStringArray()
 objectives = [{
+"arms": ["ping_sonar"],
 "count": 6,
 "daemon": "zombie",
-"id": "dark",
+"hint": "{weapon_9} ping: everything it reaches answers",
+"id": "rain",
 "kind": "kill",
-"text": "Find the zombies in the rain"
+"of": ["rain_a", "rain_b", "rain_c"],
+"text": "Find them in the rain"
 }, {
+"at": "plaza",
+"hint": "the marker points where they queued",
+"id": "trail",
+"kind": "reach",
+"label": "where they queued",
+"radius": 5.5,
+"text": "Follow them to where they queued"
+}, {
+"arms": ["fork_bomb", "fork_shotgun"],
+"count": 10,
+"daemon": "zombie",
+"hint": "{weapon_4} fork bomb  {weapon_5} fork()",
+"id": "queue",
+"kind": "kill",
+"of": ["queue"],
+"text": "Clear the queue at the dead storefront"
+}, {
+"hint": "walk through a terminal to read it",
 "id": "shop",
 "kind": "log",
-"log": "shop",
-"text": "Read the dead storefront's log"
+"log": "storefront",
+"text": "Read the storefront's log"
+}, {
+"at": "daemon_3",
+"hint": "ping lights their threads",
+"id": "threads",
+"kind": "reach",
+"label": "their parent",
+"radius": 6.0,
+"text": "Follow their threads to their parent"
 }, {
 "count": 1,
 "daemon": "rogue",
+"hint": "it's guarding something sealed",
+"id": "guard",
+"kind": "kill",
+"of": ["guard"],
+"text": "Kill the parent's guard"
+}, {
+"count": 1,
+"daemon": "parent",
+"hint": "the core shows when it opens",
 "id": "parent",
 "kind": "kill",
+"of": ["nest"],
 "text": "Kill their parent"
 }]
 logs = [{
-"at": Vector3(10, 0.95, -4),
-"id": "shop",
+"at": "shop",
+"id": "storefront",
 "name": "storefront.log",
 "text": "the shop closed six years ago.\nthe lights are on a timer nobody owns."
+}, {
+"at": "log_2",
+"id": "kiosk",
+"name": "kiosk.log",
+"text": "HELLO AGAIN, CUSTOMER.\nyour session expired 2190 days ago.\nplease wait to be served.\nplease wait to be served."
+}, {
+"at": "log_3",
+"id": "jobs",
+"name": "jobs.txt",
+"text": "STAT  PPID  COMMAND\nZ     4087  [sync] <defunct>\nZ     4087  [thumbs] <defunct>\nZ     4087  [backup] <defunct>\nparent 4087: sleeping. SIGCHLD ignored. never waits."
 }]
 lines = [{
-"on": "log:shop",
+"on": "start",
+"text": "audit: user=? action=enter path=/dev/pts result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "begin:rain",
+"text": "Those shapes in the rain aren't cover. Ping them. Everything it reaches answers, even the dead.",
+"who": "ai"
+}, {
+"on": "woke:rain_a",
+"text": "Zombies. Dead, never reaped. Nobody told them.",
+"who": "ai"
+}, {
+"on": "done:rain",
+"text": "See the threads? Every one of them runs somewhere. And they all run the same way.",
+"who": "ai"
+}, {
+"on": "begin:trail",
+"text": "audit: user=? action=follow path=/dev/pts/4 result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "woke:queue",
+"text": "That's a queue. Jobs waiting at a door that closed. Crowd: throw something that multiplies.",
+"who": "ai"
+}, {
+"on": "done:queue",
+"text": "They were in line for a terminal that never opened again.",
+"who": "ai"
+}, {
+"on": "begin:shop",
+"text": "audit: user=? action=read path=/dev/pts/4 result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "log:storefront",
 "text": "These were jobs from a terminal you closed. You said you'd check on them tomorrow.",
 "who": "ai"
+}, {
+"on": "log:kiosk",
+"text": "Six years of greeting nobody. Still polite about it.",
+"who": "ai"
+}, {
+"on": "log:jobs",
+"text": "Every one of them, the same parent. And it's not even dead. It just never asks.",
+"who": "ai"
+}, {
+"on": "begin:threads",
+"text": "Their threads all run down the street. Something down there started them and never came back.",
+"who": "ai"
+}, {
+"on": "woke:strays",
+"text": "More of them. Same threads.",
+"who": "ai"
+}, {
+"on": "begin:guard",
+"text": "audit: pid 4087 state=S children=Z. SIGCHLD ignored.",
+"who": "auditor"
+}, {
+"on": "woke:guard",
+"text": "That one's no zombie. Highest priority, standing guard over something big.",
+"who": "ai"
+}, {
+"on": "wave:fork_a",
+"text": "It's forking. More children. It doesn't even wait for them.",
+"who": "ai"
+}, {
+"on": "done:guard",
+"text": "Its guard's down. It's opening. Hit the core.",
+"who": "ai"
+}, {
+"on": "done:parent",
+"text": "audit: pid 4087 exited. its children re-parented to init (pid 1). reaped.",
+"who": "auditor"
 }, {
 "on": "complete",
 "text": "It's you. Not 'like you'. You.",
 "who": "ai"
+}, {
+"on": "fail",
+"text": "Up. They waited six years. They can wait one more try.",
+"who": "ai"
 }]
 transitions = []
+waves = [{
+"count": 2,
+"dormant": true,
+"every": 0.1,
+"from": ["rain_1", "rain_2"],
+"health": 100.0,
+"id": "rain_a",
+"kind": "zombie",
+"on": "start",
+"wakes": "at:60"
+}, {
+"count": 2,
+"dormant": true,
+"every": 0.1,
+"from": ["rain_3", "rain_4"],
+"health": 100.0,
+"id": "rain_b",
+"kind": "zombie",
+"on": "start",
+"wakes": "at:75"
+}, {
+"count": 2,
+"dormant": true,
+"every": 0.1,
+"from": ["rain_5", "rain_6"],
+"health": 100.0,
+"id": "rain_c",
+"kind": "zombie",
+"on": "start",
+"wakes": "at:90"
+}, {
+"count": 10,
+"dormant": true,
+"every": 0.1,
+"from": ["line"],
+"health": 70.0,
+"id": "queue",
+"kind": "zombie",
+"on": "start",
+"wakes": "begin:queue"
+}, {
+"count": 3,
+"dormant": true,
+"every": 0.1,
+"from": ["stray_1", "stray_2", "stray_3"],
+"health": 100.0,
+"id": "strays",
+"kind": "zombie",
+"on": "start",
+"wakes": "begin:threads"
+}, {
+"count": 1,
+"dormant": true,
+"elites": 1,
+"from": ["post"],
+"health": 260.0,
+"id": "guard",
+"kind": "rogue",
+"on": "start",
+"wakes": "begin:guard"
+}, {
+"count": 1,
+"epitaph": "4087  owner: you",
+"from": ["nest"],
+"health": 900.0,
+"hit_cap": 150.0,
+"id": "nest",
+"kind": "parent",
+"on": "start",
+"reaps": "zombie",
+"sealed": "done:guard",
+"tag": "<parent> 4087"
+}, {
+"count": 3,
+"every": 1.6,
+"from": ["fork_1", "fork_2", "fork_3"],
+"health": 75.0,
+"id": "fork_a",
+"kind": "zombie",
+"on": "begin:guard"
+}, {
+"after": "fork_a",
+"count": 3,
+"every": 1.4,
+"from": ["fork_4", "fork_1", "fork_3"],
+"health": 75.0,
+"id": "fork_b",
+"kind": "zombie",
+"left": 1
+}, {
+"count": 3,
+"every": 1.2,
+"from": ["fork_2", "fork_4", "fork_1"],
+"health": 75.0,
+"id": "fork_c",
+"kind": "zombie",
+"on": "begin:parent"
+}, {
+"after": "fork_c",
+"count": 3,
+"every": 1.2,
+"from": ["fork_3", "fork_2", "fork_4"],
+"health": 75.0,
+"id": "fork_d",
+"kind": "zombie",
+"left": 1
+}]
+props = [{
+"at": "breaker_5",
+"id": "rain_1",
+"kind": "spot"
+}, {
+"at": "spawn_3",
+"id": "rain_2",
+"kind": "spot"
+}, {
+"at": "daemon_4",
+"id": "rain_3",
+"kind": "spot"
+}, {
+"at": "daemon_2",
+"id": "rain_4",
+"kind": "spot"
+}, {
+"at": "spawn_4",
+"id": "rain_5",
+"kind": "spot"
+}, {
+"at": "breaker_0",
+"id": "rain_6",
+"kind": "spot"
+}, {
+"at": "queue",
+"gap": 1.05,
+"id": "line",
+"kind": "queue",
+"to": "queue_end"
+}, {
+"at": "daemon_5",
+"id": "stray_1",
+"kind": "spot"
+}, {
+"at": "breaker_4",
+"id": "stray_2",
+"kind": "spot"
+}, {
+"at": "daemon_0",
+"id": "stray_3",
+"kind": "spot"
+}, {
+"at": "vista_0",
+"id": "post",
+"kind": "spot"
+}, {
+"at": "exit",
+"id": "nest",
+"kind": "spot"
+}, {
+"at": Vector3(-0.8, 0, -32.6),
+"id": "fork_1",
+"kind": "spot"
+}, {
+"at": Vector3(-4.5, 0, -31),
+"id": "fork_2",
+"kind": "spot"
+}, {
+"at": Vector3(-2, 0, -27.5),
+"id": "fork_3",
+"kind": "spot"
+}, {
+"at": Vector3(5.5, 0, -27),
+"id": "fork_4",
+"kind": "spot"
+}, {
+"dark": "done:parent",
+"id": "store",
+"kind": "shop"
+}]
+end_hold_s = 5.0
+restores = true
 ice = false
+ruins = "tty_row"
 fail_time_s = 0.0
 next = "while_true"
-playable = false
+playable = true
 draft = false
 hidden = false

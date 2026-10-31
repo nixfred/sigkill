@@ -28,6 +28,12 @@ extends RefCounted
 ##                points
 ##   the remnant  a tower in the void past the pocket, a dead megacorp's sign on it facing the deck
 ## and keeps the void's towers out of the pocket and the gangway. A set with none is planned as it always was.
+## A set with a shop (M2) adds, after the ruins (so nothing of the others' plans changes):
+##   the shop     the pair of floor cells on the floor's edge nearest the plaza (their backs on the void, open floor in
+##                front, off the route) made a block of kind "shop", its front to the street; "shop" (at its door, where
+##                its log stands), "queue" (the head of a line beside the door), "queue_1" and "queue_2" along that line
+##                and "queue_end" its points, the line running straight out from the shop as far as the floor lets it
+##                (cover is kept off every one of them, so the line stands clear)
 ##
 ## Fiction only: the folder names and sign words are the set's demo text.
 
@@ -95,6 +101,10 @@ var points := {}
 ## floor line)}; the pocket {center: Vector3 (its deck's top middle), size: Vector2}; the gangway {at, out, length,
 ## width}; the remnant {tower, sign} (a tower's and a sign's dictionaries, as `towers` and `signs` hold). {} for none.
 var breach_cell := Vector2i(-1, -1)
+## The shop (M2): {rect: Rect2i, front: side index (0 north (-z) 1 east 2 south 3 west), face: Vector3 (its front's
+## middle on the floor line), out: Vector3 (the way it faces), along: Vector3 (its front's length, left to right as
+## seen from the street), width (its front's length, metres)}; {} for none.
+var shop := {}
 var gate := {}
 var pocket := {}
 var gangway := {}
@@ -116,6 +126,7 @@ func _init(from: RuinsSet) -> void:
 	_outline()
 	_route()
 	_ruins()
+	_shop()
 	_edges()
 	_points()
 	_floor_boxes()
@@ -246,6 +257,38 @@ func _ruins() -> void:
 			placed += 1
 
 
+## The shop (M2): the nearest pair of edge cells to the plaza that can be built on (their backs on the void, the floor
+## open in front of both, the floor still one piece), made a block of kind "shop". No dice: the same plan every time.
+func _shop() -> void:
+	if ruins.shop == "":
+		return
+	var found := []
+	for c in floor_cells():
+		for back in 4:
+			var front: int = (back + 2) % 4
+			var c2: Vector2i = c + SIDES[(back + 1) % 4]
+			if cell(c + SIDES[back]) != Cell.VOID or cell(c2) != Cell.FLOOR or cell(c2 + SIDES[back]) != Cell.VOID:
+				continue
+			if cell(c + SIDES[front]) != Cell.FLOOR or cell(c2 + SIDES[front]) != Cell.FLOOR:
+				continue
+			var d := ((Vector2(c) + Vector2(c2)) * 0.5).distance_to(Vector2(plaza_cell))
+			found.append([d, found.size(), c, c2, front])
+	found.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	for f in found:
+		var c: Vector2i = f[2]
+		var c2: Vector2i = f[3]
+		var rect := Rect2i(Vector2i(mini(c.x, c2.x), mini(c.y, c2.y)), Vector2i(absi(c.x - c2.x) + 1, absi(c.y - c2.y) + 1))
+		if not _try_mark(rect, Cell.BLOCK):
+			continue
+		var front: int = f[4]
+		var out := Vector3(SIDES[front].x, 0, SIDES[front].y)
+		var mid := (center(rect.position) + center(rect.end - Vector2i.ONE)) * 0.5
+		blocks.append({"rect": rect, "kind": "shop", "seed": hash("%d:shop" % ruins.seed), "front": front})
+		# Seen from the street, its front runs from its left to its right: the way out turned a quarter to the right.
+		shop = {"rect": rect, "front": front, "face": mid + out * (CELL_M * 0.5 - BLOCK_INSET), "out": out, "along": Vector3(out.z, 0, -out.x), "width": CELL_M * 2.0 - BLOCK_INSET * 2.0}
+		return
+
+
 ## Marks `rect` as `kind` if every cell of it is open floor off the route, and the floor stays one piece; else nothing.
 func _try_mark(rect: Rect2i, kind: int) -> bool:
 	for x in range(rect.position.x, rect.end.x):
@@ -359,6 +402,8 @@ func _points() -> void:
 	points["plaza"] = center(plaza_cell) + Vector3(0, STAND_Y, 0)
 	var open := floor_cells()
 	var taken: Array[Vector2i] = [start_cell, exit_cell, plaza_cell]
+	if not shop.is_empty():
+		_shop_points(taken)
 	# Logs: tucked against a ruin or an edge, away from each other.
 	var nooks: Array[Vector2i] = []
 	for c in open:
@@ -401,6 +446,39 @@ func _points() -> void:
 		var at: Vector3 = center(e["cell"]) + out * (CELL_M * 0.5 - 0.9) + Vector3(0, STAND_Y, 0)
 		points["vista_%d" % i] = at
 		vistas.append({"at": at, "out": out})
+
+
+## Where the shop's door is (M2): its front's right half, seen from the street.
+const SHOP_DOOR := 0.22
+## The queue: how far out from the door its head stands, its longest and shortest, metres.
+const QUEUE_OUT_M := 1.3
+const QUEUE_M := Vector2(4.0, 11.0)
+
+
+## The shop's points (M2): its log in front of its window, the queue's head at its door and the line straight out from it
+## into the street, as far as the floor goes (three cells at most); the cells they stand on taken.
+func _shop_points(taken: Array[Vector2i]) -> void:
+	var out: Vector3 = shop["out"]
+	var face: Vector3 = shop["face"]
+	var along: Vector3 = shop["along"]
+	var width: float = shop["width"]
+	var door := face + along * width * SHOP_DOOR
+	var ahead := 0
+	var c := cell_at(door + out * (CELL_M * 0.5))
+	while ahead < 3 and cell(c) == Cell.FLOOR:
+		ahead += 1
+		c += SIDES[shop["front"]]
+	var length := clampf(ahead * CELL_M - QUEUE_OUT_M - 1.0, QUEUE_M.x, QUEUE_M.y)
+	var head := door + out * QUEUE_OUT_M
+	points["shop"] = face - along * width * 0.25 + out * 1.2 + Vector3(0, STAND_Y, 0)
+	points["queue"] = head + Vector3(0, STAND_Y, 0)
+	points["queue_1"] = head + out * length / 3.0 + Vector3(0, STAND_Y, 0)
+	points["queue_2"] = head + out * length * 2.0 / 3.0 + Vector3(0, STAND_Y, 0)
+	points["queue_end"] = head + out * length + Vector3(0, STAND_Y, 0)
+	for name in ["shop", "queue", "queue_1", "queue_2", "queue_end"]:
+		var at := cell_at(points[name])
+		if not taken.has(at):
+			taken.append(at)
 
 
 ## `count` cells of `from`, each as far as can be from those `away` and those already picked (farthest-point

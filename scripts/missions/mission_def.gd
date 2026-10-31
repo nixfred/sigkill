@@ -45,12 +45,30 @@ extends Resource
 ## mission: one that this mission and the ones before it in the campaign have not handed over cannot be used in it
 ## (allowed_abilities()). Arena play and matches keep everything.
 ##
+## Mission 2's machinery (M2). An objective may add "arms": weapon ids handed over as it begins (the beat that teaches
+## them), where "gives" hands them over as it is done. A wave may add:
+##   "dormant"  true: its daemons stand where they are put and do not hunt (a queue waiting at a door, jobs left in the
+##              rain) until "wakes" fires (a trigger), one of them is hurt, or the player comes within WAKE_M of one;
+##              then the whole wave wakes at once and hunts as any (the trigger "woke:<id>")
+##   "sealed"   a trigger: until it fires its daemons cannot be hurt (armoured shut)
+##   "reaps"    on a "parent" wave only, a daemon type: its daemon is the parent of every daemon of that type in the
+##              mission, a thread drawn from each to it, and when it goes down every one of them still standing drops
+##              at once, reaped (no kill credited: init did it)
+##   "tag"      its daemons' name tag, in place of their type's
+##   "hit_cap"  the most one hit takes off one of its daemons (a parent outlasting a single kill -9)
+##   "epitaph"  on a parent wave, the line shown over it as it goes down (its owner field)
+## The "parent" type (a kill objective's daemon too) is a process that never moves or strikes: it stands, sealed or
+## not, and its waves do the fighting. Props add "spot" ({"at"}: a place a wave stands at, nothing drawn) and "queue"
+## ({"at", "yaw" (degrees) or "to" (a place it runs toward), "gap" (metres)}: a line of places out from "at", each daemon
+## facing its head) and "shop" (its ruins' dead storefront, the district must have one: "dark", the trigger that stops its
+## timer and puts its lights out for good).
+##
 ## Fiction only: nothing here reads, names or touches anything on the player's machine (STORY.md, pick 8).
 
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
 const KINDS := ["kill", "reach", "log", "survive"]
-const DAEMONS := ["rogue", "zombie", "swarm", "any"]
+const DAEMONS := ["rogue", "zombie", "swarm", "parent", "any"]
 ## Who says a line: your AI (the guide panel), the Auditor (the audit log), or `~` (its own terminal, from mission 3 on).
 const WHO := ["ai", "auditor", "tilde"]
 ## A reach objective's radius when its data names none, in metres.
@@ -65,10 +83,16 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## The abilities a mission may hand over (C37), by id, with the words the menus show.
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
-const WAVE_KINDS := ["rogue", "zombie", "swarm"]
-const PROP_KINDS := ["vent", "ice_wall", "breach"]
+const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent"]
+const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
+## A dormant wave wakes as the player comes this near one of its daemons, metres (M2).
+const WAKE_M := 7.0
+## The longest name tag a wave gives its daemons (M2).
+const TAG_LAST := 24
+## A queue's gap between two places, metres (M2).
+const QUEUE_GAP := Vector2(0.9, 3.0)
 
 ## Its own name, a file's worth: "login".
 @export var id := ""
@@ -135,9 +159,7 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 	var objective_ids := PackedStringArray()
 	for o in objectives:
 		out.append_array(_objective_problems(o, weapon_ids, objective_ids))
-		if o is Dictionary:
-			for w in o.get("gives", []):
-				held.append(w)
+		held.append_array(_handed_by(o))
 	var log_ids := PackedStringArray()
 	for entry in logs:
 		if not (entry is Dictionary) or not _id_ok(str(entry.get("id", ""))) or log_ids.has(str(entry.get("id"))):
@@ -238,9 +260,16 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 				out.append("%s: objective %s needs 1 to 900 seconds" % [id, oid])
 		_:
 			out.append("%s: objective %s kind \"%s\"" % [id, oid, o.get("kind")])
-	for w in o.get("gives", []):
-		if not weapon_ids.has(w):
-			out.append("%s: objective %s gives weapon \"%s\"" % [id, oid, w])
+	for key in ["gives", "arms"]:
+		var list = o.get(key, [])
+		if not (list is Array):
+			out.append("%s: objective %s %s: a list of weapon ids" % [id, oid, key])
+			continue
+		for w in list:
+			if not weapon_ids.has(w):
+				out.append("%s: objective %s %s weapon \"%s\"" % [id, oid, key, w])
+			elif loadout.has(w):
+				out.append("%s: objective %s %s %s, already in its loadout" % [id, oid, key, w])
 	return out
 
 
@@ -259,7 +288,7 @@ static func trigger_ok(trigger: String, objective_ids: PackedStringArray, log_id
 			return log_ids.has(parts[1])
 		"at":
 			return parts[1].is_valid_float() and float(parts[1]) >= 0.0
-		"wave", "cleared":
+		"wave", "cleared", "woke":
 			return wave_ids.has(parts[1])
 	return false
 
@@ -280,6 +309,14 @@ func prop_ids(kind: String = "") -> PackedStringArray:
 		if p is Dictionary and (kind == "" or p.get("kind") == kind):
 			out.append(str(p.get("id", "")))
 	return out
+
+
+## Its parent wave (M2), or {}: the one whose daemon reaps the rest.
+func parent_wave() -> Dictionary:
+	for w in waves:
+		if w is Dictionary and w.get("kind") == "parent":
+			return w
+	return {}
 
 
 ## Its prop with id `prop_id`, or {} (C37).
@@ -331,6 +368,25 @@ func _prop_problems() -> PackedStringArray:
 				var span = p.get("span", Vector2(3.0, 3.5))
 				if not (span is Vector2) or span.x < 1.0 or span.x > 12.0 or span.y < 1.5 or span.y > 8.0:
 					out.append("%s: ICE wall %s span (1 to 12 wide, 1.5 to 8 tall)" % [id, p["id"]])
+			"spot":
+				if not _place_ok(p.get("at")):
+					out.append("%s: spot %s needs \"at\", a Vector3 or a point of its ruins" % [id, p["id"]])
+			"queue":
+				if not _place_ok(p.get("at")):
+					out.append("%s: queue %s needs \"at\", a Vector3 or a point of its ruins" % [id, p["id"]])
+				var yaw = p.get("yaw", 0.0)
+				var gap = p.get("gap", 1.3)
+				if not (yaw is float or yaw is int) or not (gap is float or gap is int) or gap < QUEUE_GAP.x or gap > QUEUE_GAP.y:
+					out.append("%s: queue %s needs a yaw (degrees) and a gap of %.1f to %.1f m" % [id, p["id"], QUEUE_GAP.x, QUEUE_GAP.y])
+				if p.has("to") and not _place_ok(p.get("to")):
+					out.append("%s: queue %s runs \"to\" a place that is neither a Vector3 nor a point of its ruins" % [id, p["id"]])
+			"shop":
+				var shop_set := RuinsBook.of(ruins) if ruins != "" else null
+				if shop_set == null or shop_set.shop == "":
+					out.append("%s: shop %s, but its ruins have none" % [id, p["id"]])
+				var t := str(p.get("dark", ""))
+				if t != "" and not trigger_ok(t, _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: shop %s dark trigger \"%s\"" % [id, p["id"], t])
 			"breach":
 				var s := RuinsBook.of(ruins) if ruins != "" else null
 				if s == null or s.breach == "":
@@ -347,8 +403,9 @@ func _prop_problems() -> PackedStringArray:
 func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray) -> PackedStringArray:
 	var out := PackedStringArray()
 	var ids := wave_ids()
-	var vents := prop_ids("vent")
+	var vents := prop_ids("vent") + prop_ids("spot") + prop_ids("queue")
 	var seen := PackedStringArray()
+	var parents := 0
 	for w in waves:
 		if not (w is Dictionary) or not _id_ok(str(w.get("id", ""))) or seen.has(str(w.get("id"))):
 			out.append("%s: a wave without a good, unique id" % id)
@@ -369,7 +426,7 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		else:
 			for v in from:
 				if not vents.has(str(v)):
-					out.append("%s: wave %s climbs out of \"%s\", which is not one of its vents" % [id, wid, v])
+					out.append("%s: wave %s climbs out of \"%s\", which is not one of its vents, spots or queues" % [id, wid, v])
 		var every = w.get("every", WAVE_EVERY_S)
 		if not (every is float or every is int) or every < 0.1 or every > 30.0:
 			out.append("%s: wave %s every (0.1 to 30 seconds)" % [id, wid])
@@ -387,6 +444,34 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		var health = w.get("health", 1.0)
 		if not (health is float or health is int) or health <= 0.0 or health > 1000.0:
 			out.append("%s: wave %s health (above 0, up to 1000)" % [id, wid])
+		# Mission 2's (M2): asleep until woken, sealed until a trigger, a parent reaping its children, a tag of its own.
+		if not (w.get("dormant", false) is bool):
+			out.append("%s: wave %s dormant (true or false)" % [id, wid])
+		for key in ["wakes", "sealed"]:
+			var t := str(w.get(key, ""))
+			if t != "" and not trigger_ok(t, objective_ids, log_ids, ids):
+				out.append("%s: wave %s %s trigger \"%s\"" % [id, wid, key, t])
+		if w.has("wakes") and w.get("dormant", false) != true:
+			out.append("%s: wave %s wakes, but is not dormant" % [id, wid])
+		if w.get("kind") == "parent":
+			parents += 1
+			if count is int and count != 1:
+				out.append("%s: wave %s: a parent wave is one parent" % [id, wid])
+			if not ["zombie", "rogue", "swarm"].has(w.get("reaps", "")):
+				out.append("%s: parent wave %s reaps a daemon type (zombie, rogue or swarm)" % [id, wid])
+		elif w.has("reaps"):
+			out.append("%s: wave %s reaps, but only a parent does" % [id, wid])
+		for key in ["tag", "epitaph"]:
+			var text = w.get(key, "")
+			if not (text is String) or text.length() > TAG_LAST:
+				out.append("%s: wave %s %s: text of up to %d characters" % [id, wid, key, TAG_LAST])
+		if w.has("epitaph") and w.get("kind") != "parent":
+			out.append("%s: wave %s has an epitaph, but only a parent does" % [id, wid])
+		var cap = w.get("hit_cap", 0.0)
+		if not (cap is float or cap is int) or cap < 0.0 or cap > 1000.0:
+			out.append("%s: wave %s hit_cap (0 to 1000)" % [id, wid])
+	if parents > 1:
+		out.append("%s: %d parent waves (one at most)" % [id, parents])
 	for o in objectives:
 		if not (o is Dictionary) or not o.has("of"):
 			continue
@@ -437,10 +522,22 @@ func _log_ids() -> PackedStringArray:
 func carried_ever() -> PackedStringArray:
 	var out := loadout.duplicate()
 	for o in objectives:
-		if o is Dictionary:
-			for w in o.get("gives", []):
-				if not out.has(w):
-					out.append(w)
+		for w in _handed_by(o):
+			if not out.has(w):
+				out.append(w)
+	return out
+
+
+## The weapons objective `o` hands over (M2): its "arms" as it begins, then its "gives" as it is done.
+static func _handed_by(o: Variant) -> PackedStringArray:
+	var out := PackedStringArray()
+	if not (o is Dictionary):
+		return out
+	for key in ["arms", "gives"]:
+		var list = o.get(key, [])
+		if list is Array:
+			for w in list:
+				out.append(str(w))
 	return out
 
 

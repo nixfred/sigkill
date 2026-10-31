@@ -367,7 +367,8 @@ func _hold_everything(delta: float) -> void:
 	for body in get_tree().get_nodes_in_group(GrepLock.TARGET_GROUP):
 		if body is Node3D and not (body is IcePiece) and root_node.is_ancestor_of(body):
 			seen[body] = true
-			_hold(body, false, delta, tick, space)
+			# A daemon rooted where it stands (M2: a mission's parent) is hurt as a node is, never moved.
+			_hold(body, body.has_method("sessile") and body.sessile(), delta, tick, space)
 	var ice := IceDirector.of(root_node)
 	if ice != null:
 		for piece in ice.pieces():

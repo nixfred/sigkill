@@ -6,6 +6,10 @@ extends Control
 ## then fading; its name in the item's beam colour and under it where to wear it. Several earned at once queue,
 ## each in turn. A mission's end can hold them (C37, hold()): its weapons are told as its end screen comes up, not over
 ## its last beat; the hold runs out on its own. Cosmetic only, and it never takes input.
+##
+## Mission 2's (M2): a weapon a mission puts in hand as the beat that teaches it begins says so too, "IN HAND" (show_unlock()
+## with HANDED for its item), and the toasts waiting are kept across a reload (the queue is the run's, not this HUD's), so
+## quitting a mission during its end's hold still tells its weapons on the screen that comes up next.
 
 const Palette = preload("res://scripts/palette.gd")
 
@@ -14,6 +18,10 @@ const WHERE_SKIN := "a light skin for %s   Esc > Loadout to wear it"
 const WHERE_MOD := "a mod for %s   Esc > Loadout to fit it"
 ## A campaign weapon handed out by a mission (C35).
 const WHERE_CAMPAIGN := "%s is yours: every mission after this one carries it"
+## A weapon put in hand mid-mission (M2): its item word, its head and its line.
+const HANDED := "handed"
+const HANDED_HEAD := "IN HAND"
+const WHERE_HANDED := "%s for this mission: finish it to keep it"
 ## Seconds: dropping in, held in all, fading out; how far it drops, pixels; its size and place.
 const IN_S := 0.18
 const SHOW_S := 3.4
@@ -26,7 +34,8 @@ const SWEEP_S := 0.9
 ## It grows with a window taller than 720 px, up to this much.
 const SCALE_LAST := 1.6
 
-var _queue: Array = []
+## The toasts waiting (M2: the run's, so a reload keeps them).
+static var _queue: Array = []
 var _left := 0.0
 var _age := 0.0
 ## Seconds of game time a toast still waits (C37), counted down by the toast as it runs.
@@ -50,6 +59,8 @@ func _ready() -> void:
 	_progress = Progress.current()
 	if not _progress.unlocked.is_connected(show_unlock):
 		_progress.unlocked.connect(show_unlock)
+	if not _queue.is_empty() and not held():
+		_next.call_deferred()  # left waiting by the screen before a reload (M2)
 
 
 func _exit_tree() -> void:
@@ -58,7 +69,8 @@ func _exit_tree() -> void:
 		_progress.unlocked.disconnect(show_unlock)
 
 
-## Earned: `weapon`'s skin or mod `item`, called `title`. Shown now, or after the ones already waiting (or the hold).
+## Earned: `weapon`'s skin or mod `item`, called `title`; or (M2) handed over for a mission, `item` HANDED. Shown now, or
+## after the ones already waiting (or the hold).
 func show_unlock(weapon: String, item: String, title: String) -> void:
 	_queue.append([weapon, item, title])
 	if _left <= 0.0 and not held():
@@ -108,11 +120,12 @@ func _next() -> void:
 	for def in WeaponKit.shipped_defs():
 		if def.id == got[0]:
 			weapon_name = def.short_name
-	_head.text = HEAD
+	var handed: bool = got[1] == HANDED
+	_head.text = HANDED_HEAD if handed else HEAD
 	_head.add_theme_color_override("font_color", _body)
 	_title.text = short
 	_title.add_theme_color_override("font_color", _beam)
-	_where.text = (WHERE_CAMPAIGN if got[1] == Progress.CAMPAIGN else WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
+	_where.text = (WHERE_HANDED if handed else WHERE_CAMPAIGN if got[1] == Progress.CAMPAIGN else WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
 	_where.add_theme_color_override("font_color", Palette.MINT)
 	_left = SHOW_S
 	_age = 0.0

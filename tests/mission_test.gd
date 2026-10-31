@@ -140,9 +140,9 @@ func _data_checks() -> void:
 		registers.append(def.register)
 	_check("each in STORY.md's register (Tron into ruins, ruins, Matrix, Tron, Tron into Matrix, the deepest ruins, all three), with its own transition where it changes", registers == PackedStringArray(["tron", "cyberpunk", "matrix", "tron", "tron", "cyberpunk", "all"]) and _shifts_to(defs[0]) == "cyberpunk" and _shifts_to(defs[4]) == "matrix")
 	var skeletons := true
-	for i in range(1, defs.size()):
+	for i in range(2, defs.size()):
 		skeletons = skeletons and not defs[i].playable and not defs[i].draft and not defs[i].objectives.is_empty()
-	_check("mission 1 is built for real (C37: playable, no longer a draft), in its ruins; 2 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and not defs[0].draft and skeletons)
+	_check("missions 1 and 2 are built for real (C37, M2: playable, not drafts), each in its ruins; 3 to 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", defs[0].playable and not defs[0].draft and defs[1].playable and not defs[1].draft and defs[1].ruins != "" and skeletons)
 	var t := MissionBook.test_range()
 	var kinds := {}
 	var gives := false
@@ -380,7 +380,7 @@ func _runner_checks() -> void:
 	runner2.begin(timed)
 	await _until(func(): return runner2.state == MissionRunner.State.FAILED)
 	_check("acceptance (fail by the mission's own rule): its time limit runs out: failed, \"the timeslice ran out\", its logs and beacon cleared away", runner2.state == MissionRunner.State.FAILED and runner2.reason == MissionRunner.TIMED_OUT and runner2.pickup("note") == null)
-	_check("a mission that is not built yet is refused (mission 2 is a skeleton)", not runner2.begin(MissionBook.at(2)) and runner2.state == MissionRunner.State.FAILED)
+	_check("a mission that is not built yet is refused (mission 3 is a skeleton)", not runner2.begin(MissionBook.at(3)) and runner2.state == MissionRunner.State.FAILED)
 
 
 # --- A death failing it, and Retry. ---
@@ -491,7 +491,7 @@ func _menu_checks() -> void:
 	menu.missions_screen().open()
 	await _frames(2)
 	texts = menu.missions_screen().texts()
-	_check("with login done: 01 DONE (with its best), 02 defunct open but IN PRODUCTION (not built yet: START says so), 03 still redacted", texts.has("01 login DONE") and texts.has("02 defunct IN PRODUCTION") and texts.has("03 ??? LOCKED") and not menu.missions_screen().can_start(1), " | ".join(texts))
+	_check("with login done: 01 DONE (with its best), 02 defunct open and NEXT (built since M2: START starts it), 03 still redacted", texts.has("01 login DONE") and texts.has("02 defunct NEXT") and texts.has("03 ??? LOCKED") and menu.missions_screen().can_start(1), " | ".join(texts))
 	for size in [Vector2i(960, 540), Vector2i(1920, 1080)]:
 		root.size = size
 		await _frames(3)
@@ -582,7 +582,7 @@ func _login_checks() -> void:
 	var end := mh.end_screen()
 	await _until(func(): return end.is_up())
 	var lines := end.shown_text()
-	_check("its end screen: \"exit 0\", the weapons HANDED TO YOU, and Next: 02 defunct shown but in production (not yet built), so Missions has the focus", _text_has(lines, "exit 0") and _text_has(lines, "HANDED TO YOU") and _text_has(lines, "kill -9  [3]") and end.buttons()[0].visible and end.buttons()[0].disabled and end.buttons()[0].text.contains("02  defunct") and end.buttons()[1].has_focus(), " | ".join(lines))
+	_check("its end screen: \"exit 0\", the weapons HANDED TO YOU, and Next: 02 defunct, built since M2, with the focus", _text_has(lines, "exit 0") and _text_has(lines, "HANDED TO YOU") and _text_has(lines, "kill -9  [3]") and end.buttons()[0].visible and not end.buttons()[0].disabled and end.buttons()[0].text.contains("02  defunct") and end.buttons()[0].has_focus(), " | ".join(lines))
 	for size in [Vector2i(960, 540), Vector2i(1920, 1080)]:
 		root.size = size
 		await _frames(3)
