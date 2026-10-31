@@ -7,6 +7,9 @@ extends DaemonArt
 ## blades curls out round its anchor, the bright point every one of its children's threads runs to (scripts/missions/
 ## mission_stage.gd draws them). Faceless: no eye, no mouth, nothing that moves like an animal.
 ##
+## It stands about eleven metres tall (its build at twice a walker's scale), and its core lights the street round it, an
+## amber lamp beating with it: dim while sealed, blazing open.
+##
 ## Sealed (its dummy's `sealed`, a mission wave's "sealed"): its frames are drawn in tight round the core, turning
 ## slowly, the core dim behind them, its seams low; opened, the frames slide out and lean apart, the core shows through
 ## the gaps and beats, bright and quick, and the seams flare: that is when it can be hurt. Its light is the zombies'
@@ -41,6 +44,11 @@ const CROWN_Y := 4.25
 ## Its hit volume (art space): a box from the ground to over the crown.
 const BOX_AT := Vector3(0.0, 2.05, 0.0)
 const BOX_SIZE := Vector3(2.1, 5.9, 2.1)
+## Its lamp: its reach (art metres, at its scale) and its energy sealed and open, with the beat's on top.
+const LAMP_REACH := 9.0
+const LAMP_SEALED := 2.2
+const LAMP_OPEN := 4.5
+const LAMP_BEAT := 3.0
 
 var _plinth: int
 var _roots := PackedInt32Array()
@@ -60,6 +68,7 @@ var _open := 0.0
 var _turned := PackedFloat32Array()
 ## A hit's kick to the frames' spin, easing off.
 var _kick := 0.0
+var _lamp: OmniLight3D = null
 
 
 func _build() -> void:
@@ -77,9 +86,17 @@ func _build() -> void:
 	tag_height = 5.55
 	budget_triangles = 4200
 	budget_draw_calls = 12
-	size_low = 1.0
-	size_high = 1.06
+	size_low = 1.95
+	size_high = 2.05
 	elite_size = 1.0
+	_lamp = OmniLight3D.new()
+	_lamp.name = "CoreLamp"
+	_lamp.light_color = Palette.HOSTILE_AMBER
+	_lamp.omni_range = LAMP_REACH * 2.0
+	_lamp.omni_attenuation = 1.1
+	_lamp.shadow_enabled = false
+	_lamp.position = Vector3(0.0, CORE_Y, 0.0)
+	add_child(_lamp)
 	_spread = lerpf(0.9, 1.15, dice(60, 0))
 	_curl = lerpf(0.8, 1.2, dice(61, 0))
 	_plinth = part(Shape.HEX, Look.ARMOR)
@@ -138,14 +155,16 @@ func _pose(t: float, delta: float) -> void:
 	for k in _rings.size():
 		var y := FRAME_Y0 + FRAME_STEP * (float(k) - 0.5)
 		orient(_rings[k], Vector3(0.0, y, 0.0) + shake * 0.4, Vector3.UP, 0.07, lerpf(0.95, 1.5, open))
-		brighten(_rings[k], lerpf(0.35, 1.2, open) + 0.6 * beat * open)
+		brighten(_rings[k], lerpf(0.75, 1.3, open) + 0.6 * beat * open)
 	# The core, the heart low in it, the anchor over the crown.
 	orient(_core, Vector3(0.0, CORE_Y, 0.0) + shake * 0.5, Vector3.UP, CORE_L, lerpf(0.42, 0.62, open) * (1.0 + 0.08 * beat))
-	brighten(_core, lerpf(0.45, 1.8, open) + 1.2 * beat * open)
+	brighten(_core, lerpf(0.9, 1.9, open) + 1.2 * beat * open + 0.3 * beat * (1.0 - open))
 	orient(_heart, Vector3(0.0, 0.7, 0.0) + shake * 0.5, Vector3.UP, 0.9 * (1.0 + 0.2 * beat), 0.7 * (1.0 + 0.25 * beat))
 	brighten(_heart, lerpf(0.4, 2.2, open) + 1.6 * beat * open)
 	orient(_anchor, Vector3(0.0, ANCHOR_Y + 0.05 * sin(t * 1.3), 0.0), Vector3.UP, 0.5, 0.34)
 	brighten(_anchor, 1.6 + 0.8 * beat)
+	if _lamp != null:
+		_lamp.light_energy = lerpf(LAMP_SEALED, LAMP_OPEN, open) + LAMP_BEAT * beat * open
 	# The crown: blades curling out and up round the anchor, opening a little wider with the frames.
 	for i in BLADES:
 		var a := TAU * float(i) / BLADES + 0.4 * sin(t * 0.25)

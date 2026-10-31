@@ -256,13 +256,14 @@ func _stirred(wave: Dictionary) -> bool:
 ## Wave `id` wakes, all of it at once (M2): each hunts the player, never giving up.
 func _wake(id: String) -> void:
 	var wave: Dictionary = _waves[id]
+	var w: Dictionary = wave["def"]
 	if wave["awake"]:
 		return
 	wave["awake"] = true
 	var director := DaemonDirector.of(self)
 	for d in wave["alive"]:
 		if is_instance_valid(d):
-			d.hide_tag(false)
+			d.hide_tag(w.get("tagged", true) == false)
 		if is_instance_valid(d) and d.brain != null:
 			d.brain.dormant = false
 			d.brain.relentless = true
@@ -293,7 +294,7 @@ func _climb_out(id: String) -> void:
 	dummy.set_meta(&"wave", id)
 	dummy.sealed = str(w.get("sealed", "")) != "" and not _fired.has(str(w.get("sealed", "")))
 	dummy.hit_cap = float(w.get("hit_cap", 0.0))
-	dummy.tag_hidden = not wave["awake"]  # a sleeper has no label over it until it wakes (ping still finds it)
+	dummy.tag_hidden = not wave["awake"] or w.get("tagged", true) == false  # a sleeper unlabelled until it wakes; a crowd never
 	targets.add_child(dummy)
 	var at: Vector3
 	var face := Vector3.INF

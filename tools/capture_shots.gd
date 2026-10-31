@@ -392,9 +392,9 @@ const C37_SHEET := ["c37-opening", "c37-plaza", "c37-gate", "c37-shift", "c37-re
 const C37_GPU_FRAMES := 180
 ## m2's sheet: mission 2 as a player meets it, three a row.
 const M2_SHEET := ["m2-opening", "m2-queue", "m2-crowd", "m2-guard", "m2-reap", "m2-exit0"]
-## Where m2's queue is seen from: down its line from the street's west side, past waking distance; and where its
+## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
-const M2_QUEUE_VIEW := Vector3(-5.5, 0.0, -5.0)
+const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
 const M2_PARENT_VIEW := Vector3(6.5, 0.0, -19.5)
 ## c36's sheet, three a row; how many frames each register's GPU time is averaged over.
 const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide-tron", "c36-fight", "c36-mission"]
@@ -2908,18 +2908,22 @@ func _m2() -> void:
 	_player.select_slot(int(_player.inventory.slot_of("ping_sonar")))
 	await _frames(int(0.4 * Engine.physics_ticks_per_second))
 	_fire()
-	await _frames(int(1.15 * Engine.physics_ticks_per_second))
+	await _frames(4)
+	_unfire()
+	_player.select_slot(int(_player.inventory.slot_of("terminal_cannon")))  # the ring out in the world, its burst in hand gone
+	await _frames(int(0.9 * Engine.physics_ticks_per_second))
 	print("capture: m2-opening with %d zombies threaded, %d threads drawn" % [stage.children().size(), stage.threads().drawn()])
 	await _c37_save(sheet, "m2-opening", runner)
-	await _m2_until(runner, func(): return runner.index >= 1, 0.0)
-	# The dead storefront, its queue lined up at its door under the OPEN sign: seen from down the line, off to one side,
-	# out of reach of waking it.
+	# The dead storefront, its queue lined up at its door under the OPEN sign, asleep (while the rain is still being hunted,
+	# so no beacon stands in front of it): seen from the street at its corner, out of reach of waking it.
 	var shop: Dictionary = world.layout.shop
 	var door: Vector3 = shop["face"] + shop["along"] * shop["width"] * RuinsLayout.SHOP_DOOR
-	_c37_view(M2_QUEUE_VIEW, door + Vector3(-1.5, 1.6, -0.6))
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	_c37_view(M2_QUEUE_VIEW, door + Vector3(-2.6, 1.5, 0.0))
 	await _frames(40)
 	print("capture: m2-queue, %d in the line, the shop lit %.2f" % [stage.wave_daemons("queue").size(), world.shop_power()])
 	await _c37_save(sheet, "m2-queue", runner)
+	await _m2_until(runner, func(): return runner.index >= 1, 0.0)
 	# The queue awake and coming as the player reaches where they queued (its busiest fight: its GPU time), then a fork
 	# bomb thrown into it.
 	_c37_view(world.point("plaza") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-2.5, 0, 2.5), world.point("queue_1"))
@@ -2937,7 +2941,9 @@ func _m2() -> void:
 	_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), crowd + Vector3(0, 1.0, 0))
 	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	_fire()
-	await _frames(int(0.75 * Engine.physics_ticks_per_second))
+	await _frames(4)
+	_unfire()
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
 	await _c37_save(sheet, "m2-crowd", runner)
 	root.size = Vector2i(960, 540)
 	await _frames(4)
@@ -2957,6 +2963,7 @@ func _m2() -> void:
 	var guard: Node3D = stage.wave_daemons("guard")[0]
 	_c37_view(_player.global_position - Vector3(0, RuinsLayout.STAND_Y, 0), guard.global_position.lerp(nest, 0.35) + Vector3(0, 2.0, 0))
 	await _frames(4)
+	await _m2_quiet()
 	await _c37_save(sheet, "m2-guard", runner)
 	# The guard down: the parent opens and forks.
 	await _m2_until(runner, func(): return runner.index >= 6, 0.0)
@@ -2965,6 +2972,7 @@ func _m2() -> void:
 	await _frames(int(1.6 * Engine.physics_ticks_per_second))
 	_c37_view(Vector3(6.5, 0.0, -21.0), nest + Vector3(0, 2.6, 0))
 	await _frames(6)
+	await _m2_quiet()
 	await _c37_save({}, "m2-parent", runner)
 	gpu = await _gpu_ms(C37_GPU_FRAMES)
 	print("capture: m2 the parent's fight at %dx%d, %d standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
@@ -2975,7 +2983,7 @@ func _m2() -> void:
 		await _frames(1)
 		waited += 1
 	_c37_view(Vector3(5.5, 0.0, -19.0), nest + Vector3(0, 2.4, 0))
-	await _frames(2)
+	await _m2_quiet()
 	var parent: Node3D = stage.parent
 	while parent.is_alive():
 		parent.hit(1000.0, parent.global_position + Vector3.UP * 2.0, Vector3.FORWARD, "sigkill_rail")
@@ -3005,6 +3013,24 @@ func _m2() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M2_SHEET.size():
 		_save_grid("m2-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## No toast over a still (m2): a skin a sure shot's kills earned mid-fight is a real unlock, but not the beat's subject.
+func _m2_quiet() -> void:
+	UnlockToast.drop_waiting()
+	var toast: UnlockToast = _main.get_node("Hud").unlock_toast()
+	var left := int(5.0 * Engine.physics_ticks_per_second)
+	while left > 0 and toast.showing():
+		await _frames(1)
+		left -= 1
+
+
+## The fire action let go (m2: a press left held fires on, and its muzzle fills the still).
+func _unfire() -> void:
+	var release := InputEventAction.new()
+	release.action = "fire"
+	release.pressed = false
+	root.push_input(release)
 
 
 ## Mission 2 played on until `condition` (m2), at most `most` seconds (0: a minute): the daemons the objective running

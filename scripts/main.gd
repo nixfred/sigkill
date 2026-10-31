@@ -120,6 +120,8 @@ func _ready() -> void:
 	runner.world = ruins
 	runner.breakers = breakers
 	runner.daemon_spawned.connect(_on_mission_daemon)
+	# A mission ended where it stood (M2): the arena's own daemons are back on the top table.
+	runner.ended.connect(func(): _hud.set_round_targets(get_tree().get_nodes_in_group("targets")))
 	add_child(runner)
 	if ruins != null and MissionRunner.pending() == "":
 		ice.stand_down = true  # ruins with no mission: ICE's walls and nodes stand where the arena's level was

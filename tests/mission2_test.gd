@@ -224,6 +224,19 @@ func _district_checks() -> void:
 		if other.id != "tty_row" and RuinsLayout.of(other).shop.size() > 0:
 			others.append(other.id)
 	_check("only its district has a shop: the other districts plan as before", others.is_empty(), ", ".join(others))
+	var block: Dictionary = plan.blocks.filter(func(b): return b["kind"] == "monolith" and b["rect"].size == Vector2i(2, 2))[0]
+	var r: Rect2i = block["rect"]
+	var south := plan.center(Vector2i(r.position.x, r.end.y))
+	var north := plan.center(Vector2i(r.position.x, r.position.y - 1))
+	var route := plan.walk_route(south, north)
+	var length := 0.0
+	var last := south
+	var walkable := true
+	for p in route:
+		length += last.distance_to(p)
+		last = p
+		walkable = walkable and _walkable(grid, plan, p)
+	_check("the C37 leftover (daemons bunching against cover): a mission's walker has a way round a ruin (the walk grid as an A* grid): from one side of a monolith to the other, %.1f m over open floor where the straight line is %.1f m through it" % [length, south.distance_to(north)], not route.is_empty() and walkable and length > south.distance_to(north) + 2.0 and route[route.size() - 1].distance_to(north) < 1.0)
 
 
 ## True when `at` is on the walk grid's open floor (a player could stand there).
@@ -463,6 +476,11 @@ func _early_checks() -> void:
 	var brain: DaemonBrain = zombie.brain
 	brain.relentless = true
 	_check("acceptance: a mission's walker never steps off open floor (a zombie pushed into a hole or a ruin's footprint could never be reached, and its beat never finish): from the floor onto a hole refused, onto a block refused, floor to floor allowed, and one already off it may walk back", not brain.call("_on_open_floor", open, into_hole, director) and not brain.call("_on_open_floor", open, into_block, director) and brain.call("_on_open_floor", open, next_open, director) and brain.call("_on_open_floor", into_hole, open, director))
+	var made: Array = stage.made.duplicate()
+	runner.end_here()
+	await _frames(3)
+	var four := ["DummyA", "DummyB", "DummyC", "DummyD"].filter(func(n): return main.has_node("Arena/Targets/" + n) and main.get_node("Arena/Targets/" + n).is_in_group("targets") and main.get_node("Arena/Targets/" + n).visible)
+	_check("the C37 leftover: a mission ended where it stands (a match starting) puts the arena's own four back where they stood and takes the mission's own away", four.size() == 4 and made.all(func(d): return not is_instance_valid(d) or d.is_queued_for_deletion()) and _targets(main).size() == 4 and stage.stopped, "%d back, %d targets" % [four.size(), _targets(main).size()])
 	await _drop(main)
 
 

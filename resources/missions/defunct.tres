@@ -175,6 +175,7 @@ waves = [{
 "health": 100.0,
 "id": "rain_a",
 "kind": "zombie",
+"tagged": false,
 "on": "start",
 "wakes": "at:120"
 }, {
@@ -185,6 +186,7 @@ waves = [{
 "health": 100.0,
 "id": "rain_b",
 "kind": "zombie",
+"tagged": false,
 "on": "start",
 "wakes": "at:150"
 }, {
@@ -195,6 +197,7 @@ waves = [{
 "health": 100.0,
 "id": "rain_c",
 "kind": "zombie",
+"tagged": false,
 "on": "start",
 "wakes": "at:180"
 }, {
@@ -205,6 +208,7 @@ waves = [{
 "health": 70.0,
 "id": "queue",
 "kind": "zombie",
+"tagged": false,
 "on": "start",
 "wakes": "begin:queue"
 }, {
@@ -215,6 +219,7 @@ waves = [{
 "health": 100.0,
 "id": "strays",
 "kind": "zombie",
+"tagged": false,
 "on": "start",
 "wakes": "begin:threads"
 }, {
@@ -246,6 +251,7 @@ waves = [{
 "health": 75.0,
 "id": "fork_a",
 "kind": "zombie",
+"tagged": false,
 "on": "begin:guard"
 }, {
 "count": 2,
@@ -254,6 +260,7 @@ waves = [{
 "health": 75.0,
 "id": "fork_c",
 "kind": "zombie",
+"tagged": false,
 "on": "begin:parent"
 }, {
 "after": "fork_c",
@@ -263,6 +270,7 @@ waves = [{
 "health": 75.0,
 "id": "fork_d",
 "kind": "zombie",
+"tagged": false,
 "left": 0
 }]
 props = [{

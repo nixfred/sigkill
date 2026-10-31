@@ -123,6 +123,8 @@ var _fired := {}
 ## Its "at:<seconds>" triggers, [trigger, seconds], found once as it begins.
 var _timed: Array = []
 var _pickups := {}
+## The arena's own daemons, parked while a mission with waves runs (M2): [dummy, where it stood, its collision layer].
+var _parked: Array = []
 ## This try's kills by wave (M2): a kill objective's own waves' daemons put down before it begins count toward it as it does.
 var _downed_by_wave := {}
 var _beacon: MissionBeacon = null
@@ -307,14 +309,53 @@ static func _triggers_of(d: MissionDef) -> PackedStringArray:
 	return out
 
 
-## The arena's own daemons go (C37): a mission with waves has only its own. Out of the tree at once, then freed.
+## The arena's own daemons go (C37): a mission with waves has only its own. Since M2 they are parked under the runner
+## (out of the targets, still, hidden, nothing colliding) rather than freed, so a mission ended where it stands (a match
+## starting) puts them back; they go with the arena when it reloads.
 func _retire_arena_daemons() -> void:
 	var host := get_parent()
 	for dummy in get_tree().get_nodes_in_group("targets"):
 		if host != null and host.is_ancestor_of(dummy) and (stage == null or not stage.made.has(dummy)):
 			dummy.remove_from_group("targets")
-			dummy.get_parent().remove_child(dummy)
-			dummy.queue_free()
+			_parked.append([dummy, dummy.get_parent(), dummy.collision_layer])
+			dummy.process_mode = Node.PROCESS_MODE_DISABLED
+			dummy.visible = false
+			dummy.collision_layer = 0
+			dummy.reparent(self)
+	_targets_changed()
+
+
+## The arena's own daemons back where they stood and the mission's own gone (M2, a C37 leftover: a match starting
+## mid-mission left that arena with the mission's finite daemons and none of its own).
+func _restore_arena_daemons() -> void:
+	if stage != null and is_instance_valid(stage):
+		for d in stage.made:
+			if is_instance_valid(d) and not d.is_queued_for_deletion():
+				d.queue_free()  # still a target as it leaves the tree, so whatever keeps a list of them lets go of it
+	for entry in _parked:
+		var dummy: Node3D = entry[0]
+		var home: Node = entry[1]
+		if not is_instance_valid(dummy) or not is_instance_valid(home):
+			continue
+		dummy.reparent(home)
+		dummy.collision_layer = entry[2]
+		dummy.visible = true
+		dummy.process_mode = Node.PROCESS_MODE_INHERIT
+		dummy.add_to_group("targets")
+	_parked.clear()
+	var director := DaemonDirector.of(self)
+	if director != null:
+		director.forget_brains()
+	_targets_changed()
+
+
+## The targets changed without one entering or leaving the tree as a target (M2): what keeps a list of them (the code
+## rain's driver) collects them again.
+func _targets_changed() -> void:
+	if is_inside_tree():
+		for driver in get_tree().get_nodes_in_group(&"code_rain_driver"):  # scripts/code_rain_driver.gd's DRIVER_GROUP
+			if driver.has_method("invalidate"):
+				driver.invalidate()
 
 
 ## Its stage (C37): its vents and walls up, its waves waiting for their triggers.
@@ -687,7 +728,8 @@ func free_play() -> void:
 	_reload("$ exit")
 
 
-## Ends it where it stands (a match starting): the loadout lifted, the round clock and ICE back as they were.
+## Ends it where it stands (a match starting): the loadout lifted, the round clock and ICE back as they were, and (M2)
+## the arena's own daemons back in place of the mission's.
 func end_here() -> void:
 	if def == null:
 		return
@@ -701,6 +743,7 @@ func end_here() -> void:
 	_gate(false)
 	if stage != null and is_instance_valid(stage):
 		stage.stop()
+	_restore_arena_daemons()
 	if rounds != null and is_instance_valid(rounds) and rounds.has_method("hold"):
 		rounds.hold(false)
 	if ice != null and is_instance_valid(ice):

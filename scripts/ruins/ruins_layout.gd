@@ -115,6 +115,7 @@ var vistas: Array = []
 var boxes: Array = []
 
 var _rng := RandomNumberGenerator.new()
+var _astar: AStarGrid2D = null
 
 
 func _init(from: RuinsSet) -> void:
@@ -615,6 +616,52 @@ func walk_grid() -> Dictionary:
 				if absf(local.x) < h.x + PLAYER_R and absf(local.z) < h.z + PLAYER_R:
 					open[j * n.x + i] = 0
 	return {"open": open, "n": n, "ext": ext}
+
+
+## The walk grid as an A* grid (M2), made once a run and kept with the plan: a mission's walkers that cannot see their
+## prey find their way round the ruins by it (walk_route()), where steering straight at it bunched them against cover.
+func walk_astar() -> AStarGrid2D:
+	if _astar == null:
+		var grid := walk_grid()
+		var n: Vector2i = grid["n"]
+		var open: PackedByteArray = grid["open"]
+		_astar = AStarGrid2D.new()
+		_astar.region = Rect2i(Vector2i.ZERO, n)
+		_astar.cell_size = Vector2.ONE * WALK_M
+		_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+		_astar.update()
+		for j in n.y:
+			for i in n.x:
+				if open[j * n.x + i] == 0:
+					_astar.set_point_solid(Vector2i(i, j))
+	return _astar
+
+
+## The way from `from` to `to` (the district's space) over the walk grid (M2): its squares' middles at the floor, the
+## start's square left out; empty when there is none. A start or an end in a wall's margin is moved to the nearest open
+## square first.
+func walk_route(from: Vector3, to: Vector3) -> PackedVector3Array:
+	var a := walk_astar()
+	var ext := half_extent()
+	var out := PackedVector3Array()
+	var start := _open_near(a, Vector2i(floori((from.x + ext.x) / WALK_M), floori((from.z + ext.y) / WALK_M)))
+	var end := _open_near(a, Vector2i(floori((to.x + ext.x) / WALK_M), floori((to.z + ext.y) / WALK_M)))
+	if start.x < 0 or end.x < 0:
+		return out
+	var ids := a.get_id_path(start, end)
+	for k in range(1, ids.size()):
+		out.append(Vector3(-ext.x + (ids[k].x + 0.5) * WALK_M, FLOOR_Y, -ext.y + (ids[k].y + 0.5) * WALK_M))
+	return out
+
+
+func _open_near(a: AStarGrid2D, c: Vector2i) -> Vector2i:
+	for r in 4:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var m := c + Vector2i(dx, dy)
+				if a.is_in_boundsv(m) and not a.is_point_solid(m):
+					return m
+	return Vector2i(-1, -1)
 
 
 # --- The breach (C37). ---

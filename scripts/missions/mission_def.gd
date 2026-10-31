@@ -55,6 +55,7 @@ extends Resource
 ##              mission, a thread drawn from each to it, and when it goes down every one of them still standing drops
 ##              at once, reaped (no kill credited: init did it)
 ##   "tag"      its daemons' name tag, in place of their type's
+##   "tagged"   false: its daemons carry no name tag at all (a crowd of ten reads as a crowd, not ten labels)
 ##   "hit_cap"  the most one hit takes off one of its daemons (a parent outlasting a single kill -9)
 ##   "epitaph"  on a parent wave, the line shown over it as it goes down (its owner field)
 ## The "parent" type (a kill objective's daemon too) is a process that never moves or strikes: it stands, sealed or
@@ -445,8 +446,9 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		if not (health is float or health is int) or health <= 0.0 or health > 1000.0:
 			out.append("%s: wave %s health (above 0, up to 1000)" % [id, wid])
 		# Mission 2's (M2): asleep until woken, sealed until a trigger, a parent reaping its children, a tag of its own.
-		if not (w.get("dormant", false) is bool):
-			out.append("%s: wave %s dormant (true or false)" % [id, wid])
+		for key in ["dormant", "tagged"]:
+			if not (w.get(key, key == "tagged") is bool):
+				out.append("%s: wave %s %s (true or false)" % [id, wid, key])
 		for key in ["wakes", "sealed"]:
 			var t := str(w.get(key, ""))
 			if t != "" and not trigger_ok(t, objective_ids, log_ids, ids):

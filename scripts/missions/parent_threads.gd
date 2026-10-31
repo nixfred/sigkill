@@ -13,12 +13,12 @@ const ThreadShader = preload("res://shaders/parent_thread.gdshader")
 const THREADS_MOST := 40
 const SEGMENTS := 10
 ## A thread's thickness, metres; how high it arcs over the straight line, metres plus a share of its length.
-const WIDTH_M := 0.045
+const WIDTH_M := 0.07
 const LIFT_M := 1.4
 const LIFT_SHARE := 0.12
 ## Where a thread leaves its zombie, over its body's middle; its brightness, and a pinged zombie's on top.
 const FROM_ABOVE_M := 0.75
-const BRIGHT := 1.0
+const BRIGHT := 1.35
 const PINGED := 2.4
 
 ## The parent (its dummy), and how the stage hands over the children standing now.

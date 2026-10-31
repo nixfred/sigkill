@@ -139,6 +139,7 @@ func _ready() -> void:
 	if not _kept.has(key):
 		_kept[key] = _build()
 	_built = _kept[key]
+	layout.walk_astar()  # its walkers' grid (M2), made with the district's first build, behind the same black
 	_show()
 	_spark_rng.seed = ruins.seed
 	set_register(ruins.register, 0.0)
@@ -715,6 +716,17 @@ func remnant_power() -> float:
 ## Where the remnant's sign is (the place in front of its face, world space), or Vector3.INF without one.
 func remnant_at() -> Vector3:
 	return _remnant_lamp.global_position if _remnant_lamp != null else Vector3.INF
+
+
+# --- The walkers' way (M2). ---
+
+## The way from `from` to `to` (world space) round the ruins for a walker (RuinsLayout.walk_route()), at `from`'s height.
+func walk_route(from: Vector3, to: Vector3) -> PackedVector3Array:
+	var out := layout.walk_route(to_local(from), to_local(to)) if layout != null else PackedVector3Array()
+	for k in out.size():
+		out[k] = to_global(out[k])
+		out[k].y = from.y
+	return out
 
 
 # --- The shop (M2). ---

@@ -150,6 +150,9 @@ func _emitter() -> GPUParticles3D:
 	mat.particles_anim_h_frames = 8
 	mat.particles_anim_v_frames = 8
 	mat.particles_anim_loop = false
+	# Faded out right at the camera (M2, a C37 leftover): its glyphs there were big pixel blocks. The distances alone did
+	# nothing while the fade's mode was off.
+	mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
 	mat.distance_fade_min_distance = 0.4
 	mat.distance_fade_max_distance = 1.6
 	p.material_override = mat

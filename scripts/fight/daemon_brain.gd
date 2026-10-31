@@ -114,6 +114,9 @@ const LOOK_SNAP_RATE := 9.0
 const LOOK_SNAP_S := 0.22
 ## A wander leg past this share of its leash turns back toward home.
 const WANDER_LEASH := 0.8
+## A mission's walker's way round the ruins (M2): worked out again this often, seconds; a place on it this near reached.
+const ROUTE_EVERY_S := 0.6
+const ROUTE_REACHED_M := 0.8
 
 var dummy: Node3D
 var art: DaemonArt
@@ -121,8 +124,11 @@ var art: DaemonArt
 var relentless := false
 ## Asleep at home (M2): no looking round, no hunting, until woken (alert()) or roused by a hit.
 var dormant := false
-## The ruins it walks in (M2), found once, for its steps' floor.
+## The ruins it walks in (M2), found once, for its steps' floor and its way round them.
 var _ruins_world: RuinsWorld = null
+## Its way round the ruins to a prey it cannot see (M2), and how long before it is worked out again.
+var _route := PackedVector3Array()
+var _route_t := 0.0
 ## "rogue", "zombie" or "swarm": its art's.
 var kind := "rogue"
 var state: State = State.HOME
@@ -437,6 +443,8 @@ func _step_hunt(delta: float, d) -> void:
 		velocity = Vector3.ZERO  # never seen yet this hunt: nowhere to go (Codex review)
 		return
 	var goal := _hunt_goal(chase, delta, d)
+	if relentless and not sees and (kind == "rogue" or kind == "zombie"):
+		goal = _route_goal(chase, delta, goal)
 	_walk(goal, _speed(d), delta, d)
 	_face(target if sees else goal, delta, d)
 	if sees and cooldown <= 0.0 and _in_range(target, d) and d.prey_attackable(prey) and d.take_slot(self, prey):
@@ -1247,6 +1255,23 @@ func _shove(step: Vector3, d, fly: bool = false) -> bool:
 	var dt := maxf(dummy.get_physics_process_delta_time(), 0.0001)
 	velocity = free / dt
 	return true
+
+
+## A mission's walker's next place on its way round the ruins to `chase` (M2, a C37 leftover: steering straight at a prey
+## it could not see bunched them against cover): the way worked out again every ROUTE_EVERY_S, its places dropped as they
+## are reached; `fallback` (its old straight goal) outside ruins or with no way.
+func _route_goal(chase: Vector3, delta: float, fallback: Vector3) -> Vector3:
+	if _ruins_world == null or not is_instance_valid(_ruins_world):
+		_ruins_world = RuinsWorld.of(dummy)
+	if _ruins_world == null or _ruins_world.layout == null:
+		return fallback
+	_route_t -= delta
+	if _route_t <= 0.0 or _route.is_empty():
+		_route_t = ROUTE_EVERY_S
+		_route = _ruins_world.walk_route(dummy.global_position, chase)
+	while _route.size() > 1 and _flat(_route[0] - dummy.global_position).length() < ROUTE_REACHED_M:
+		_route.remove_at(0)
+	return _route[0] if not _route.is_empty() else fallback
 
 
 ## False for a step from `here` to `next` that leaves open floor (M2, a mission's walker): in ruins, onto a cell of their
