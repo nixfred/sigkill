@@ -31,7 +31,7 @@ const Controls = preload("res://scripts/controls.gd")
 
 ## The opener's code paths: its own scripts, scene, resources and shaders, and the menu's and the arena's parts
 ## that start it; every script in scripts/opener/ but READER (the check also finds any new one there).
-const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scripts/opener/tree_layout.gd", "res://scripts/opener/tree_fall.gd", "res://scripts/opener/opener_link.gd", "res://scripts/opener/link_beat.gd", "res://scripts/opener/pit_beat.gd", "res://scripts/opener/copy_art.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader", "res://shaders/opener_tower.gdshader", "res://shaders/opener_panel.gdshader", "res://shaders/opener_terrace.gdshader", "res://shaders/opener_maze.gdshader", "res://shaders/opener_stream.gdshader", "res://shaders/opener_speed.gdshader", "res://shaders/opener_sky.gdshader", "res://shaders/opener_core.gdshader", "res://shaders/opener_signal.gdshader", "res://shaders/opener_floor.gdshader"]
+const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scripts/opener/tree_layout.gd", "res://scripts/opener/tree_fall.gd", "res://scripts/opener/opener_link.gd", "res://scripts/opener/link_beat.gd", "res://scripts/opener/pit_beat.gd", "res://scripts/opener/copy_art.gd", "res://scripts/opener/intro_menu.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader", "res://shaders/opener_tower.gdshader", "res://shaders/opener_panel.gdshader", "res://shaders/opener_terrace.gdshader", "res://shaders/opener_maze.gdshader", "res://shaders/opener_stream.gdshader", "res://shaders/opener_speed.gdshader", "res://shaders/opener_sky.gdshader", "res://shaders/opener_core.gdshader", "res://shaders/opener_signal.gdshader", "res://shaders/opener_floor.gdshader"]
 ## The one opener file that reads the machine (C39), checked by tests/opener_real_test.gd instead.
 const READER := "res://scripts/opener/real_opener_data.gd"
 const NEVER := ["OS.execute", "create_process", "execute_with_pipe", "OS.kill", "shell_open", "shell_show_in_file_manager", "get_environment", "has_environment", "set_environment", "unset_environment", "get_unix_time_from_system", "_dict_from_system", "_string_from_system", "get_time_zone_from_system", "get_ticks", "get_unique_id", "get_processor", "get_model_name", "get_executable_path", "get_system_dir", "get_user_data_dir", "get_cmdline", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "ENetMultiplayerPeer", "WebSocket", "WebRTC", "FileAccess", "DirAccess", "ResourceSaver", "save_png", "save_jpg", "save_webp", "save_exr", "store_", "JavaScriptBridge", "http://", "https://", "auto_accept_quit", "WM_CLOSE_REQUEST", "_notification", "delay_msec", "delay_usec", "while true", ".ogg", ".mp3", ".wav", "AudioStreamOggVorbis", "AudioStreamMP3"]
@@ -622,8 +622,20 @@ func _escape_checks() -> void:
 			ignored = ignored and root.is_input_handled() and o.playing() and o.terminal().all_text() == before
 		_finished.clear()
 		_key(KEY_ESCAPE)
+		var at := o.elapsed()
+		var held := o.is_paused() and o.menu().showing() and o.playing() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
+		for f in 5:
+			await process_frame
+		held = held and o.elapsed() == at and _all_held(o)
+		# C42: Esc pauses in the intro's own Esc menu; its "Skip intro" (focused: Enter) leaves.
+		if c[2] == "mid-typing":
+			_key(KEY_ENTER)
+			_key(KEY_ENTER, false)
+			await process_frame
+		else:
+			o.menu().buttons()[1].pressed.emit()
 		var left: bool = not o.playing() and _finished == [true] and o.events()[-1][1] == "skipped"
-		_check("acceptance: Esc leaves %s (at %.2f s, %s%s), at once: finished, skipped" % [c[2], o.elapsed(), phase, ", typing \"thanks for running me.\"" if typing else ""], phase == c[1] and left and (typing or c[2] != "mid-typing") and ignored)
+		_check("acceptance (C42): Esc %s (at %.2f s, %s%s) pauses the intro at once in its own Esc menu (its clock and sounds held, the mouse shown), and %s leaves: finished, skipped" % [c[2], at, phase, ", typing \"thanks for running me.\"" if typing else "", "Enter on its focused \"Skip intro\"" if c[2] == "mid-typing" else "its \"Skip intro\""], phase == c[1] and held and left and (typing or c[2] != "mid-typing") and ignored)
 		_check("... and lets go of everything: the game behind un-paused (it was paused: %s), its 3D view drawn, the mouse as it was, every sound stopped, the machine and its city dropped (built: %s)" % [str(was_paused), str(built)], was_paused and not paused and not root.disable_3d and Input.mouse_mode == mode_before and _all_quiet(o) and o.fall() == null and o.layout() == null and (built or c[0] < 3.1))
 		o.free()
 	var pad := _opener(null, true)
@@ -632,7 +644,13 @@ func _escape_checks() -> void:
 	cancel.action = "ui_cancel"
 	cancel.pressed = true
 	root.push_input(cancel)
-	_check("a pad's cancel (ui_cancel) leaves too, mid-crash", not pad.playing() and not paused)
+	var stopped := pad.is_paused() and pad.playing()
+	root.push_input(cancel)
+	var back := not pad.is_paused() and pad.playing()
+	await process_frame
+	_check("a pad's cancel (ui_cancel) pauses it too, mid-crash, and a second resumes it", stopped and back and pad.elapsed() > 2.0)
+	pad.skip()
+	_check("... and its skip leaves, the game behind let go", not pad.playing() and not paused)
 	pad.free()
 
 
@@ -661,9 +679,11 @@ func _menu_checks() -> void:
 	_check("acceptance: alone, the arena is paused behind it from the freeze (nothing can hit the player while it plays) while the opener runs on; the window's close is Godot's own (auto-quit on)", paused and not main.can_process() and o.can_process() and o.phase_name() == "frozen" and player.input_blocked and auto_accept_quit)
 	await _until(o, func(): return o.elapsed() >= 20.0)
 	_key(KEY_ESCAPE)
+	var stopped: bool = o.is_paused() and menu.showing_opener() and menu.is_open()
+	o.menu().buttons()[1].pressed.emit()
 	var back: bool = menu.visible and menu.is_open() and not menu.showing_opener() and not menu.showing_settings() and not menu.showing_loadout() and menu.version_text() != ""
 	await process_frame
-	_check("acceptance: Esc mid-typing brings the menu back as it was (its panel, the version in its corner), the arena running again and drawn, the player's input still held by the menu", back and not paused and main.can_process() and not root.disable_3d and player.input_blocked and not is_instance_valid(o))
+	_check("acceptance: Esc mid-typing pauses it in the intro's Esc menu (C42), and \"Skip intro\" brings the menu back as it was (its panel, the version in its corner), the arena running again and drawn, the player's input still held by the menu", stopped and back and not paused and main.can_process() and not root.disable_3d and player.input_blocked and not is_instance_valid(o))
 	_key(KEY_ESCAPE)
 	await process_frame
 	_check("that Esc was the opener's alone: the next one closes the menu, as Esc does", not menu.is_open())
@@ -685,8 +705,9 @@ func _menu_checks() -> void:
 	await process_frame
 	_check("acceptance: the --opener flag plays it from the Esc menu as the arena loads, on demo data", fmenu.showing_opener() and fmenu.is_open() and fmenu.opener().data is DemoOpenerData)
 	_key(KEY_ESCAPE)
+	fmenu.opener().menu().buttons()[1].pressed.emit()
 	await process_frame
-	_check("... and Esc brings that menu back", fmenu.is_open() and fmenu.visible and not fmenu.showing_opener() and not paused)
+	_check("... and Esc, then \"Skip intro\", brings that menu back", fmenu.is_open() and fmenu.visible and not fmenu.showing_opener() and not paused)
 	await _drop(flagged)
 	var reloaded := await _lab(PackedStringArray(["--opener"]))
 	await process_frame
@@ -716,12 +737,20 @@ func _until(o: Opener, condition: Callable) -> void:
 		frames += 1
 
 
-func _key(code: Key) -> void:
+func _key(code: Key, pressed: bool = true) -> void:
 	var down := InputEventKey.new()
 	down.keycode = code
 	down.physical_keycode = code
-	down.pressed = true
+	down.pressed = pressed
 	root.push_input(down)
+
+
+## Every sound the opener holds paused where it was (its Esc menu up, C42).
+func _all_held(o: Opener) -> bool:
+	for p in o.find_children("*", "AudioStreamPlayer", true, false):
+		if (p as AudioStreamPlayer).playing and not (p as AudioStreamPlayer).stream_paused:
+			return false
+	return true
 
 
 func _all_quiet(o: Opener) -> bool:

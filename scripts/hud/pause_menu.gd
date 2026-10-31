@@ -40,6 +40,14 @@ extends Control
 ##
 ## The opener's link (C41): the menu hands it the session's guide link, for its one call to the player's AI (told only
 ## that the game is starting), under the same yes, pace and cap as the guide HUD's.
+##
+## The first launch (C42): the arena calls begin_first_launch() once a run. The first time, the first-launch card
+## (scripts/hud/first_launch_card.gd) asks over the paused arena whether the intro may show the player's real names (No
+## highlighted; the answer goes to the privacy section's opener data, which stays off unless they say yes); then the
+## opener plays itself, once: watched to its end or skipped, it never auto-plays again, and the menu closes into the arena
+## as it ends. "Skip the intro next time" (the intro's own Esc menu) is kept too. Both in the settings file's [intro]
+## section (scripts/settings/intro_state.gd), at first_launch_path, which the arena hands only outside headless and
+## script runs. "Play the opener" always replays it and comes back to this menu.
 
 signal closed
 
@@ -146,6 +154,12 @@ var _reset_left := 0.0
 var _version: Label
 var _opener_button: Button
 var _opener: Opener = null
+## Where the first launch's state is kept (C42): the game's settings file in a real run, handed in by the arena; ""
+## (headless and script runs, unless a test hands in its own) never asks and never auto-plays.
+var first_launch_path := ""
+var _card: FirstLaunchCard
+## The opener playing now is the first launch's own (it closes the menu into the arena as it ends).
+var _auto := false
 ## Where the opener's real data comes from once the player has said yes (C39). The tests hand in a reader on a fake
 ## home folder; nothing else changes it.
 var real_opener_source := func() -> OpenerData: return RealOpenerData.for_this_machine()
@@ -253,6 +267,8 @@ func open_opener() -> Opener:
 	# The session's guide link, for the opener's one call to the player's AI (C41): told only that the game is starting.
 	_opener.guide = _link()
 	_opener.pause_world = true
+	_opener.skip_next = IntroState.read(first_launch_path)[IntroState.SKIP_NEXT]
+	_opener.skip_next_changed.connect(_on_skip_next)
 	_opener.finished.connect(_on_opener_finished)
 	add_child(_opener)
 	return _opener
@@ -284,8 +300,76 @@ func _on_opener_finished(_skipped: bool) -> void:
 		_opener.queue_free()
 	_opener = null
 	visible = true
+	if _auto:
+		# The first launch's own: played (to its end or skipped), never auto-played again; into the arena.
+		_auto = false
+		IntroState.mark_played(first_launch_path)
+		_end_first_launch()
+		return
 	if _open:
 		_show_pause()
+
+
+## "Skip the intro next time", from the intro's own Esc menu (C42).
+func _on_skip_next(on: bool) -> void:
+	IntroState.save_skip_next(on, first_launch_path)
+
+
+# --- The first launch (C42). ---
+
+## Once a run, from the arena: the first-launch card if it was never answered, then the opener playing itself if it has
+## not played yet (and is not marked to skip). Alone only. True when it started either.
+func begin_first_launch() -> bool:
+	if first_launch_path == "" or _online() or showing_opener() or showing_card():
+		return false
+	if IntroState.should_ask(first_launch_path):
+		open()
+		_pause.visible = false
+		_sheet.visible = false
+		_loadout.visible = false
+		_card.open()
+		return true
+	if IntroState.should_autoplay(first_launch_path):
+		_autoplay()
+		return true
+	return false
+
+
+func showing_card() -> bool:
+	return _card != null and _card.is_open()
+
+
+## The first-launch card, for the checks.
+func card() -> FirstLaunchCard:
+	return _card
+
+
+## Whether the opener playing now is the first launch's own.
+func autoplaying() -> bool:
+	return _auto and showing_opener()
+
+
+func _on_card_answered(yes: bool) -> void:
+	var link = _link()
+	Privacy.save_opener_real(yes, link.settings_path if link != null else first_launch_path)
+	IntroState.mark_asked(first_launch_path)
+	if IntroState.should_autoplay(first_launch_path):
+		_autoplay()
+	else:
+		_end_first_launch()
+
+
+func _autoplay() -> void:
+	if open_opener() != null:
+		_auto = true
+	else:
+		_end_first_launch()
+
+
+## The first launch done: the menu closed into the arena, the mouse taken for play if the window has focus.
+func _end_first_launch() -> void:
+	_was_captured = true
+	close()
 
 
 func loadout_screen() -> LoadoutScreen:
@@ -375,8 +459,8 @@ func begin_rebind(action: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open or _loadout.is_open() or showing_opener():
-		return  # the loadout screen and the opener take their own keys (Esc goes back to the menu)
+	if not _open or _loadout.is_open() or showing_opener() or showing_card():
+		return  # the loadout screen, the opener and the first-launch card take their own keys
 	if _capturing != "":
 		var button := event is InputEventKey or event is InputEventMouseButton
 		if button:
@@ -685,6 +769,10 @@ func _build() -> void:
 	_loadout.name = "Loadout"
 	add_child(_loadout)
 	_loadout.closed.connect(_on_loadout_closed)
+	_card = FirstLaunchCard.new()
+	_card.name = "FirstLaunchCard"
+	add_child(_card)
+	_card.answered.connect(_on_card_answered)
 
 
 func _build_controls(col: VBoxContainer) -> void:

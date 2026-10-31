@@ -55,6 +55,8 @@ extends CanvasLayer
 ## said its line (link()) and the guide has said its own; the machine goes on drawing.
 
 signal finished(skipped: bool)
+## The player turned "Skip the intro next time" on or off in the intro's Esc menu (C42); the Esc menu keeps it.
+signal skip_next_changed(on: bool)
 
 const SfxSynth = preload("res://scripts/sfx_synth.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
@@ -119,6 +121,8 @@ var freeze_frame := true
 ## The session's guide link (scripts/guide/guide_link.gd) the link beat asks the player's AI through (C41), or null:
 ## then the scripted guide. The menu hands it in. Untyped on purpose, so a test's fits.
 var guide = null
+## "Skip the intro next time" as the intro's Esc menu first shows it (C42; the Esc menu hands in the kept answer).
+var skip_next := false
 
 var _t: OpenerTuning
 var _data: OpenerData
@@ -184,6 +188,13 @@ var _lock: AudioStreamPlayer
 var _rise: AudioStreamPlayer
 var _steps: Array[AudioStreamPlayer] = []
 
+## Skipping (C42): the intro's own Esc menu and its hold-to-skip, whether it is paused in that menu, and how long
+## Space has been held.
+var _menu: IntroMenu
+var _paused := false
+var _space_down := false
+var _hold_s := 0.0
+
 static var _sounds := {}
 
 
@@ -200,6 +211,12 @@ func _ready() -> void:
 	_link.guide = guide
 	_palette = OpenerPalette.named(OpenerPalette.DEFAULT_ID).readable()
 	_build()
+	_menu = IntroMenu.new()
+	_menu.name = "IntroMenu"
+	add_child(_menu)
+	_menu.resume_pressed.connect(resume)
+	_menu.skip_pressed.connect(skip)
+	_menu.skip_next_toggled.connect(_on_skip_next)
 	_mouse_was = Input.mouse_mode
 	_mouse_held = true
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
@@ -339,9 +356,64 @@ func luma_at(seconds: float) -> float:
 	return level
 
 
-## Leave now, as Esc does (C42's skip logic calls this).
+## Leave now: the intro's Esc menu's "Skip intro", holding Space, or the Esc menu closing (C42).
 func skip() -> void:
 	_finish(true)
+
+
+## The intro paused in its own Esc menu (C42): its clock, its sounds and the AI's beat held where they are, the game
+## behind paused too (when it pauses it), the mouse shown for the menu.
+func pause() -> void:
+	if _phase == Phase.DONE or _paused:
+		return
+	_paused = true
+	_space_down = false
+	_hold_s = 0.0
+	_menu.set_hold(0.0)
+	_hold_sounds(true)
+	if pause_world and not get_tree().paused:
+		get_tree().paused = true
+		_paused_world = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_menu.open(skip_next)
+	_event("paused")
+
+
+## On from where it was paused.
+func resume() -> void:
+	if not _paused:
+		return
+	_paused = false
+	_menu.close()
+	_hold_sounds(false)
+	if _phase != Phase.DONE:
+		Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	_event("resumed")
+
+
+## Whether it is paused in its Esc menu.
+func is_paused() -> bool:
+	return _paused
+
+
+## The intro's Esc menu and its skip hint.
+func menu() -> IntroMenu:
+	return _menu
+
+
+## How far Space has been held toward a skip (0 to 1).
+func hold_share() -> float:
+	return clampf(_hold_s / IntroMenu.HOLD_S, 0.0, 1.0)
+
+
+func _on_skip_next(on: bool) -> void:
+	skip_next = on
+	skip_next_changed.emit(on)
+
+
+func _hold_sounds(held: bool) -> void:
+	for player in find_children("*", "AudioStreamPlayer", true, false):
+		(player as AudioStreamPlayer).stream_paused = held
 
 
 ## Whether the data's values have been taken (and the lines built from them).
@@ -525,7 +597,18 @@ static func _run_attr(runs: Array, pos: int) -> String:
 func _process(delta: float) -> void:
 	if _phase == Phase.DONE:
 		return
-	_elapsed += delta / maxf(Engine.time_scale, 0.01)
+	var real := delta / maxf(Engine.time_scale, 0.01)
+	_menu.step(real)
+	if _paused:
+		return
+	if _space_down:
+		_hold_s += real
+		_menu.set_hold(hold_share())
+		if _hold_s >= IntroMenu.HOLD_S:
+			_event("held")
+			_finish(true)
+			return
+	_elapsed += real
 	_ticks += 1
 	if not _taken and (_elapsed >= _t.take_by or _data.is_ready()):
 		_take()
@@ -745,7 +828,7 @@ func _step_link(delta: float) -> void:
 	if _locked_at < 0.0 and _elapsed >= _t.answer_from and _link.done():
 		_locked_at = _elapsed
 		_pit.set_lock(_elapsed)
-		_link_beat.lock(_elapsed, _link.line(), _link.live(), _link.latency_ms(), _link.why(), _link.agent())
+		_link_beat.lock(_elapsed, _link.line(), _link.live(), _link.latency_ms(), _link.why(), _link.agent(), _link.reused())
 		_event("answer" if _link.live() else "scripted")
 		_lock.play()
 	if _elapsed >= _t.guide_at and event_time("guide_start") < 0.0:
@@ -852,6 +935,10 @@ func _finish(skipped: bool) -> void:
 	if _phase == Phase.DONE:
 		return
 	_phase = Phase.DONE
+	_paused = false
+	_space_down = false
+	_menu.close()
+	_menu.set_hold(0.0)
 	_event("skipped" if skipped else "done")
 	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat, _carrier, _lock, _rise] + _keys + _steps:
 		player.stop()
@@ -914,15 +1001,28 @@ func _take_frame() -> Texture2D:
 	return ImageTexture.create_from_image(still)
 
 
-# --- Input: Esc leaves, nothing else does anything. ---
+# --- Input: Esc pauses in the intro's Esc menu, holding Space skips, nothing else does anything. ---
 
 func _input(event: InputEvent) -> void:
 	if _phase == Phase.DONE:
 		return
 	if _is_escape(event):
 		get_viewport().set_input_as_handled()
-		_finish(true)
+		if _paused:
+			resume()
+		else:
+			pause()
 		return
+	if _paused:
+		return  # the menu takes its own keys and clicks; the Esc menu behind swallows the rest
+	var key := event as InputEventKey
+	if key != null and (key.keycode == KEY_SPACE or key.physical_keycode == KEY_SPACE) and not key.echo:
+		_space_down = key.pressed
+		if not key.pressed:
+			_hold_s = 0.0
+			_menu.set_hold(0.0)
+	if (key != null and key.pressed and not key.echo) or (event is InputEventMouseButton and event.pressed) or (event is InputEventJoypadButton and event.pressed):
+		_menu.poke()
 	# The fake terminal ignores typing, and nothing behind it acts on a key or a click while it plays.
 	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
 		get_viewport().set_input_as_handled()

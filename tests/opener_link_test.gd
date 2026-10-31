@@ -549,10 +549,13 @@ func _escape_checks() -> void:
 		key.physical_keycode = KEY_ESCAPE
 		key.pressed = true
 		root.push_input(key)
+		# C42: Esc pauses the opener in its own Esc menu; its "Skip intro" leaves.
+		var held := o.is_paused() and o.playing()
+		o.menu().buttons()[1].pressed.emit()
 		await process_frame
 		var aborted: int = stub[0].aborts if not stub.is_empty() else 0
-		var label := "acceptance: Esc %s (%s at %.2f s, the call %s) leaves at once, skipped; the call stopped, the copy and its name gone" % [when[0], phase, o.elapsed(), "running" if calling else "already over"]
-		_check(label, state["done"] and state["skipped"] and not o.playing() and o.pit() == null and o.get("_user") == "" and not guide.is_busy() and (aborted == 1 if calling else true) and (calling if when[1] < t.answer_by else true))
+		var label := "acceptance: Esc %s (%s at %.2f s, the call %s) pauses it, and \"Skip intro\" leaves at once, skipped; the call stopped, the copy and its name gone" % [when[0], phase, o.elapsed(), "running" if calling else "already over"]
+		_check(label, held and state["done"] and state["skipped"] and not o.playing() and o.pit() == null and o.get("_user") == "" and not guide.is_busy() and (aborted == 1 if calling else true) and (calling if when[1] < t.answer_by else true))
 		o.free()
 		_shut(guide)
 		await process_frame
@@ -579,6 +582,7 @@ func _demo_checks() -> void:
 ## A guide link of the test's own: a fake detector naming claude, the adapter `make` makes from the guide tuning, and
 ## the player's answer (yes unless `allowed` is false) in its own settings file under the test's folder.
 func _guide(settings: String, make: Callable, allowed: bool = true) -> Link:
+	OpenerLink.forget_session()  # a new session each time (C42 keeps a live answer for a session's replays)
 	var guide := Link.new()
 	guide.settings_path = _root.path_join(settings)
 	Settings.save("claude", allowed, guide.settings_path)

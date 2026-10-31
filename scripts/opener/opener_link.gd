@@ -19,6 +19,11 @@ extends RefCounted
 ## (stop()). Demo data (the link's demo) calls nothing: DEMO_LINE after DEMO_LATENCY_MS, shown as live, as the boot
 ## screen's canned answer is. It never loads a model or changes one: a local server with nothing loaded answers
 ## "not loaded" and the scripted line plays.
+##
+## Replays keep the session's calls (C42): once the player's AI has answered live this session, a replay of the opener
+## shows that same answer again (SIGKILL's copy of the line it picked, its latency, marked live and "earlier") and calls
+## nothing, unless the AI has been turned off or lost since (then the scripted line and why, as ever). A call that
+## failed is not kept: the next replay may ask again, under the session's pace and cap.
 
 const Request = preload("res://scripts/ai/guide_request.gd")
 const HUD_TUNING_PATH := "res://resources/hud.tres"
@@ -51,6 +56,9 @@ const WHY_STOPPED := "stopped"
 
 enum State { IDLE, WAITING, ASKING, DONE }
 
+## The live answer this session (C42): {line, latency_ms}, or empty; kept for replays, never saved.
+static var _kept := {}
+
 ## The session's guide link (scripts/guide/guide_link.gd), or null: then the scripted line. Untyped on purpose, so a
 ## test's link fits.
 var guide = null
@@ -66,6 +74,7 @@ var _serial := -1
 var _cap := CAP_FALLBACK
 var _asked := false
 var _prompt := ""
+var _reused := false
 
 
 func _init() -> void:
@@ -86,6 +95,16 @@ func begin(elapsed: float) -> void:
 		_demo = true
 		_demo_done_at = elapsed + DEMO_LATENCY_MS / 1000.0
 		_state = State.ASKING
+		return
+	if not _kept.is_empty():
+		match guide.refusal(_cap):
+			"off":
+				_fall_back(WHY_OFF)
+			"no_ai", "guarded":
+				_fall_back(WHY_NONE)
+			_:
+				_reused = true
+				_answer(_kept["line"], _kept["latency_ms"])
 		return
 	_state = State.WAITING
 
@@ -160,6 +179,7 @@ func _poll_call(late: bool) -> void:
 	var text = done.get("text", "")
 	if done.get("ok", false) and text is String:
 		_answer(pick(text), int(done.get("latency_ms", -1)))
+		_kept = {"line": _line, "latency_ms": _latency_ms}
 	else:
 		_fall_back(_word(done.get("error_kind", "")))
 
@@ -223,9 +243,24 @@ func agent() -> String:
 	return guide.display_name() if guide != null else ""
 
 
-## True once a call was started (never under demo data, never when the link refused).
+## True once a call was started (never under demo data, never when the link refused, never for a kept answer).
 func asked() -> bool:
 	return _asked
+
+
+## True when the line is the answer kept from earlier this session (C42), shown again with no call.
+func reused() -> bool:
+	return _reused
+
+
+## Forgets the session's kept answer (the checks, between their sessions).
+static func forget_session() -> void:
+	_kept = {}
+
+
+## Whether a live answer is kept this session.
+static func kept() -> bool:
+	return not _kept.is_empty()
 
 
 ## The whole prompt of the call it started, as the request builder made it (for the checks), or "".

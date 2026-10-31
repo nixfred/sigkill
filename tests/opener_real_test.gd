@@ -536,7 +536,7 @@ func _menu_checks() -> void:
 	await process_frame
 	var off = menu.open_opener()
 	_check("acceptance: opt-in off means demo data only: with no answer saved, the opener plays the demo data and no reader is made", off != null and off.data is DemoOpenerData and made.is_empty())
-	_key(KEY_ESCAPE)
+	_leave(menu)
 	await process_frame
 	menu.close()
 	menu.open()
@@ -561,15 +561,15 @@ func _menu_checks() -> void:
 	_check("acceptance: on, the opener plays the player's own data (here the fake home's): the prompt \"%s\", the theme's colours (background %s), its folders scrolling, its uptime ticking" % [o.prompt_text() if is_instance_valid(o) else "", drawn.get("background", Color.BLACK).to_html(false)], ok_source and o.prompt_text() == USER + "@" + HOST + ":~$ " and lines[0].begins_with(USER + "@" + HOST + ":~$ ") and drawn.get("background") == Color.html("#0b1015") and drawn.get("foreground") == Color.html("#c8d3dc") and lines.has("~/code/game/node_modules") and lines.has("~/" + CJK) and lines.has("~/" + _emoji_dir()) and lines[-2].begins_with("up 3 days, 04:0"), screen.left(200).c_escape())
 	_check("its beats keep the PRD's windows on real data: the prompt typed by 0:15 (%.2f s), the uptime inside 0:15 to 0:35 (%.2f s); the late-night line from its times (\"%s\")" % [o.event_time("prompt_done"), o.event_time("uptime"), o.late_text()], o.event_time("prompt_done") < 15.0 and o.event_time("uptime") > 15.0 and o.event_time("uptime") < 35.0 and o.late_text() == Opener.NEVER_LATE + Opener.NEVER_LATE_ECHO)
 	var reader: RealOpenerData = made[0]
-	_key(KEY_ESCAPE)
+	_leave(menu)
 	await process_frame
 	await process_frame
-	_check("acceptance: as it ends (Esc here), the reader is dropped: no value of the machine's left in it, the menu back as it was", reader.real_fields().is_empty() and reader.user() == DemoOpenerData.USER and menu.is_open() and not menu.showing_opener())
+	_check("acceptance: as it ends (Esc and \"Skip intro\" here), the reader is dropped: no value of the machine's left in it, the menu back as it was", reader.real_fields().is_empty() and reader.user() == DemoOpenerData.USER and menu.is_open() and not menu.showing_opener())
 	menu.close()
 	Privacy.save_real_data(false, path)
 	var no_real = menu.open_opener()
 	_check("acceptance: real-machine data off beats the answer: demo data, no reader made", no_real != null and no_real.data is DemoOpenerData and made.size() == 1)
-	_key(KEY_ESCAPE)
+	_leave(menu)
 	await process_frame
 	menu.close()
 	await _drop(main)
@@ -581,7 +581,7 @@ func _menu_checks() -> void:
 		return _reader()
 	var demo_run = demo_menu.open_opener()
 	var demo_ok: bool = demo_run != null and demo_run.data is DemoOpenerData and made.size() == 1
-	_key(KEY_ESCAPE)
+	_leave(demo_menu)
 	await process_frame
 	demo_menu.open_settings()
 	await process_frame
@@ -638,6 +638,14 @@ func _drop(main: Node) -> void:
 	if left != null:
 		left.shut_down(null)
 	await process_frame
+
+
+## Esc, then the intro's "Skip intro" (C42: Esc pauses the opener in its own Esc menu): the opener left, as Esc did.
+func _leave(menu) -> void:
+	_key(KEY_ESCAPE)
+	var o = menu.opener()
+	if o != null and o.is_paused():
+		o.menu().buttons()[1].pressed.emit()
 
 
 func _key(code: Key) -> void:

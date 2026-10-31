@@ -16,12 +16,15 @@ const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
 const NetSession = preload("res://scripts/net/net_session.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
+const SettingsFile = preload("res://scripts/settings/settings_file.gd")
 ## The game's own flag that starts the opener (C38) as the arena loads, from the Esc menu, as if picked there: for
-## the tests and the captures. The first launch's own opener is C42's to decide.
+## the tests and the captures. The first launch's own (C42: the card, then the opener once) is the Esc menu's.
 const OPENER_FLAG := "--opener"
 
 ## The flag is taken once a run: an R reload of the arena never plays the opener again.
 static var _opener_flag_taken := false
+## The first launch (C42) is looked at once a run, as the arena first loads.
+static var _first_launch_taken := false
 
 var _remaining := 0
 var _total := 0
@@ -113,9 +116,17 @@ func _ready() -> void:
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
+	# The first launch's state (C42) in the game's own settings file, only in a real run: never headless, never under a
+	# --script run (the tests and the capture tools), which hand in a file of their own if they want one.
+	if DisplayServer.get_name() != "headless" and not OS.get_cmdline_args().has("--script"):
+		_hud.pause_menu().first_launch_path = SettingsFile.DEFAULT_PATH
 	if launch_args.has(OPENER_FLAG) and not _opener_flag_taken:
 		_opener_flag_taken = true
+		_first_launch_taken = true
 		_play_opener.call_deferred()
+	elif not _first_launch_taken:
+		_first_launch_taken = true
+		_hud.pause_menu().begin_first_launch.call_deferred()
 
 
 ## The opener from the Esc menu (C38), as the flag asks.

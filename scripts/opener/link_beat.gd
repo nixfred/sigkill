@@ -25,6 +25,8 @@ const BADGE_NONE := "your AI"
 const LIVE := "live"
 const STATUS_LINKING := "linking %s"
 const STATUS_LIVE := "live  answered in %.2f s"
+## A live answer kept from earlier this session, shown again with no call (C42).
+const STATUS_KEPT := "live  earlier, %.2f s"
 const STATUS_SCRIPTED := "scripted guide (%s)"
 const SPINNER := ["|", "/", "-", "\\"]
 ## The sizes at 1080 lines (scaled with the window): margin, the badge's box, the panel's width, the fonts.
@@ -62,6 +64,7 @@ var _live := false
 var _latency_ms := -1
 var _why := ""
 var _agent := ""
+var _kept := false
 var _lock_at := -1.0
 var _elapsed := 0.0
 var _scale := 1.0
@@ -96,10 +99,11 @@ func setup(tuning: OpenerTuning) -> void:
 
 ## The link's result, as it locked at `at` on the opener's clock: the line, whether it came live, its latency and
 ## why there is none (OpenerLink's), the agent's name.
-func lock(at: float, line: String, live: bool, latency_ms: int, why: String, agent: String) -> void:
+func lock(at: float, line: String, live: bool, latency_ms: int, why: String, agent: String, kept: bool = false) -> void:
 	if _lock_at >= 0.0:
 		return
 	_lock_at = at
+	_kept = kept
 	_answer = line
 	_live = live
 	_latency_ms = latency_ms
@@ -164,7 +168,7 @@ func step(elapsed: float) -> void:
 		_status.text = STATUS_LINKING % SPINNER[floori(elapsed * 11.0) % SPINNER.size()]
 		_status.add_theme_color_override("font_color", _text_color)
 	elif _live:
-		_status.text = (STATUS_LIVE % (_latency_ms / 1000.0)) if _latency_ms >= 0 else LIVE
+		_status.text = ((STATUS_KEPT if _kept else STATUS_LIVE) % (_latency_ms / 1000.0)) if _latency_ms >= 0 else LIVE
 		_status.add_theme_color_override("font_color", _text_color)
 	else:
 		_status.text = STATUS_SCRIPTED % _why
