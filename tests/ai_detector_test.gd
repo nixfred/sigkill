@@ -358,7 +358,7 @@ func _safety_checks() -> void:
 		if FileAccess.get_file_as_string(file).contains("scripts/ai/"):
 			users.append(file)
 	users.sort()
-	_check("outside scripts/ai only the boot screen (C10), the guide link, the model loader (C11b), the guide HUD (C11) and the round announcer (C12) use the detector", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd", "res://scripts/guide/guide_link.gd", "res://scripts/guide/ollama_loader.gd", "res://scripts/hud/guide_hud.gd", "res://scripts/round/round_announcer.gd"], ", ".join(users))
+	_check("outside scripts/ai only the boot screen (C10), the guide link, the model loader (C11b), the guide HUD (C11), the round announcer (C12) and the opener's link (C41, the request builder only) use the detector", Array(users) == ["res://scripts/boot/boot_sequence.gd", "res://scripts/boot/guide_settings.gd", "res://scripts/guide/guide_link.gd", "res://scripts/guide/ollama_loader.gd", "res://scripts/hud/guide_hud.gd", "res://scripts/opener/opener_link.gd", "res://scripts/round/round_announcer.gd"], ", ".join(users))
 
 
 func _http(head: String, body: PackedByteArray) -> PackedByteArray:

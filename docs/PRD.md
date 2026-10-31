@@ -1,4 +1,4 @@
-# SIGKILL PRD (v0.3, 2026-10-31)
+# SIGKILL PRD (v0.4, 2026-10-31)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -136,6 +136,7 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
   - **C11:** the guide HUD. T asks your AI anything, and O turns it on or off.
   - **C11b:** a local model loads only with the player's yes.
   - **C12:** round coaching and the opt-in roast announcer, on B.
+  - **C41:** the opener's one call, at its link beat (5.7). It is told only that the game is starting, and SIGKILL shows its own copy of the fixed line the AI picked, marked live.
 - Tests use fakes and stub binaries only. No test or capture calls a real AI.
 - **One voice** (STORY.md, pick 2): every line in the game is "your AI's". An answer that came live from the player's own AI carries a small "live" mark, so no line is ever misattributed.
 
@@ -189,7 +190,7 @@ Safety for the opener (on top of section 6):
 - Demo-data mode for every capture; trailers never show real machine data.
 - Music and SFX original (e.g. generated with ElevenLabs), no ripped audio.
 
-**As built** (C38, C39 and C40 are done; C41 is next, then C42):
+**As built** (C38, C39, C40 and C41 are done; C42 is next):
 - **C38, 0:00 to 0:35, on demo data:**
   - The fake crash, the fake terminal in the theme's colours, and the typed lines.
   - An `OpenerData` seam, read once as the opener starts.
@@ -217,11 +218,22 @@ Safety for the opener (on top of section 6):
   - The terminal moves into a viewport of its own, pixel for pixel, and shrinks away to one lit screen on a monolith in a city of folders.
   - The fall through the directory tree begins at 0:50 and lands by 1:10. The node_modules pit is walled in the 10 PRINT maze.
   - Nothing new is read. The hot process at the bottom is the demo's "node" for every source, because no reader reads processes yet. The real name comes with the read-only process reader that M5's process enemies and C43 need, under the same opt-in.
-- **C41 (next), 1:10 to 1:35:**
-  - "Linking your agent...", and the player's real AI answering live, told only that the game is starting.
-  - The scripted guide's line.
-  - The copy walks out wearing the player's username. The story calls it `~` (STORY.md section 5), and the username stays in the opener.
-- **C42, 1:35 to 2:00:** the `kill -9` forge, the first kill, the title slam, the music and the skip logic, plus the first-launch content note and opt-in question.
+- **C41, 1:10 to 1:35** (scripts/opener/opener_link.gd, link_beat.gd, pit_beat.gd, copy_art.gd):
+  - **"Linking your agent..."** types itself as the guide HUD comes alive (the "your AI" badge, its signal bars, the panel) and lines of signal climb out of the pit.
+  - **The call.** The player's real AI is asked once, through the session's guide link (5.4: the agent's own CLI with tools off, never omarchy-agent, only with the player's yes, the session's pace and cap). The call starts at 0:50, as the fall begins.
+    - **What it is told, all of it:** the guide's fixed preamble, "Game stats: none", and SIGKILL's own text saying the game is starting and asking for one of five fixed lines. No opener data, no user or host name, no folder, no time, no stats.
+    - **What is shown:** SIGKILL's copy of the line it picked, marked "live" (STORY.md's one voice), with the call's real latency on the badge. The AI's own words never reach the screen.
+  - **The fallbacks.** AI off, no agent, the cap, an error, a local model not loaded, or no answer by 1:17: the scripted line instead, the badge saying why, any call still running stopped. Every beat comes at the same moment either way: the opener never waits. Demo data calls nothing (a canned answer).
+  - **The model.** A local model server is never asked to load or change a model (no num_ctx). The opener loads nothing, so nothing is left to unload; the guide link still unloads anything the game loaded when the game exits.
+  - **The guide's line:** "I've been stuck in here with them. They look like you." (the PRD's words).
+  - **The copy** walks up out of the pit on a stair of red hexagons that light under its feet, forming as it crosses the rim, and stops 4.2 m in front of the player on a whole step, wearing the player's username.
+    - **The username** is the one the opener already took, cleaned; the demo's "user" unless the C39 opt-in is on. It is never sent, saved or logged, and is dropped as the opener ends.
+    - **The look:** A5's armour lit crimson in its seams, the player's teal on its rim. Its head is the nixfred hexagon with the prompt lit red and mirrored, `_<`, and the brand's ring of six bars behind it.
+    - **It mirrors the player's look** once it stands. The story calls it `~` from mission 1 (STORY.md section 5); the opener never says who `~` is.
+  - **Sounds**, all procedural: the carrier, the lock, the copy's rise and its steps.
+  - **The hand-off to C42** is at 1:34.4, the copy standing. Until C42, the opener fades and ends at 1:35.
+  - **The test** is step 52 (tests/opener_link_test.gd), stubs only.
+- **C42 (next), 1:35 to 2:00:** the `kill -9` forge, the first kill, the title slam, the music and the skip logic, plus the first-launch content note and opt-in question.
 
 ### 5.8 Community prompts and credits (DECIDED by Fred 2026-10-26)
 SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. The producer filters every prompt through the section 6 safety rules before it becomes a chunk brief; raw public text never goes to Larry. If a prompt makes it in, its author is credited.
@@ -317,7 +329,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 51 steps as of T1.
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 52 steps as of C41.
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -337,15 +349,14 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
-1. D1, this PRD (in progress).
-2. The rest of the opener: C41 (next), then C42.
-3. The missions: C35, C36 and C37 (mission 1), then missions 2 to 7.
-4. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
-5. C43, the Audit Trail visor, then C44, the credits.
-6. 1.0.
+1. The end of the opener: C42 (next). D1 and C41 are done.
+2. The missions: C35, C36 and C37 (mission 1), then missions 2 to 7.
+3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
+4. C43, the Audit Trail visor, then C44, the credits.
+5. 1.0.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-10-31): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-10-31, after C41): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -452,8 +463,8 @@ Statuses are taken from `git log` (2026-10-31): **done**, **in progress**, **nex
 | C38 | Opener: fake terminal + typed lines (demo data first). | done | `bda0ecc`, `ee41bbd`, `0f94ca7` |
 | C39 | Opener: real-data reader (read-only names/sizes/counts/mtimes/theme, opt-in, fake-data fallback). | done | `8c74319`, `a349d1a` |
 | C40 | Opener: shrink-away reveal + directory-tree fall. | done | `e6d0b73`, `2d4466e` |
-| C41 | Opener: AI link beat + the copy of you. | **next** | |
-| C42 | Opener: kill -9 forge, first kill, title slam, music, skip logic; the first-launch content note and opt-in question. | planned | |
+| C41 | Opener: AI link beat + the copy of you. | done | `7106cec`, `14c7c2b`, `59095b3` |
+| C42 | Opener: kill -9 forge, first kill, title slam, music, skip logic; the first-launch content note and opt-in question. | **next** | |
 | C35 | Mission framework (objectives, terminal-log pickups, AI dialogue triggers). | planned | |
 | C36 | Cyberpunk ruins district art kit. | planned | |
 | C37 | First mission end to end: mission 1, `login`. | planned | |
@@ -464,7 +475,7 @@ Statuses are taken from `git log` (2026-10-31): **done**, **in progress**, **nex
 | Chunk | What | Status | Commits |
 |---|---|---|---|
 | T1 | Teaser footage (Fred, 2026-10-30 8:53 PM ET: a 70 second teaser of real in-game footage, demo data, for the top of playsigkill.com): tools/trailer_capture.sh renders the clips (docs/TRAILER.md); the edit and the original soundtrack are the producer's. | done | `b2392e8`, `f17ae86`, `bb82508`, `1087887`, `67e8e8c` |
-| D1 | Full PRD rewrite (this file, v0.3), README "Where we are", three community credits. | **in progress** | |
+| D1 | Full PRD rewrite (this file, v0.3), README "Where we are", three community credits. | done | `e1e658d`, `e79b9e5` |
 
 T1 keeps 5.7's rule that trailers never show real machine data. The tool refuses to run without `--demo`, with the opener's real data on, or headless. It renders a `git archive` copy on a private virtual display, with fresh, empty user data for every take.
 
