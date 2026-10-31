@@ -87,6 +87,7 @@ var _frame := 0
 var _sounds: Array = []
 var _events: Array = []
 var _heard := {}
+var _names := {}
 var _guard := true
 var _refused := false
 
@@ -350,6 +351,15 @@ func _roll() -> void:
 	_clock = 0.0
 	_frame = 0
 	_heard.clear()
+	_names.clear()
+	var trios: Array = _player.get("_sfx")
+	for slot in trios.size():
+		var weapon: String = _player.inventory.defs[slot].id
+		for k in 3:
+			_names[trios[slot][k].get_instance_id()] = "%s %s" % [weapon, ["fire", "hit", "reload"][k]]
+	var chime = _main.get_node("Hud").round_hud().get("_chime")
+	if chime is AudioStreamPlayer:
+		_names[chime.get_instance_id()] = "kill chime"
 	for p in _audio_players():
 		_heard[p.get_instance_id()] = p.get_playback_position() if p.playing else -1.0
 	print("trailer: roll at frame %d" % Engine.get_frames_drawn())
@@ -380,16 +390,18 @@ func _audio_players() -> Array:
 	return root.find_children("*", "AudioStreamPlayer", true, false) + root.find_children("*", "AudioStreamPlayer3D", true, false) + root.find_children("*", "AudioStreamPlayer2D", true, false)
 
 
-## Every sound that started this frame, by the player that played it.
+## Every sound that started this frame (a looping one's restart is not a start), by what it is: the player's own by
+## weapon and kind, the round's kill chime, else the node's name (with its parent's when the node has none of its own).
 func _listen() -> void:
 	for p in _audio_players():
 		var key: int = p.get_instance_id()
 		var was: float = _heard.get(key, -1.0)
 		var now: float = p.get_playback_position() if p.playing else -1.0
-		if p.playing and (was < 0.0 or now + 0.02 < was):
-			var who := String(p.name)
-			if who.contains("@") or who.begins_with("AudioStreamPlayer"):
-				who = String(p.get_parent().name) + "/" + who.get_slice("@", 0)
+		var loops: bool = p.stream is AudioStreamWAV and p.stream.loop_mode != AudioStreamWAV.LOOP_DISABLED
+		if p.playing and (was < 0.0 or (now + 0.02 < was and not loops)):
+			var who: String = _names.get(key, String(p.name).replace("@", " ").strip_edges())
+			if who.begins_with("AudioStreamPlayer"):
+				who = String(p.get_parent().name).replace("@", " ").strip_edges() + " sound"
 			_sounds.append({"t": snappedf(_clock - 1.0 / 60.0, 0.001), "name": who})
 		_heard[key] = now
 
