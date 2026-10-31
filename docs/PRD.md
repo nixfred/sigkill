@@ -1,4 +1,4 @@
-# SIGKILL PRD (v0.8, 2026-10-31)
+# SIGKILL PRD (v0.9, 2026-10-31)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -179,7 +179,7 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - its objectives: kill so many of a daemon type, reach a point, pick up a terminal log, or survive;
     - its terminal logs, its lines (your AI's, the Auditor's, `~`'s), its register shifts, its own fail rule (a time limit) and the mission after it.
 
-    All seven are in from STORY.md: titles, order and handout real, and the objectives of 2 to 7 placeholders their chunks fill in. Mission 1, `login`, was a first cut (on the arena as C35 built it, in its ruins since C36) until C37 built it for real. A hidden test range (never listed, never recorded) runs every kind.
+    All seven are in from STORY.md: titles, order and handout real, and the objectives of 3 to 7 placeholders their chunks fill in. Mission 1, `login`, was a first cut (on the arena as C35 built it, in its ruins since C36) until C37 built it for real; mission 2, `defunct`, was built for real in M2. A hidden test range (never listed, never recorded) runs every kind.
   - **The runner, in the arena:**
     - a card, then the objectives one after another;
     - the round clock held, ICE standing down unless the mission has it, only its loadout carried (objectives can hand weapons over mid-mission);
@@ -219,7 +219,16 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - **Feel:** each objective done restores health; the end holds 4.5 s before its card, the unlock toasts waiting for it; your AI's newest line wins.
     - **Pace and cost:** a scripted first-timer (`tools/pace_run.gd`) clears it in 2.3 to 2.8 minutes over three seeds (a human first-timer is slower: 4 to 6 minutes is an estimate); the busiest fight, the pack in the plaza, costs 2.47 ms of GPU a frame at 1920x1080 (a recent laptop GPU, high preset).
     - **The C36 leftovers, done:** the register chip follows the world; no neon puddle under a daemon; crisp monolith cracks; a district's first build behind a black frame with the command typed on it. Check step 56.
-- **Missions 2 to 7:** one chunk each, after C37.
+- **Mission 2, `defunct` (M2):** end to end.
+  - **As built (M2):** mission 2 from STORY.md, built for real on mission 1's machinery, in a district of its own, `tty_row` (the closed terminals): a long street of dead shops in the cyberpunk rain. No register shift (STORY.md asks for none).
+    - **Its beats:** find six zombies asleep in the rain (ping put in hand as it begins; a sleeper wakes with its pair as you come near or hit it); follow them to where they queued, a dead storefront (`PTS/4`, its window frozen on its last screen, its OPEN sign on a timer nobody owns); clear the queue of ten at its door (it wakes as one; the fork bomb and `fork()` put in hand for the crowd); read the storefront's log (`the shop closed six years ago. the lights are on a timer nobody owns.`; two more are optional); follow every zombie's thread down the street to their parent; kill its guard, a rogue.d elite; kill the parent: a tower of armoured process frames round an amber core, about 11 m tall, sealed until its guard is down, forking zombies, no one hit taking more than 150 off it. Then every zombie still standing drops at once, reaped by init and credited to nobody, the storefront's lights go out, its owner field shows over it (`4087  owner: you`), and your AI: "It's you. Not 'like you'. You." Then `exit 0` (or `exit 137` on a death).
+    - **Its own daemons:** 25 zombies at most, one rogue.d elite and the parent (27), all its own and finite; none out of a vent: they stand where they were left (spots) or in a line out from a door (a queue).
+    - **New mission data:** an objective's `arms` (weapons in hand as it begins); waves that sleep until a trigger, a hurt or the player near (`dormant`, `wakes`; the trigger `woke:<id>`), stay sealed until a trigger (`sealed`), carry no tag (`tagged`), cap a hit (`hit_cap`); a `parent` type that `reaps` a daemon type (every one of them threaded to it and reaped at once when it dies) with an `epitaph`; props `spot`, `queue` and `shop` (`dark`: its lights put out); a district's dead storefront (`RuinsSet.shop`, its sign and its screen).
+    - **Never stalled:** a kill objective's own daemons shot before it begins count as it begins; a mission's walkers never step off open floor into a hole or a ruin.
+    - **The gate and the handout:** mission 1's three in hand; ping and the crowd weapons each put in hand as their beat begins, told by an "IN HAND" toast; every ability still locked.
+    - **The C37 leftovers, done:** toasts waiting through a reload are kept (quitting during the end's hold); your AI's lines wait their turn, two at most, instead of the newest skipping one; a mission's walkers that cannot see their prey find their way round the ruins (the walk grid as an A* grid) instead of bunching against cover; the vents' glyphs fade right at the camera; a match starting mid-mission puts the arena's own four back. Sleepers and crowds carry no name tags.
+    - **Pace and cost:** the scripted first-timer clears it in 2.3 to 2.7 minutes over three seeds, no deaths (it knows where every sleeper stands; a human first-timer searching the rain is slower: 5 to 7 minutes is an estimate); the busiest fight, the queue awake at the storefront, costs 2.98 ms of GPU a frame at 1920x1080 in the final capture (2.89 to 3.09 over five runs) (a recent laptop GPU, high preset). Check step 57.
+- **Missions 3 to 7:** one chunk each, after mission 2.
 
 ### 5.7 The opener: "you got tricked into this" (DECIDED by Fred 2026-10-25 10:45 PM ET)
 A 2-minute, darkest-possible cold open, real-time in-engine (never pre-rendered), built from the player's real machine so it makes them blink. Skippable after the first viewing.
@@ -388,7 +397,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 56 steps as of C37.
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 57 steps as of mission 2 (M2).
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -409,13 +418,13 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
-2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), then missions 2 to 7 (next).
+2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), then missions 3 to 7 (next).
 3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
 4. C43, the Audit Trail visor, then C44, the credits.
 5. 1.0.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-10-31, after C37): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-10-31, after mission 2): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -527,7 +536,8 @@ Statuses are taken from `git log` (2026-10-31, after C37): **done**, **in progre
 | C35 | Mission framework (objectives, terminal-log pickups, AI dialogue triggers). | done | `a724aae`, `aee2e1c` |
 | C36 | Cyberpunk ruins district art kit. | done | `31ef6f0`, `0650508`, `63b99bc` |
 | C37 | First mission end to end: mission 1, `login`. | done | `acfe8b4`, `0ace580`, `fa6e436` |
-| Missions 2 to 7 | Further missions one chunk each. | **next** | |
+| M2 | Mission 2, `defunct`, end to end, in its own district; the C37 leftovers. | done | `4958fcd`, `76ddd67`, `149cec5`, `a11c96b`, `f2d5ba6` |
+| Missions 3 to 7 | Further missions one chunk each. | **next** | |
 
 **Website, teaser and docs**
 
