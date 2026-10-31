@@ -79,6 +79,13 @@ func folder_counts() -> PackedInt32Array:
 	return PackedInt32Array()
 
 
+## The process running hottest, for the red beat at the bottom of the fall (C40; PRD 5.7: "their top CPU process,
+## named, pulses red at the bottom"); "" when unknown, and the opener shows the demo's. Nothing reads processes yet
+## (C39's reader reads none and C40 added no reads), so every source but the demo leaves it "".
+func top_process() -> String:
+	return ""
+
+
 ## Seconds since the machine booted, as the opener starts; the opener ticks it on from there.
 func uptime_s() -> int:
 	return 0

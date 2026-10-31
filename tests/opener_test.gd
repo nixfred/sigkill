@@ -1,6 +1,6 @@
 extends SceneTree
-## Headless test of the opener's first 35 seconds for SIGKILL (C38; PRD 5.7, "you got tricked into this", 0:00 to
-## 0:35). scripts/check.sh runs it as step 48, and any FAIL exits 1.
+## Headless test of the opener for SIGKILL (C38: PRD 5.7, "you got tricked into this", 0:00 to 0:35; C40: the
+## shrink-away and the fall, 0:35 to 1:10). scripts/check.sh runs it as step 48, and any FAIL exits 1.
 ##
 ##   godot --headless --path . --fixed-fps 60 --script res://tests/opener_test.gd
 ##
@@ -11,15 +11,18 @@ extends SceneTree
 ## a long name still typed inside its window. The palettes: all six whole and readable, under Omarchy's names. The
 ## typing: jitter, beats before the punchlines, a typo taken back, squeezed to fit. A whole run: every beat in order
 ## and inside its PRD window, the PRD's words exactly, the prompt from the data in bash's colours, the palette
-## applied, the uptime ticking, the hold and the hand-back; the main loop ticking through the crash with the frozen
+## applied, the uptime ticking, the hold, the 3 seconds the terminal ignores typing, "you're in now.", the reveal, the
+## fall, the landing and the hand-back (C40; tests/opener_fall_test.gd, step 50, checks the city and the camera's
+## way); the main loop ticking through the crash with the frozen
 ## frame held, the darkness and the pop-in drawn from the brightness model, and that model never flashing 3 or more
-## times in any second. Esc leaving mid-crash, mid-typing and in the hold (and a pad's cancel), the game behind let
-## go each time. In the real arena: the Esc menu's "Play the opener", the arena paused behind it, Esc back to the
+## times in any second. Esc leaving mid-crash, mid-typing, in the hold, while it ignores typing, mid-reveal, mid-fall
+## and landed (and a pad's cancel), the game behind let go and the machine dropped each time. In the real arena: the Esc menu's "Play the opener", the arena paused behind it, Esc back to the
 ## menu as it was, greyed out in a match, the --opener flag. Deterministic: frames counted, outcomes printed.
 ##
 ## C39 added the real reader (scripts/opener/real_opener_data.gd), the one opener file that reads the machine: it is
 ## left out of the no-real-reads check here by name, and tests/opener_real_test.gd (step 49) checks it instead.
-## Every other opener file, the two C39 added among them (cell_width.gd, theme_colors.gd), still reads nothing.
+## Every other opener file, the two C39 added among them (cell_width.gd, theme_colors.gd) and C40's city and machine
+## (tree_layout.gd, tree_fall.gd and their shaders), still reads nothing.
 
 const MainScene = preload("res://scenes/main.tscn")
 const OpenerScene = preload("res://scenes/opener.tscn")
@@ -28,7 +31,7 @@ const Controls = preload("res://scripts/controls.gd")
 
 ## The opener's code paths: its own scripts, scene, resources and shaders, and the menu's and the arena's parts
 ## that start it; every script in scripts/opener/ but READER (the check also finds any new one there).
-const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader"]
+const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scripts/opener/tree_layout.gd", "res://scripts/opener/tree_fall.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader", "res://shaders/opener_tower.gdshader", "res://shaders/opener_panel.gdshader", "res://shaders/opener_terrace.gdshader", "res://shaders/opener_maze.gdshader", "res://shaders/opener_stream.gdshader", "res://shaders/opener_speed.gdshader", "res://shaders/opener_sky.gdshader", "res://shaders/opener_core.gdshader"]
 ## The one opener file that reads the machine (C39), checked by tests/opener_real_test.gd instead.
 const READER := "res://scripts/opener/real_opener_data.gd"
 const NEVER := ["OS.execute", "create_process", "execute_with_pipe", "OS.kill", "shell_open", "shell_show_in_file_manager", "get_environment", "has_environment", "set_environment", "unset_environment", "get_unix_time_from_system", "_dict_from_system", "_string_from_system", "get_time_zone_from_system", "get_ticks", "get_unique_id", "get_processor", "get_model_name", "get_executable_path", "get_system_dir", "get_user_data_dir", "get_cmdline", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "ENetMultiplayerPeer", "WebSocket", "WebRTC", "FileAccess", "DirAccess", "ResourceSaver", "save_png", "save_jpg", "save_webp", "save_exr", "store_", "JavaScriptBridge", "http://", "https://", "auto_accept_quit", "WM_CLOSE_REQUEST", "_notification", "delay_msec", "delay_usec", "while true", ".ogg", ".mp3", ".wav", "AudioStreamOggVorbis", "AudioStreamMP3"]
@@ -36,6 +39,7 @@ const NEVER := ["OS.execute", "create_process", "execute_with_pipe", "OS.kill", 
 const PRD_THANKS := "thanks for running me."
 const PRD_INSTALL := "you never read the install script, did you?"
 const PRD_SINCE := "I've been in here since you booted."
+const PRD_IN := "you're in now."
 const DEMO_PROMPT := "user@workstation:~$ "
 const DEMO_LATE := "you were still up at 03:12 last night. so was I."
 const KEYS_OMARCHY := ["accent", "background", "foreground", "bright_foreground", "darker_background", "red", "green", "yellow", "blue", "magenta", "cyan", "bright_red", "bright_green", "bright_yellow", "bright_blue", "bright_magenta", "bright_cyan"]
@@ -47,7 +51,7 @@ const FLASH_STEP := 0.1
 const MOST_FLASHES := 2
 const FPS := 60.0
 ## Frames any one run may take before the test gives up on it.
-const MOST_FRAMES := 2600
+const MOST_FRAMES := 4600
 const LONG_ROUND_S := 100000.0
 
 
@@ -152,16 +156,20 @@ func _source_checks() -> void:
 		var script := "res://scripts/opener/" + file
 		if file.ends_with(".gd") and not OPENER_CODE.has(script) and script != READER:
 			unlisted.append(file)
+	for file in DirAccess.get_files_at("res://shaders"):
+		var shader := "res://shaders/" + file
+		if file.begins_with("opener_") and file.ends_with(".gdshader") and not OPENER_CODE.has(shader):
+			unlisted.append(file)
 	for word in NEVER:
 		if starts.contains(word):
 			found.append("the menu's or the arena's start: " + word)
-	_check("acceptance: the opener's code paths read no environment variable or clock, run no program, open no network connection and write no file (no execute, environment, system time, HTTP, socket, ENet, WebSocket, FileAccess, DirAccess or saver in its %d files, nor where the menu and the arena start it); the reader is the one file left out, and every other script in scripts/opener/ is in the list" % OPENER_CODE.size(), found.is_empty() and unlisted.is_empty() and all.length() > 0 and starts.length() > 0 and FileAccess.file_exists(READER), ", ".join(found + unlisted))
+	_check("acceptance: the opener's code paths read no environment variable or clock, run no program, open no network connection and write no file (no execute, environment, system time, HTTP, socket, ENet, WebSocket, FileAccess, DirAccess or saver in its %d files, nor where the menu and the arena start it); the reader is the one file left out, and every other script in scripts/opener/ and every opener_ shader is in the list" % OPENER_CODE.size(), found.is_empty() and unlisted.is_empty() and all.length() > 0 and starts.length() > 0 and FileAccess.file_exists(READER), ", ".join(found + unlisted))
 	_check("acceptance: the only files it opens are its own under res:// (every load names a res:// literal or a res:// constant; nothing is opened by a path made at run time)", loads.is_empty() and all.contains("load(DEFAULT_TUNING_PATH)") and all.contains("load(DIR + palette_id"), ", ".join(loads))
 	var source := _body(menu, "_opener_source")
 	_check("acceptance: nothing real without the player's yes (C39): the menu and the --opener flag play the demo data unless the opener data answer is on and the run is not on demo data, and the opener falls back to it when given none", _body(menu, "open_opener").contains("_opener.data = _opener_source()") and source.contains("link == null or link.demo") and source.contains("Privacy.real_data_on(link.settings_path)") and source.contains("Privacy.opener_real_on(link.settings_path)") and source.count("return DemoOpenerData.new()") == 2 and _code("res://scripts/opener/opener.gd").contains("_data = data if data != null else DemoOpenerData.new()") and DemoOpenerData.new().kind() == "demo")
 	_check("no real freeze and the window's close untouched: nothing waits on the main loop (no delay, no endless loop), nothing handles the close request or changes auto-quit; Esc is read in _input, before anything else", not all.contains("delay_") and not all.contains("WM_CLOSE") and all.contains("func _input(event: InputEvent)") and _code("res://scripts/opener/opener.gd").contains("process_mode = Node.PROCESS_MODE_ALWAYS"))
 	var sounds := _code("res://scripts/sfx_synth.gd")
-	_check("every sound is made in code (scripts/sfx_synth.gd's opener_key, opener_buzz, opener_crackle, opener_hum), no audio file loaded", sounds.contains("static func opener_key(") and sounds.contains("static func opener_buzz(") and sounds.contains("static func opener_crackle(") and sounds.contains("static func opener_hum(") and not all.contains(".ogg") and not all.contains(".wav"))
+	_check("every sound is made in code (scripts/sfx_synth.gd's opener_key, opener_buzz, opener_crackle, opener_hum, and C40's opener_whoosh, opener_wind, opener_thud, opener_beat), no audio file loaded", sounds.contains("static func opener_key(") and sounds.contains("static func opener_buzz(") and sounds.contains("static func opener_crackle(") and sounds.contains("static func opener_hum(") and sounds.contains("static func opener_whoosh(") and sounds.contains("static func opener_wind(") and sounds.contains("static func opener_thud(") and sounds.contains("static func opener_beat(") and not all.contains(".ogg") and not all.contains(".wav"))
 
 
 ## Every load( and preload( in `code` whose path is not a res:// literal or a constant holding one.
@@ -328,8 +336,16 @@ func _words_checks() -> void:
 	var strobing := OpenerTuning.new()
 	strobing.glitch_hz = 30.0
 	var fine := OpenerTuning.new()
-	fine.hold_until = 39.0
+	fine.hold_until = 35.8
+	fine.end_at = 70.4
+	var short_ignore := OpenerTuning.new()
+	short_ignore.ignore_s = 1.5
+	var late_landing := OpenerTuning.new()
+	late_landing.land_at = 72.0
+	late_landing.handoff_at = 72.5
+	late_landing.end_at = 73.0
 	_check("a timeline that breaks a window or strobes is refused for the shipped one (\"%s\"); one that keeps them is used as given" % ", ".join(broken.problems()), not broken.problems().is_empty() and not strobing.problems().is_empty() and Opener.usable_tuning(broken) == t and Opener.usable_tuning(strobing) == t and Opener.usable_tuning(null) == t and Opener.usable_tuning(fine) == fine)
+	_check("C40's windows are held too: a terminal that ignores typing for 1.5 s (\"%s\") and a fall landing after 1:10 (\"%s\") are refused for the shipped one" % [", ".join(short_ignore.problems()), ", ".join(late_landing.problems())], short_ignore.problems().has("the terminal does not ignore typing for 3 seconds") and late_landing.problems().has("the fall ends after 1:10") and Opener.usable_tuning(short_ignore) == t and Opener.usable_tuning(late_landing) == t)
 
 
 static func _local(year: int, month: int, day: int, hour: int, minute: int) -> int:
@@ -470,7 +486,7 @@ func _run_checks() -> void:
 			var up := term.line_text(n)
 			if up.begins_with("up ") and (uptimes.is_empty() or uptimes[-1][1] != up):
 				uptimes.append([e, up])
-		if phase == "hold" and e > t.rest_at + Typist.NOTICE_S:
+		if (phase == "hold" or phase == "ignore") and e > t.rest_at + Typist.NOTICE_S:
 			if term.cursor_showing() != shown:
 				flips += 1
 			shown = term.cursor_showing()
@@ -481,7 +497,7 @@ func _run_checks() -> void:
 	for e in o.events():
 		if not ev.has(e[1]):
 			ev[e[1]] = e[0]
-	var order := ["live", "freeze", "dropout", "cut", "terminal", "prompt_start", "prompt_done", "thanks_start", "thanks_done", "install_start", "install_done", "folders_start", "folders_done", "uptime", "since_start", "since_done", "late_start", "late_done", "hold", "tear", "done"]
+	var order := ["live", "freeze", "dropout", "cut", "machine", "terminal", "prompt_start", "prompt_done", "thanks_start", "thanks_done", "install_start", "install_done", "folders_start", "folders_done", "uptime", "since_start", "since_done", "late_start", "late_done", "hold", "tear", "ignore", "ignore_done", "in_start", "in_done", "lift", "reveal", "fall", "land", "handoff", "done"]
 	var in_order := true
 	var missing := PackedStringArray()
 	for i in order.size():
@@ -500,6 +516,13 @@ func _run_checks() -> void:
 		if not ev.has(name) or ev[name] < 15.0 or ev[name] > 35.0:
 			lines_out.append("%s %.2f" % [name, ev.get(name, -1.0)])
 	_check("acceptance: 0:15 to 0:35 holds every line (thanks %.2f, the install script %.2f, folders %.2f to %.2f, uptime %.2f, booted %.2f, the late night %.2f to %.2f s)" % [ev.get("thanks_start", -1.0), ev.get("install_start", -1.0), ev.get("folders_start", -1.0), ev.get("folders_done", -1.0), ev.get("uptime", -1.0), ev.get("since_start", -1.0), ev.get("late_start", -1.0), ev.get("late_done", -1.0)], lines_out.is_empty(), ", ".join(lines_out))
+	var shrink_out := PackedStringArray()
+	for name in ["ignore", "ignore_done", "in_start", "in_done", "lift", "reveal"]:
+		if not ev.has(name) or ev[name] < 35.0 or ev[name] > 50.0:
+			shrink_out.append("%s %.2f" % [name, ev.get(name, -1.0)])
+	var ignored_s: float = ev.get("ignore_done", 0.0) - ev.get("ignore", 0.0)
+	_check("acceptance (C40): 0:35 to 0:50 holds the shrink-away: the terminal ignores typing for 3 seconds (%.2f to %.2f s, %.2f s), \"%s\" at %.2f to %.2f s, the window shrinking away from %.2f s" % [ev.get("ignore", -1.0), ev.get("ignore_done", -1.0), ignored_s, PRD_IN, ev.get("in_start", -1.0), ev.get("in_done", -1.0), ev.get("reveal", -1.0)], shrink_out.is_empty() and absf(ignored_s - 3.0) < 2.0 / FPS, ", ".join(shrink_out))
+	_check("acceptance (C40): 0:50 to 1:10 holds the fall: it starts at %.2f s, lands at %.2f s and hands off at %.2f s (C41's beat starts there)" % [ev.get("fall", -1.0), ev.get("land", -1.0), ev.get("handoff", -1.0)], absf(ev.get("fall", -1.0) - 50.0) < 0.5 and ev.get("land", 99.0) <= 70.0 and ev.get("handoff", 99.0) <= 70.5 and ev.get("land", -1.0) > ev.get("fall", 99.0))
 	var expected := PackedStringArray([DEMO_PROMPT + PRD_THANKS, PRD_INSTALL])
 	for name in DemoOpenerData.FOLDERS:
 		expected.append("~/" + name)
@@ -508,8 +531,8 @@ func _run_checks() -> void:
 	var words_ok := written.size() == expected.size() + 4
 	for i in expected.size():
 		words_ok = words_ok and i < written.size() and written[i] == expected[i]
-	words_ok = words_ok and written.size() > upline + 3 and written[upline].begins_with("up 3 days, 07:4") and written[upline + 1] == PRD_SINCE and written[upline + 2] == DEMO_LATE and written[upline + 3] == ""
-	_check("acceptance: the screen, word for word: the prompt and \"%s\", \"%s\", the 28 folders, the uptime, \"%s\", \"%s\", then the cursor on a line of its own" % [PRD_THANKS, PRD_INSTALL, PRD_SINCE, DEMO_LATE], words_ok, term.all_text().c_escape().left(300))
+	words_ok = words_ok and written.size() > upline + 3 and written[upline].begins_with("up 3 days, 07:4") and written[upline + 1] == PRD_SINCE and written[upline + 2] == DEMO_LATE and written[upline + 3] == DEMO_PROMPT + PRD_IN
+	_check("acceptance: the screen, word for word: the prompt and \"%s\", \"%s\", the 28 folders, the uptime, \"%s\", \"%s\", then a fresh prompt, and at it (C40) \"%s\"" % [PRD_THANKS, PRD_INSTALL, PRD_SINCE, DEMO_LATE, PRD_IN], words_ok, term.all_text().c_escape().left(300))
 	_check("acceptance: the prompt built from the data and typed itself: \"%s\", in bash's colours (user@host bold green, ~ bold blue)" % o.prompt_text(), o.prompt_text() == DEMO_PROMPT and term.attr_at(0, 0) == "green*" and term.attr_at(0, 15) == "green*" and term.attr_at(0, 16) == "foreground" and term.attr_at(0, 17) == "blue*" and term.attr_at(0, 18) == "foreground" and term.attr_at(2, 0) == "blue" and term.attr_at(upline, 0) == "yellow")
 	var night := OpenerPalette.named("night")
 	var drawn := term.colors()
@@ -518,7 +541,7 @@ func _run_checks() -> void:
 	var glitch_s := t.cut_at - t.live_s
 	_check("the crash comes apart and never strobes: the glitch only grows, its pattern changing %d times in %.1f s (at most %.0f a second), the buzz on through it and the crackle with it, then silence until the hum" % [seeds, glitch_s, t.glitch_hz], not amount_down and seeds <= ceili(glitch_s * t.glitch_hz) + 1 and seeds >= 10 and buzz_ok and crackle and silent_gap and hum)
 	var levels := PackedFloat32Array()
-	for i in int(t.hold_until * FPS) + 1:
+	for i in int(t.end_at * FPS) + 1:
 		levels.append(o.luma_at(i / FPS))
 	_check("acceptance: the flash-rate cap: the screen's brightness drops to black and back at most %d times in any second (worst %d), and the darkness and the pop-in are drawn from that model (%d and %d frames off)" % [MOST_FLASHES, _worst_flashes(levels), dark_bad, pop_bad], _worst_flashes(levels) <= MOST_FLASHES and dark_bad == 0 and pop_bad == 0)
 	_check("acceptance: the beats before the punchlines, in the run: %.2f s between \"script,\" and \"d\", %.2f s between \"last night.\" and \"so was I.\"; the typo seen and taken back" % [did_at - comma_at, echo_at - head_at], did_at - comma_at >= t.install_beat * 0.9 and echo_at - head_at >= t.late_beat * 0.9 and saw_typo)
@@ -527,7 +550,7 @@ func _run_checks() -> void:
 	for i in uptimes.size():
 		ticking = ticking and uptimes[i][1] == Opener.uptime_text(DemoOpenerData.UPTIME_S + floori(uptimes[i][0]))
 	_check("acceptance: the uptime ticks live, a second at a time from where it started (%s ... %s)" % [uptimes[0][1] if not uptimes.is_empty() else "", uptimes[-1][1] if not uptimes.is_empty() else ""], ticking)
-	_check("the hold: the cursor on its own line, blinking (%d changes), the torn band at %.2f s, then the hand-back at %.2f s: finished once, not skipped" % [flips, ev.get("tear", -1.0), ev.get("done", -1.0)], flips >= 3 and absf(ev.get("tear", -1.0) - t.tear_at) < 2.0 / FPS and absf(ev.get("done", -1.0) - t.hold_until) < 2.0 / FPS and _finished == [false] and o.events()[-1][1] == "done")
+	_check("the hold and the wait: the cursor blinking on its own line and at the fresh prompt (%d changes), the torn band at %.2f s; then, past the fall, the hand-back at %.2f s: finished once, not skipped, the machine dropped" % [flips, ev.get("tear", -1.0), ev.get("done", -1.0)], flips >= 3 and absf(ev.get("tear", -1.0) - t.tear_at) < 2.0 / FPS and absf(ev.get("done", -1.0) - t.end_at) < 2.0 / FPS and _finished == [false] and o.events()[-1][1] == "done" and o.fall() == null and o.layout() == null)
 	_check("standalone (not from the menu) it pauses nothing, and it gives everything back as it ends: the 3D view drawn again, the mouse as it was, every sound stopped; key clicks heard while it typed", not paused_ever and not root.disable_3d and Input.mouse_mode == mode_before and _all_quiet(o) and key)
 	o.free()
 
@@ -577,7 +600,7 @@ func _stub_checks() -> void:
 # --- Esc, always. ---
 
 func _escape_checks() -> void:
-	var cases := [[1.5, "frozen", "mid-crash"], [16.0, "terminal", "mid-typing"], [36.0, "hold", "in the hold"]]
+	var cases := [[1.5, "frozen", "mid-crash"], [16.0, "terminal", "mid-typing"], [35.6, "hold", "in the hold"], [37.5, "ignore", "while it ignores typing"], [45.0, "reveal", "mid-reveal"], [58.0, "fall", "mid-fall"], [69.0, "landed", "landed"]]
 	for c in cases:
 		var mode_before := Input.mouse_mode
 		var o := _opener(null, true)
@@ -586,7 +609,8 @@ func _escape_checks() -> void:
 		var was_paused := paused
 		var typing: bool = c[2] == "mid-typing" and o.event_time("thanks_start") >= 0.0 and o.event_time("thanks_done") < 0.0
 		var ignored := true
-		if c[2] == "mid-typing":
+		var built: bool = o.fall() != null
+		if c[2] == "mid-typing" or c[2] == "while it ignores typing":
 			var before := o.terminal().all_text()
 			for k in [KEY_A, KEY_SPACE, KEY_ENTER]:
 				_key(k)
@@ -600,7 +624,7 @@ func _escape_checks() -> void:
 		_key(KEY_ESCAPE)
 		var left: bool = not o.playing() and _finished == [true] and o.events()[-1][1] == "skipped"
 		_check("acceptance: Esc leaves %s (at %.2f s, %s%s), at once: finished, skipped" % [c[2], o.elapsed(), phase, ", typing \"thanks for running me.\"" if typing else ""], phase == c[1] and left and (typing or c[2] != "mid-typing") and ignored)
-		_check("... and lets go of everything: the game behind un-paused (it was paused: %s), its 3D view drawn, the mouse as it was, every sound stopped" % str(was_paused), was_paused and not paused and not root.disable_3d and Input.mouse_mode == mode_before and _all_quiet(o))
+		_check("... and lets go of everything: the game behind un-paused (it was paused: %s), its 3D view drawn, the mouse as it was, every sound stopped, the machine and its city dropped (built: %s)" % [str(was_paused), str(built)], was_paused and not paused and not root.disable_3d and Input.mouse_mode == mode_before and _all_quiet(o) and o.fall() == null and o.layout() == null and (built or c[0] < 3.1))
 		o.free()
 	var pad := _opener(null, true)
 	await _until(pad, func(): return pad.elapsed() >= 2.0)

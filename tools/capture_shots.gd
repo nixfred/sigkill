@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38 or c39):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39 or c40):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -361,6 +361,12 @@ const C38_GRID_COLUMNS := 3
 ## after the tear).
 const C39_WIDE_AT := 26.8
 const C39_PALETTES_AT := 35.6
+## c40's stills: [name, the opener's second], the one shot at 960x540, the sheet of the move (these, in order), and
+## the frames measured for the cost (every frame from the reveal to the landing).
+const C40_SHOTS := [["c40-ignore", 38.3], ["c40-shrink", 41.9], ["c40-panel", 44.0], ["c40-machine", 46.6], ["c40-edge", 49.4], ["c40-drop", 52.0], ["c40-names", 55.0], ["c40-deep", 60.0], ["c40-pit", 64.5], ["c40-landed", 69.0]]
+const C40_SMALL_AT := 57.0
+const C40_SHEET := ["c40-shrink", "c40-panel", "c40-machine", "c40-edge", "c40-drop", "c40-names", "c40-deep", "c40-landed"]
+const C40_SHEET_COLUMNS := 4
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -459,6 +465,11 @@ func _run() -> void:
 		return
 	if _set == "c39":
 		await _c39()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c40":
+		await _c40()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2108,6 +2119,155 @@ func _c39() -> void:
 	opener.free()
 	await process_frame
 	print("capture: the opener done, the world paused %s, the 3D view drawn %s" % [str(paused), str(not root.disable_3d)])
+
+
+## c40: the shrink-away and the fall on demo data, played from the Esc menu as a player would: the prompt the
+## terminal ignores, its window shrinking away as the camera pulls back from it, the screen one lit panel on the
+## monolith's wall of dark ones, the machine opened out, the look over the edge down the shaft, the fall (the top
+## terrace's towers and names sweeping past, the cables and the code light, deeper, the pit's red below), the
+## landing on the pit's rim facing the hot process, one still at 960x540, and a sheet of the move. It prints how
+## exactly the panel's first frame matches the terminal before it, what the machine costs (the GPU's time a frame
+## for its viewport and the window's, and the frame's process time), and the city's counts. --at=<s>,<s>,... (an aid
+## for tuning the look) shoots c40-at-<s> at those seconds instead.
+func _c40() -> void:
+	var targets := _main.get_node("Arena/Targets")
+	for dummy in targets.get_children():
+		_c27b_place(dummy, C27B_PARKED + Vector3(dummy.get_index() * 3.0, 0.0, 0.0))
+	await _stand(C33_SHOT_FROM, _main.to_global(C33_SHOT_AT) + Vector3.UP)
+	await _frames(SETTLE_FRAMES)
+	var shots: Array = C40_SHOTS
+	var tuning := false
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--at="):
+			tuning = true
+			shots = []
+			for at in arg.substr(5).split(","):
+				shots.append(["c40-at-" + at, float(at)])
+	var menu = _main.get_node("Hud").pause_menu()
+	var opener: Opener = menu.open_opener()
+	var t := opener.timing()
+	var saved := {}
+	var early: Array = shots.filter(func(shot): return shot[1] < t.shrink_at - 0.5)
+	shots = shots.filter(func(shot): return shot[1] >= t.shrink_at - 0.5)
+	# A baseline: the clock's time a frame while only the terminal plays, the same way as the machine's below.
+	await _opener_at(opener, t.rest_at - 4.0, false)
+	var plain: Array[float] = []
+	var mark := Time.get_ticks_usec()
+	while is_instance_valid(opener) and opener.elapsed() < t.rest_at:
+		await process_frame
+		plain.append((Time.get_ticks_usec() - mark) / 1000.0)
+		mark = Time.get_ticks_usec()
+	print("capture: the terminal alone, %d frames: %.2f ms a frame on the clock (worst %.2f)" % [plain.size(), _mean(plain), _most(plain)])
+	for shot in early:
+		await _opener_at(opener, shot[1], true)
+		print("capture: %s at %.2f s (%s): \"%s\"" % [shot[0], opener.elapsed(), opener.phase_name(), opener.terminal().line_text(opener.terminal().line_count() - 1)])
+		saved[shot[0]] = await _grab()
+		saved[shot[0]].save_png(OUT.path_join(shot[0] + ".png"))
+		_shots += 1
+	# The swap, frame by frame: the terminal drawn as ever, then (lifted into its own viewport) its picture shown
+	# in its place, then the camera's first frame of the panel.
+	await _opener_at(opener, t.shrink_at - Opener.LIFT_S - 0.5 / 60.0, false)
+	var direct := await _grab()
+	await process_frame
+	var before := await _grab()
+	var lifted := opener.event_time("lift") >= 0.0
+	await _opener_at(opener, t.shrink_at, false)
+	var after := await _grab()
+	print("capture: the lift at %.2f s (%s): %s" % [opener.event_time("lift"), "lifted" if lifted else "not lifted yet", _difference(direct, before)])
+	print("capture: the swap at %.2f s: %s" % [opener.elapsed(), _difference(before, after)])
+	if tuning:
+		before.save_png(OUT.path_join("c40-at-swap-before.png"))
+		after.save_png(OUT.path_join("c40-at-swap-after.png"))
+	var city := opener.layout()
+	print("capture: the city: %d folders given, %d towers, %d boxes, %d names, %d cables, %d streams; the pit %s; %d nodes in the machine" % [city.given, city.rooms.size(), city.pieces.size(), city.labels.size(), city.cables.size(), city.streams.size(), "under a node_modules" if city.pit_path != "" else "unnamed", opener.fall().node_count()])
+	var machine_rid: RID = opener.fall().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(machine_rid, true)
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
+	var gpu: Array[float] = []
+	var gpu_root: Array[float] = []
+	var cpu: Array[float] = []
+	var wall: Array[float] = []
+	var tick := Time.get_ticks_usec()
+	for shot in shots:
+		while is_instance_valid(opener) and opener.playing() and opener.elapsed() < shot[1]:
+			await process_frame
+			if opener.elapsed() > t.shrink_at + 0.2 and opener.elapsed() < t.land_at:
+				gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(machine_rid))
+				gpu_root.append(RenderingServer.viewport_get_measured_render_time_gpu(root.get_viewport_rid()))
+				cpu.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
+				wall.append((Time.get_ticks_usec() - tick) / 1000.0)
+			tick = Time.get_ticks_usec()
+		if not is_instance_valid(opener) or not opener.playing():
+			break
+		var eye := opener.fall().pose(opener.elapsed()).origin
+		print("capture: %s at %.2f s (%s): the camera at (%.0f, %.0f, %.0f), falling %.1f m/s" % [shot[0], opener.elapsed(), opener.phase_name(), eye.x, eye.y, eye.z, opener.fall().speed_at(opener.elapsed())])
+		saved[shot[0]] = await _grab()
+		saved[shot[0]].save_png(OUT.path_join(shot[0] + ".png"))
+		_shots += 1
+	print("capture: the machine's cost from the reveal to the landing, %d frames: GPU %.2f ms a frame on average for its viewport (worst %.2f), %.2f for the window's (worst %.2f); process %.2f ms (worst %.2f); %.2f ms a frame from start to end on the clock (worst %.2f)" % [gpu.size(), _mean(gpu), _most(gpu), _mean(gpu_root), _most(gpu_root), _mean(cpu), _most(cpu), _mean(wall), _most(wall)])
+	if not tuning:
+		var sheet: Array[Image] = []
+		for name in C40_SHEET:
+			if saved.has(name):
+				sheet.append(saved[name])
+		if sheet.size() == C40_SHEET.size():
+			_save_grid("c40-sequence", sheet, C40_SHEET_COLUMNS)
+	while is_instance_valid(opener) and opener.playing():
+		await process_frame
+	await process_frame
+	print("capture: the opener done, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
+	if not tuning:
+		await _c40_small(menu)
+
+
+## The fall again at 960x540, shot at C40_SMALL_AT.
+func _c40_small(menu) -> void:
+	menu.open()
+	await process_frame
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	var opener: Opener = menu.open_opener()
+	await _opener_at(opener, C40_SMALL_AT, false)
+	await _save("c40-fall-960")
+	opener.skip()
+	await process_frame
+	root.size = Vector2i(1920, 1080)
+	await _frames(6)
+
+
+## How far apart two stills are: the mean difference per channel (0 to 255) and the share of pixels off by more
+## than 8 in any channel.
+static func _difference(a: Image, b: Image) -> String:
+	if a.get_size() != b.get_size():
+		return "sizes differ"
+	var total := 0.0
+	var off := 0
+	var step := 2
+	var n := 0
+	for y in range(0, a.get_height(), step):
+		for x in range(0, a.get_width(), step):
+			var p := a.get_pixel(x, y)
+			var q := b.get_pixel(x, y)
+			var d := maxf(absf(p.r - q.r), maxf(absf(p.g - q.g), absf(p.b - q.b))) * 255.0
+			total += (absf(p.r - q.r) + absf(p.g - q.g) + absf(p.b - q.b)) * 255.0 / 3.0
+			if d > 8.0:
+				off += 1
+			n += 1
+	return "mean difference %.2f of 255, %.2f%% of pixels off by more than 8" % [total / maxf(n, 1), 100.0 * off / maxf(n, 1)]
+
+
+static func _mean(values: Array[float]) -> float:
+	var sum := 0.0
+	for v in values:
+		sum += v
+	return sum / maxf(values.size(), 1)
+
+
+static func _most(values: Array[float]) -> float:
+	var top := 0.0
+	for v in values:
+		top = maxf(top, v)
+	return top
 
 
 ## Frames until `opener` is `seconds` in (and its cursor lit, if `cursor`), on its own clock: it runs through the

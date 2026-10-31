@@ -24,6 +24,8 @@ const COUNTS := [
 	22, 3, 9, 11, 26, 200,
 	7, 5, 40,
 ]
+## The process running hottest, at the bottom of the fall (C40): a dev server, beside the node_modules pit.
+const TOP_PROCESS := "node"
 ## Up 3 days, 7 hours, 42 minutes and 15 seconds.
 const UPTIME_S := 3 * 86400 + 7 * 3600 + 42 * 60 + 15
 ## "Now": Tuesday 2025-11-04, 22:17. A fixed date, never the clock.
@@ -63,6 +65,10 @@ func folders() -> PackedStringArray:
 
 func folder_counts() -> PackedInt32Array:
 	return PackedInt32Array(COUNTS)
+
+
+func top_process() -> String:
+	return TOP_PROCESS
 
 
 func uptime_s() -> int:

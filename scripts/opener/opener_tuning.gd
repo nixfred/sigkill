@@ -1,13 +1,15 @@
 class_name OpenerTuning
 extends Resource
-## Every time and strength that shapes the opener's first 35 seconds (C38, PRD 5.7's 0:00 to 0:35): the fake crash,
+## Every time and strength that shapes the opener (C38: PRD 5.7's 0:00 to 0:35; C40: 0:35 to 1:10): the fake crash,
 ## the black, the terminal's arrival, when each line starts and the latest it may end, how fast each types, the
-## folder scroll, the hold, the sounds and the screen's look. Times are seconds from the moment the opener starts.
-## The default is resources/opener.tres; scripts/opener/opener.gd reads only this. The words themselves are the
-## PRD's and live in the opener as constants, never here.
+## folder scroll, the hold, the 3 seconds the terminal ignores typing, the shrink-away, the fall and its landing,
+## the sounds and the screen's look. Times are seconds from the moment the opener starts. The default is
+## resources/opener.tres; scripts/opener/opener.gd reads only this. The words themselves are the PRD's and live in
+## the opener as constants, never here; the camera's way through the machine is scripts/opener/tree_fall.gd's.
 ##
 ## The PRD's windows hold whatever the data: the prompt types inside 0:00 to 0:15, every line after it inside
-## 0:15 to 0:35. A line given more to type than its time (a long user name, say) types faster to fit (Typist.fit).
+## 0:15 to 0:35, the shrink-away inside 0:35 to 0:50, the fall from 0:50 to 1:10. A line given more to type than its
+## time (a long user name, say) types faster to fit (Typist.fit).
 
 @export_group("Crash")
 ## The game as it was, before it freezes.
@@ -67,12 +69,28 @@ extends Resource
 @export var late_beat := 0.8
 ## Seconds a key on average for the lines after the prompt.
 @export var line_pace := 0.074
-## The cursor drops to a line of its own, the torn band at the very end, and the hold before the menu comes back
-## (C40 goes on from here).
+## The cursor drops to a line of its own, the torn band at the very end, and the hold until the shrink-away beat.
 @export var rest_at := 34.8
 @export var tear_at := 35.4
 @export var tear_s := 0.07
-@export var hold_until := 38.0
+@export var hold_until := 36.0
+
+@export_group("Shrink-away")
+## From hold_until a fresh prompt waits, and the terminal ignores typing for this long (PRD 5.7: "The fake terminal
+## ignores typing for 3 seconds"); then "you're in now." types itself at that prompt.
+@export var ignore_s := 3.0
+@export var in_at := 39.0
+@export var in_end := 40.2
+## The terminal's window shrinks away: the camera pulls back from it into the machine (scripts/opener/tree_fall.gd).
+@export var shrink_at := 40.8
+
+@export_group("Fall")
+## The fall down the directory tree begins, lands on the pit's rim, hands off (C41's beat starts here) and, until
+## C41, the opener fades to black over the last moment and ends.
+@export var fall_at := 50.0
+@export var land_at := 68.4
+@export var handoff_at := 69.6
+@export var end_at := 70.2
 
 @export_group("Sound")
 ## Linear volumes: the stuck buzz, the crackle at its fullest, the hum, a key.
@@ -80,6 +98,11 @@ extends Resource
 @export var crackle_volume := 0.5
 @export var hum_volume := 0.32
 @export var key_volume := 0.4
+## The shrink-away's rush, the fall's wind at its fastest, the landing, and the hot process's beat near the bottom.
+@export var whoosh_volume := 0.6
+@export var wind_volume := 0.5
+@export var thud_volume := 0.7
+@export var beat_volume := 0.42
 
 @export_group("Screen")
 ## The terminal's glow (dark themes only), its reach and threshold, scanlines, vignette, and the tear's shift.
@@ -95,7 +118,7 @@ extends Resource
 ## Problems with these numbers, in words; empty when the timeline holds together and keeps the PRD's windows.
 func problems() -> PackedStringArray:
 	var out := PackedStringArray()
-	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until]]
+	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until], ["in_at", in_at], ["in_end", in_end], ["shrink_at", shrink_at], ["fall_at", fall_at], ["land_at", land_at], ["handoff_at", handoff_at], ["end_at", end_at]]
 	for i in range(1, order.size()):
 		if order[i][1] < order[i - 1][1]:
 			out.append("%s comes before %s" % [order[i][0], order[i - 1][0]])
@@ -112,4 +135,16 @@ func problems() -> PackedStringArray:
 		out.append("the glitch steps more than 12 times a second")
 	if take_by < 0.0 or take_by > terminal_at:
 		out.append("the data is taken after the terminal shows")
+	if absf(ignore_s - 3.0) > 0.25:
+		out.append("the terminal does not ignore typing for 3 seconds")
+	if in_at < hold_until + ignore_s:
+		out.append("\"you're in now.\" comes before the 3 seconds are up")
+	if hold_until < 35.0 or in_end > 50.0 or shrink_at > 50.0:
+		out.append("the shrink-away beat outside 0:35 to 0:50")
+	if fall_at - shrink_at < 6.0:
+		out.append("the shrink-away is too short to read as a camera move")
+	if fall_at < 49.0 or fall_at > 51.0:
+		out.append("the fall does not start at 0:50")
+	if land_at > 70.0 or handoff_at > 70.5:
+		out.append("the fall ends after 1:10")
 	return out

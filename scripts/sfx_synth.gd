@@ -522,3 +522,115 @@ static func opener_hum() -> AudioStreamWAV:
 	stream.loop_begin = 0
 	stream.loop_end = count
 	return stream
+
+
+## The opener's machine (C40): the rush as the terminal shrinks away into it, the wind of the fall, the landing, and
+## the hottest process beating at the bottom. Made here like every other sound.
+const OPENER_WHOOSH_S := 3.4
+const OPENER_WIND_S := 2.0
+const OPENER_WIND_BLEND_S := 0.3
+const OPENER_THUD_S := 0.9
+const OPENER_BEAT_S := 0.55
+
+
+## The camera pulling back from the screen: air rushing away (noise through a resonance falling from bright to dark)
+## over a sub tone sinking, a swell that peaks as the dark opens up, then dies away.
+static func opener_whoosh() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_WHOOSH_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 40
+	var y1 := 0.0
+	var y2 := 0.0
+	var phase := 0.0
+	var samples := PackedFloat32Array()
+	samples.resize(count)
+	var peak := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var u := t / OPENER_WHOOSH_S
+		var hz := 2400.0 * pow(160.0 / 2400.0, u)
+		var w := TAU * hz / rate
+		var r := 0.985
+		var y := 2.0 * r * cos(w) * y1 - r * r * y2 + rng.randf_range(-1.0, 1.0) * 0.06
+		y2 = y1
+		y1 = y
+		phase = fmod(phase + TAU * lerpf(92.0, 36.0, u) / rate, TAU)
+		var swell := smoothstep(0.0, 0.42, u) * (1.0 - smoothstep(0.42, 1.0, u))
+		samples[i] = (y * 0.9 + sin(phase) * 0.55) * swell
+		peak = maxf(peak, absf(samples[i]))
+	for i in count:
+		data.encode_s16(i * 2, int(clampf(samples[i] / maxf(peak, 0.001) * 0.85, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## Falling: wind, noise darkened and brightened by two slow gusts, its last moment blended into its first so it
+## loops without a seam. The opener raises its volume and pitch with the speed.
+static func opener_wind() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_WIND_S * rate)
+	var blend := int(OPENER_WIND_BLEND_S * rate)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 41
+	var low := 0.0
+	var high := 0.0
+	var samples := PackedFloat32Array()
+	samples.resize(count + blend)
+	var peak := 0.0
+	for i in count + blend:
+		var t := float(i) / rate
+		var gust := 0.6 + 0.25 * sin(TAU * t / OPENER_WIND_S) + 0.15 * sin(TAU * 3.0 * t / OPENER_WIND_S + 1.3)
+		var n := rng.randf_range(-1.0, 1.0)
+		low = lerpf(low, n, 0.035 + 0.05 * gust)
+		high = lerpf(high, n, 0.3)
+		samples[i] = (low * 2.2 + (high - low) * 0.25 * gust) * gust
+		peak = maxf(peak, absf(samples[i]))
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	for i in count:
+		var s := samples[i]
+		if i < blend:
+			var k := float(i) / blend
+			s = s * k + samples[count + i] * (1.0 - k)
+		data.encode_s16(i * 2, int(clampf(s / maxf(peak, 0.001) * 0.8, -1.0, 1.0) * INT16_FULL_SCALE))
+	var stream := _stream(data, rate)
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = count
+	return stream
+
+
+## Landing: a deep thump (a sine sinking fast) and the slap of the floor (a short burst of dark noise).
+static func opener_thud() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_THUD_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 42
+	var phase := 0.0
+	var dark := 0.0
+	for i in count:
+		var t := float(i) / rate
+		phase = fmod(phase + TAU * (34.0 + 46.0 * exp(-t * 9.0)) / rate, TAU)
+		dark = lerpf(dark, rng.randf_range(-1.0, 1.0), 0.08)
+		var s := sin(phase) * exp(-t * 4.5) * minf(t * 400.0, 1.0) + dark * 2.0 * exp(-t * 30.0)
+		data.encode_s16(i * 2, int(clampf(s * 0.8, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## The hottest process's beat: one low, soft thump, with the pit's red swell.
+static func opener_beat() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_BEAT_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var phase := 0.0
+	for i in count:
+		var t := float(i) / rate
+		phase = fmod(phase + TAU * (48.0 + 22.0 * exp(-t * 14.0)) / rate, TAU)
+		var s := (sin(phase) + 0.25 * sin(phase * 3.0)) * exp(-t * 7.0) * minf(t * 250.0, 1.0)
+		data.encode_s16(i * 2, int(clampf(s * 0.75, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)

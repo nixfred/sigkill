@@ -1,22 +1,30 @@
 class_name Opener
 extends CanvasLayer
-## The opener's first 35 seconds (C38; PRD 5.7, "you got tricked into this", 0:00 to 0:35), live in the engine:
+## The opener (PRD 5.7, "you got tricked into this"), live in the engine, its first 70 seconds so far (C38, C40):
 ##   0:00 to 0:15  the game freezes on its own last frame, stutters, comes apart and cuts to black and silence (a
 ##                 fake crash: the game glitching inside its own window, never a dialog, never the desktop, never a
 ##                 real freeze); then a fake terminal in the player's theme, and `<user>@<host>:~$` types itself.
 ##   0:15 to 0:35  "thanks for running me." / "you never read the install script, did you?", folder names scroll,
 ##                 the uptime ticks, "I've been in here since you booted.", and the late-night line from recent
-##                 file times. Then it holds on the terminal and hands back to the menu (C40 goes on from there).
-## Every word in quotes is the PRD's own (THANKS, INSTALL, SINCE); the late-night line's words are ours, built
-## from the file times alone (late_line). Text types itself as a hand types (scripts/opener/typist.gd): its own
-## wait for every key, a hesitation before the punchlines, one typo taken back.
+##                 file times.
+##   0:35 to 0:50  a fresh prompt, and the terminal ignores typing for 3 seconds; "you're in now." types itself at
+##                 it; then the terminal's window shrinks away: the camera pulls back from it, and it is one lit
+##                 screen on a wall in a machine the size of a city (C40, scripts/opener/tree_fall.gd).
+##   0:50 to 1:10  the fall down the player's directory tree as that city: the folder names the terminal scrolled
+##                 on towers, as big as what each holds, the node_modules pit at the bottom, the hottest process
+##                 beating red in it; landing on its rim, the hand-off (C41 goes on from there; until then the
+##                 opener fades to black and hands back to the menu).
+## Every word in quotes is the PRD's own (THANKS, INSTALL, SINCE, IN_NOW); the late-night line's words are ours,
+## built from the file times alone (late_line). Text types itself as a hand types (scripts/opener/typist.gd): its
+## own wait for every key, a hesitation before the punchlines, one typo taken back.
 ##
 ## The data comes through one seam, OpenerData (scripts/opener/opener_data.gd): `data`, started as this starts and
 ## taken once, as soon as it is ready or at the tuning's take_by second regardless (while the screen is still the
 ## crash or black, before anything of it shows), then dropped as this ends. DemoOpenerData (fixed, invented,
 ## nothing read) is always ready; RealOpenerData (C39, only with the player's yes) reads on its own thread, and
 ## anything it has not got by then is the demo's. Nothing here reads the machine: no file but res://, no
-## environment, no clock, no process, no network; the reader is the one place that does.
+## environment, no clock, no process, no network; the reader is the one place that does. The city is built from
+## the same values (scripts/opener/tree_layout.gd), as the screen goes black, and dropped with them.
 ##
 ## A real way out, always: Esc leaves at any moment, mid-crash and mid-typing included (`finished(true)`), and the
 ## window's close is never touched (Godot's own quit). The main loop never stops: the "freeze" is a picture held on
@@ -24,10 +32,15 @@ extends CanvasLayer
 ## behind is paused (`pause_world`) so nothing can hit the player while it plays, and goes on as it was after;
 ## this layer and its sounds run through the pause. The mouse is hidden while it plays and given back after.
 ## Flash-safe: the screen's overall brightness follows luma_at(), which never flashes 3 or more times in any
-## second (two short drops to black in the crash, then the cut), and the glitch's pattern jerks at glitch_hz.
+## second (two short drops to black in the crash, then the cut), and the glitch's pattern jerks at glitch_hz; in the
+## machine the screen dims as it shrinks, the hot process swells under once a second, and the end fades.
 ##
 ## Sound, all made in scripts/sfx_synth.gd: the frozen game's stuck buffer buzzing, its picture's crackle, dead
-## silence at the cut, a low hum under the terminal, and a keyboard's clicks as the text types itself.
+## silence at the cut, a low hum under the terminal, a keyboard's clicks as the text types itself; the rush as it
+## shrinks away, the wind of the fall rising with its speed, the landing, and the hot process's beat.
+##
+## The hand-off to C41: at handoff_at the camera has landed (fall().landing()) and the machine goes on drawing;
+## fall() and layout() are the world and the city, so the next beat can stand a daemon in them.
 
 signal finished(skipped: bool)
 
@@ -42,6 +55,7 @@ const DEFAULT_TUNING_PATH := "res://resources/opener.tres"
 const THANKS := "thanks for running me."
 const INSTALL := "you never read the install script, did you?"
 const SINCE := "I've been in here since you booted."
+const IN_NOW := "you're in now."
 ## The late-night line (the PRD gives its source, recent file modification times, not its words): the latest file
 ## time in the past week between midnight and 5 in the morning, as "last night" or its weekday, then the echo.
 const LATE_UP := "you were still up at %s %s."
@@ -64,16 +78,23 @@ const SEED := 3112
 ## Over every layer: the HUD (1), the menu, and the colourblind filter (100); the frozen frame is already filtered,
 ## and the terminal is the player's own theme's colours, exactly.
 const LAYER := 110
-## The PRD's two windows, in seconds: the crash and the prompt, then the lines.
+## The PRD's windows, in seconds: the crash and the prompt, the lines, the shrink-away, the fall.
 const CRASH_WINDOW := Vector2(0.0, 15.0)
 const LINES_WINDOW := Vector2(15.0, 35.0)
+const SHRINK_WINDOW := Vector2(35.0, 50.0)
+const FALL_WINDOW := Vector2(50.0, 70.0)
+## The terminal moves into its own viewport this long before the camera starts to pull back, so the screen's
+## picture is drawn before the panel shows it.
+const LIFT_S := 0.1
+## The screen's overall brightness in the machine, for luma_at(): the dark the panel shrinks into.
+const MACHINE_LUMA := 0.3
 ## A frozen frame's stand-in when there is none to take (a headless run): near black.
 const NO_FRAME := Color(0.02, 0.02, 0.03)
 ## How the glitch tints a corrupted band: the daemons' glitch magenta (A4).
 const BLEED := Color(1.0, 0.17, 0.84)
 
-enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, DONE }
-const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "done"]
+enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, IGNORE, IN, REVEAL, FALL, LANDED, DONE }
+const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "ignore", "in", "reveal", "fall", "landed", "done"]
 
 ## What it shows of "your machine"; null: DemoOpenerData.
 var data: OpenerData = null
@@ -117,6 +138,22 @@ var _buzz: AudioStreamPlayer
 var _crackle: AudioStreamPlayer
 var _hum: AudioStreamPlayer
 var _keys: Array[AudioStreamPlayer] = []
+var _whoosh: AudioStreamPlayer
+var _wind: AudioStreamPlayer
+var _thud: AudioStreamPlayer
+var _beat: AudioStreamPlayer
+var _beats := -1
+
+## The machine (C40): the city worked out from the data, the world it is built in, the terminal's own viewport (its
+## picture on the screen there), and what shows each; the player's look while falling.
+var _layout: TreeLayout
+var _fall: TreeFall
+var _screen_port: SubViewport
+var _world_view: TextureRect
+var _screen_view: TextureRect
+var _fade: ColorRect
+var _lifted := false
+var _look := Vector2.ZERO
 
 static var _sounds := {}
 
@@ -181,6 +218,21 @@ func terminal() -> FakeTerminal:
 	return _terminal
 
 
+## The machine the opener falls through (C40), or null before it is built (as the screen goes black) and after.
+func fall() -> TreeFall:
+	return _fall
+
+
+## The city it is built from, or null.
+func layout() -> TreeLayout:
+	return _layout
+
+
+## The player's look about while falling (radians: yaw, pitch).
+func look() -> Vector2:
+	return _look
+
+
 func palette() -> OpenerPalette:
 	return _palette
 
@@ -226,7 +278,14 @@ func luma_at(seconds: float) -> float:
 		return 1.0
 	if seconds < _t.terminal_at:
 		return 0.0
-	return clampf((seconds - _t.terminal_at) / maxf(_t.pop_s, 0.001), 0.0, 1.0)
+	if seconds >= _t.end_at:
+		return 0.0
+	var level := clampf((seconds - _t.terminal_at) / maxf(_t.pop_s, 0.001), 0.0, 1.0)
+	if seconds >= _t.shrink_at:
+		level = lerpf(1.0, MACHINE_LUMA, smoothstep(_t.shrink_at, lerpf(_t.shrink_at, _t.fall_at, 0.5), seconds))
+	if seconds >= _t.handoff_at:
+		level *= 1.0 - clampf((seconds - _t.handoff_at) / maxf(_t.end_at - _t.handoff_at, 0.001), 0.0, 1.0)
+	return level
 
 
 ## Leave now, as Esc does (C42's skip logic calls this).
@@ -343,6 +402,10 @@ func _build_timeline() -> void:
 	_late = Typist.text_of_segments(late)
 	_typed("late", t.late_at, t.late_end, late, t.line_pace, SEED + 4, [[_late, "foreground"]], true)
 	_actions.append({"at": t.rest_at, "op": "newline", "event": "rest"})
+	# The shrink-away (C40): a fresh prompt on the cursor's line at once, as a shell gives one, ignoring what is
+	# typed at it; then "you're in now." types itself there.
+	_actions.append({"at": t.hold_until, "op": "runs", "runs": runs})
+	_typed("in", t.in_at, t.in_end, [IN_NOW], t.line_pace, SEED + 5, [[IN_NOW, "foreground"]], false)
 
 
 ## A line that types itself from `at`, done by `end` at the latest, in its runs' colours; on a new line first if
@@ -418,7 +481,8 @@ func _process(delta: float) -> void:
 	_step_actions()
 	_step_uptime()
 	_step_screen()
-	if _elapsed >= _t.hold_until:
+	_step_machine(delta / maxf(Engine.time_scale, 0.01))
+	if _elapsed >= _t.end_at:
 		_finish(false)
 
 
@@ -452,13 +516,22 @@ func _step_crash() -> void:
 			_terminal.visible = true
 			_screen.visible = true
 			_event("terminal")
+	if _phase == Phase.BLACK and _fall == null:
+		_build_machine()
 	if _hum.playing:
-		_hum.volume_db = SfxSynth.volume_db(_t.hum_volume * clampf(inverse_lerp(_t.hum_from, _t.hum_full, _elapsed), 0.0, 1.0))
+		var away := 1.0 - smoothstep(_t.shrink_at, _t.fall_at - 2.0, _elapsed)
+		_hum.volume_db = SfxSynth.volume_db(_t.hum_volume * clampf(inverse_lerp(_t.hum_from, _t.hum_full, _elapsed), 0.0, 1.0) * away)
 	if _phase == Phase.TERMINAL or _phase == Phase.HOLD:
 		_terminal.pop = luma_at(_elapsed)
 	if _phase == Phase.TERMINAL and _elapsed >= _t.rest_at:
 		_phase = Phase.HOLD
 		_event("hold")
+	if _phase == Phase.HOLD and _elapsed >= _t.hold_until:
+		_phase = Phase.IGNORE
+		_event("ignore")
+	if _phase == Phase.IGNORE and _elapsed >= _t.hold_until + _t.ignore_s:
+		_phase = Phase.IN
+		_event("ignore_done")
 
 
 func _freeze() -> void:
@@ -476,6 +549,118 @@ func _freeze() -> void:
 		_paused_world = true
 	_buzz.play()
 	_event("freeze")
+
+
+# --- The machine (C40). ---
+
+## The city from the data's folders and counts (taken and settled: the same the terminal scrolled), and the world
+## it is built in, while the screen is black; drawn once there so its first real frame never stalls.
+func _build_machine() -> void:
+	_layout = TreeLayout.build(_data.folders(), _data.folder_counts())
+	_fall = TreeFall.new()
+	_fall.name = "Machine"
+	_fall.shrink_at = _t.shrink_at
+	_fall.fall_at = _t.fall_at
+	_fall.land_at = _t.land_at
+	var hot := OpenerData.clean(_data.top_process(), TreeLayout.LABEL_LONGEST)
+	_fall.process_name = hot if hot != "" else DemoOpenerData.TOP_PROCESS
+	add_child(_fall)
+	_screen_port = SubViewport.new()
+	_screen_port.name = "TerminalScreen"
+	_screen_port.disable_3d = true
+	_screen_port.transparent_bg = false
+	_screen_port.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(_screen_port)
+	_screen_view = _view("TerminalView", _screen_port.get_texture())
+	_world_view = _view("MachineView", _fall.get_texture())
+	_fade = ColorRect.new()
+	_fade.name = "Fade"
+	_fade.color = Color(0.0, 0.0, 0.0, 0.0)
+	_full(_fade)
+	_fade.visible = true
+	_size_ports()
+	get_viewport().size_changed.connect(_size_ports)
+	_fall.build(_layout, _palette, GameSettings.current().graphics()["bloom"])
+	_fall.set_screen(_screen_port.get_texture(), Vector2(_screen_port.size))
+	_fall.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_event("machine")
+
+
+func _view(node_name: String, texture: Texture2D) -> TextureRect:
+	var view := TextureRect.new()
+	view.name = node_name
+	view.texture = texture
+	view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	view.stretch_mode = TextureRect.STRETCH_SCALE
+	_full(view)
+	return view
+
+
+## Both viewports the window's size; the screen's panel the window's shape.
+func _size_ports() -> void:
+	if _fall == null:
+		return
+	var pixels := get_viewport().get_visible_rect().size
+	var whole := Vector2i(maxi(roundi(pixels.x), 2), maxi(roundi(pixels.y), 2))
+	_fall.size = whole
+	_screen_port.size = whole
+	_fall.set_aspect(float(whole.x) / whole.y)
+	_fall.set_screen(_screen_port.get_texture(), Vector2(whole))
+
+
+func _step_machine(delta: float) -> void:
+	if _fall == null or _phase == Phase.DONE:
+		return
+	if _phase == Phase.IN and not _lifted and _elapsed >= _t.shrink_at - LIFT_S:
+		_lift()
+	if _phase == Phase.IN and _elapsed >= _t.shrink_at:
+		_phase = Phase.REVEAL
+		_world_view.visible = true
+		_screen_view.visible = false
+		_whoosh.play()
+		_event("reveal")
+	if _phase == Phase.REVEAL and _elapsed >= _t.fall_at:
+		_phase = Phase.FALL
+		# The screen is behind the camera from here on: its picture stays as it was, no longer drawn.
+		_screen_port.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_wind.volume_db = SfxSynth.volume_db(0.0)
+		_wind.play()
+		_event("fall")
+	if _phase == Phase.FALL and _elapsed >= _t.land_at:
+		_phase = Phase.LANDED
+		_wind.stop()
+		_thud.play()
+		_event("land")
+	if _phase == Phase.LANDED and _elapsed >= _t.handoff_at and event_time("handoff") < 0.0:
+		_event("handoff")
+	if _phase == Phase.REVEAL or _phase == Phase.FALL or _phase == Phase.LANDED:
+		_look = TreeFall.settle_look(_look, delta)
+		_fall.step(_elapsed, _look)
+		var speed := _fall.speed_at(_elapsed)
+		if _wind.playing:
+			var k := clampf(speed / 40.0, 0.0, 1.0)
+			_wind.volume_db = SfxSynth.volume_db(_t.wind_volume * k)
+			_wind.pitch_scale = lerpf(0.6, 1.25, k)
+		var beat := floori(_elapsed * TreeFall.BEAT_HZ)
+		if _phase != Phase.REVEAL and beat != _beats and _elapsed > lerpf(_t.fall_at, _t.land_at, 0.45):
+			_beats = beat
+			_beat.volume_db = SfxSynth.volume_db(_t.beat_volume * smoothstep(_t.fall_at, _t.land_at, _elapsed))
+			_beat.play()
+		_fade.color.a = clampf((_elapsed - _t.handoff_at) / maxf(_t.end_at - _t.handoff_at, 0.001), 0.0, 1.0)
+
+
+## The terminal and its screen into a viewport of their own (their picture, shown at once as it was, the window's
+## size, pixel for pixel), which the panel in the machine shows; the machine drawn from now on.
+func _lift() -> void:
+	_lifted = true
+	_screen_port.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_fall.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_fall.step(_t.shrink_at, Vector2.ZERO)
+	for control in [_terminal, _screen]:
+		control.reparent(_screen_port, false)
+		control.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_screen_view.visible = true
+	_event("lift")
 
 
 func _cut() -> void:
@@ -505,6 +690,10 @@ func _step_actions() -> void:
 				_terminal.print_line(action["text"], action["attr"])
 			"newline":
 				_terminal.newline()
+			"runs":
+				for run in action["runs"]:
+					for ch in String(run[0]):
+						_terminal.put(ch, run[1])
 			"uptime":
 				_uptime_line = _terminal.print_line(uptime_text(_uptime_now()), "yellow")
 				_uptime_shown = _uptime_now()
@@ -543,7 +732,7 @@ func _finish(skipped: bool) -> void:
 		return
 	_phase = Phase.DONE
 	_event("skipped" if skipped else "done")
-	for player in [_buzz, _crackle, _hum] + _keys:
+	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat] + _keys:
 		player.stop()
 	_release()
 	finished.emit(skipped)
@@ -554,6 +743,14 @@ func _finish(skipped: bool) -> void:
 func _release() -> void:
 	if _data != null:
 		_data.drop()
+	# The city and the machine built from the data go with it.
+	_layout = null
+	if _fall != null:
+		if is_inside_tree() and get_viewport().size_changed.is_connected(_size_ports):
+			get_viewport().size_changed.disconnect(_size_ports)
+		_fall.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_fall.queue_free()
+		_fall = null
 	if _paused_world:
 		_paused_world = false
 		if is_inside_tree():
@@ -594,6 +791,9 @@ func _input(event: InputEvent) -> void:
 	# The fake terminal ignores typing, and nothing behind it acts on a key or a click while it plays.
 	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
 		get_viewport().set_input_as_handled()
+	# Falling, the player may look about a little (TreeFall.LOOK_MOST), never steer.
+	if event is InputEventMouseMotion and (_phase == Phase.FALL or _phase == Phase.LANDED):
+		_look = TreeFall.add_look(_look, (event as InputEventMouseMotion).relative)
 
 
 static func _is_escape(event: InputEvent) -> bool:
@@ -641,6 +841,10 @@ func _build() -> void:
 	_hum = _player("Hum", "hum", 0.0)
 	for i in 3:
 		_keys.append(_player("Key%d" % (i + 1), "", _t.key_volume))
+	_whoosh = _player("Whoosh", "whoosh", _t.whoosh_volume)
+	_wind = _player("Wind", "wind", 0.0)
+	_thud = _player("Thud", "thud", _t.thud_volume)
+	_beat = _player("Beat", "beat", _t.beat_volume)
 
 
 func _full(control: Control) -> void:
@@ -679,6 +883,14 @@ static func _sound(sound: String) -> AudioStreamWAV:
 				_sounds[sound] = SfxSynth.opener_crackle()
 			"hum":
 				_sounds[sound] = SfxSynth.opener_hum()
+			"whoosh":
+				_sounds[sound] = SfxSynth.opener_whoosh()
+			"wind":
+				_sounds[sound] = SfxSynth.opener_wind()
+			"thud":
+				_sounds[sound] = SfxSynth.opener_thud()
+			"beat":
+				_sounds[sound] = SfxSynth.opener_beat()
 			_:
 				_sounds[sound] = SfxSynth.opener_key(int(sound.trim_prefix("key")))
 	return _sounds[sound]
