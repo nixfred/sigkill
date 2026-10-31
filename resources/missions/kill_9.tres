@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "kill_9"
+order = 7
+title = "kill -9"
+register = "all"
+goal = "Kill PID 6666, the shell that never logged out."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon", "sighup", "dev_null")
+grants = PackedStringArray()
+abilities = PackedStringArray()
+objectives = [{
+"count": 1,
+"daemon": "any",
+"id": "core",
+"kind": "kill",
+"text": "kill -9 the core"
+}]
+logs = []
+lines = [{
+"on": "begin:core",
+"text": "you won't.",
+"who": "tilde"
+}, {
+"on": "complete",
+"text": "audit: session restored. user=you",
+"who": "auditor"
+}, {
+"on": "complete",
+"text": "...welcome back.",
+"who": "ai"
+}]
+transitions = []
+ice = true
+fail_time_s = 0.0
+next = ""
+playable = false
+draft = false
+hidden = false

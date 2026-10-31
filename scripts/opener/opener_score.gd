@@ -22,6 +22,8 @@ extends RefCounted
 ## frame ever waits on it), then kept: a replay plays it at once. A note that repeats is made once and mixed in again.
 ## Each part brought to its own loudness (LOUDNESS, the RMS of what sounds), its peaks rounded off under full scale, so
 ## none is harsh at full volume. Deterministic: the same notes, the same noise, every run.
+## Quitting while it is still being made (C35): the window's close calls cancel(), and the worker stops at its next note
+## or tone, so the game quits at once instead of waiting out the build; nothing it half made is kept.
 
 const RATE := 32000
 const BEAT_S := 0.4
@@ -84,6 +86,8 @@ var _loop := false
 var _rng := RandomNumberGenerator.new()
 var _tones := {}
 var _parts := {}
+## Set from the main thread by cancel(): the worker stops at its next note, tone or part.
+var _cancel := false
 
 
 # --- What the opener asks. ---
@@ -103,7 +107,8 @@ static func collect() -> bool:
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		_streams = _job._parts
+		if not _job._cancel:
+			_streams = _job._parts
 		_job = null
 	return done()
 
@@ -125,12 +130,22 @@ static func make_all() -> void:
 	if _task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		_streams = _job._parts
+		var cancelled := _job._cancel
+		if not cancelled:
+			_streams = _job._parts
 		_job = null
-		return
+		if not cancelled:
+			return
 	var job := OpenerScore.new()
 	job._make_all()
 	_streams = job._parts
+
+
+## Stops a score still being made (the game quitting): the worker gives up at its next note or tone, so waiting for it
+## (forget(), or the engine as it quits) is short. Nothing it made is kept; the next begin() starts afresh.
+static func cancel() -> void:
+	if _job != null and _task >= 0:
+		_job._cancel = true
 
 
 ## Forgets every part (the checks), once no worker is making them.
@@ -162,6 +177,8 @@ func _init() -> void:
 
 func _make_all() -> void:
 	for part in PARTS:
+		if _cancel:
+			return
 		_begin(part)
 		match part:
 			"bed":
@@ -172,6 +189,8 @@ func _make_all() -> void:
 				_wait()
 			"stinger":
 				_stinger()
+		if _cancel:
+			return
 		_parts[part] = _to_stream(_l, _r, _loop, LOUDNESS[part])
 
 
@@ -357,6 +376,8 @@ func _drums(at: float, bars: int, level: float) -> void:
 # --- Mixing: a tone made once (its two channels) added in at `at`, scaled. ---
 
 func _mix(tone: Array, at: float, gain: float) -> void:
+	if _cancel:
+		return
 	var tl: PackedFloat32Array = tone[0]
 	var tr: PackedFloat32Array = tone[1]
 	var from := int(at * RATE)
@@ -373,7 +394,7 @@ func _mix(tone: Array, at: float, gain: float) -> void:
 		_r[from + j] += tr[j] * gain
 
 
-## A tone of `seconds`, empty, its two channels.
+## A tone of `seconds`, empty, its two channels (one sample at least).
 static func _tone(seconds: float) -> Array:
 	var l := PackedFloat32Array()
 	l.resize(maxi(int(seconds * RATE), 1))
@@ -384,6 +405,8 @@ static func _tone(seconds: float) -> Array:
 
 ## The tone named `key`, made by `make` the first time.
 func _cached(key: String, make: Callable) -> Array:
+	if _cancel:
+		return _tone(0.0)
 	if not _tones.has(key):
 		_tones[key] = make.call()
 	return _tones[key]

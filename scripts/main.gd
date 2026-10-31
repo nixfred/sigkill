@@ -11,6 +11,10 @@ extends Node3D
 ## ICEbreakers' director, which keeps every intruder's breakers and runs them; and (I3) the arena's
 ## blackout, its hum and its lights, which Black ICE takes away while it is out. Unlocks (C33): this player's kills
 ## of the daemons it judged here count toward its unlocks (scripts/unlocks/progress.gd), saved as rounds end.
+## Missions (C35): the arena's mission runner (scripts/missions/mission_runner.gd) beside the directors; a mission
+## queued before this load (the Missions screen, a retry, the next one, or R mid-mission) begins as it loads, and the
+## Missions screen opens after a mission's "Missions". The flag --mission=<id> (with --demo, or under --script: the
+## tests and captures) begins that mission once a run, the hidden test range included.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -20,11 +24,15 @@ const SettingsFile = preload("res://scripts/settings/settings_file.gd")
 ## The game's own flag that starts the opener (C38) as the arena loads, from the Esc menu, as if picked there: for
 ## the tests and the captures. The first launch's own (C42: the card, then the opener once) is the Esc menu's.
 const OPENER_FLAG := "--opener"
+## The dev and capture flag that begins a mission as the arena loads (C35): --mission=<id>, with --demo or under --script.
+const MISSION_FLAG := "--mission="
 
 ## The flag is taken once a run: an R reload of the arena never plays the opener again.
 static var _opener_flag_taken := false
 ## The first launch (C42) is looked at once a run, as the arena first loads.
 static var _first_launch_taken := false
+## --mission=<id> is taken once a run (C35).
+static var _mission_flag_taken := false
 
 var _remaining := 0
 var _total := 0
@@ -81,6 +89,15 @@ func _ready() -> void:
 	_hud.set_ice(ice)
 	_hud.set_breakers(breakers)
 	_hud.set_solo_life(life)
+	# Missions (C35): one runner, beside the directors; it begins what was queued once the arena is up.
+	var runner := MissionRunner.new()
+	runner.player = _player
+	runner.life = life
+	runner.daemons = director
+	runner.ice = ice
+	runner.rounds = _hud.round_hud()
+	add_child(runner)
+	_hud.set_mission_runner(runner)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -114,6 +131,7 @@ func _ready() -> void:
 		if session.take_launch_join(launch_args):
 			_hud.net_hud().open()
 		session.take_launch_flags(launch_args)  # --light-trails: this run's hosting plays by it (C20)
+		runner.session = session
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
@@ -121,6 +139,15 @@ func _ready() -> void:
 	# --script run (the tests and the capture tools), which hand in a file of their own if they want one.
 	if DisplayServer.get_name() != "headless" and not OS.get_cmdline_args().has("--script"):
 		_hud.pause_menu().first_launch_path = SettingsFile.DEFAULT_PATH
+	_take_mission_flag()
+	var queued := MissionRunner.take_pending()
+	var after := MissionRunner.take_after()
+	if queued[0] != "":
+		_first_launch_taken = true
+		_begin_mission.call_deferred(queued[0], queued[1])
+	elif after == MissionRunner.AFTER_MISSIONS:
+		_first_launch_taken = true
+		_hud.pause_menu().open_missions.call_deferred()
 	if launch_args.has(OPENER_FLAG) and not _opener_flag_taken:
 		_opener_flag_taken = true
 		_first_launch_taken = true
@@ -128,6 +155,26 @@ func _ready() -> void:
 	elif not _first_launch_taken:
 		_first_launch_taken = true
 		_hud.pause_menu().begin_first_launch.call_deferred()
+
+
+## --mission=<id> (C35): queued once a run, only with --demo or under --script (the tests and the captures).
+func _take_mission_flag() -> void:
+	if _mission_flag_taken:
+		return
+	for arg in launch_args:
+		if arg.begins_with(MISSION_FLAG):
+			_mission_flag_taken = true
+			if launch_args.has("--demo") or OS.get_cmdline_args().has("--script"):
+				MissionRunner.queue(arg.trim_prefix(MISSION_FLAG), 1)
+			return
+
+
+## The mission queued before this load, begun: the runner's own checks (alone, built) decide.
+func _begin_mission(id: String, try: int) -> void:
+	var runner := MissionRunner.of(self)
+	var def := MissionBook.of(id)
+	if runner != null and def != null:
+		runner.begin(def, try)
 
 
 ## The opener from the Esc menu (C38), as the flag asks.
@@ -212,6 +259,8 @@ func _process(delta: float) -> void:
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		OpenerScore.cancel()  # quitting while the opener's score is still being made: never wait it out (C35)
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
 		Progress.current().flush()
 

@@ -1,0 +1,84 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "login"
+order = 1
+title = "login"
+register = "tron"
+goal = "Survive your first timeslices on the scheduler's floor, then follow the daemons' spawn trail down."
+loadout = PackedStringArray("terminal_cannon", "sigterm")
+grants = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail")
+abilities = PackedStringArray()
+objectives = [{
+"id": "floor",
+"kind": "survive",
+"seconds": 20.0,
+"text": "Hold the floor for one timeslice"
+}, {
+"daemon": "rogue",
+"count": 2,
+"gives": ["sigkill_rail"],
+"id": "rogue",
+"kind": "kill",
+"text": "Take down the rogue.d"
+}, {
+"id": "temporary",
+"kind": "log",
+"log": "temporary",
+"text": "Pick up the terminal log"
+}, {
+"at": Vector3(0, 0.95, -14),
+"id": "vent",
+"kind": "reach",
+"label": "spawn vent",
+"radius": 2.5,
+"text": "Follow the spawn trail to the vent"
+}]
+logs = [{
+"at": Vector3(-14, 0.95, -5),
+"id": "temporary",
+"name": "migrate.sh",
+"text": "#!/bin/sh\n# temporary. remove after the migration.\nexec ./watchdog --respawn --forever"
+}]
+lines = [{
+"on": "start",
+"text": "audit: user=? action=enter path=/scheduler result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "begin:floor",
+"text": "Arena's quiet. That's not a compliment. Quiet is when they're planning.",
+"who": "ai"
+}, {
+"on": "begin:rogue",
+"text": "Rogue's rearing. Back up or it opens you.",
+"who": "ai"
+}, {
+"on": "done:rogue",
+"text": "That's the rail you forged on the way in. Fill the meter and it fires.",
+"who": "ai"
+}, {
+"on": "log:temporary",
+"text": "Found a log. Your handwriting. Well. Your comment style.",
+"who": "ai"
+}, {
+"on": "begin:vent",
+"text": "audit: user=? action=follow path=/scheduler/spawn result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "complete",
+"text": "Well. That's not in the arena brochure.",
+"who": "ai"
+}]
+transitions = [{
+"on": "done:vent",
+"to": "cyberpunk"
+}]
+ice = false
+fail_time_s = 0.0
+next = "defunct"
+playable = true
+draft = true
+hidden = false

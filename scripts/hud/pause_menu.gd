@@ -48,6 +48,13 @@ extends Control
 ## as it ends. "Skip the intro next time" (the intro's own Esc menu) is kept too. Both in the settings file's [intro]
 ## section (scripts/settings/intro_state.gd), at first_launch_path, which the arena hands only outside headless and
 ## script runs. "Play the opener" always replays it and comes back to this menu.
+##
+## Missions (C35): the menu's Missions opens the Missions screen (scripts/hud/missions_screen.gd): the campaign's seven,
+## done, next, in production or locked; starting one queues it and reloads the arena into it (scripts/missions/
+## mission_runner.gd). Alone only: in a match the entry is greyed out, as the opener's is. While a mission runs the
+## menu says so, and offers Restart mission (its next try) and Quit mission (back to the Missions screen) beside
+## Resume; nothing can hurt the player while the menu is up then (the mission shields it), and the opener waits for the
+## mission to end. Reset progress wipes the missions too, with the unlocks they handed out.
 
 signal closed
 
@@ -73,12 +80,18 @@ const TRAILS_NOTE := "your match when you host; joiners get the host's"
 const MODS_NOTE := "mods in your matches; fixed when you start hosting"
 const RESET_PROGRESS := "Reset progress"
 const RESET_CONFIRM := "Really wipe? click again"
-const RESET_ASK := "Wipe every unlock and count? Click Reset progress again within %d s. Nothing else changes."
-const RESET_DONE := "Progress wiped: every weapon back to its own skin, nothing earned."
+const RESET_ASK := "Wipe every unlock, count and mission? Click Reset progress again within %d s. Nothing else changes."
+const RESET_DONE := "Progress wiped: every weapon back to its own skin, nothing earned, no mission done."
 ## Seconds the reset's second click is waited for.
 const RESET_WAIT_S := 4.0
 const OPENER := "Play the opener"
 const OPENER_ONLINE := "Not during a match: it pauses the game."
+const OPENER_MISSION := "Not during a mission: quit it first."
+const MISSIONS := "Missions"
+const MISSIONS_ONLINE := "Solo only: not during a match."
+const RESTART_MISSION := "Restart mission"
+const QUIT_MISSION := "Quit mission"
+const MISSION_NOTE := "Mission %s  %s: its clock waits and nothing can hurt you while this is open."
 const OPENER_DATA := "opener data"
 const OPENER_DATA_NOTE := "names, counts, times, theme, uptime; no contents"
 const OPENER_DATA_TIP := "On: the opener shows your user and host names, folder names and how many entries each holds, recent file times, your Omarchy theme's colours and your uptime, read live. It never opens a file to read what is in it, and keeps nothing: nothing is saved, logged or sent. Off: invented demo data, the same beats."
@@ -153,6 +166,10 @@ var _reset: Button
 var _reset_left := 0.0
 var _version: Label
 var _opener_button: Button
+var _missions_button: Button
+var _restart_button: Button
+var _quit_mission_button: Button
+var _missions: MissionsScreen
 var _opener: Opener = null
 ## Where the first launch's state is kept (C42): the game's settings file in a real run, handed in by the arena; ""
 ## (headless and script runs, unless a test hands in its own) never asks and never auto-plays.
@@ -224,6 +241,8 @@ func close() -> void:
 	if _loadout.is_open():
 		_loadout.visible = false
 		_wear_choices()
+	if _missions.is_open():
+		_missions.visible = false
 	_save_if_changed()
 	_open = false
 	visible = false
@@ -240,6 +259,7 @@ func open_loadout() -> void:
 		open()
 	_pause.visible = false
 	_sheet.visible = false
+	_missions.visible = false
 	_loadout.player = player
 	_loadout.session = session
 	_loadout.open()
@@ -249,10 +269,72 @@ func showing_loadout() -> bool:
 	return _open and _loadout.is_open()
 
 
+## The Missions screen (C35), over the menu. Alone only: in a match nothing opens (false).
+func open_missions() -> bool:
+	if _online():
+		return false
+	if not _open:
+		open()
+	_pause.visible = false
+	_sheet.visible = false
+	_loadout.visible = false
+	_missions.session = session
+	_missions.player = player
+	_missions.open()
+	return true
+
+
+func showing_missions() -> bool:
+	return _open and _missions.is_open()
+
+
+func missions_screen() -> MissionsScreen:
+	return _missions
+
+
+## The mission running in this arena, or null.
+func mission() -> MissionRunner:
+	var runner := MissionRunner.of(player) if player != null and is_instance_valid(player) else null
+	return runner if runner != null and runner.running() else null
+
+
+func _on_missions_closed() -> void:
+	if _open:
+		_show_pause()
+
+
+## Mission `id` picked on the Missions screen: queued, the menu closed, and the arena reloaded into it.
+func _start_mission(id: String) -> void:
+	if _online():
+		_show_pause()
+		return
+	MissionRunner.queue(id, 1)
+	_was_captured = true
+	close()
+	if is_inside_tree() and get_tree().current_scene != null:
+		get_tree().reload_current_scene()
+
+
+func _on_restart_mission() -> void:
+	var runner := mission()
+	if runner == null:
+		return
+	close()
+	runner.retry()
+
+
+func _on_quit_mission() -> void:
+	var runner := mission()
+	if runner == null:
+		return
+	close()
+	runner.to_missions()
+
+
 ## The opener (C38): its first 35 seconds, on the demo data or (C39) the player's own (_opener_source), the menu
 ## out of sight and the arena paused behind it until it ends or Esc. Alone only; in a match nothing happens (null).
 func open_opener() -> Opener:
-	if _online():
+	if _online() or mission() != null:
 		return null
 	if not _open:
 		open()
@@ -403,6 +485,7 @@ func _on_reset_progress() -> void:
 	_reset_left = 0.0
 	_reset.text = RESET_PROGRESS
 	Progress.current().reset()
+	MissionProgress.current().reset()
 	_wear_choices()
 	_say(RESET_DONE)
 
@@ -421,6 +504,7 @@ func open_settings() -> void:
 		open()
 	_pause.visible = false
 	_loadout.visible = false
+	_missions.visible = false
 	_sheet.visible = true
 	_status_text = ""
 	_refresh()
@@ -459,8 +543,8 @@ func begin_rebind(action: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open or _loadout.is_open() or showing_opener() or showing_card():
-		return  # the loadout screen, the opener and the first-launch card take their own keys
+	if not _open or _loadout.is_open() or _missions.is_open() or showing_opener() or showing_card():
+		return  # the loadout and Missions screens, the opener and the first-launch card take their own keys
 	if _capturing != "":
 		var button := event is InputEventKey or event is InputEventMouseButton
 		if button:
@@ -503,12 +587,22 @@ func _show_pause() -> void:
 	_save_if_changed()
 	_sheet.visible = false
 	_loadout.visible = false
+	_missions.visible = false
 	_pause.visible = true
-	_opener_button.disabled = _online()
-	_opener_button.tooltip_text = OPENER_ONLINE if _online() else ""
+	var running := mission()
+	_opener_button.disabled = _online() or running != null
+	_opener_button.tooltip_text = OPENER_ONLINE if _online() else OPENER_MISSION if running != null else ""
+	_missions_button.visible = running == null
+	_missions_button.disabled = _online()
+	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
+	_restart_button.visible = running != null
+	_quit_mission_button.visible = running != null
 	# The save that leaving the settings just made, said where it can be seen.
 	var saved := _status_text == SAVED_LINE or _status_text == NOT_SAVED_LINE
-	_pause_note.text = (RUNNING_ONLINE if _online() else RUNNING_SOLO) + ("\n" + _status_text if saved else "")
+	var note := RUNNING_ONLINE if _online() else RUNNING_SOLO
+	if running != null:
+		note = MISSION_NOTE % [running.def.number(), running.def.title]
+	_pause_note.text = note + ("\n" + _status_text if saved else "")
 	_resume.grab_focus()
 	_fit()
 
@@ -720,13 +814,22 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], ["Loadout", open_loadout], [OPENER, open_opener], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
 			_resume = button
-		if pair[0] == OPENER:
-			_opener_button = button
+		match pair[0]:
+			OPENER:
+				_opener_button = button
+			MISSIONS:
+				_missions_button = button
+			RESTART_MISSION:
+				_restart_button = button
+				button.visible = false
+			QUIT_MISSION:
+				_quit_mission_button = button
+				button.visible = false
 	_sheet = _panel(center)
 	var sheet := _vbox(_sheet, 6)
 	var head := HBoxContainer.new()
@@ -769,6 +872,11 @@ func _build() -> void:
 	_loadout.name = "Loadout"
 	add_child(_loadout)
 	_loadout.closed.connect(_on_loadout_closed)
+	_missions = MissionsScreen.new()
+	_missions.name = "Missions"
+	add_child(_missions)
+	_missions.closed.connect(_on_missions_closed)
+	_missions.started.connect(_start_mission)
 	_card = FirstLaunchCard.new()
 	_card.name = "FirstLaunchCard"
 	add_child(_card)

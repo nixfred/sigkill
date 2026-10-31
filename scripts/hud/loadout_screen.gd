@@ -12,6 +12,10 @@ extends Control
 ##
 ## Alone, what the player wears changes as the screen closes (the Esc menu calls the player's wear()); in a
 ## match the look the host accepted holds until the match ends, and the screen says so.
+##
+## The campaign (C35): under the weapon on show, which mission hands it out for keeps (scripts/missions/), and whether
+## it is already yours. A record only: arena play and matches keep the whole arsenal whatever the campaign has handed
+## out. A mission still locked is named by its number alone, as the Missions screen does.
 
 signal closed
 
@@ -28,6 +32,9 @@ const MOD_ON := "FITTED: click to take off"
 const MOD_OFF := "click to fit"
 const LOCKED := "LOCKED  %s"
 const MODS_OFF := "the host's mods rule is off: shipped weapons this match"
+const CAMPAIGN_YOURS := "campaign  yours, from mission %s %s"
+const CAMPAIGN_OPEN := "campaign  mission %s %s hands it to you"
+const CAMPAIGN_LOCKED := "campaign  mission %s hands it to you"
 const FONT := 13
 const SMALL := 11
 const HEAD := 15
@@ -66,6 +73,7 @@ var _rows: Array[Button] = []
 var _name: Label
 var _fiction: Label
 var _worn_line: Label
+var _campaign_line: Label
 var _skin_cards: Array[PanelContainer] = []
 var _mod_card: PanelContainer
 var _note: Label
@@ -152,6 +160,7 @@ func texts() -> PackedStringArray:
 	out.append(_name.text)
 	out.append(_fiction.text)
 	out.append(_worn_line.text)
+	out.append(_campaign_line.text)
 	for card in _skin_cards + [_mod_card]:
 		if card.visible:
 			for label in card.find_children("*", "Label", true, false):
@@ -227,6 +236,16 @@ func _refresh() -> void:
 	_fiction.text = def.fiction
 	var skin := kit.skin_at(kit.skin_index(progress.skin_of(def.id))) if kit != null else null
 	_worn_line.text = "skin  %s     mod  %s" % [skin.display_name if skin != null else "-", kit.mod.display_name if kit != null and kit.mod != null and progress.mod_on(def.id) else "none"]
+	var mission := MissionBook.granting(def.id)
+	_campaign_line.text = ""
+	if mission != null:
+		if progress.has_weapon(def.id):
+			_campaign_line.text = CAMPAIGN_YOURS % [mission.number(), mission.title]
+		elif MissionProgress.current().is_open(mission):
+			_campaign_line.text = CAMPAIGN_OPEN % [mission.number(), mission.title]
+		else:
+			_campaign_line.text = CAMPAIGN_LOCKED % mission.number()
+	_campaign_line.add_theme_color_override("font_color", Palette.MINT if progress.has_weapon(def.id) else Color(Palette.TEAL, 0.8))
 	for i in _skin_cards.size():
 		var card := _skin_cards[i]
 		card.visible = kit != null and i < kit.skins.size()
@@ -386,6 +405,7 @@ func _build_stage(parent: Control) -> void:
 	_name = _label(col, "", NAME_FONT, Palette.FLASH)
 	_fiction = _label(col, "", FONT, Palette.TEAL)
 	_worn_line = _label(col, "", FONT, Palette.MINT)
+	_campaign_line = _label(col, "", FONT - 1, Palette.TEAL)
 
 
 func _build_cards(parent: Control) -> void:

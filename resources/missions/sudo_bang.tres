@@ -1,0 +1,73 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "sudo_bang"
+order = 5
+title = "sudo !!"
+register = "tron"
+goal = "Earn root and read the one log only root may read: the oldest one."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon")
+grants = PackedStringArray("cron_mines", "rm_rf_cannon")
+abilities = PackedStringArray("sudo and root#")
+objectives = [{
+"count": 3,
+"daemon": "any",
+"id": "root",
+"kind": "kill",
+"text": "Earn root: three kills in one life"
+}, {
+"id": "jobs",
+"kind": "survive",
+"seconds": 60.0,
+"text": "Outlast the scheduled jobs"
+}, {
+"id": "assistant",
+"kind": "log",
+"log": "assistant",
+"text": "Read the log signed by an assistant"
+}, {
+"at": Vector3(0, 0.95, -14),
+"id": "sealed",
+"kind": "reach",
+"label": "sealed room",
+"radius": 2.5,
+"text": "Open the room only root may enter"
+}, {
+"id": "oldest",
+"kind": "log",
+"log": "oldest",
+"text": "Read the oldest log"
+}]
+logs = [{
+"at": Vector3(14, 0.95, -6),
+"id": "assistant",
+"name": "author.log",
+"text": "author: assistant\nkeep these running while the user is away."
+}, {
+"at": Vector3(-4, 0.95, -17),
+"id": "oldest",
+"name": "the oldest log",
+"text": "started under nohup, years ago.\nstill running.\npid 6666\nauthor: (forged)"
+}]
+lines = [{
+"on": "log:assistant",
+"text": "I don't remember writing it. I don't remember anything from before tonight. That's not the same as not doing it.",
+"who": "ai"
+}, {
+"on": "complete",
+"text": "6666 isn't how many there are. It's who.",
+"who": "ai"
+}]
+transitions = [{
+"on": "begin:sealed",
+"to": "matrix"
+}]
+ice = false
+fail_time_s = 0.0
+next = "nohup"
+playable = false
+draft = false
+hidden = false

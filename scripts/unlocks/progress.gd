@@ -19,6 +19,11 @@ extends RefCounted
 ## the never-attack dummies), and in a match only from the host's judged results for this player (the host's own
 ## judging of its own player, or the session's match_feat() on the host's word: a kill it credits, a headshot).
 ##
+## Campaign weapons (C35): a mission hands out the weapons it teaches for keeps as it is done (scripts/missions/
+## mission_progress.gd calls grant_weapon()), kept here among the unlocks as <weapon>__campaign=true and told once by
+## the same toast. They are the campaign's record: arena play and matches keep the whole arsenal whatever is held,
+## and the loadout screen shows which mission hands each one out.
+##
 ## The launch flag --unlock-all (a dev and test flag, off unless given) makes everything count as held for the
 ## run, for captures; it is never written to the save. reset() wipes the profile (the settings screen asks
 ## twice). Headless runs (the tests, check.sh) never read or write the player's file: there current() has no
@@ -36,6 +41,8 @@ const PROGRESS := "progress"
 const FEATS_SECTION := "feats"
 const UNLOCKED := "unlocked"
 const LOADOUT := "loadout"
+## The item a campaign weapon is held as (C35): <weapon>__campaign.
+const CAMPAIGN := "campaign"
 ## A feat's count stops here: plenty, and well inside the file's numbers.
 const COUNT_LAST := 1000000
 ## Seconds between saves of counts alone (an unlock, a choice or a reset saves at once).
@@ -241,6 +248,24 @@ func choose_mod(weapon: String, on: bool) -> bool:
 	return true
 
 
+## Weapon `weapon` handed out for keeps by the mission that teaches it (C35), saved at once and told once. False
+## (nothing changes) for one already held or no such weapon.
+func grant_weapon(weapon: String) -> bool:
+	var def := _weapon_def(weapon)
+	var key := key_of(weapon, CAMPAIGN)
+	if def == null or held.has(key):
+		return false
+	held[key] = true
+	save()
+	unlocked.emit(weapon, CAMPAIGN, "%s  (campaign weapon)" % def.short_name)
+	return true
+
+
+## True when the campaign has handed weapon `weapon` out (anything with --unlock-all).
+func has_weapon(weapon: String) -> bool:
+	return all_unlocked or held.has(key_of(weapon, CAMPAIGN))
+
+
 ## Wipes every count, unlock and choice, and saves the fresh profile. --unlock-all still holds everything for
 ## the run.
 func reset() -> bool:
@@ -292,6 +317,8 @@ func _item_of(key: String) -> Resource:
 	var parts := key.split("__")
 	if parts.size() != 2:
 		return null
+	if parts[1] == CAMPAIGN:
+		return _weapon_def(parts[0])
 	var kit := WeaponKit.of(parts[0])
 	if kit == null:
 		return null
@@ -299,3 +326,10 @@ func _item_of(key: String) -> Resource:
 		return kit.mod
 	var i := kit.skin_index(parts[1])
 	return kit.skins[i] if i > 0 else null
+
+
+static func _weapon_def(weapon: String) -> WeaponDefScript:
+	for def in WeaponKit.shipped_defs():
+		if def.id == weapon:
+			return def
+	return null

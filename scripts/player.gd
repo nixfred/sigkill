@@ -241,6 +241,9 @@ var hits_landed := 0
 var input_blocked := false
 ## The arena's ICEbreakers director (I2), set by main.gd: U and Y go to it.
 var breakers: Node = null
+## The weapons a mission lets this player carry (C35, scripts/missions/mission_runner.gd), by id: only those draw,
+## cycle, swap back or throw. Empty (the arena, a match): every one, as ever.
+var carried := PackedStringArray()
 ## Test hook: a headless run cannot capture the mouse, so tests set this to have the player
 ## read keyboard and mouse input as if it were captured. Never set by the game.
 var assume_captured := false
@@ -957,21 +960,49 @@ func weapon_tuning() -> Resource:
 ## Draws the weapon in `slot` (0 for slot 1): ready to fire after the swap time. False when
 ## it is already drawn, there is no such slot, or the player is derezzed.
 func select_slot(slot: int) -> bool:
-	if not alive or frozen_now() or not inventory.select(slot):
+	if not slot_carried(slot) or not alive or frozen_now() or not inventory.select(slot):
 		return false
 	_show_weapon()
 	weapon_drawn.emit(_w.id)
 	return true
 
 
-## The next (`step` 1) or previous (-1) weapon, wrapping round: the mouse wheel.
+## The next (`step` 1) or previous (-1) weapon, wrapping round: the mouse wheel. A mission's loadout (C35) skips
+## what it does not carry.
 func cycle_weapon(step: int) -> bool:
-	return select_slot(posmod(inventory.current + step, inventory.slot_count())) if inventory.slot_count() > 1 else false
+	var n := inventory.slot_count()
+	for i in range(1, n):
+		var slot := posmod(inventory.current + step * i, n)
+		if slot_carried(slot):
+			return select_slot(slot)
+	return false
 
 
 ## Back to the weapon drawn before this one: Q.
 func swap_to_last() -> bool:
 	return select_slot(inventory.last)
+
+
+## True when the weapon in `slot` may be drawn: every one, unless a mission says what is carried (C35).
+func slot_carried(slot: int) -> bool:
+	if carried.is_empty():
+		return true
+	return slot >= 0 and slot < inventory.slot_count() and carried.has(inventory.defs[slot].id)
+
+
+## A mission's loadout (C35): only the weapons `ids` may be drawn ([] lifts it). The one in hand, if it is not among
+## them, gives way at once to the first that is.
+func set_carried(ids: PackedStringArray) -> void:
+	carried = ids.duplicate()
+	if slot_carried(inventory.current):
+		return
+	for slot in inventory.slot_count():
+		if slot_carried(slot):
+			inventory.hold(slot)
+			inventory.last = slot
+			_show_weapon()
+			weapon_drawn.emit(_w.id)
+			return
 
 
 ## An ICE field's jam (I1): `weapon` (its id; "" the one in hand) cannot fire for `seconds`; the
@@ -1990,7 +2021,7 @@ func _meter_from(dummy: Node, before: float, base: float) -> void:
 ## none to throw (no thrown weapon, none left, inside its interval, or derezzed).
 func quick_throw() -> bool:
 	var slot := inventory.thrown_slot()
-	if slot < 0 or not alive or _bombs_full(slot) or inventory.try_throw(slot) != "":
+	if slot < 0 or not slot_carried(slot) or not alive or _bombs_full(slot) or inventory.try_throw(slot) != "":
 		return false
 	_throw_from(slot)
 	return true

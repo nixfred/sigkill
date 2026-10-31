@@ -666,12 +666,14 @@ func _menu_checks() -> void:
 	await process_frame
 	var texts := PackedStringArray()
 	for b in menu.find_children("*", "Button", true, false):
-		texts.append((b as Button).text)
+		if (b as Button).is_visible_in_tree():
+			texts.append((b as Button).text)
 	var entry: Button = null
 	for b in menu.find_children("*", "Button", true, false):
 		if (b as Button).text == "Play the opener":
 			entry = b
-	_check("acceptance: the Esc menu has the entry, between Loadout and Settings: %s" % " | ".join(texts.slice(0, 5)), texts.slice(0, 5) == PackedStringArray(["Resume", "Loadout", "Play the opener", "Settings", "Quit SIGKILL"]) and entry != null and not entry.disabled)
+	# C35 put Missions after Resume; the mission's own two rows show only while one runs.
+	_check("acceptance: the Esc menu has the entry, between Loadout and Settings: %s" % " | ".join(texts.slice(0, 6)), texts.slice(0, 6) == PackedStringArray(["Resume", "Missions", "Loadout", "Play the opener", "Settings", "Quit SIGKILL"]) and entry != null and not entry.disabled)
 	entry.pressed.emit()
 	await process_frame
 	var o: Opener = menu.opener()

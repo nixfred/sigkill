@@ -117,6 +117,9 @@ const BUFFER_LINE := "buffer [%s%s]"
 const RECHARGE_LINE := "recharge [%s%s]"
 const BLOCKED_LINE := "blocked [%s%s]"
 ## A bank's row while the other is active.
+## A slot a mission's loadout does not carry (C35): a dash, faint.
+const UNCARRIED := "-"
+const UNCARRIED_DIM := 0.3
 const BANK_DIM := 0.5
 ## How dim an ult slot is while its meter fills.
 const DIM := 0.4
@@ -257,6 +260,11 @@ func _refresh() -> void:
 		label.visible = i < bank1
 		if not label.visible:
 			continue
+		if not _carried(i):
+			label.text = (SLOT_GAP if i > 0 else "") + UNCARRIED
+			label.add_theme_color_override("font_color", Palette.MINT)
+			label.modulate = Color(1, 1, 1, UNCARRIED_DIM)
+			continue
 		var plain: String = (SLOT_THROWN % [i + 1, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % (i + 1)
 		label.text = (SLOT_GAP if i > 0 else "") + (SLOT_DRAWN % [i + 1, inv.defs[i].short_name] if i == inv.current else plain)
 		var ult: bool = inv.defs[i].is_ult()
@@ -370,13 +378,19 @@ static func skin_tint(def: WeaponDefScript) -> Color:
 
 
 func _refresh_banks(inv) -> void:
-	_bank2.visible = inv.slot_count() > Arsenal.BANK_SLOTS
+	var any_carried := false
+	for i in range(Arsenal.BANK_SLOTS, inv.slot_count()):
+		any_carried = any_carried or _carried(i)
+	_bank2.visible = inv.slot_count() > Arsenal.BANK_SLOTS and any_carried  # a mission carrying none of bank 2 hides it (C35)
 	if not _bank2.visible:
 		_slot_row.modulate = Color(1, 1, 1, 1)
 		return
 	var parts := PackedStringArray()
 	for i in range(Arsenal.BANK_SLOTS, inv.slot_count()):
 		var key := Arsenal.key_of(i)
+		if not _carried(i):
+			parts.append(UNCARRIED)
+			continue
 		var plain: String = (SLOT_THROWN % [key, inv.mags[i]]) if inv.defs[i].is_thrown() else SLOT % key
 		parts.append(SLOT_DRAWN % [key, inv.defs[i].short_name] if i == inv.current else plain)
 	var lead := Controls.bind_label(GameSettings.current().bind("weapon_bank"))
@@ -385,6 +399,11 @@ func _refresh_banks(inv) -> void:
 	var active := 1 if held else Arsenal.bank_of(inv.current)
 	_bank2.modulate = Color(1, 1, 1, 1.0 if active == 1 else BANK_DIM)
 	_slot_row.modulate = Color(1, 1, 1, 1.0 if active == 0 else BANK_DIM)
+
+
+## True when the player may draw slot `slot`: every slot, unless a mission's loadout says otherwise (C35).
+func _carried(slot: int) -> bool:
+	return not player.has_method("slot_carried") or player.slot_carried(slot)
 
 
 func _refresh_stop() -> void:

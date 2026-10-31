@@ -1,0 +1,54 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "defunct"
+order = 2
+title = "defunct"
+register = "cyberpunk"
+goal = "Find where the zombies come from and kill their parent, so init can adopt and reap them all."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun")
+grants = PackedStringArray("ping_sonar", "fork_bomb", "fork_shotgun")
+abilities = PackedStringArray()
+objectives = [{
+"count": 6,
+"daemon": "zombie",
+"id": "dark",
+"kind": "kill",
+"text": "Find the zombies in the rain"
+}, {
+"id": "shop",
+"kind": "log",
+"log": "shop",
+"text": "Read the dead storefront's log"
+}, {
+"count": 1,
+"daemon": "rogue",
+"id": "parent",
+"kind": "kill",
+"text": "Kill their parent"
+}]
+logs = [{
+"at": Vector3(10, 0.95, -4),
+"id": "shop",
+"name": "storefront.log",
+"text": "the shop closed six years ago.\nthe lights are on a timer nobody owns."
+}]
+lines = [{
+"on": "log:shop",
+"text": "These were jobs from a terminal you closed. You said you'd check on them tomorrow.",
+"who": "ai"
+}, {
+"on": "complete",
+"text": "It's you. Not 'like you'. You.",
+"who": "ai"
+}]
+transitions = []
+ice = false
+fail_time_s = 0.0
+next = "while_true"
+playable = false
+draft = false
+hidden = false

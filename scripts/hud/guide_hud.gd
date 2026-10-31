@@ -62,6 +62,8 @@ const KEYS_LINE := "T ask your AI   O AI on/off"
 const TYPING_LINE := "Enter sends   Esc cancels"
 const ASK_TITLE := "ask your AI"
 const NOTICE_TITLE := "SIGKILL"
+## A story line's title (C35): the one voice, with no agent's name and no live mark, since no AI wrote it.
+const STORY_TITLE := "your AI"
 const CONSENT_KEYS := "[Y] allow   [N] keep AI off"
 const OFF_LINE := "AI off. Press O to turn it on."
 const NO_AI_LINE := "No AI linked. The scripted guide is here."
@@ -657,6 +659,24 @@ func _show_answer(text: String) -> void:
 	_body.visible = true
 	_answer_ms_left = _t.answer_ms
 	_notice_ms_left = 0.0
+
+
+## Your AI's story line (C35: a mission's script, docs/STORY.md section 4), shown here as "your AI" for `ms` (the
+## answer's time by default): the same for every player, never through the player's own AI and never sent anywhere.
+## False, and nothing shown, while the panel is in use: the ask box, a question, a model load, a call in flight or a
+## live answer still up; the mission tries it again.
+func story_line(text: String, ms: float = -1.0) -> bool:
+	if _typing or _consent_prompt or _load_ui != "" or _asking or (_answer_ms_left > 0.0 and _body.visible):
+		return false
+	_title.text = STORY_TITLE
+	_title.add_theme_color_override("font_color", _t.badge_color)
+	_body.text = text
+	_body.add_theme_color_override("font_color", _t.text_color)
+	_body.visible = true
+	_answer_ms_left = 0.0
+	_notice_ms_left = ms if ms > 0.0 else float(_t.answer_ms)
+	_refresh()
+	return true
 
 
 func _show_failure(kind: String) -> void:

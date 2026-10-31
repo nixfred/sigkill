@@ -55,6 +55,7 @@ var _pipe: PipeHud
 var _dev_null: DevNullHud
 var _sighup: SighupHud
 var _toast: UnlockToast
+var _mission: MissionHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
@@ -171,7 +172,12 @@ func _ready() -> void:
 	_sighup.name = "SighupHud"
 	_sighup.crosshair = _crosshair
 	root.add_child(_sighup)
-	# Unlocks (C33): "UNLOCKED: <name>" near the top the moment a skin or a mod is earned.
+	# Missions (C35): the objective panel, the mission's terminal, the log reader, the card and the end screens.
+	_mission = MissionHud.new()
+	_mission.name = "MissionHud"
+	_mission.guide = _guide
+	root.add_child(_mission)
+	# Unlocks (C33): "UNLOCKED: <name>" near the top the moment a skin or a mod is earned (over a mission's end).
 	_toast = UnlockToast.new()
 	_toast.name = "UnlockToast"
 	root.add_child(_toast)
@@ -204,7 +210,7 @@ func _process(_delta: float) -> void:
 	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
 		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing()
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing() and not _mission.end_screen().is_up()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -232,6 +238,7 @@ func set_player(player: Node) -> void:
 	_pipe.player = player
 	_dev_null.player = player
 	_sighup.player = player
+	_mission.player = player
 	if player.has_signal("menu_requested"):
 		player.menu_requested.connect(open_menu)
 
@@ -339,6 +346,15 @@ func net_hud() -> NetHud:
 
 func unlock_toast() -> UnlockToast:
 	return _toast
+
+
+## The arena's mission runner (C35), shown from now on.
+func set_mission_runner(runner: MissionRunner) -> void:
+	_mission.set_runner(runner)
+
+
+func mission_hud() -> MissionHud:
+	return _mission
 
 
 func pause_menu() -> PauseMenu:

@@ -91,6 +91,11 @@ func protect_left() -> float:
 	return combat.states[ME]["protect_left"]
 
 
+## Kept from harm for `seconds` (C35: a mission done, its screen up): the spawn protection's own rule, never shorter.
+func shield(seconds: float) -> void:
+	combat.states[ME]["protect_left"] = maxf(combat.states[ME]["protect_left"], seconds)
+
+
 func respawn_left() -> float:
 	if flatlined_now:
 		return 0.0  # held: no countdown, the run is over

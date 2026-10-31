@@ -1,0 +1,88 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "test_range"
+order = 0
+title = "test range"
+register = "tron"
+goal = "Every objective kind once: the mission framework's own check."
+loadout = PackedStringArray("terminal_cannon")
+grants = PackedStringArray()
+abilities = PackedStringArray()
+objectives = [{
+"id": "warm",
+"kind": "survive",
+"seconds": 1.0,
+"text": "Stay up for a second"
+}, {
+"count": 1,
+"daemon": "rogue",
+"gives": ["sigterm"],
+"id": "shoot",
+"kind": "kill",
+"text": "Take down the rogue.d"
+}, {
+"id": "read",
+"kind": "log",
+"log": "note",
+"text": "Pick up the terminal log"
+}, {
+"at": Vector3(6, 0.95, 4),
+"id": "walk",
+"kind": "reach",
+"label": "marker",
+"radius": 1.5,
+"text": "Walk to the marker"
+}]
+logs = [{
+"at": Vector3(-3, 0.95, 8),
+"id": "note",
+"name": "range.txt",
+"text": "# the test range.\n# every objective kind, once."
+}, {
+"at": Vector3(3, 0.95, 13),
+"id": "spare",
+"name": "spare.txt",
+"text": "# an optional log: found or not, the range is clear."
+}]
+lines = [{
+"on": "start",
+"text": "audit: user=test action=enter path=/range result=OK",
+"who": "auditor"
+}, {
+"on": "begin:shoot",
+"text": "Range is live. One rogue.d, no tricks.",
+"who": "ai"
+}, {
+"on": "log:note",
+"text": "Noted.",
+"who": "ai"
+}, {
+"on": "at:0.5",
+"text": "range online",
+"who": "tilde"
+}, {
+"on": "complete",
+"text": "Range clear.",
+"who": "ai"
+}, {
+"on": "fail",
+"text": "Again. It's a range.",
+"who": "ai"
+}]
+transitions = [{
+"on": "done:read",
+"to": "matrix"
+}, {
+"on": "done:walk",
+"to": "tron"
+}]
+ice = false
+fail_time_s = 300.0
+next = ""
+playable = true
+draft = false
+hidden = true

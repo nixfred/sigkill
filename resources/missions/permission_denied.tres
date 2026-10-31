@@ -1,0 +1,58 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "permission_denied"
+order = 4
+title = "permission denied"
+register = "tron"
+goal = "Break into the machine's own records and learn who owns the daemons."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000")
+grants = PackedStringArray("chmod_000")
+abilities = PackedStringArray("ICEbreakers")
+objectives = [{
+"at": Vector3(0, 0.95, -14),
+"id": "sector",
+"kind": "reach",
+"label": "records",
+"radius": 2.5,
+"text": "Get into the records sector"
+}, {
+"id": "hold",
+"kind": "survive",
+"seconds": 60.0,
+"text": "Hold out while the records load"
+}, {
+"id": "owner",
+"kind": "log",
+"log": "owner",
+"text": "Read the daemons' owner record"
+}]
+logs = [{
+"at": Vector3(4, 0.95, -16),
+"id": "owner",
+"name": "owners.db",
+"text": "owner(rogue.d)  = user\nowner(zombie)   = user\nowner(runaway)  = user\nsession(user)   = held by pid [REDACTED: root only]"
+}]
+lines = [{
+"on": "begin:sector",
+"text": "audit: user=? flagged as intruder. session for this user is held by another process.",
+"who": "auditor"
+}, {
+"on": "log:owner",
+"text": "It's got your session. To the machine, it's the user. We're the break-in.",
+"who": "ai"
+}, {
+"on": "complete",
+"text": "audit: intruder confirmed. escalating.",
+"who": "auditor"
+}]
+transitions = []
+ice = true
+fail_time_s = 0.0
+next = "sudo_bang"
+playable = false
+draft = false
+hidden = false

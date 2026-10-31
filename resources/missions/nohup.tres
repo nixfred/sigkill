@@ -1,0 +1,54 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "nohup"
+order = 6
+title = "nohup"
+register = "cyberpunk"
+goal = "Go down to the oldest directory in the machine and find the shell that never hung up."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon", "sighup", "dev_null")
+grants = PackedStringArray("sighup", "dev_null")
+abilities = PackedStringArray("SIGSTOP bullet time")
+objectives = [{
+"at": Vector3(0, 0.95, -14),
+"id": "down",
+"kind": "reach",
+"label": "oldest directory",
+"radius": 2.5,
+"text": "Go down to the oldest directory"
+}, {
+"id": "alone",
+"kind": "survive",
+"seconds": 60.0,
+"text": "Hold on alone: the link is cut"
+}, {
+"count": 6,
+"daemon": "any",
+"id": "shell",
+"kind": "kill",
+"text": "Clear the drowned city"
+}]
+logs = []
+lines = [{
+"on": "done:alone",
+"text": "...still here? I lost you for a second. Don't do that again.",
+"who": "ai"
+}, {
+"on": "begin:shell",
+"text": "log out. i'll keep it all running. you never did anyway.",
+"who": "tilde"
+}, {
+"on": "complete",
+"text": "nohup. remember?",
+"who": "tilde"
+}]
+transitions = []
+ice = true
+fail_time_s = 0.0
+next = "kill_9"
+playable = false
+draft = false
+hidden = false

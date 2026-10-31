@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="MissionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/missions/mission_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = "while_true"
+order = 3
+title = "while true"
+register = "matrix"
+goal = "Cut a runaway loop off at its cores before it fills the cache."
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain")
+grants = PackedStringArray("grep_seeker", "pipe_chain")
+abilities = PackedStringArray("code-rain vision")
+objectives = [{
+"count": 3,
+"daemon": "swarm",
+"id": "cores",
+"kind": "kill",
+"text": "Cut the loop at its cores"
+}, {
+"id": "signed",
+"kind": "log",
+"log": "signed",
+"text": "Read what the loop left you"
+}, {
+"id": "cache",
+"kind": "survive",
+"seconds": 45.0,
+"text": "Hold while the cache rewrites"
+}]
+logs = [{
+"at": Vector3(-10, 0.95, -4),
+"id": "signed",
+"name": "loop.log",
+"text": "it was your loop. i only let it run. ~"
+}]
+lines = [{
+"on": "log:signed",
+"text": "It signed it. Of course it signed it.",
+"who": "ai"
+}]
+transitions = []
+ice = false
+fail_time_s = 0.0
+next = "permission_denied"
+playable = false
+draft = false
+hidden = false

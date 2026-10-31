@@ -1,7 +1,7 @@
 class_name UnlockToast
 extends Control
-## "UNLOCKED: <name>" (C33): a short toast near the top of the screen the moment a skin or a mod is earned
-## (Progress.unlocked, scripts/unlocks/progress.gd). A dark strip whose corners are brackets of the item's own
+## "UNLOCKED: <name>" (C33): a short toast near the top of the screen the moment a skin or a mod is earned, or (C35)
+## a mission hands out a campaign weapon (Progress.unlocked, scripts/unlocks/progress.gd). A dark strip whose corners are brackets of the item's own
 ## light (a skin's body and beam, a mod the weapon's own), dropping in, a bar of light sweeping across it once,
 ## then fading; its name in the item's beam colour and under it where to wear it. Several earned at once queue,
 ## each in turn. Cosmetic only, and it never takes input.
@@ -11,6 +11,8 @@ const Palette = preload("res://scripts/palette.gd")
 const HEAD := "UNLOCKED"
 const WHERE_SKIN := "a light skin for %s   Esc > Loadout to wear it"
 const WHERE_MOD := "a mod for %s   Esc > Loadout to fit it"
+## A campaign weapon handed out by a mission (C35).
+const WHERE_CAMPAIGN := "%s is yours: every mission after this one carries it"
 ## Seconds: dropping in, held in all, fading out; how far it drops, pixels; its size and place.
 const IN_S := 0.18
 const SHOW_S := 3.4
@@ -97,7 +99,7 @@ func _next() -> void:
 	_head.add_theme_color_override("font_color", _body)
 	_title.text = short
 	_title.add_theme_color_override("font_color", _beam)
-	_where.text = (WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
+	_where.text = (WHERE_CAMPAIGN if got[1] == Progress.CAMPAIGN else WHERE_SKIN if index > 0 else WHERE_MOD) % weapon_name
 	_where.add_theme_color_override("font_color", Palette.MINT)
 	_left = SHOW_S
 	_age = 0.0

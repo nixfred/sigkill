@@ -150,6 +150,9 @@ var _chime: AudioStreamPlayer
 ## The round ended as a loss: flatlined alone (I3), the run over; the next round is round 1. And what
 ## flatlined it, for the heading; the darkened screen behind the summary.
 var lost := false
+## A mission runs (C35, scripts/missions/mission_runner.gd): the round clock holds, no break comes, and the round line
+## steps aside for the mission's own HUD; the mission keeps its own clock.
+var held := false
 var _lost_to := ""
 var _veil: ColorRect
 var _style: StyleBoxFlat
@@ -162,6 +165,12 @@ func _ready() -> void:
 	_build()
 	get_viewport().size_changed.connect(_fit_panel)
 	restart(_t)
+
+
+## The round clock held while a mission runs (C35), or let go.
+func hold(on: bool) -> void:
+	held = on
+	_refresh()
 
 
 ## Starts again from round 1 with `with_tuning`; tests use it for short rounds.
@@ -234,7 +243,7 @@ func set_targets(targets: Array) -> void:
 ## True while the round clock runs: the mouse captured (or a test's stand-in for it) and
 ## the ask box closed.
 func engaged() -> bool:
-	if _player == null or not is_instance_valid(_player):
+	if held or _player == null or not is_instance_valid(_player):
 		return false
 	if _player.get("input_blocked") == true:
 		return false
@@ -540,6 +549,7 @@ func _refresh() -> void:
 	guide.hold_answer = phase == Phase.BREAK
 	var roast := "on" if guide.session_link().roast_on() else "off"
 	var note := "  (not saved)" if _note_left_s > 0.0 else ""
+	_round_line.visible = not held
 	if phase == Phase.ROUND:
 		var left := maxi(ceili(_left_s), 0)
 		_round_line.text = "ROUND %d   %d:%02d left%s   B roast: %s%s" % [stats.round_number, left / 60, left % 60, "" if engaged() else " (paused)", roast, note]

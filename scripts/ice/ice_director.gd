@@ -113,6 +113,8 @@ var brute_wall_scale := 5.0
 var black_tuning: BlackIceTuning
 var mode: Mode = Mode.OFF
 var round_number := 1
+## A mission without ICE runs (C35, scripts/missions/mission_runner.gd): alone, nothing of ICE stands while it is set.
+var stand_down := false
 
 var walls: Array[IceBarrier] = []
 var nodes: Array[IceNode] = []
@@ -200,11 +202,13 @@ func field_material() -> ShaderMaterial:
 
 # --- Its mode. ---
 
-## True while ICE is on: not practice, and the ICE setting on (alone and hosting, the settings'; on a
+## True while ICE is on: not practice, the ICE setting on and (C35) no mission standing it down (alone and hosting, the settings'; on a
 ## joiner, the host's word).
 func ice_on() -> bool:
 	if _online() and not session.is_hosting():
 		return session.host_practice != true and session.host_ice == true
+	if stand_down:
+		return false
 	var s := GameSettings.current()
 	return s.value("gameplay", "practice") != true and s.value("gameplay", "ice") == true
 
