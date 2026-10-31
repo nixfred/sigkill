@@ -514,7 +514,10 @@ func _physics_process(delta: float) -> void:
 			state = State.RUNNING
 			_next_objective()
 		return
-	if not engaged():
+	var held := not engaged()
+	if stage != null and is_instance_valid(stage):
+		stage.held = held  # M3: its loop holds with its clock (no pass, no fork, no cache filling)
+	if held:
 		# Its clock held (the Esc menu, a box, the mouse let go): nothing can fail it behind its own menu.
 		if life != null and is_instance_valid(life):
 			life.shield(HELD_SHIELD_S)
@@ -679,6 +682,7 @@ func _on_flatlined(cause: String) -> void:
 
 func _fail(why: String) -> void:
 	state = State.FAILED
+	_waiting.clear()  # a beat's waited lines (M3) are its own: none said over the fail card
 	if stage != null and is_instance_valid(stage):
 		stage.stop()
 	reason = why

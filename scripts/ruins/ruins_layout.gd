@@ -614,7 +614,7 @@ func _field_points(taken: Array[Vector2i]) -> void:
 
 
 ## Which of the field's walls stand in which state on pass `turn` of a rewrite (M3), one byte each (Wall): seeded by the
-## set and the pass, so every machine rewrites the same, the walls beside a core's cell more often standing (screening
+## set and the pass, so every run rewrites the same, the walls beside a core's cell more often standing (screening
 ## it) than the rest; then any cell a written wall shuts off from outside the field opened (the first such wall in order
 ## turned mid-rewrite, so it still screens) until every cell can be walked to. Empty without a field.
 func field_pattern(turn: int) -> PackedByteArray:

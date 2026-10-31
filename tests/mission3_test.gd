@@ -248,7 +248,7 @@ func _district_checks() -> void:
 			else:
 				other += standing
 				other_n += 1
-	_check("its rewrites: over 300 passes every cell of the field can always be walked to from outside it, each pass the same on every machine, and the walls round a core's cell standing more often (%.0f%% against %.0f%%), so its cores hide" % [100.0 * screened / screened_n, 100.0 * other / other_n], always_open and same and float(screened) / screened_n > float(other) / other_n + 0.15)
+	_check("its rewrites: over 300 passes every cell of the field can always be walked to from outside it, each pass the same every time it is asked, and the walls round a core's cell standing more often (%.0f%% against %.0f%%), so its cores hide" % [100.0 * screened / screened_n, 100.0 * other / other_n], always_open and same and float(screened) / screened_n > float(other) / other_n + 0.15)
 	var others := PackedStringArray()
 	for set in RuinsBook.all():
 		if set.id != "cache_lines" and not RuinsLayout.of(set).field.is_empty():
@@ -532,6 +532,17 @@ func _cache_checks() -> void:
 	await _play_until(main, func(): return runner.index >= 3)
 	player.global_position = runner.log_place("signed")
 	await _until(func(): return runner.index >= 4 and stage.cores().size() == 4)
+	# Its clock held (the Esc menu up, the mouse let go): the loop holds with it, nothing filling behind the menu.
+	await _until(func(): return stage.loop_running)
+	await _frames(30)
+	var cache_before: float = stage.cache
+	var passes_before: int = stage.passes
+	player.assume_captured = false
+	await _frames(int(Engine.physics_ticks_per_second * float(runner.def.loop_prop()["pass_s"]) * 1.2))
+	var held_still: bool = stage.held and stage.cache == cache_before and stage.passes == passes_before
+	player.assume_captured = true
+	await _frames(30)
+	_check("its loop holds with its clock: the Esc menu up (the mouse let go) for longer than a pass, no pass made and the cache not a byte fuller (%.2f%%), then it runs on" % (cache_before * 100.0), held_still and not stage.held and stage.cache > cache_before)
 	# Nothing shot: pass after pass, the loop never forks past its limits.
 	var loop := runner.def.loop_prop()
 	for k in 12:

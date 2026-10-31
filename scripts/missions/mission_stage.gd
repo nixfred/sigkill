@@ -82,6 +82,9 @@ var targets: Node3D = null
 var player: Node3D = null
 ## No more daemons once stopped: the mission done or failed.
 var stopped := false
+## Its runner's clock held (M3: the Esc menu up, the mouse let go): its loop holds with it, no pass, no fork and no cache
+## filling, so nothing fails the mission behind its own menu.
+var held := false
 ## Every daemon it made, in order, and how many of them.
 var made: Array = []
 ## Its parent's dummy (M2), once it stands, and how many of its children init reaped when it went down.
@@ -470,7 +473,7 @@ func _field() -> CacheField:
 
 
 func _step_loop(delta: float) -> void:
-	if not loop_running or loop_broken_now or stopped:
+	if not loop_running or loop_broken_now or stopped or held:
 		return
 	var total := int(_wave_def(str(_loop["cores"])).get("count", 1))
 	var live := cores().size()
