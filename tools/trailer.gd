@@ -22,8 +22,8 @@ extends SceneTree
 ## seeded, every daemon is built from a fixed seed. The GPU's particles may differ by a pixel or so between takes.
 ##
 ## Each take writes user://trailer/<id>.json: the shot's id and description, the sounds that started (seconds after
-## the roll, and which player played them) and the kills, for the shell to match to the loudest moments of the
-## clip's own sound. A tool, never part of the game.
+## the roll, and what they are: a weapon's fire, hit or reload, the kill chime, an opener sound) and the kills, for the
+## shell to match to the loudest moments of the clip's own sound. A tool, never part of the game.
 
 const Link = preload("res://scripts/guide/guide_link.gd")
 const Privacy = preload("res://scripts/boot/guide_settings.gd")
@@ -43,18 +43,18 @@ const SUPERSAMPLE := 2.0
 ## The shot list, in the running order: its id (the clip's file name), its length in seconds (as near as the
 ## frame), and what is in it.
 const SHOTS := [
-	{"id": "01a-crash", "s": 4.1, "about": "The arena mid-fight, the cannon on the daemons; then the opener seizes the frame: it freezes, tears, glitches apart and cuts to black."},
+	{"id": "01a-crash", "s": 4.05, "about": "The arena mid-fight, the cannon on the daemons; then the opener seizes the frame: it freezes, tears, glitches apart and cuts to black."},
 	{"id": "01b-thanks", "s": 3.0, "about": "The fake terminal: the prompt has typed itself (demo data: user@workstation), then: thanks for running me."},
 	{"id": "01c-install", "s": 4.0, "about": "The terminal types, with a typo taken back: you never read the install script, did you?"},
 	{"id": "01d-since", "s": 4.2, "about": "The folders scroll by (invented names), the uptime ticks, and it types: I've been in here since you booted."},
 	{"id": "01e-reveal", "s": 3.4, "about": "The shrink-away: the camera pulls back and the terminal becomes one lit screen on a monolith in a city of your folders."},
 	{"id": "01f-fall", "s": 3.2, "about": "The fall into the directory tree: past the towers of the top terrace and their names, down toward the node_modules pit."},
 	{"id": "02a-skyline", "s": 3.6, "about": "Fly-through: from the dark megastructures of the skyline in over the arena's wall, its signs and code rain below."},
-	{"id": "02b-trails", "s": 3.6, "about": "Fly-through, low over the grid: three light trails racing across the floor, code rain pouring down the walls behind."},
+	{"id": "02b-trails", "s": 3.6, "about": "Light-trail mode: three light-cycle trails racing across the floor in right-angle turns, seen from high on the west side, the walls and their code rain behind."},
 	{"id": "03a-rogue", "s": 3.0, "about": "rogue.d up close: the mantis-scorpion stalks in, rears in its tell and lunges, orbited low."},
 	{"id": "03b-zombie", "s": 2.8, "about": "A zombie process charges its cannon, bands lighting, and fires a glitch bolt past the camera."},
-	{"id": "03c-runaway", "s": 2.8, "about": "The runaway swarm: drones whirling round their core as it hunts, the camera circling with them."},
-	{"id": "03d-pack", "s": 3.2, "about": "No two alike: a pack of seeded variants and an elite rogue.d charge the camera, tells flaring, attacks landing."},
+	{"id": "03c-runaway", "s": 2.8, "about": "The runaway swarm: its drones whirling round their core, the camera circling close."},
+	{"id": "03d-pack", "s": 3.2, "about": "No two alike: a pack of seeded variants and two elites charge the camera, which cranes up as they pass under."},
 	{"id": "04a-ice", "s": 3.4, "about": "ICE: a white ICE wall seals the corridor; the cannon cracks it and a brute ICEbreaker smashes through it."},
 	{"id": "04b-black-ice", "s": 3.6, "about": "Black ICE: the arena's lights low, the machine's last defence grows out of the floor, spikes and all, the camera low and pushing in."},
 	{"id": "05-01-cannon", "s": 1.5, "about": "Weapon 1, the terminal cannon: rapid beams, daemons derezzing."},
@@ -64,12 +64,12 @@ const SHOTS := [
 	{"id": "05-05-shotgun", "s": 1.5, "about": "Weapon 5, the fork() shotgun: a spray of pellets that fork in flight."},
 	{"id": "05-06-grep", "s": 1.8, "about": "Weapon 6, the grep seeker: darts lock on and curve into their matches."},
 	{"id": "05-07-rm-rf", "s": 2.0, "about": "Weapon 7, the rm -rf cannon: a wind-up, then a slug and a blast ring."},
-	{"id": "05-08-cron", "s": 1.8, "about": "Weapon 8, cron mines: laid on a schedule, they run when daemons walk in."},
+	{"id": "05-08-cron", "s": 1.8, "about": "Weapon 8, cron mines: laid ahead, their rings run on schedule as the daemons walk onto them."},
 	{"id": "05-09-ping", "s": 1.5, "about": "Weapon 9, ping: a sonar ring sweeps the floor and outlines every daemon."},
 	{"id": "05-10-chmod", "s": 2.8, "about": "Weapon 10, chmod 000: the freeze beam frosts a daemon solid (PERMISSION DENIED) and it shatters."},
 	{"id": "05-11-pipe", "s": 2.8, "about": "Weapon 11, pipe |: one chain beam arcs from daemon to daemon to daemon."},
 	{"id": "05-12-dev-null", "s": 2.8, "about": "Weapon 12, /dev/null: a black hole drags a crowd of daemons in and implodes."},
-	{"id": "05-13-sighup", "s": 2.8, "about": "Weapon 13, SIGHUP: a wave of static hangs up a crowd; confused, they turn on each other."},
+	{"id": "05-13-sighup", "s": 2.8, "about": "Weapon 13, SIGHUP: a wave of static hangs up a crowd, reloading config, and they come back confused."},
 	{"id": "06-fight", "s": 5.0, "about": "The big fight, wide: a crane over the arena as a crowd of daemons swarms the player and the heavy weapons go off."},
 	{"id": "07-title", "s": 6.0, "about": "Title: the SIGKILL wordmark slams together out of voxels, the nixfred hexagon, pre-alpha, playsigkill.com."},
 ]
@@ -88,7 +88,6 @@ var _sounds: Array = []
 var _events: Array = []
 var _heard := {}
 var _names := {}
-var _guard := true
 var _refused := false
 
 
@@ -336,7 +335,7 @@ func _frames(n: int, move: Vector2 = Vector2.ZERO, fire: bool = false) -> void:
 func _tick(move: Vector2 = Vector2.ZERO, fire: bool = false) -> void:
 	if _player != null and is_instance_valid(_player):
 		_player.drive_input(move, false, false, fire)
-	if _guard and _life != null and _life.alive() and _life.health() < 60.0:
+	if _life != null and _life.alive() and _life.health() < 60.0:
 		_life.combat.states[SoloLife.ME]["health"] = _life.max_health()
 	await physics_frame
 	if _rolled:
@@ -553,8 +552,8 @@ func _shot_02a_skyline() -> void:
 		await _tick()
 
 
-## Three runners' light walls (light-trail mode's own, C20) laid across the open floor as they race, the camera low
-## and sliding along the south wall.
+## Three runners' light walls (light-trail mode's own, C20) laid across the open floor as they race in right-angle
+## turns, seen from high on the west side, the camera sliding south.
 func _shot_02b_trails() -> void:
 	var trails = LightTrails.of(_main, load("res://resources/light_trail.tres"))
 	var runners: Array = []
@@ -663,7 +662,7 @@ func _shot_03b_zombie() -> void:
 	await _orbit(z, _length(), Vector2(4.0, 2.6), Vector2(1.0, 0.75), 0.6, 0.15, 1.35, 50.0)
 
 
-## The runaway's drones whirling round its core as it hunts, circled.
+## The runaway's drones whirling round its core (at home, practice's rest: it stays in frame), circled close.
 func _shot_03c_runaway() -> void:
 	var s := _daemon("S2")
 	var me := Vector3(0.0, 0.0, 16.0)
@@ -675,7 +674,8 @@ func _shot_03c_runaway() -> void:
 	await _orbit(s, _length(), Vector2(3.6, 3.0), Vector2(2.2, 1.3), -0.9, 0.5, 0.9, 50.0)
 
 
-## A pack of seeded variants round an elite rogue.d charge the player, the camera low just in front of it, backing off.
+## A pack of seeded variants and two elites charge the player, the camera low in front of it, craning up as they pass
+## under.
 func _shot_03d_pack() -> void:
 	var me := Vector3(0.0, 0.0, 19.4)
 	await _stand(me + Vector3.UP * 0.95, Vector3(0.0, 1.0, 8.0))
@@ -834,7 +834,7 @@ func _shot_05_03_rail() -> void:
 		await _tick(Vector2.ZERO, fire)
 
 
-## The fork bomb: thrown into a crowd, forking, blasts everywhere; a second one after it.
+## The fork bomb: one thrown into a crowd, forking, blasts everywhere.
 func _shot_05_04_fork_bomb() -> void:
 	await _weapon_start(3, Vector3(0.0, 1.6, 8.0))
 	var spots := [Vector3(-1.6, 0.0, 8.0), Vector3(1.8, 0.0, 7.6), Vector3(0.0, 0.0, 6.2), Vector3(-3.4, 0.0, 6.4), Vector3(3.6, 0.0, 5.6), Vector3(-0.6, 1.0, 4.6), Vector3(2.0, 0.0, 4.0)]
@@ -917,8 +917,8 @@ func _shot_05_09_ping() -> void:
 		await _tick(Vector2.ZERO, i == 2)
 
 
-## chmod 000: the beam already on a rogue.d (it began before the roll), frost creeping until it freezes solid, then
-## the cannon: the frozen daemon shatters, and the next one goes down too.
+## chmod 000: the beam on a rogue.d from the roll, frost creeping until it freezes solid (PERMISSION DENIED), then the
+## cannon: the frozen daemon shatters, and the next one goes down too.
 func _shot_05_10_chmod() -> void:
 	await _weapon_start(9, Vector3(0.0, 1.0, 9.0))
 	var c := _crowd(["R3", "R1", "Z1"], [Vector3(0.0, 0.0, 6.6), Vector3(-4.4, 0.0, 4.4), Vector3(4.2, 0.0, 3.8)])
@@ -1004,7 +1004,7 @@ func _shot_05_13_sighup() -> void:
 
 # --- The fight, wide ----------------------------------------------------------------------------------------------
 
-## The big fight: twelve daemons swarming the player in the middle of the floor while it works through the heavy
+## The big fight: fourteen daemons swarming the player in the middle of the floor while it works through the heavy
 ## weapons, seen from a crane rising and swinging round, the player's own body (the hexagon others see) standing in.
 func _shot_06_fight() -> void:
 	var me := Vector3(0.0, 0.0, 10.5)
@@ -1029,13 +1029,11 @@ func _shot_06_fight() -> void:
 	var look := [Vector3(0.0, 1.2, 10.0), Vector3(0.0, 0.8, 9.5), Vector3(0.5, 0.6, 9.0)]
 	_camera(path[0], look[0], 60.0)
 	var n := _length()
-	var plan := [[0, 0], [70, 3], [130, 6], [190, 10], [260, 0], [300, 11]]
+	var plan := [[0, 0], [70, 3], [130, 6], [190, 10], [260, 0]]
 	for i in n:
 		for step in plan:
 			if i == step[0]:
 				_player.select_slot(step[1])
-				if step[1] == 2:
-					_player.inventory.add_meter(_player.inventory.meter_full())
 		var t := _first_alive(all, true)
 		var fire := false
 		if t != null:

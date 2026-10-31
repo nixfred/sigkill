@@ -147,13 +147,16 @@ take() {
 }
 
 failed=0
+bad=" "
 for id in "${shots[@]}"; do
-	take "$id" || failed=$((failed + 1))
+	take "$id" || { failed=$((failed + 1)); bad="$bad$id "; }
 done
 
-# shots.json: every clip there is in out/, in the shot list's order, laid end to end.
+# shots.json: every clip there is in out/, in the shot list's order, laid end to end; a shot whose take failed this
+# run is left out (an older clip of it may still be in out/, but it is not listed as this run's).
 {
 	for id in "${all[@]}"; do
+		[[ "$bad" == *" $id "* ]] && continue
 		[ -f "$work/out/$id.mp4" ] && [ -f "$work/out/.$id.take.json" ] || continue
 		jq -n --arg file "$id.mp4" --argjson take "$(cat "$work/out/.$id.take.json")" \
 			--argjson peaks "$(cat "$work/out/.$id.peaks.json" 2>/dev/null || echo '[]')" \

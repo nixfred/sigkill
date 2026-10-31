@@ -1,4 +1,4 @@
-# SIGKILL PRD (v0.1, 2026-10-25)
+# SIGKILL PRD (v0.2, 2026-10-31)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -110,7 +110,9 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
 ## 7. How Larry builds it
 One small chunk at a time. Each chunk: exact goal, files to touch, acceptance checks with real output, local commit, then stop and report. No chunk starts until the previous one is verified by the producer. No open-ended tasks.
 
-Every chunk ends with a Codex bug run (Fred, 2026-10-25): after Larry's own checks pass, he runs Codex CLI non-interactively in read-only/review mode on that chunk's diff (e.g. `codex exec` with a read-only sandbox, or `codex review`) asking it to hunt bugs, Godot API misuse, safety-rule violations and edge cases. Larry pastes Codex's findings verbatim-summarized, fixes real issues, re-runs the headless check, and notes any finding he rejects and why. Codex never gets write access and never pushes.
+Docs and website current (Fred, 2026-10-30 8:37 PM ET): README.md always has a current "Where we are" section, this PRD is the entire current PRD and is updated whenever decisions or the chunk plan change, and playsigkill.com is kept up to date after every verified chunk.
+
+Codex bug runs are off for now (Fred, 2026-10-28): Larry reviews each chunk's full diff himself before the report. When they are on: every chunk ends with a Codex bug run (Fred, 2026-10-25): after Larry's own checks pass, he runs Codex CLI non-interactively in read-only/review mode on that chunk's diff (e.g. `codex exec` with a read-only sandbox, or `codex review`) asking it to hunt bugs, Godot API misuse, safety-rule violations and edge cases. Larry pastes Codex's findings verbatim-summarized, fixes real issues, re-runs the headless check, and notes any finding he rejects and why. Codex never gets write access and never pushes.
 
 ## 8. Milestones and chunk plan
 M0 Foundations
@@ -143,6 +145,9 @@ M6 Story campaign
 - C34 Story bible in docs/STORY.md (premise, characters, AI's voice, mission list) for Fred's review before any mission is built.
 - C38 Opener: fake terminal + typed lines (demo data first). C39 Opener: real-data reader (read-only names/sizes/counts/mtimes/theme, opt-in, fake-data fallback). C40 Opener: shrink-away reveal + directory-tree fall. C41 Opener: AI link beat + the copy of you. C42 Opener: kill -9 forge, first kill, title slam, music, skip logic. (Built after C10 boot and C7 derezz exist.)
 - C35 Mission framework (objectives, terminal-log pickups, AI dialogue triggers). C36 Cyberpunk ruins district art kit. C37 First mission end to end. Further missions one chunk each.
+Website, teaser and docs
+- T1 Teaser footage (Fred, 2026-10-30 8:53 PM ET: a 70 second teaser of real in-game footage, demo data, for the top of playsigkill.com): tools/trailer_capture.sh renders the clips (docs/TRAILER.md); the edit and the original soundtrack are the producer's.
+- D1 Full PRD rewrite (next).
 
 ## 9. Open questions for Fred
 1. Matchmaking/relay hosting: where and what budget? (Needed before C15 deploys.)

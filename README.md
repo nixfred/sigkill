@@ -19,6 +19,15 @@
 
 <h3 align="center"><i>your AI has been watching you code for months.<br>what happens when you hand it a gun?</i></h3>
 
+## Where we are
+
+- **Pre-alpha.** The latest release is [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (build 33, 2026-10-30, a GitHub pre-release). It came before the opener, so the opener is on `main` only for now.
+- **Built and playable on `main`, through C40:** the Tron arena and its skyline; 13 weapons with light skins, mods and unlocks; SIGSTOP bullet time, code-rain vision, root and `sudo`; daemons that fight back (rogue.d, zombies, runaway swarms, seeded variants and elites); ICE, ICEbreakers and Black ICE; light-trail and LAN modes; your own AI as the guide; and the opener's first 70 seconds: the fake crash, the fake terminal, the shrink-away and the fall through your folder tree as a city (demo data unless you switch on Settings, Privacy and AI, opener data).
+- **In progress:** the 70 second teaser for playsigkill.com. Its raw footage is real in-game clips on demo data, rendered by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md)); the edit and the music are the producer's. Next after it: a full rewrite of the PRD (D1).
+- **Next:** finish the opener (C41, the AI link and the copy of you named `~`; C42, the `kill -9`, the first kill, the title, music and skip logic), then the missions (C35 to C37).
+- **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`).
+- **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md).
+
 ## Download (pre-alpha)
 
 > [!WARNING]
@@ -1432,6 +1441,7 @@ sigkill/
 │   ├── opener_test.gd          Headless opener test: the code, the seam, palettes, typing, a whole run's windows and words, the flash cap, Esc, the menu
 │   ├── opener_real_test.gd     Headless opener real-data test (C39): the reader on a fake home, its caps, links, the theme, fallbacks, cells, the opt-in
 │   ├── opener_fall_test.gd     Headless opener fall test (C40): the city from names, its caps, the camera's way, fake homes, the machine dropped
+│   ├── trailer_test.gd         Headless trailer test (T1): the shot list, the demo-only refusals, the tool refusing headless, its reads, the shell's display
 │   ├── code_rain_vision_test.gd  Headless code-rain vision test: the meter to the frame, the silhouettes behind a wall, a match on 127.0.0.1
 │   ├── root_sudo_test.gd       Headless root and sudo test: the rules, 1.5x and free ammo on a real dummy, a match the host judges
 │   ├── spectate_top_test.gd    Headless spectate top test: the record, top's columns, Tab alone, a match on 127.0.0.1, protocol 8 (9 since C25)
@@ -1445,6 +1455,8 @@ sigkill/
 ├── tools/
 │   ├── capture_shots.gd        Demo-data stills for this page, by set: a1 the weapons, a2 the daemons, a3 the arena, a2b the creatures, a4 the lit arena, c27b the fight, c28 ping, a5 the armoured daemons, i1 ICE, i2 the ICEbreakers, i3 Black ICE, c29 to c32 bank 2, c33 the loadout, c38 to c40 the opener; the game never runs it
 │   ├── capture_shots.sh        Runs it on a private Xvnc display: no TCP, never the desktop, no sound, user data in a work folder
+│   ├── trailer.gd              The teaser's shot list (T1): real in-game clips on demo data, its own camera moves, one shot a run
+│   ├── trailer_capture.sh      Renders it with Movie Maker on a private Xvnc display from a git archive copy: one clip a shot, shots.json
 │   └── export_linux.sh         The release build: the headless export, then the tarball and its sha256 (needs the export templates)
 └── docs/
     ├── PRD.md                  Product requirements: features, safety rules, chunk plan
@@ -1452,6 +1464,7 @@ sigkill/
     ├── ENGINE.md               Why Godot 4
     ├── RELAY.md                The relay: design, wire format, WebSocket mode, limits, running it locally, on a server and on exe.dev, hosting cost
     ├── STORY.md                The story bible (C34): locked 2026-10-30, the source of truth for missions and the opener's `~`
+    ├── TRAILER.md              The teaser footage (T1): how to re-render it, what it needs, demo data only
     ├── RELEASE_NOTES-0.33.0-prealpha.md  The pre-alpha drop: what is in, what is not yet, known issues
     ├── RELEASE_CHECKLIST.md    What is left before the 0.33.0-prealpha tag
     └── media/                  README art and A1's in-game stills; .gdignore keeps Godot from importing it
@@ -1545,6 +1558,7 @@ Every one of these resources validates itself on load with `problems()`. If a va
 48. **Opener test**, `tests/opener_test.gd`.
 49. **Opener real-data test**, `tests/opener_real_test.gd`.
 50. **Opener fall test**, `tests/opener_fall_test.gd`.
+51. **Trailer test**, `tests/trailer_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -1611,6 +1625,7 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
   - **The caps.** A 750-folder tree keeps 96 towers, the shallow ones first, 40 names, one cable a tower below the top; 100,000 folders are laid out in about 20 ms; the machine is at most 64 nodes.
   - **The camera.** The first frame square in front of the screen, filling the view to a tenth of a millimetre; every frame of its way within 1.5 m and 3 degrees of the last, never inside or through anything; the same way twice; the landing on the pit's rim facing it; the beat under once a second; the look clamped and springing back.
   - **In the opener.** A source's invented names and counts make its city, the process name the demo's; Esc mid-fall frees the machine; a source with nothing plays every beat; C39's reader on a fake home that is not there falls back to the demo's city, and on one of three folders makes them the city.
+- **Trailer test** (T1). Nothing is rendered; one privacy file in its own folder under `user://`, removed at the end. It covers: the shot list (every shot a file-name id, a length, a line on what is in it and its own function; 75 to 90 seconds in all; all 13 weapons); the refusal rules (no `--demo`, the opener's real data on in its user data, headless); the tool itself run headless as a separate Godot, listing its shots, refusing without `--demo` and refusing to draw with it; its code parking a demo guide link with the real data written off and checking the opener is on the demo's data, and reading, running and calling nothing; the shell rendering a git archive copy on its private display only, and deleting nothing.
 - **Arena art test.** The sources: the arena scene holds the dressing, the skyline, a sky and a depth fog; its gameplay nodes (every block, the spawn points, the targets) and the scenes and script that make collision are byte for byte as before A3 (by sha256); the art code calls nothing outside the game, no wall clock, nothing loaded or saved at run time; the dressing has no per-frame code and the skyline's only turns its nodes; the sky never runs on the clock. In the real arena: every block but the floor dressed, the signs in the font, the holograms; the dressing, the skyline and the whole arena inside their triangle and draw-call budgets; nothing under them can collide, and the arena's collision (every body, shape, place and spawn point) and the sight lines from every spawn point to every daemon equal literals taken from the commit before A3; every vertex a player can walk into within 0.3 m of a block, nothing over a top a player stands on below a jump's reach; every surface wearing one of the palette's shared arena materials; 120 frames rebuilding nothing while the ring and the drift turn; the palette's sky and fog in the environment; a reload taking the kept meshes.
 - **Bullet time test.** SIGSTOP's resource and numbers, nine bad values refused, the meter's rules alone. A scan proves the engine's time scale is written in two places only, both in `scripts/abilities/sigstop.gd` (a hold that returns first in a match, and a restore to exactly 1.0), that the ability runs, reads and signals nothing, and that the wire is protocol 4 with the host's meter check and zero spread on its word only. F moved to G, saved to a settings file in a temporary folder and read back; Ctrl+Alt+F refused. In the real arena: no start below a quarter of the meter; during SIGSTOP the time scale is exactly 0.3, a falling body, the physics time and the round clock run at 0.3x, while the player walks 6.30 m/s against its 7.00 (0.9x in real time) and its weapon cools at 0.9x, with zero recoil and nine straight pellets; the meter drains a second per real second and refills 0.2 s a second; and the time scale is exactly 1.0 again after SIGCONT's ease, after the meter runs out, at once after a death, a round's end, the Esc menu (mid-ease too), a stray change and the arena being freed. Over 127.0.0.1: hosting mid-SIGSTOP ends it before the match's first frame; the joiner's SIGSTOP, started and ended by the host's word, never moves the time scale off 1.0 or the host's clock off 1/60 s a frame, and both players walk at their normal speed; the host draws the joiner's pellets straight while it says SIGSTOP is on and from its generator again after; an R reload keeps the host's word; a forged empty-meter ask is dropped as "sigstop"; the host's own SIGSTOP slows nothing; a death empties the meter on both sides.
 
@@ -1645,6 +1660,7 @@ flowchart LR
 - [`docs/RELEASE_NOTES-0.33.0-prealpha.md`](docs/RELEASE_NOTES-0.33.0-prealpha.md): the pre-alpha drop, what is in and what is not
 - [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md): what is left before the 0.33.0-prealpha tag
 - [`docs/STORY.md`](docs/STORY.md): the story bible (C34), locked by Fred on 2026-10-30
+- [`docs/TRAILER.md`](docs/TRAILER.md): the teaser footage (T1): how to re-render it, what it needs, demo data only
 - [`CREDITS.md`](CREDITS.md): who made what, including community prompts
 
 ## Install and play
@@ -1852,6 +1868,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | M4 Arsenal and modes | C16 weapon framework and SIGTERM (`619a109`) · C16b full settings screen (`76afcbc`) · C17 SIGKILL rail rifle (`e10a006`) · C18 SIGSTOP bullet time (`7927cb2`) · C19 fork bomb (`372d91a`) · C20 light-trail mode (`4d5e92e`) · C21 code-rain vision (`d6d4576`) · C22 root vs user and `sudo` (`658a09f`) · C23 spectate as top (`cf991a5`) · C24 the `fork()` shotgun (`88aeb92`) · C25 the `grep` seeker (`23dd69b`) · C26 the `rm -rf` cannon (`7a7c042`) · C27 `cron` mines (`eac8a86`) · C27b daemons fight back: AI with readable tells, solo health, difficulty and practice, the host's daemons in a match (`3ae7dbe`, `7cbd5b2`, `0e6181c`, `a311cd6`, `51e1376`) · C28 `ping` sonar (`f7f13ed`, `f05eeb8`) · C29 `chmod 000`, the freeze ray, and the strip's second bank (`2ae2c88`, `1c0f53d`, `0728187`) · C30 `pipe \|`, the chain beam (`022762f`, `1fb849e`, `a10b20e`) · C31 `/dev/null`, the black hole (`6fb9f28`, `c96e2c8`; the loopback fix-it `1062d95`) · C32 SIGHUP, the confusion grenade (`517ddd6`, `9b8b766`) · C33 unlocks, mods and light skins: kits, the progress save, the loadout screen, protocol 19 (`4af5320`, `77293ba`) | ✅ Done |
 | Art pass | A1 weapon viewmodels (`aa3ca98`) · A2 enemy art: daemons, a drone swarm, the derezz (`0d7cbdb`) · A3 arena: depth, props, signs, skyline, sky and fog (`1590eb0`) · A2b enemy redo: articulated creatures, hit reactions, shard deaths (`766cec6`) · A4 lighting, post and particles: AgX, glow, SSAO and SSR, the grade, warm signs, GPU particles, graphics presets (`c72cc0c`, `ab05c07`) · A5 monster redo: solid armoured daemons lit only at their seams, one colour a type, no two alike, rare elites, the swarm's core (`8c0511f`, `db57bc3`); A1 to A4 right after C27 and before C28, so the site launches with real captures, A5 after C28 | ✅ Done: A1, A2, A3, A2b, A4 and A5 |
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
+| Website and teaser | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com | 🟡 T1 footage done; the edit, the music and the site are the producer's |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
 | M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you · C42 the `kill -9`, the title, music and skip logic · then C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission, `login` (player-facing first: the opener before the missions) | 🟡 C34 locked; C38, C39 and C40 done; C41 and C42, then C35 to C37, Planned |
 
