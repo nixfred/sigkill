@@ -477,29 +477,10 @@ func _cover() -> void:
 ## The points a player at the start cannot walk to (on the walk grid, round everything that collides); empty when
 ## every one can be.
 func unreachable() -> PackedStringArray:
-	var ext := half_extent()
-	var n := Vector2i(ceili(ext.x * 2.0 / WALK_M), ceili(ext.y * 2.0 / WALK_M))
-	var open := PackedByteArray()
-	open.resize(n.x * n.y)
-	for j in n.y:
-		for i in n.x:
-			var w := Vector3(-ext.x + (i + 0.5) * WALK_M, 0, -ext.y + (j + 0.5) * WALK_M)
-			open[j * n.x + i] = 1 if cell(cell_at(w)) == Cell.FLOOR else 0
-	var solid: Array = boxes.filter(func(b): return not ["floor", "hatch", "pocket"].has(b["kind"]) and b["size"].y > STEP_H)
-	for p in cover:
-		solid.append({"xform": Transform3D(Basis(Vector3.UP, p["yaw"]), p["at"]), "size": p["size"]})
-	# Each box drawn onto the squares under it, grown by a player's radius.
-	for b in solid:
-		var xf: Transform3D = b["xform"]
-		var h: Vector3 = b["size"] * 0.5
-		var reach_x := absf(xf.basis.x.x) * h.x + absf(xf.basis.z.x) * h.z + PLAYER_R
-		var reach_z := absf(xf.basis.x.z) * h.x + absf(xf.basis.z.z) * h.z + PLAYER_R
-		var inv := xf.affine_inverse()
-		for j in range(maxi(floori((xf.origin.z - reach_z + ext.y) / WALK_M), 0), mini(ceili((xf.origin.z + reach_z + ext.y) / WALK_M), n.y)):
-			for i in range(maxi(floori((xf.origin.x - reach_x + ext.x) / WALK_M), 0), mini(ceili((xf.origin.x + reach_x + ext.x) / WALK_M), n.x)):
-				var local := inv * Vector3(-ext.x + (i + 0.5) * WALK_M, xf.origin.y, -ext.y + (j + 0.5) * WALK_M)
-				if absf(local.x) < h.x + PLAYER_R and absf(local.z) < h.z + PLAYER_R:
-					open[j * n.x + i] = 0
+	var grid := walk_grid()
+	var open: PackedByteArray = grid["open"]
+	var n: Vector2i = grid["n"]
+	var ext: Vector2 = grid["ext"]
 	var at_of := func(p: Vector3) -> Vector2i: return Vector2i(clampi(floori((p.x + ext.x) / WALK_M), 0, n.x - 1), clampi(floori((p.z + ext.y) / WALK_M), 0, n.y - 1))
 	var from: Vector2i = at_of.call(points["start"])
 	var seen := PackedByteArray()
@@ -528,6 +509,36 @@ func unreachable() -> PackedStringArray:
 	return out
 
 
+## The walk grid (C37: a scripted player's paths use it too): {"open": a byte a square, 1 where a player's middle may
+## stand, "n": its squares across and along, "ext": the district's half extent}; squares of WALK_M from (-ext.x, -ext.y),
+## round everything that collides grown by a player's radius.
+func walk_grid() -> Dictionary:
+	var ext := half_extent()
+	var n := Vector2i(ceili(ext.x * 2.0 / WALK_M), ceili(ext.y * 2.0 / WALK_M))
+	var open := PackedByteArray()
+	open.resize(n.x * n.y)
+	for j in n.y:
+		for i in n.x:
+			var w := Vector3(-ext.x + (i + 0.5) * WALK_M, 0, -ext.y + (j + 0.5) * WALK_M)
+			open[j * n.x + i] = 1 if cell(cell_at(w)) == Cell.FLOOR else 0
+	var solid: Array = boxes.filter(func(b): return not ["floor", "hatch", "pocket"].has(b["kind"]) and b["size"].y > STEP_H)
+	for p in cover:
+		solid.append({"xform": Transform3D(Basis(Vector3.UP, p["yaw"]), p["at"]), "size": p["size"]})
+	# Each box drawn onto the squares under it, grown by a player's radius.
+	for b in solid:
+		var xf: Transform3D = b["xform"]
+		var h: Vector3 = b["size"] * 0.5
+		var reach_x := absf(xf.basis.x.x) * h.x + absf(xf.basis.z.x) * h.z + PLAYER_R
+		var reach_z := absf(xf.basis.x.z) * h.x + absf(xf.basis.z.z) * h.z + PLAYER_R
+		var inv := xf.affine_inverse()
+		for j in range(maxi(floori((xf.origin.z - reach_z + ext.y) / WALK_M), 0), mini(ceili((xf.origin.z + reach_z + ext.y) / WALK_M), n.y)):
+			for i in range(maxi(floori((xf.origin.x - reach_x + ext.x) / WALK_M), 0), mini(ceili((xf.origin.x + reach_x + ext.x) / WALK_M), n.x)):
+				var local := inv * Vector3(-ext.x + (i + 0.5) * WALK_M, xf.origin.y, -ext.y + (j + 0.5) * WALK_M)
+				if absf(local.x) < h.x + PLAYER_R and absf(local.z) < h.z + PLAYER_R:
+					open[j * n.x + i] = 0
+	return {"open": open, "n": n, "ext": ext}
+
+
 # --- The breach (C37). ---
 
 ## The breach's opening (the hatch over it), metres square; the rest of its cell is floor round it.
@@ -539,7 +550,7 @@ const POCKET_M := 12.0
 const POCKET_OUT_M := 4.0
 ## The gangway out from the gate, and the remnant's tower out past the pocket's far edge.
 const GANGWAY_M := Vector2(15.0, 3.2)
-const REMNANT_OUT_M := 7.5
+const REMNANT_OUT_M := 4.0
 
 
 func _breach() -> void:

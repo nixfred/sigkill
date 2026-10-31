@@ -102,11 +102,13 @@ void fragment() {
 		albedo = stone_color.rgb;
 		rough = 0.1 + 0.25 * grime;
 		metal = 0.0;
-		// Hairline cracks through the glass, lit from inside: a ridged noise's crests.
-		float ridge = abs(ruins_fbm(face * vec2(0.45, 0.18)) - 0.5);
-		float vein = ruins_line(ridge, 0.012) * smoothstep(0.35, 0.6, ruins_noise(face * 0.2 + 3.0));
+		// Cracks through the glass, lit from inside (C37: a crazed network, crisp at any distance, where a ridged noise's
+		// crests read as blotches up close): fine crazing over some of a face, a few long cracks across it.
+		float fine = ruins_line(ruins_crack(face / 1.6 + vec2(3.1, 9.2)), 0.02) * step(0.55, ruins_noise(face * 0.3 + 3.0));
+		float long_crack = ruins_line(ruins_crack(face / 4.6 + vec2(1.7, 4.4)), 0.012);
+		float vein = max(fine, long_crack) * smoothstep(0.25, 0.5, ruins_noise(face * 0.11 + 11.0));
 		vec3 vc = vein_tron.rgb * w3.x + vein_cyber.rgb * w3.y + vein_matrix.rgb * w3.z;
-		glow += vc * vein * 0.9;
+		glow += vc * vein * 1.1;
 	} else if (material == 2) {
 		albedo = vec3(0.012, 0.012, 0.014);
 		rough = 0.75;

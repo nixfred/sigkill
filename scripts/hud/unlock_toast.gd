@@ -4,7 +4,8 @@ extends Control
 ## a mission hands out a campaign weapon (Progress.unlocked, scripts/unlocks/progress.gd). A dark strip whose corners are brackets of the item's own
 ## light (a skin's body and beam, a mod the weapon's own), dropping in, a bar of light sweeping across it once,
 ## then fading; its name in the item's beam colour and under it where to wear it. Several earned at once queue,
-## each in turn. Cosmetic only, and it never takes input.
+## each in turn. A mission's end can hold them (C37, hold()): its weapons are told as its end screen comes up, not over
+## its last beat; the hold runs out on its own. Cosmetic only, and it never takes input.
 
 const Palette = preload("res://scripts/palette.gd")
 
@@ -28,6 +29,8 @@ const SCALE_LAST := 1.6
 var _queue: Array = []
 var _left := 0.0
 var _age := 0.0
+## Until when (the engine's ticks, ms) a toast waits (C37).
+static var _held_until := 0
 var _body := Palette.MINT
 var _beam := Palette.MINT
 var _head: Label
@@ -55,11 +58,21 @@ func _exit_tree() -> void:
 		_progress.unlocked.disconnect(show_unlock)
 
 
-## Earned: `weapon`'s skin or mod `item`, called `title`. Shown now, or after the ones already waiting.
+## Earned: `weapon`'s skin or mod `item`, called `title`. Shown now, or after the ones already waiting (or the hold).
 func show_unlock(weapon: String, item: String, title: String) -> void:
 	_queue.append([weapon, item, title])
-	if _left <= 0.0:
+	if _left <= 0.0 and not held():
 		_next()
+
+
+## Toasts wait `seconds` from now (C37): a mission's end held a beat before its end screen.
+static func hold(seconds: float) -> void:
+	_held_until = Time.get_ticks_msec() + int(maxf(seconds, 0.0) * 1000.0)
+
+
+## True while toasts wait.
+static func held() -> bool:
+	return Time.get_ticks_msec() < _held_until
 
 
 ## Where it is on screen now, scaled (for the checks).
@@ -109,6 +122,8 @@ func _next() -> void:
 
 func _process(delta: float) -> void:
 	if _left <= 0.0:
+		if not _queue.is_empty() and not held():
+			_next()
 		return
 	_left -= delta
 	_age += delta

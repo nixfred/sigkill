@@ -169,6 +169,13 @@ func reset_for_round() -> void:
 	_respawn(not alive())
 
 
+## Health back to full, alive (C37: a mission's objective done is a checkpoint); nothing in a match or while down.
+func restore() -> void:
+	if _online() or not alive():
+		return
+	combat.states[ME]["health"] = tuning.max_health
+
+
 func _die(what: String, way: Vector3) -> void:
 	deaths += 1
 	cause = what

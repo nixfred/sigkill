@@ -15,7 +15,7 @@ extends SceneTree
 ## chain done in order, the pack's leader an elite, the ICE wall unbreakable, the breach splitting open, the player
 ## falling through it into the pocket, the remnant's sign lit, the mission done with "exit 0"; every daemon it made one
 ## of its waves' count, none ever back once down. A death fails it with "exit 137". The C36 leftovers: the panel's
-## register chip is the world's live register. Its files live in its own folder under user://, removed at the end.
+## register chip is the world's live register; a reload into the ruins waits a black frame with its command on it. Its files live in its own folder under user://, removed at the end.
 
 const MainScene = preload("res://scenes/main.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
@@ -125,7 +125,7 @@ func _data_checks() -> void:
 	for o in login.objectives:
 		if o["kind"] == "kill":
 			kills += int(o["count"])
-	_check("acceptance: its daemons are its own and finite: %d rogue.d in %d waves out of its vents (no zombie, no swarm, none of the arena's), enough for its %d kills" % [login.daemons_total(), login.waves.size(), kills], login.daemons_total() == login.daemons_total("rogue") and login.daemons_total() >= kills and login.daemons_total() <= 24 and login.waves.size() >= 5)
+	_check("acceptance: its daemons are its own and finite: %d rogue.d in %d waves out of its vents (no zombie, no swarm, none of the arena's), enough for its %d kills" % [login.daemons_total(), login.waves.size(), kills], login.daemons_total() == login.daemons_total("rogue") and login.daemons_total() >= kills and login.daemons_total() <= 40 and login.waves.size() >= 5)
 	var words := _shown_words(login).to_lower()
 	var leaks := PackedStringArray()
 	for w in SPOILERS:
@@ -143,7 +143,7 @@ func _data_checks() -> void:
 	var wall := login.prop_of("gate_ice")
 	var breach := login.prop_of("breach")
 	_check("STORY.md's end beat: one white ICE wall at the exit (you cannot pass it yet), the grid splitting under the vent into the cyberpunk ruins, the remnant's sign lit as you land", wall.get("kind") == "ice_wall" and wall.get("at") == "gate" and breach.get("opens") == "done:surge" and breach.get("lights") == "done:drop" and login.transitions == [{"on": "done:surge", "to": "cyberpunk"}])
-	_check("its first fights are a few rogue.d, then a pack, then its leader an elite (STORY.md: a few at first, then a pack)", _wave(login, "first")["count"] <= 3 and _wave(login, "pack_a")["count"] + _wave(login, "pack_b")["count"] >= 6 and _wave(login, "lead").get("elites", 0) == 1)
+	_check("its first fights are a few rogue.d at a time, then a pack, then its leader an elite, tougher than the arena's (STORY.md: a few at first, then a pack)", _wave(login, "first")["count"] <= 3 and _wave(login, "pack_a")["count"] + _wave(login, "pack_b")["count"] >= 6 and _wave(login, "lead").get("elites", 0) == 1 and float(_wave(login, "lead").get("health", 0.0)) > float(_wave(login, "pack_a").get("health", 0.0)) and float(_wave(login, "pack_a").get("health", 0.0)) > 25.0 and login.restores)
 	_check("the abilities a mission may use come from the campaign: none in mission 1; code-rain vision from mission 3; all four by mission 6", login.allowed_abilities().is_empty() and MissionBook.at(3).allowed_abilities() == PackedStringArray(["code_rain_vision"]) and MissionBook.at(6).allowed_abilities().size() == 4 and MissionBook.at(2).allowed_abilities().is_empty())
 	var bad := login.duplicate(true) as MissionDef
 	bad.waves = [{"id": "x", "kind": "dragon", "count": 0, "from": ["nowhere"], "on": "done:nothing"}]
@@ -241,6 +241,8 @@ func _run_checks() -> void:
 	var login := MissionBook.at(1)
 	var old_id := main.get_instance_id()
 	runner.begin(login)
+	await process_frame
+	_check("the C36 leftover (the first build's stutter): the reload into the ruins waits a black frame with its command typed (\"$ login\"), the district built behind black, the next arena in from it", MissionRunner.mounting() == "$ login" and main.get_instance_id() == old_id)
 	main = await _after_reload(old_id)
 	runner = MissionRunner.of(main)
 	var hud = main.get_node("Hud")
@@ -266,13 +268,18 @@ func _run_checks() -> void:
 			_elites.append(key))
 	await _play_until(main, func(): return runner.index >= 1)
 	var handed := await _until(func(): return _shown_has(mh, ">> kill -9 handed to you"))
-	_check("hold the floor: a timeslice (25 s) survived, its few rogue.d out of the start's vents, the rail handed over (\"kill -9 handed to you\")", runner.index == 1 and runner.clock >= 25.0 and _made_of(stage, ["first", "second"]) == 3 and runner.carried.has("sigkill_rail") and handed, "index %d clock %.1f made %d carried %s handed %s" % [runner.index, runner.clock, _made_of(stage, ["first", "second"]), str(runner.carried), handed])
+	_check("hold the floor: a timeslice (40 s) survived, its rogue.d out of the start's vents in three waves of two, the rail handed over (\"kill -9 handed to you\")", runner.index == 1 and runner.clock >= 40.0 and _made_of(stage, ["first", "second", "third"]) == 6 and runner.carried.has("sigkill_rail") and handed, "index %d clock %.1f made %d carried %s handed %s" % [runner.index, runner.clock, _made_of(stage, ["first", "second", "third"]), str(runner.carried), handed])
+	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	runner.life.damage(35.0, null, Vector3.FORWARD)
+	var hurt_to: float = runner.life.health()
+	runner.life.shield(LONG_ROUND_S)
 	player.global_position = world.point("plaza")
 	await _play_until(main, func(): return runner.index >= 2)
+	_check("each objective done is a checkpoint: health back to full (%.0f, then %.0f)" % [hurt_to, runner.life.health()], hurt_to < runner.life.max_health() and runner.life.health() == runner.life.max_health())
 	_most = 0
 	await _play_until(main, func(): return runner.index >= 3)
 	await _frames(2)
-	_check("the pack in the plaza: 7 rogue.d down in three waves (up to %d out at once to a sure shot), its leader its type's elite" % _most, runner.index == 3 and _elites.has("Mission_lead_00") and _elites.size() == 1 and stage.wave_state("pack_a") == "cleared" and stage.wave_state("pack_b") == "cleared" and stage.wave_state("lead") == "cleared" and runner.kills >= 7, "index %d elites %s waves %s %s %s kills %d" % [runner.index, str(_elites), stage.wave_state("pack_a"), stage.wave_state("pack_b"), stage.wave_state("lead"), runner.kills])
+	_check("the pack in the plaza: 10 rogue.d down in its waves (up to %d out at once to a sure shot), its leader its type's elite with two escorts" % _most, runner.index == 3 and _elites.has("Mission_lead_00") and _elites.size() == 1 and stage.wave_state("pack_a") == "cleared" and stage.wave_state("pack_b") == "cleared" and stage.wave_state("lead") == "cleared" and stage.wave_state("escort") == "cleared" and runner.kills >= 10, "index %d elites %s waves %s %s %s %s kills %d" % [runner.index, str(_elites), stage.wave_state("pack_a"), stage.wave_state("pack_b"), stage.wave_state("lead"), stage.wave_state("escort"), runner.kills])
 	player.global_position = runner.log_place("temporary")
 	await _play_until(main, func(): return runner.index >= 4)
 	_check("the first log picked up: \"# temporary. remove after the migration.\" in the reader", runner.index == 4 and runner.logs_found.has("temporary") and await _until(func(): return _shown_has(mh, "# temporary. remove after the migration.")))
@@ -282,7 +289,7 @@ func _run_checks() -> void:
 	_check("the vent at the exit, sealed past it by white ICE that no hit breaks (you cannot pass it yet)", runner.index == 5 and wall.sealed() and not wall.hit(1000.0, wall.global_position + Vector3.UP, Vector3.FORWARD, "sigkill_rail") and wall.sealed())
 	await _play_until(main, func(): return runner.index >= 6)
 	await _frames(3)
-	_check("the surge out of the vents held; the grid splits: the breach's hatch open, the world tearing into the cyberpunk ruins", runner.index == 6 and world.breach() != null and world.breach().is_open() and world.register == "cyberpunk" and runner.register == "cyberpunk")
+	_check("the vent held for its 30 s against the surge out of the vents; the grid splits: the breach's hatch open, the world tearing into the cyberpunk ruins", runner.index == 6 and world.breach() != null and world.breach().is_open() and world.register == "cyberpunk" and runner.register == "cyberpunk")
 	player.global_position = world.point("breach") + Vector3(0, 0.6, 0)
 	player.velocity = Vector3.ZERO
 	await _play_until(main, func(): return runner.state == MissionRunner.State.COMPLETE)

@@ -8,7 +8,7 @@
 # copy with no import cache is imported headless first. <work-dir> must exist and be empty: the
 # display's socket, Godot's user data, settings and caches all live in it, so nothing of the
 # player's own is read or written. [set] picks the stills (tools/capture_shots.gd): a1, the default,
-# a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35 or c36. CAPTURE_AT=<s>,<s>,... (c40, c41 and c42 only, an aid for tuning
+# a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37. CAPTURE_AT=<s>,<s>,... (c40, c41 and c42 only, an aid for tuning
 # the look) shoots the opener at those seconds instead. This script deletes nothing; remove <work-dir> yourself.
 #
 # Safety: Xvnc on display :97 (CAPTURE_DISPLAY to change it) with no TCP listener at all, its VNC
@@ -23,7 +23,7 @@ work=$(cd "${2:-}" 2>/dev/null && pwd) || { echo "usage: $0 <project-copy> <work
 [ -f "$copy/project.godot" ] || { echo "no project.godot in $copy" >&2; exit 2; }
 [ -z "$(ls -A "$work")" ] || { echo "$work is not empty" >&2; exit 2; }
 shot_set="${3:-a1}"
-[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35 or c36" >&2; exit 2; }
+[[ "$shot_set" =~ ^[a-z0-9]+$ ]] || { echo "the set is a short lowercase word: a1, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37" >&2; exit 2; }
 at_arg=()
 if [ -n "${CAPTURE_AT:-}" ]; then
 	[[ "$CAPTURE_AT" =~ ^[0-9.,]+$ ]] || { echo "CAPTURE_AT is seconds and commas" >&2; exit 2; }

@@ -8,8 +8,9 @@ extends Node3D
 ##             the triggers its data names
 ##   waves     each on its trigger (fire()) or after the wave it follows has no more than its "left" standing: its
 ##             daemons climb out of its vents in turn, "every" seconds apart, each a target dummy (scenes/
-##             target_dummy.tscn) of its type that never respawns (so a mission's daemons are finite: never more than
-##             its waves' counts), its elites seeds that roll its type's elite, and each, whole, hunting the player at
+##             target_dummy.tscn) of its type and its wave's health that never respawns (so a mission's daemons are
+##             finite: never more than its waves' counts), its elites seeds that roll its type's elite, and each, whole,
+##             hunting the player at
 ##             once and never giving up (DaemonBrain.alert(), relentless)
 ## It says so as it goes (spawned, wave_began, wave_cleared), and the runner turns those into the mission's triggers
 ## ("wave:<id>", "cleared:<id>"). Seeds are fixed by the mission, the wave and the daemon's place in it in demo, test
@@ -182,6 +183,7 @@ func _climb_out(id: String) -> void:
 	dummy.tag_text = TAGS[kind]
 	dummy.art = ART[kind]
 	dummy.respawns = false
+	dummy.max_health = float(w.get("health", dummy.max_health))
 	dummy.seed_wanted = _seed(id, i, i < int(w.get("elites", 0)))
 	dummy.set_meta(&"wave", id)
 	targets.add_child(dummy)

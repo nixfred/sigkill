@@ -16,7 +16,7 @@ objectives = [{
 "hint": "1 cannon never runs dry. 2 SIGTERM: get close",
 "id": "floor",
 "kind": "survive",
-"seconds": 25.0,
+"seconds": 40.0,
 "text": "Hold the floor for one timeslice",
 "gives": ["sigkill_rail"]
 }, {
@@ -28,11 +28,11 @@ objectives = [{
 "radius": 3.5,
 "text": "Follow the spawn trail"
 }, {
-"count": 7,
+"count": 10,
 "daemon": "rogue",
 "hint": "kills fill the rail's meter: 3 once it's lit",
 "id": "pack",
-"of": ["pack_a", "pack_b", "lead"],
+"of": ["pack_a", "pack_b", "lead", "escort"],
 "kind": "kill",
 "text": "Hold the plaza against the pack"
 }, {
@@ -49,12 +49,10 @@ objectives = [{
 "radius": 3.0,
 "text": "Follow the spawn trail to the vent"
 }, {
-"count": 4,
-"daemon": "rogue",
 "hint": "{reload} reloads",
 "id": "surge",
-"of": ["surge"],
-"kind": "kill",
+"kind": "survive",
+"seconds": 30.0,
 "text": "Hold the vent while it opens"
 }, {
 "at": "below",
@@ -165,18 +163,30 @@ waves = [{
 "count": 2,
 "every": 1.2,
 "from": ["east", "west"],
+"health": 75.0,
 "id": "first",
 "kind": "rogue",
-"on": "at:5"
+"on": "at:4"
 }, {
-"count": 1,
-"from": ["trail"],
+"count": 2,
+"every": 1.5,
+"from": ["trail", "west"],
+"health": 75.0,
 "id": "second",
 "kind": "rogue",
-"on": "at:15"
+"on": "at:16"
+}, {
+"count": 2,
+"every": 1.0,
+"from": ["east", "trail"],
+"health": 75.0,
+"id": "third",
+"kind": "rogue",
+"on": "at:28"
 }, {
 "count": 1,
 "from": ["plaza_w"],
+"health": 75.0,
 "id": "ambush",
 "kind": "rogue",
 "on": "begin:trail"
@@ -184,14 +194,16 @@ waves = [{
 "count": 3,
 "every": 0.8,
 "from": ["plaza_n", "plaza_e", "plaza_w"],
+"health": 75.0,
 "id": "pack_a",
 "kind": "rogue",
 "on": "begin:pack"
 }, {
 "after": "pack_a",
-"count": 3,
+"count": 4,
 "every": 0.9,
 "from": ["plaza_e", "plaza_n", "plaza_w"],
+"health": 75.0,
 "id": "pack_b",
 "kind": "rogue",
 "left": 1
@@ -200,30 +212,61 @@ waves = [{
 "count": 1,
 "elites": 1,
 "from": ["plaza_n"],
+"health": 220.0,
 "id": "lead",
 "kind": "rogue",
 "left": 1
 }, {
+"after": "pack_b",
 "count": 2,
-"every": 2.5,
+"every": 1.4,
+"from": ["plaza_e", "plaza_w"],
+"health": 75.0,
+"id": "escort",
+"kind": "rogue",
+"left": 1
+}, {
+"count": 3,
+"every": 2.0,
 "from": ["mid_w"],
+"health": 75.0,
 "id": "stray",
 "kind": "rogue",
 "on": "begin:temporary"
 }, {
-"count": 2,
+"count": 3,
 "every": 1.5,
 "from": ["near_exit", "far"],
+"health": 75.0,
 "id": "guard",
 "kind": "rogue",
 "on": "begin:gate"
 }, {
-"count": 4,
+"count": 3,
 "every": 1.6,
 "from": ["near_exit", "far"],
+"health": 75.0,
 "id": "surge",
 "kind": "rogue",
 "on": "begin:surge"
+}, {
+"after": "surge",
+"count": 3,
+"every": 1.4,
+"from": ["far", "near_exit"],
+"health": 75.0,
+"id": "surge_b",
+"kind": "rogue",
+"left": 1
+}, {
+"after": "surge_b",
+"count": 3,
+"every": 1.2,
+"from": ["near_exit", "far"],
+"health": 75.0,
+"id": "surge_c",
+"kind": "rogue",
+"left": 1
 }]
 props = [{
 "at": "spawn_1",
@@ -274,6 +317,7 @@ props = [{
 "opens": "done:surge"
 }]
 end_hold_s = 4.5
+restores = true
 ice = false
 ruins = "scheduler_breach"
 fail_time_s = 0.0

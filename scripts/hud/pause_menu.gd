@@ -311,9 +311,10 @@ func _start_mission(id: String) -> void:
 	MissionRunner.queue(id, 1)
 	_was_captured = true
 	close()
-	if is_inside_tree() and get_tree().current_scene != null:
-		MissionRunner.mark_fade()  # the arena reloaded into it comes in from black (C36)
-		get_tree().reload_current_scene()
+	if is_inside_tree():
+		var def := MissionBook.of(id)
+		# A black frame with its command first, the district built behind it (C37); in from black (C36).
+		MissionRunner.reload_after_mount(get_tree(), "$ " + (def.title if def != null else id))
 
 
 func _on_restart_mission() -> void:

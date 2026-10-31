@@ -29,7 +29,8 @@ extends Resource
 ## Its own daemons and set pieces (C37). Waves, each {"id", "kind" ("rogue", "zombie" or "swarm"), "count", "from"
 ## (the ids of the vents they climb out of, in turn), "on" (a trigger) or "after" (a wave's id: when no more than
 ## "left" of that wave still stand, default 0), "every" (seconds between two climbing out, default WAVE_EVERY_S),
-## "elites" (how many of them are their type's elite, default 0)}. With any waves, the arena's own four are gone while
+## "elites" (how many of them are their type's elite, default 0), "health" (each one's, default the arena's: one hit;
+## an elite at least the daemon tuning's elite_health)}. With any waves, the arena's own four are gone while
 ## it runs: every daemon in it is one of its waves', each hunts the player as it climbs out and never gives up, and
 ## none comes back once down, so its daemons are finite (no more than the waves' counts). Props, each {"id", "kind"}:
 ##   vent      "at": a spawn vent in the floor, leaking green code; waves climb out of them
@@ -94,6 +95,8 @@ const WAVE_LAST := 12
 @export var props: Array = []
 ## Seconds the place holds after its last objective before the end screen comes up (C37).
 @export var end_hold_s := 1.5
+## Each objective done is a checkpoint (C37): the player's health back to full (the scheduler grants a fresh timeslice).
+@export var restores := false
 ## Whether ICE (I1 to I3) stands in it; off, the system's own defences stand down while it runs.
 @export var ice := false
 ## The ruins district it is played in (a RuinsSet id, C36), or "" for the arena itself.
@@ -381,6 +384,9 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		var left = w.get("left", 0)
 		if not (left is int) or left < 0:
 			out.append("%s: wave %s left (0 or more)" % [id, wid])
+		var health = w.get("health", 1.0)
+		if not (health is float or health is int) or health <= 0.0 or health > 1000.0:
+			out.append("%s: wave %s health (above 0, up to 1000)" % [id, wid])
 	for o in objectives:
 		if not (o is Dictionary) or not o.has("of"):
 			continue

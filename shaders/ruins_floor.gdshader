@@ -5,7 +5,7 @@
 // The vertex colour (scripts/ruins/ruins_pieces.gd paints it): r the slab's damage, 0 to 1; g the rims, a bit for each
 // side that meets the void (1 north, 2 east, 4 south, 8 west, over 15). Per register: tron's grid bright and a pulse of
 // light running out over it from the district's middle; cyberpunk wet, puddles holding the light, rain rings in them;
-// matrix's code rain trickling over it. A register shift tears it.
+// matrix's code rain trickling over it; no neon in the water under a daemon (C37). A register shift tears it.
 shader_type spatial;
 
 #include "res://shaders/ruins_common.gdshaderinc"
@@ -28,6 +28,12 @@ uniform float cell_m = 4.0;
 uniform vec2 grid_offset = vec2(0.0);
 uniform vec2 pulse_from = vec2(0.0);
 uniform float plate_m = 1.0;
+// The nearest daemons (the code-rain driver's slots, as the bodies have them, C37): no neon lies in the water under one,
+// so it never stands in its own colour (an amber zombie on an amber puddle).
+const int MAX_ENEMIES = 8;
+uniform vec4 enemies[MAX_ENEMIES];
+uniform int enemy_count = 0;
+uniform float puddle_clear_m = 3.2;
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -39,26 +45,17 @@ void vertex() {
 	world_normal = normalize(mat3(MODEL_MATRIX) * NORMAL);
 }
 
-// Distance to the nearest crack of a crazed network at `p` (a cellular noise's second nearest minus nearest).
-float crack_distance(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	float d1 = 8.0;
-	float d2 = 8.0;
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			ivec2 c = ivec2(i) + ivec2(x, y);
-			vec2 o = vec2(ruins_hash(c.x, c.y, 21), ruins_hash(c.x, c.y, 22));
-			float d = length(vec2(float(x), float(y)) + o - f);
-			if (d < d1) {
-				d2 = d1;
-				d1 = d;
-			} else if (d < d2) {
-				d2 = d;
-			}
+// How much the water near here lies under a daemon, 0 to 1.
+float under_daemon(vec3 p) {
+	float clear = 1.0;
+	for (int i = 0; i < MAX_ENEMIES; i++) {
+		if (i >= enemy_count) {
+			break;
 		}
+		float d = distance(p.xz, enemies[i].xz);
+		clear *= 1.0 - enemies[i].w * (1.0 - smoothstep(puddle_clear_m * 0.45, puddle_clear_m, d));
 	}
-	return d2 - d1;
+	return 1.0 - clear;
 }
 
 void fragment() {
@@ -91,8 +88,8 @@ void fragment() {
 		float front = mod(arena_clock * 9.0, 90.0);
 		glow += grid_tron.rgb * (grid + minor * 0.5) * exp(-pow((r - front) / 1.2, 2.0)) * 3.0 * w3.x;
 		// Cracks, glowing from below, as wide and as many as the damage.
-		float cd = crack_distance(p / 0.9 + vec2(13.1, 7.7));
-		float big = crack_distance(p / 3.1 + vec2(3.3, 1.1));
+		float cd = ruins_crack(p / 0.9 + vec2(13.1, 7.7));
+		float big = ruins_crack(p / 3.1 + vec2(3.3, 1.1));
 		float lines = ruins_line(cd, 0.06 * damage) * step(0.35, ruins_noise(p * 0.35 + 4.0)) * damage;
 		lines = max(lines, ruins_line(big, 0.05 + 0.08 * damage) * smoothstep(0.15, 0.5, damage));
 		vec3 cc = crack_tron.rgb * (w3.x * crack_energy.x) + crack_cyber.rgb * (w3.y * crack_energy.y) + crack_matrix.rgb * (w3.z * crack_energy.z);
@@ -119,7 +116,7 @@ void fragment() {
 			// The signs' neon held in the water: magenta here, amber there, smeared along the puddle.
 			vec3 neon = mix(puddle_tint.rgb, puddle_tint_b.rgb, smoothstep(0.4, 0.6, ruins_noise(p * 0.08 + 21.0)));
 			float smear = 0.6 + 0.4 * ruins_noise(vec2(p.x * 1.7, p.y * 0.25));
-			glow += neon * (wet * (0.09 * smear + ring * 0.5)) * w3.y;
+			glow += neon * (wet * (0.09 * smear + ring * 0.5)) * w3.y * (1.0 - under_daemon(world_pos));
 		}
 		// Matrix: code rain trickling over the floor.
 		if (w3.z > 0.01) {

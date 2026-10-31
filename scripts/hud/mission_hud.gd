@@ -15,9 +15,11 @@ extends Control
 ##                        register and goal.
 ##   the shift            a register transition: the screen tears in the new register's colour.
 ##   the cut              an arena reloaded by the runner (a start, a retry, the next mission, back to the Missions
-##                        screen) comes in from black over CUT_S (C36), where it used to blink.
-## Your AI's lines go to the guide panel (GuideHud.story_line(): "your AI", one voice), in turn, each shown for a
-## time that fits its length. The end screens are scripts/hud/mission_end_screen.gd, up end_hold_s after the last
+##                        screen) comes in from black over CUT_S (C36), where it used to blink; and before it goes
+##                        (C37) a black frame with the command typed on it ("$ login"), so a district's first build
+##                        happens behind black, never as a frozen frame of the menu that started it.
+## Your AI's lines go to the guide panel (GuideHud.story_line(): "your AI", one voice), each shown for a time that fits
+## its length, the newest winning (C37: a waiting line gives way to it, the one on show after STORY_LEAST_MS). The end screens are scripts/hud/mission_end_screen.gd, up end_hold_s after the last
 ## objective (C37: the place holds a beat first). Since C37 an objective's hint is a dim line under its progress
 ## ("{reload}" and the like are the keys as bound), and the register chip is the world's live register in ruins (the
 ## place itself), so it never reads one thing while the world shows another. Cosmetic: it changes nothing.
@@ -58,6 +60,8 @@ const PANEL_ALPHA := 0.84
 const STORY_MS_FLOOR := 3200.0
 const STORY_MS_PER_CHAR := 55.0
 const STORY_MS_LAST := 9000.0
+## A line on show this long gives way to a newer one (C37): your AI keeps up with what is happening, never a line behind.
+const STORY_LEAST_MS := 1800.0
 const AUDIT_PREFIX := ""
 const TILDE_PREFIX := "~ $ "
 const HANDED_LINE := ">> %s handed to you  [%s]"
@@ -84,6 +88,7 @@ var _shift := {}
 var _shift_age := -1.0
 var _story: Array = []
 var _story_hold := 0.0
+var _story_ms := 0.0
 var _end_in := -1.0
 var _end_kind := ""
 var _end: MissionEndScreen
@@ -231,6 +236,7 @@ func _process(delta: float) -> void:
 		if guide.story_line(text, ms):
 			_story.pop_front()
 			_story_hold = ms
+			_story_ms = ms
 	if _end_in >= 0.0:
 		_end_in -= delta
 		if _end_in < 0.0:
@@ -238,7 +244,7 @@ func _process(delta: float) -> void:
 	# Drawn while a mission shows or the cut from black runs, and once more as they stop; never redrawn for nothing in
 	# plain arena play.
 	_cut = maxf(_cut - delta / CUT_S, 0.0)
-	var showing := _showing() or _cut > 0.0
+	var showing := _showing() or _cut > 0.0 or MissionRunner.mounting() != ""
 	if showing or _drawn:
 		queue_redraw()
 	_drawn = showing
@@ -282,7 +288,10 @@ func _on_progressed(_index: int) -> void:
 func _on_line(who: String, text: String) -> void:
 	match who:
 		"ai":
-			_story.append(text)
+			# The newest wins (C37): a line still waiting gives way to it, and the one on show once it has had its moment.
+			_story = [text]
+			if _story_hold > 0.0 and _story_ms - _story_hold >= STORY_LEAST_MS:
+				_story_hold = 0.0
 		"tilde":
 			_push_feed(TILDE_PREFIX, text, Palette.CRIMSON, TILDE_CPS)
 		_:
@@ -364,6 +373,12 @@ func _draw() -> void:
 		_draw_mission()
 	if _cut > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Palette.VOID, _cut * _cut))
+	var mount := MissionRunner.mounting()
+	if mount != "":
+		draw_rect(Rect2(Vector2.ZERO, size), Palette.VOID)
+		var at := Vector2(28.0, size.y - 34.0)
+		draw_string(_font, at, mount, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(16 * _k), Palette.MINT)
+		draw_rect(Rect2(at + Vector2(_font.get_string_size(mount, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(16 * _k)).x + 6.0, -14.0 * _k), Vector2(9.0, 16.0) * _k), Palette.MINT)
 
 
 func _draw_mission() -> void:

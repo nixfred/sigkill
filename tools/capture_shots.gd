@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35 or c36):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36 or c37):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -387,6 +387,9 @@ const C42_AFTER := [["c42-shot", 0.07], ["c42-derezz", 0.62], ["c42-feed", 1.45]
 const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-shot", "c42-derezz", "c42-feed", "c42-slam", "c42-title"]
 const C42_SHEET_COLUMNS := 3
 const C42_PAUSE_AT := 98.1
+## c37's sheet: mission 1 as a player meets it, three a row; the frames its busiest fight's GPU time is averaged over.
+const C37_SHEET := ["c37-opening", "c37-plaza", "c37-gate", "c37-shift", "c37-remnant", "c37-exit0"]
+const C37_GPU_FRAMES := 180
 ## c36's sheet, three a row; how many frames each register's GPU time is averaged over.
 const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide-tron", "c36-fight", "c36-mission"]
 const C36_GPU_FRAMES := 120
@@ -514,6 +517,11 @@ func _run() -> void:
 		return
 	if _set == "c42":
 		await _c42()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c37":
+		await _c37()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2637,6 +2645,190 @@ func _c36() -> void:
 			stills.append(sheet[name])
 	if stills.size() == C36_SHEET.size():
 		_save_grid("c36-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## c37: mission 1 (login), built, as a player plays it, started from the Missions screen (the arena reloads into its
+## ruins): its card over the scheduler's floor; the opening, the first rogue.d climbing out of a spawn vent in a gush of
+## green code while the timeslice runs; the pack in the plaza coming at the player as more climb out (the GPU's time a
+## frame over its busiest stretch printed, at 1920x1080); the same at 960x540; the vent at the exit with the white ICE
+## sealing the gate past it; the surge, a rogue.d climbing out of the vent beside the breach (c37-vent); the grid
+## splitting, the world tearing into the cyberpunk ruins; the landing in the rain, the remnant's sign flickering on;
+## the exit 0 card; the Missions screen with mission 1 done; and the sheet of six (c37-sequence). The player is
+## shielded through it (the shield off the HUD for each still), and its daemons are shot down as the beats need.
+func _c37() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(0)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null:
+		printerr("capture: mission 1 did not start in its ruins")
+		return
+	print("capture: mission %s in the ruins %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var start := world.point("start")
+	var east: Vector3 = runner.stage.vent("east").global_position
+	var down: Vector3 = world.point("plaza") + Vector3(0, 3.0, 0) - start
+	_player.rotation.y = atan2(-down.x, -down.z)
+	await _frames(50)
+	await _c37_save(sheet, "c37-card", runner)
+	# The opening: the first rogue.d climbing out of a vent, the timeslice running.
+	var near := east + (start - east).normalized() * 6.5
+	await _stand(_main.to_local(Vector3(near.x, start.y, near.z)), east + Vector3(0, 0.9, 0))
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	while runner.stage.made.is_empty():
+		await _frames(1)
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	await _c37_save(sheet, "c37-opening", runner)
+	await _c37_until(runner, func(): return runner.index >= 1, 0.0)
+	# The plaza: the pack climbing out of its vents and coming at the player, who stepped back south of it to meet them.
+	var plaza := world.point("plaza")
+	var north: Vector3 = runner.stage.vent("plaza_n").global_position
+	_player.respawn_at(plaza + Vector3(0.5, 0, 1.5))
+	while runner.index < 2:
+		await _frames(1)
+	_c37_view(plaza + Vector3(0.0, 0, 8.0), north.lerp(plaza, 0.4) + Vector3(0, 1.0, 0))
+	while runner.stage.wave_state("pack_a") != "out":
+		await _frames(1)
+	var waited := 0
+	while waited < 360 and not _c37_spread(runner, 5.0, 10.0):
+		await _frames(1)
+		waited += 1
+	print("capture: c37-plaza after %d frames, %d of the pack standing" % [waited, runner.stage.standing().size()])
+	await _c37_save(sheet, "c37-plaza", runner)
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "c37-960", runner)
+	root.size = Vector2i(1920, 1080)
+	runner.life.shield(100000.0)
+	await _frames(4)
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: c37 the plaza fight at %dx%d, %d of mission 1's daemons standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, runner.stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("plaza")
+	await _c37_until(runner, func(): return runner.index >= 3, 0.0)
+	_player.global_position = runner.log_place("temporary")
+	await _c37_until(runner, func(): return runner.index >= 4, 0.0)
+	# The vent at the exit, the white ICE sealing the gate past it: its guards down first, the log folded away.
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	await _c37_until(runner, func(): return runner.stage.wave_state("guard") == "cleared" and not mh.showing_log(), 0.0)
+	var gate := world.point("gate")
+	var breach := world.point("breach")
+	await _stand(_main.to_local(breach + (breach - gate).normalized() * 5.5 + Vector3(1.6, 0, 0)), gate + Vector3(0, 1.7, 0))
+	await _frames(20)
+	await _c37_save(sheet, "c37-gate", runner)
+	# The surge at the vent: one climbing out of the vent by the breach, the ICE beyond.
+	var near_exit: Vector3 = runner.stage.vent("near_exit").global_position
+	_player.respawn_at(gate)
+	while runner.index < 5:
+		await _frames(1)
+	_c37_view(near_exit + Vector3(6.0, 0, 3.5), near_exit + Vector3(-0.6, 1.3, -2.2))
+	while not runner.stage.standing().any(func(d): return String(d.name).begins_with("Mission_surge") and d.climbing()):
+		await _frames(1)
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _c37_save({}, "c37-vent", runner)
+	# The surge held: the grid splits under the vent, the world tearing into the ruins.
+	await _stand(_main.to_local(breach + Vector3(2.6, 0, 3.6)), breach + Vector3(0, -0.9, 0))
+	await _c37_until(runner, func(): return runner.index >= 6, 0.0)
+	await _frames(int(0.36 * Engine.physics_ticks_per_second))
+	await _c37_save(sheet, "c37-shift", runner)
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))
+	# The drop: through the breach into the rain, the remnant's sign flickering on ahead.
+	_player.global_position = breach + Vector3(0, 0.4, 0)
+	var sign_at: Vector3 = world.remnant_at() + Vector3(0, -2.6, 0)
+	var to: Vector3 = sign_at - (world.point("below") + Vector3(0, 0.7, 0))
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	while runner.state != MissionRunner.State.COMPLETE:
+		await _frames(1)
+	await _frames(int(1.7 * Engine.physics_ticks_per_second))
+	print("capture: landed at %s, the remnant lit %.2f" % [str(_player.global_position), world.remnant_power()])
+	await _c37_save(sheet, "c37-remnant", runner)
+	var end: MissionEndScreen = _main.get_node("Hud").mission_hud().end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "c37-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(0)
+	await _frames(70)
+	await _save("c37-missions")
+	var stills: Array[Image] = []
+	for name in C37_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == C37_SHEET.size():
+		_save_grid("c37-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 1 played on until `condition` (its daemons shot down as they come out, a sure shot), at most `most` seconds
+## (0: a minute).
+func _c37_until(runner: MissionRunner, condition: Callable, most: float) -> void:
+	var left := int((most if most > 0.0 else 60.0) * Engine.physics_ticks_per_second)
+	while left > 0 and not condition.call():
+		if runner.objective().get("kind") == "survive":
+			runner.progress = maxf(runner.progress, runner.need() - 0.05)  # the timeslice held, shortened for the stills
+		for d in runner.stage.standing():
+			if d.is_alive():
+				d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await _frames(1)
+		left -= 1
+
+
+## The player put at `at` (on the floor, at once: a beat must not wait for a settle) looking at `look` (c37).
+func _c37_view(at: Vector3, look: Vector3) -> void:
+	_player.respawn_at(Vector3(at.x, at.y + RuinsLayout.STAND_Y if absf(at.y) < 0.05 else at.y, at.z))
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to: Vector3 = look - (_player.global_position + Vector3(0, cam.position.y + 0.7, 0))
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+
+
+## True when mission 1's daemons stand spread for a still (c37): the nearest out of its vent between `near` and `far`
+## metres from the player, and at least three standing.
+func _c37_spread(runner: MissionRunner, near: float, far: float) -> bool:
+	var standing: Array = runner.stage.standing()
+	if standing.size() < 3:
+		return false
+	var nearest := INF
+	for d in standing:
+		if d.is_alive():
+			nearest = minf(nearest, d.global_position.distance_to(_player.global_position))
+	return nearest >= near and nearest <= far
+
+
+## A c37 still: the player's long shield lifted for the frames it takes (so the combat HUD shows no protection), then
+## given back.
+func _c37_save(sheet: Dictionary, name: String, runner: MissionRunner) -> void:
+	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	await process_frame
+	await process_frame
+	await _c35_save(sheet, name)
+	runner.life.shield(100000.0)
+
+
+func _c37_render_info(label: String) -> void:
+	var drawn := []
+	for kind in [Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_TYPE_SHADOW]:
+		for info in [Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME]:
+			drawn.append(root.get_render_info(kind, info))
+	print("capture: c37 %s drew %d draw calls, %d primitives; shadows %d draw calls, %d primitives" % ([label] + drawn))
 
 
 ## A c35 still saved as `name`, and kept in `sheet` for the contact sheet.

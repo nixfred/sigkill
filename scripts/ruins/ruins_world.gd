@@ -657,6 +657,11 @@ func remnant_power() -> float:
 	return _remnant_power
 
 
+## Where the remnant's sign is (the place in front of its face, world space), or Vector3.INF without one.
+func remnant_at() -> Vector3:
+	return _remnant_lamp.global_position if _remnant_lamp != null else Vector3.INF
+
+
 func _step_remnant(delta: float) -> void:
 	if _remnant_t < 0.0 or _remnant_light == null:
 		return
@@ -879,7 +884,8 @@ func _follow_camera() -> void:
 		_glyphs.global_position = at + Vector3(0, 12, 0)
 
 
-## The daemons' code rain (the arena's driver's nearest daemons) on the walls.
+## The daemons' code rain (the arena's driver's nearest daemons) on the walls, and (C37) the floor's water kept clear of
+## neon under them.
 func _feed_rain() -> void:
 	if _driver == null or not is_instance_valid(_driver):
 		_driver = null
@@ -892,9 +898,10 @@ func _feed_rain() -> void:
 	if uploads == _driver_uploads:
 		return
 	_driver_uploads = uploads
-	var body: ShaderMaterial = materials()["body"]
-	body.set_shader_parameter("enemies", _driver.slots())
-	body.set_shader_parameter("enemy_count", _driver.slot_count() if _driver.is_enabled() else 0)
+	for part in ["body", "floor"]:
+		var mat: ShaderMaterial = materials()[part]
+		mat.set_shader_parameter("enemies", _driver.slots())
+		mat.set_shader_parameter("enemy_count", _driver.slot_count() if _driver.is_enabled() else 0)
 
 
 # --- For the tests. ---

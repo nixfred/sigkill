@@ -97,6 +97,29 @@ vec2 ruins_rain(vec2 uv, float size, float density) {
 	return vec2(0.0, fade * fade * bits);
 }
 
+// Distance to the nearest crack of a crazed network at `p` (a cellular noise's second nearest minus nearest), in its
+// cells: the floor's cracks and (C37) a monolith's glass.
+float ruins_crack(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	float d1 = 8.0;
+	float d2 = 8.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			ivec2 c = ivec2(i) + ivec2(x, y);
+			vec2 o = vec2(ruins_hash(c.x, c.y, 21), ruins_hash(c.x, c.y, 22));
+			float d = length(vec2(float(x), float(y)) + o - f);
+			if (d < d1) {
+				d2 = d1;
+				d1 = d;
+			} else if (d < d2) {
+				d2 = d;
+			}
+		}
+	}
+	return d2 - d1;
+}
+
 // Anti-aliased coverage of a line `width` wide at distance `d` from it, fading once a pixel is wider than the line.
 float ruins_line(float d, float width) {
 	float fw = max(fwidth(d), 0.00001);

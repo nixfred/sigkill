@@ -78,6 +78,8 @@ static var _after := ""
 static var _staging := ""
 ## True from a reload of its own until the next arena's HUD takes it (C36): that arena comes in from black.
 static var _fade_in := false
+## A reload asked for and not made yet (C37): the command its black frame types ("$ login"), "" for none.
+static var _mount := ""
 
 ## Set by main.gd: the player, its life alone, the daemons' director, ICE, the round HUD, the session (null alone).
 var player: Node3D = null
@@ -183,6 +185,26 @@ static func take_fade() -> bool:
 	return out
 
 
+## The command typed on the black frame before a reload (C37), or "" while none is coming.
+static func mounting() -> String:
+	return _mount
+
+
+## The arena reloaded, a black frame with `label` typed on it shown first (C37): a district's first build (about a second)
+## then happens behind black, never as a frozen frame of the menu that started it, and the next arena comes in from that
+## black (mark_fade()). Once at a time.
+static func reload_after_mount(tree: SceneTree, label: String) -> void:
+	if tree == null or tree.current_scene == null or _mount != "":
+		return
+	_mount = label
+	_fade_in = true
+	await tree.process_frame
+	await tree.process_frame
+	_mount = ""
+	if tree.current_scene != null:
+		tree.reload_current_scene()
+
+
 ## Nothing queued, nothing to open (tests).
 static func clear_pending() -> void:
 	_pending = ""
@@ -204,7 +226,7 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 			return false
 		_staging = d.id
 		queue(d.id, try)
-		_reload()
+		_reload("$ " + d.title)
 		return true
 	_staging = ""
 	def = d
@@ -485,6 +507,8 @@ func _next_objective() -> void:
 
 func _objective_done() -> void:
 	var o := objective()
+	if def.restores and life != null and is_instance_valid(life) and life.has_method("restore"):
+		life.restore()  # a checkpoint (C37): health back to full
 	for w in o.get("gives", []):
 		if not carried.has(w):
 			carried.append(w)
@@ -546,6 +570,8 @@ func _complete() -> void:
 	state = State.COMPLETE
 	if stage != null and is_instance_valid(stage):
 		stage.stop()
+	# Its weapons are told as its end screen comes up, not over the place's last beat (C37).
+	UnlockToast.hold(def.end_hold_s)
 	_pending = ""
 	_pending_try = 1
 	var kept := MissionProgress.current().record(def, clock, logs_found.size())
@@ -598,7 +624,7 @@ func retry() -> void:
 	if def == null:
 		return
 	queue(def.id, attempt + 1)
-	_reload()
+	_reload("$ " + def.title)
 
 
 ## The mission after this one, from its first try.
@@ -607,20 +633,20 @@ func next_mission() -> void:
 	if after == null or not after.playable:
 		return
 	queue(after.id, 1)
-	_reload()
+	_reload("$ " + after.title)
 
 
 ## Back to the Missions screen, over a fresh arena.
 func to_missions() -> void:
 	clear_pending()
 	_after = AFTER_MISSIONS
-	_reload()
+	_reload("$ ls -l /campaign")
 
 
 ## Back to plain arena play, in a fresh arena.
 func free_play() -> void:
 	clear_pending()
-	_reload()
+	_reload("$ exit")
 
 
 ## Ends it where it stands (a match starting): the loadout lifted, the round clock and ICE back as they were.
@@ -644,10 +670,9 @@ func end_here() -> void:
 	ended.emit()
 
 
-func _reload() -> void:
-	if is_inside_tree() and get_tree().current_scene != null:
-		_fade_in = true
-		get_tree().reload_current_scene()
+func _reload(label: String) -> void:
+	if is_inside_tree():
+		reload_after_mount(get_tree(), label)
 
 
 func _online() -> bool:
