@@ -28,7 +28,7 @@ extends Control
 ## The game's version (project.godot's, "v0.33.0-prealpha") sits small and dim in the screen's bottom right
 ## corner while the menu itself is up, as on the boot screen.
 ##
-## Play the opener (C38): the opener's first 35 seconds (scripts/opener/opener.gd) on demo data, over everything,
+## Play the opener (C38): the opener (scripts/opener/opener.gd; its first 95 seconds since C41) on demo data, over everything,
 ## with the arena paused behind it; Esc at any moment, or its end, brings this menu back as it was. Alone only: in
 ## a match the entry is greyed out, since the match cannot pause for it.
 ##
@@ -37,6 +37,9 @@ extends Control
 ## never a file's contents, never kept or sent), off unless turned on, kept by guide_settings.gd as
 ## opener_real_data. It counts the next time the opener plays; on demo data (--demo, real-machine data off) the
 ## opener stays on the demo's, and says so.
+##
+## The opener's link (C41): the menu hands it the session's guide link, for its one call to the player's AI (told only
+## that the game is starting), under the same yes, pace and cap as the guide HUD's.
 
 signal closed
 
@@ -247,6 +250,8 @@ func open_opener() -> Opener:
 	visible = false
 	_opener = OpenerScene.instantiate()
 	_opener.data = _opener_source()
+	# The session's guide link, for the opener's one call to the player's AI (C41): told only that the game is starting.
+	_opener.guide = _link()
 	_opener.pause_world = true
 	_opener.finished.connect(_on_opener_finished)
 	add_child(_opener)

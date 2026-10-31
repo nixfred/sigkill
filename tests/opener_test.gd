@@ -31,7 +31,7 @@ const Controls = preload("res://scripts/controls.gd")
 
 ## The opener's code paths: its own scripts, scene, resources and shaders, and the menu's and the arena's parts
 ## that start it; every script in scripts/opener/ but READER (the check also finds any new one there).
-const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scripts/opener/tree_layout.gd", "res://scripts/opener/tree_fall.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader", "res://shaders/opener_tower.gdshader", "res://shaders/opener_panel.gdshader", "res://shaders/opener_terrace.gdshader", "res://shaders/opener_maze.gdshader", "res://shaders/opener_stream.gdshader", "res://shaders/opener_speed.gdshader", "res://shaders/opener_sky.gdshader", "res://shaders/opener_core.gdshader"]
+const OPENER_CODE := ["res://scripts/opener/opener.gd", "res://scripts/opener/opener_data.gd", "res://scripts/opener/demo_opener_data.gd", "res://scripts/opener/opener_palette.gd", "res://scripts/opener/opener_tuning.gd", "res://scripts/opener/fake_terminal.gd", "res://scripts/opener/typist.gd", "res://scripts/opener/cell_width.gd", "res://scripts/opener/theme_colors.gd", "res://scripts/opener/tree_layout.gd", "res://scripts/opener/tree_fall.gd", "res://scripts/opener/opener_link.gd", "res://scripts/opener/link_beat.gd", "res://scripts/opener/pit_beat.gd", "res://scripts/opener/copy_art.gd", "res://scenes/opener.tscn", "res://resources/opener.tres", "res://shaders/opener_glitch.gdshader", "res://shaders/opener_screen.gdshader", "res://shaders/opener_tower.gdshader", "res://shaders/opener_panel.gdshader", "res://shaders/opener_terrace.gdshader", "res://shaders/opener_maze.gdshader", "res://shaders/opener_stream.gdshader", "res://shaders/opener_speed.gdshader", "res://shaders/opener_sky.gdshader", "res://shaders/opener_core.gdshader", "res://shaders/opener_signal.gdshader", "res://shaders/opener_floor.gdshader"]
 ## The one opener file that reads the machine (C39), checked by tests/opener_real_test.gd instead.
 const READER := "res://scripts/opener/real_opener_data.gd"
 const NEVER := ["OS.execute", "create_process", "execute_with_pipe", "OS.kill", "shell_open", "shell_show_in_file_manager", "get_environment", "has_environment", "set_environment", "unset_environment", "get_unix_time_from_system", "_dict_from_system", "_string_from_system", "get_time_zone_from_system", "get_ticks", "get_unique_id", "get_processor", "get_model_name", "get_executable_path", "get_system_dir", "get_user_data_dir", "get_cmdline", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "ENetMultiplayerPeer", "WebSocket", "WebRTC", "FileAccess", "DirAccess", "ResourceSaver", "save_png", "save_jpg", "save_webp", "save_exr", "store_", "JavaScriptBridge", "http://", "https://", "auto_accept_quit", "WM_CLOSE_REQUEST", "_notification", "delay_msec", "delay_usec", "while true", ".ogg", ".mp3", ".wav", "AudioStreamOggVorbis", "AudioStreamMP3"]
@@ -51,7 +51,7 @@ const FLASH_STEP := 0.1
 const MOST_FLASHES := 2
 const FPS := 60.0
 ## Frames any one run may take before the test gives up on it.
-const MOST_FRAMES := 4600
+const MOST_FRAMES := 6000
 const LONG_ROUND_S := 100000.0
 
 
@@ -337,7 +337,7 @@ func _words_checks() -> void:
 	strobing.glitch_hz = 30.0
 	var fine := OpenerTuning.new()
 	fine.hold_until = 35.8
-	fine.end_at = 70.4
+	fine.end_at = 95.2
 	var short_ignore := OpenerTuning.new()
 	short_ignore.ignore_s = 1.5
 	var late_landing := OpenerTuning.new()

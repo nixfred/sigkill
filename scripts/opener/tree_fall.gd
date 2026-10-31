@@ -97,6 +97,8 @@ var fall_at := 50.0
 var land_at := 68.4
 ## The hottest process's name, shown in the pit's mouth.
 var process_name := ""
+## How far the pit's two names (its folder's and the hot process's) are faded out, 0 to 1: C41's copy takes their place.
+var pit_dim := 0.0
 
 var _camera: Camera3D
 var _env: Environment
@@ -111,6 +113,7 @@ var _air_paint: ShaderMaterial
 var _core_paint: ShaderMaterial
 var _labels: Array[Label3D] = []
 var _process_label: Label3D
+var _pit_label: Label3D
 var _drop := PackedFloat32Array()
 var _drop_mean := 1.0
 var _turn := PackedFloat32Array()
@@ -168,6 +171,11 @@ func step(elapsed: float, look: Vector2) -> void:
 	_panel_paint.set_shader_parameter("bright", lerpf(1.0, SCREEN_GLOW, smoothstep(0.08, 0.45, back)))
 	if _process_label != null:
 		_process_label.modulate = _neon(colours.color("red")).lerp(Color(1.0, 0.86, 0.86), beat * 0.5)
+		_process_label.modulate.a = 1.0 - pit_dim
+		_process_label.outline_modulate.a = 0.7 * (1.0 - pit_dim)
+	if _pit_label != null:
+		_pit_label.modulate.a = 1.0 - pit_dim
+		_pit_label.outline_modulate.a = 0.7 * (1.0 - pit_dim)
 
 
 ## How the player's look settles back while it is not moving (seconds `delta`): toward still.
@@ -213,6 +221,11 @@ func pose(elapsed: float) -> Transform3D:
 ## Where the fall comes to rest, facing the pit: C41's beat starts here.
 func landing() -> Transform3D:
 	return _fall_pose(1.0, land_at)
+
+
+## Where the camera is now and which way it looks (its pose and the look on top), or the landing before it is built.
+func eye() -> Transform3D:
+	return _camera.transform if _camera != null else landing()
 
 
 ## How far the camera stands from the screen when the screen fills the view (FOV_SCREEN, the window's height).
@@ -626,6 +639,8 @@ func _names() -> void:
 		label.position = entry["at"]
 		label.modulate = ink
 		_labels.append(label)
+		if layout.rooms[int(entry["room"])]["path"] == layout.pit_path and layout.pit_path != "":
+			_pit_label = label
 	var shown := OpenerData.clean(process_name, TreeLayout.LABEL_LONGEST)
 	if shown != "":
 		_process_label = _label(shown, PROCESS_PX)

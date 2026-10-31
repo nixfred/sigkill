@@ -634,3 +634,104 @@ static func opener_beat() -> AudioStreamWAV:
 		var s := (sin(phase) + 0.25 * sin(phase * 3.0)) * exp(-t * 7.0) * minf(t * 250.0, 1.0)
 		data.encode_s16(i * 2, int(clampf(s * 0.75, -1.0, 1.0) * INT16_FULL_SCALE))
 	return _stream(data, rate)
+
+
+# --- The opener's link and the copy (C41). ---
+
+const OPENER_CARRIER_S := 2.6
+const OPENER_LOCK_S := 0.9
+const OPENER_RISE_S := 4.2
+const OPENER_STEP_S := 0.6
+
+
+## The link: a carrier finding its line (an old modem's handshake, made here: a tone that sweeps, warbles between two
+## pitches faster and faster, then settles into a soft steady hiss of data).
+static func opener_carrier() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_CARRIER_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 50
+	var phase := 0.0
+	var hiss := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var u := t / OPENER_CARRIER_S
+		var sweep := lerpf(420.0, 1800.0, smoothstep(0.0, 0.25, u))
+		var warble := 1.0 + 0.22 * signf(sin(TAU * lerpf(4.0, 26.0, u) * t)) * smoothstep(0.2, 0.35, u)
+		phase = fmod(phase + TAU * sweep * warble / rate, TAU)
+		hiss = lerpf(hiss, rng.randf_range(-1.0, 1.0), 0.45)
+		var tone := sin(phase) * (1.0 - smoothstep(0.62, 0.8, u))
+		var noise := hiss * smoothstep(0.55, 0.75, u) * 0.6
+		var envelope := minf(t * 60.0, 1.0) * (1.0 - smoothstep(0.85, 1.0, u))
+		data.encode_s16(i * 2, int(clampf((tone * 0.45 + noise) * envelope, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## The link locking: two clean notes rising, a fifth apart, with a short shimmer after.
+static func opener_lock() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_LOCK_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var a := 0.0
+	var b := 0.0
+	for i in count:
+		var t := float(i) / rate
+		a = fmod(a + TAU * 660.0 / rate, TAU)
+		b = fmod(b + TAU * 990.0 / rate, TAU)
+		var first := sin(a) * exp(-t * 6.0) * minf(t * 300.0, 1.0)
+		var second := (sin(b) + 0.3 * sin(b * 2.0)) * exp(-maxf(t - 0.12, 0.0) * 4.5) * (1.0 if t >= 0.12 else 0.0) * minf(maxf(t - 0.12, 0.0) * 300.0, 1.0)
+		data.encode_s16(i * 2, int(clampf((first * 0.45 + second * 0.4), -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## The copy rising: a low drone swelling up from nothing, a metal shimmer over it, beating against itself.
+static func opener_rise() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_RISE_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 51
+	var p1 := 0.0
+	var p2 := 0.0
+	var p3 := 0.0
+	var grit := 0.0
+	for i in count:
+		var t := float(i) / rate
+		var u := t / OPENER_RISE_S
+		p1 = fmod(p1 + TAU * 41.0 / rate, TAU)
+		p2 = fmod(p2 + TAU * 41.7 / rate, TAU)
+		p3 = fmod(p3 + TAU * lerpf(310.0, 370.0, u) / rate, TAU)
+		grit = lerpf(grit, rng.randf_range(-1.0, 1.0), 0.2)
+		var drone := (sin(p1) + sin(p2)) * 0.5 + 0.3 * sin(p1 * 2.0)
+		var shimmer := sin(p3 + 2.0 * sin(p1 * 7.0)) * 0.18 + grit * 0.08
+		var swell := smoothstep(0.0, 0.6, u) * (1.0 - smoothstep(0.85, 1.0, u))
+		data.encode_s16(i * 2, int(clampf((drone * 0.7 + shimmer) * swell, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)
+
+
+## A step of the copy's: a heavy foot coming down on metal (a low knock and a clank ringing off).
+static func opener_step() -> AudioStreamWAV:
+	var rate := LOW_RATE
+	var count := int(OPENER_STEP_S * rate)
+	var data := PackedByteArray()
+	data.resize(count * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NOISE_SEED + 52
+	var knock := 0.0
+	var ring := 0.0
+	var dark := 0.0
+	for i in count:
+		var t := float(i) / rate
+		knock = fmod(knock + TAU * (52.0 + 60.0 * exp(-t * 22.0)) / rate, TAU)
+		ring = fmod(ring + TAU * 437.0 / rate, TAU)
+		dark = lerpf(dark, rng.randf_range(-1.0, 1.0), 0.12)
+		var low := sin(knock) * exp(-t * 11.0)
+		var clank := (sin(ring) + 0.5 * sin(ring * 2.76)) * exp(-t * 16.0) * 0.35
+		var slap := dark * exp(-t * 45.0) * 1.6
+		var attack := minf(t * 600.0, 1.0)
+		data.encode_s16(i * 2, int(clampf((low * 0.8 + clank + slap) * attack, -1.0, 1.0) * INT16_FULL_SCALE))
+	return _stream(data, rate)

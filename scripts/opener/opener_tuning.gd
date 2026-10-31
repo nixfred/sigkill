@@ -1,14 +1,15 @@
 class_name OpenerTuning
 extends Resource
-## Every time and strength that shapes the opener (C38: PRD 5.7's 0:00 to 0:35; C40: 0:35 to 1:10): the fake crash,
-## the black, the terminal's arrival, when each line starts and the latest it may end, how fast each types, the
-## folder scroll, the hold, the 3 seconds the terminal ignores typing, the shrink-away, the fall and its landing,
-## the sounds and the screen's look. Times are seconds from the moment the opener starts. The default is
+## Every time and strength that shapes the opener (C38: PRD 5.7's 0:00 to 0:35; C40: 0:35 to 1:10; C41: 1:10 to
+## 1:35): the fake crash, the black, the terminal's arrival, when each line starts and the latest it may end, how fast
+## each types, the folder scroll, the hold, the 3 seconds the terminal ignores typing, the shrink-away, the fall and its
+## landing, the link to the player's AI and the copy of them, the sounds and the screen's look. Times are seconds from the moment the opener starts. The default is
 ## resources/opener.tres; scripts/opener/opener.gd reads only this. The words themselves are the PRD's and live in
 ## the opener as constants, never here; the camera's way through the machine is scripts/opener/tree_fall.gd's.
 ##
 ## The PRD's windows hold whatever the data: the prompt types inside 0:00 to 0:15, every line after it inside
-## 0:15 to 0:35, the shrink-away inside 0:35 to 0:50, the fall from 0:50 to 1:10. A line given more to type than its
+## 0:15 to 0:35, the shrink-away inside 0:35 to 0:50, the fall from 0:50 to 1:10, the link and the copy inside 1:10 to
+## 1:35 (whenever the player's AI answers, or does not). A line given more to type than its
 ## time (a long user name, say) types faster to fit (Typist.fit).
 
 @export_group("Crash")
@@ -85,12 +86,35 @@ extends Resource
 @export var shrink_at := 40.8
 
 @export_group("Fall")
-## The fall down the directory tree begins, lands on the pit's rim, hands off (C41's beat starts here) and, until
-## C41, the opener fades to black over the last moment and ends.
+## The fall down the directory tree begins, lands on the pit's rim and hands off: C41's beat starts here.
 @export var fall_at := 50.0
 @export var land_at := 68.4
 @export var handoff_at := 69.6
-@export var end_at := 70.2
+
+@export_group("Link")
+## The one call to the player's AI starts here, as the fall begins, so its answer is in by the link beat (it never
+## shows: the screen is the fall). "Linking your agent..." types itself from link_at to link_end, the signal climbs the
+## pit's walls from signal_at, and the answer shows from answer_from at the earliest; at answer_by the beat goes on
+## regardless, with the scripted line if no answer came (the opener never waits on the AI).
+@export var ask_at := 50.0
+@export var link_at := 70.2
+@export var link_end := 71.6
+@export var signal_at := 70.6
+@export var answer_from := 73.6
+@export var answer_by := 77.0
+
+@export_group("Copy")
+## The scripted guide's line types itself from guide_at, done by guide_end at the latest, with its beat before "They
+## look like you."; the copy of you walks up out of the pit from copy_at and stands before you at copy_stop.
+@export var guide_at := 81.4
+@export var guide_end := 85.8
+@export var guide_beat := 0.8
+@export var copy_at := 82.6
+@export var copy_stop := 93.6
+## The hand-off to C42 (its kill -9 forge starts here) and, until C42, the fade to black over the last moment and the
+## end.
+@export var forge_at := 94.4
+@export var end_at := 95.0
 
 @export_group("Sound")
 ## Linear volumes: the stuck buzz, the crackle at its fullest, the hum, a key.
@@ -103,6 +127,11 @@ extends Resource
 @export var wind_volume := 0.5
 @export var thud_volume := 0.7
 @export var beat_volume := 0.42
+## The link's carrier as the signal climbs, its lock when the answer lands, the copy's rise and each of its steps.
+@export var link_volume := 0.4
+@export var lock_volume := 0.5
+@export var rise_volume := 0.55
+@export var step_volume := 0.6
 
 @export_group("Screen")
 ## The terminal's glow (dark themes only), its reach and threshold, scanlines, vignette, and the tear's shift.
@@ -118,7 +147,7 @@ extends Resource
 ## Problems with these numbers, in words; empty when the timeline holds together and keeps the PRD's windows.
 func problems() -> PackedStringArray:
 	var out := PackedStringArray()
-	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until], ["in_at", in_at], ["in_end", in_end], ["shrink_at", shrink_at], ["fall_at", fall_at], ["land_at", land_at], ["handoff_at", handoff_at], ["end_at", end_at]]
+	var order := [["live_s", live_s], ["glitch_from", glitch_from], ["glitch_full", glitch_full], ["cut_at", cut_at], ["terminal_at", terminal_at], ["prompt_at", prompt_at], ["prompt_end", prompt_end], ["thanks_at", thanks_at], ["thanks_end", thanks_end], ["install_at", install_at], ["install_end", install_end], ["folders_at", folders_at], ["folders_end", folders_end], ["uptime_at", uptime_at], ["since_at", since_at], ["since_end", since_end], ["late_at", late_at], ["late_end", late_end], ["rest_at", rest_at], ["tear_at", tear_at], ["hold_until", hold_until], ["in_at", in_at], ["in_end", in_end], ["shrink_at", shrink_at], ["fall_at", fall_at], ["land_at", land_at], ["handoff_at", handoff_at], ["link_at", link_at], ["link_end", link_end], ["answer_from", answer_from], ["answer_by", answer_by], ["guide_at", guide_at], ["guide_end", guide_end], ["copy_stop", copy_stop], ["forge_at", forge_at], ["end_at", end_at]]
 	for i in range(1, order.size()):
 		if order[i][1] < order[i - 1][1]:
 			out.append("%s comes before %s" % [order[i][0], order[i - 1][0]])
@@ -147,4 +176,20 @@ func problems() -> PackedStringArray:
 		out.append("the fall does not start at 0:50")
 	if land_at > 70.0 or handoff_at > 70.5:
 		out.append("the fall ends after 1:10")
+	if link_at < 70.0 or link_at > 70.5:
+		out.append("the link does not start at 1:10")
+	if ask_at < 0.0 or ask_at > link_at:
+		out.append("the AI is asked after the link beat starts")
+	if signal_at < link_at or signal_at > answer_from:
+		out.append("the signal climbs outside the link beat")
+	if answer_by - link_at > 8.0:
+		out.append("the link waits more than 8 s on the AI")
+	if copy_at < answer_by or copy_at > guide_end:
+		out.append("the copy comes before the link is done or after the guide's line")
+	if copy_stop - copy_at < 6.0:
+		out.append("the copy's walk is too short to read")
+	if guide_end - guide_at < 2.0 or guide_beat <= 0.0 or guide_beat > 2.0:
+		out.append("the guide's line has no room to type")
+	if forge_at > 95.5 or end_at > 95.5:
+		out.append("the copy's beat ends after 1:35")
 	return out

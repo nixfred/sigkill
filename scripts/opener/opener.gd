@@ -1,6 +1,6 @@
 class_name Opener
 extends CanvasLayer
-## The opener (PRD 5.7, "you got tricked into this"), live in the engine, its first 70 seconds so far (C38, C40):
+## The opener (PRD 5.7, "you got tricked into this"), live in the engine, its first 95 seconds so far (C38, C40, C41):
 ##   0:00 to 0:15  the game freezes on its own last frame, stutters, comes apart and cuts to black and silence (a
 ##                 fake crash: the game glitching inside its own window, never a dialog, never the desktop, never a
 ##                 real freeze); then a fake terminal in the player's theme, and `<user>@<host>:~$` types itself.
@@ -12,9 +12,16 @@ extends CanvasLayer
 ##                 screen on a wall in a machine the size of a city (C40, scripts/opener/tree_fall.gd).
 ##   0:50 to 1:10  the fall down the player's directory tree as that city: the folder names the terminal scrolled
 ##                 on towers, as big as what each holds, the node_modules pit at the bottom, the hottest process
-##                 beating red in it; landing on its rim, the hand-off (C41 goes on from there; until then the
-##                 opener fades to black and hands back to the menu).
-## Every word in quotes is the PRD's own (THANKS, INSTALL, SINCE, IN_NOW); the late-night line's words are ours,
+##                 beating red in it; landing on its rim, the hand-off to C41.
+##   1:10 to 1:35  (C41) "Linking your agent...": lines of signal climb out of the pit and the HUD comes alive, and the
+##                 player's real AI answers live, told only that the game is starting (scripts/opener/opener_link.gd,
+##                 scripts/opener/link_beat.gd), or the scripted guide speaks if it cannot; then the scripted guide's
+##                 "I've been stuck in here with them. They look like you.", and the copy of the player walks up out of
+##                 the pit on a stair of light, wearing their user name, and stands before them (scripts/opener/
+##                 pit_beat.gd, scripts/opener/copy_art.gd); the hand-off to C42 (until then the opener fades to black
+##                 and hands back to the menu).
+## Every word in quotes is the PRD's own (THANKS, INSTALL, SINCE, IN_NOW; C41's LinkBeat.LINKING and GUIDE); the
+## late-night line's words are ours,
 ## built from the file times alone (late_line). Text types itself as a hand types (scripts/opener/typist.gd): its
 ## own wait for every key, a hesitation before the punchlines, one typo taken back.
 ##
@@ -24,7 +31,9 @@ extends CanvasLayer
 ## nothing read) is always ready; RealOpenerData (C39, only with the player's yes) reads on its own thread, and
 ## anything it has not got by then is the demo's. Nothing here reads the machine: no file but res://, no
 ## environment, no clock, no process, no network; the reader is the one place that does. The city is built from
-## the same values (scripts/opener/tree_layout.gd), as the screen goes black, and dropped with them.
+## the same values (scripts/opener/tree_layout.gd), as the screen goes black, and dropped with them. The copy wears the
+## user name the opener already took (cleaned), and nothing else; it goes with the machine as the opener ends, and the
+## player's AI is never told it, nor anything else of the data (C41).
 ##
 ## A real way out, always: Esc leaves at any moment, mid-crash and mid-typing included (`finished(true)`), and the
 ## window's close is never touched (Godot's own quit). The main loop never stops: the "freeze" is a picture held on
@@ -41,6 +50,9 @@ extends CanvasLayer
 ##
 ## The hand-off to C41: at handoff_at the camera has landed (fall().landing()) and the machine goes on drawing;
 ## fall() and layout() are the world and the city, so the next beat can stand a daemon in them.
+##
+## The hand-off to C42: at forge_at the copy stands before the player (pit().copy(), at PitBeat.stand()), the link has
+## said its line (link()) and the guide has said its own; the machine goes on drawing.
 
 signal finished(skipped: bool)
 
@@ -93,8 +105,8 @@ const NO_FRAME := Color(0.02, 0.02, 0.03)
 ## How the glitch tints a corrupted band: the daemons' glitch magenta (A4).
 const BLEED := Color(1.0, 0.17, 0.84)
 
-enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, IGNORE, IN, REVEAL, FALL, LANDED, DONE }
-const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "ignore", "in", "reveal", "fall", "landed", "done"]
+enum Phase { LIVE, FROZEN, BLACK, TERMINAL, HOLD, IGNORE, IN, REVEAL, FALL, LANDED, LINK, COPY, DONE }
+const PHASE_NAMES := ["live", "frozen", "black", "terminal", "hold", "ignore", "in", "reveal", "fall", "landed", "link", "copy", "done"]
 
 ## What it shows of "your machine"; null: DemoOpenerData.
 var data: OpenerData = null
@@ -104,6 +116,9 @@ var tuning: OpenerTuning = null
 var pause_world := false
 ## Freeze the game's own last frame for the crash (never in a headless run, which draws nothing).
 var freeze_frame := true
+## The session's guide link (scripts/guide/guide_link.gd) the link beat asks the player's AI through (C41), or null:
+## then the scripted guide. The menu hands it in. Untyped on purpose, so a test's fits.
+var guide = null
 
 var _t: OpenerTuning
 var _data: OpenerData
@@ -155,6 +170,20 @@ var _fade: ColorRect
 var _lifted := false
 var _look := Vector2.ZERO
 
+## The link and the copy (C41): the call to the player's AI, the HUD coming alive, the beat in the machine, the user
+## name the copy wears (cleaned, dropped as the opener ends), when the link locked, the copy's steps heard.
+var _link: OpenerLink
+var _link_beat: LinkBeat
+var _pit: PitBeat
+var _user := ""
+var _asked_at := -1.0
+var _locked_at := -1.0
+var _steps_heard := 0
+var _carrier: AudioStreamPlayer
+var _lock: AudioStreamPlayer
+var _rise: AudioStreamPlayer
+var _steps: Array[AudioStreamPlayer] = []
+
 static var _sounds := {}
 
 
@@ -167,6 +196,8 @@ func _ready() -> void:
 	_t = usable_tuning(tuning)
 	_data = data if data != null else DemoOpenerData.new()
 	_data.start()
+	_link = OpenerLink.new()
+	_link.guide = guide
 	_palette = OpenerPalette.named(OpenerPalette.DEFAULT_ID).readable()
 	_build()
 	_mouse_was = Input.mouse_mode
@@ -228,6 +259,26 @@ func layout() -> TreeLayout:
 	return _layout
 
 
+## The link to the player's AI (C41): what it was told, what it said, or why the scripted guide spoke.
+func link() -> OpenerLink:
+	return _link
+
+
+## The HUD coming alive (C41), or null before the machine is built and after.
+func link_beat() -> LinkBeat:
+	return _link_beat
+
+
+## The beat in the machine (C41): the signal, the copy and its steps; null before the machine is built and after.
+func pit() -> PitBeat:
+	return _pit
+
+
+## When the link locked (its line shown), on the opener's clock, or -1.
+func locked_at() -> float:
+	return _locked_at
+
+
 ## The player's look about while falling (radians: yaw, pitch).
 func look() -> Vector2:
 	return _look
@@ -283,8 +334,8 @@ func luma_at(seconds: float) -> float:
 	var level := clampf((seconds - _t.terminal_at) / maxf(_t.pop_s, 0.001), 0.0, 1.0)
 	if seconds >= _t.shrink_at:
 		level = lerpf(1.0, MACHINE_LUMA, smoothstep(_t.shrink_at, lerpf(_t.shrink_at, _t.fall_at, 0.5), seconds))
-	if seconds >= _t.handoff_at:
-		level *= 1.0 - clampf((seconds - _t.handoff_at) / maxf(_t.end_at - _t.handoff_at, 0.001), 0.0, 1.0)
+	if seconds >= _t.forge_at:
+		level *= 1.0 - clampf((seconds - _t.forge_at) / maxf(_t.end_at - _t.forge_at, 0.001), 0.0, 1.0)
 	return level
 
 
@@ -383,6 +434,7 @@ func _build_timeline() -> void:
 	var t := _t
 	var user := OpenerData.clean(_data.user(), OpenerData.NAME_LONGEST)
 	var host := OpenerData.clean(_data.host(), OpenerData.NAME_LONGEST)
+	_user = user if user != "" else DemoOpenerData.USER
 	var runs := prompt_runs(user if user != "" else DemoOpenerData.USER, host if host != "" else DemoOpenerData.HOST)
 	_prompt = ""
 	for run in runs:
@@ -482,6 +534,7 @@ func _process(delta: float) -> void:
 	_step_uptime()
 	_step_screen()
 	_step_machine(delta / maxf(Engine.time_scale, 0.01))
+	_step_link(delta / maxf(Engine.time_scale, 0.01))
 	if _elapsed >= _t.end_at:
 		_finish(false)
 
@@ -573,6 +626,11 @@ func _build_machine() -> void:
 	add_child(_screen_port)
 	_screen_view = _view("TerminalView", _screen_port.get_texture())
 	_world_view = _view("MachineView", _fall.get_texture())
+	# The HUD coming alive (C41), over the machine and under the fade.
+	_link_beat = LinkBeat.new()
+	add_child(_link_beat)
+	_link_beat.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_link_beat.setup(_t)
 	_fade = ColorRect.new()
 	_fade.name = "Fade"
 	_fade.color = Color(0.0, 0.0, 0.0, 0.0)
@@ -582,6 +640,10 @@ func _build_machine() -> void:
 	get_viewport().size_changed.connect(_size_ports)
 	_fall.build(_layout, _palette, GameSettings.current().graphics()["bloom"])
 	_fall.set_screen(_screen_port.get_texture(), Vector2(_screen_port.size))
+	# The link's signal and the copy (C41), in the machine's world, hidden until their moments.
+	_pit = PitBeat.new()
+	_pit.build(_palette, _t, _fall.void_color())
+	_fall.add_child(_pit)
 	_fall.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_event("machine")
 
@@ -633,9 +695,18 @@ func _step_machine(delta: float) -> void:
 		_event("land")
 	if _phase == Phase.LANDED and _elapsed >= _t.handoff_at and event_time("handoff") < 0.0:
 		_event("handoff")
-	if _phase == Phase.REVEAL or _phase == Phase.FALL or _phase == Phase.LANDED:
+	if _phase == Phase.LANDED and _elapsed >= _t.link_at:
+		_phase = Phase.LINK
+		_event("link")
+	if _phase == Phase.LINK and _elapsed >= _t.copy_at:
+		_phase = Phase.COPY
+		_event("copy")
+	if _phase == Phase.REVEAL or _phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY:
 		_look = TreeFall.settle_look(_look, delta)
-		_fall.step(_elapsed, _look)
+		var seeing := _look + PitBeat.scripted_look(_elapsed, _t)
+		_fall.pit_dim = smoothstep(_t.copy_at - 0.5, _t.copy_at + 2.5, _elapsed)
+		_fall.step(_elapsed, seeing)
+		_pit.step(_elapsed, seeing, _fall.eye())
 		var speed := _fall.speed_at(_elapsed)
 		if _wind.playing:
 			var k := clampf(speed / 40.0, 0.0, 1.0)
@@ -646,7 +717,57 @@ func _step_machine(delta: float) -> void:
 			_beats = beat
 			_beat.volume_db = SfxSynth.volume_db(_t.beat_volume * smoothstep(_t.fall_at, _t.land_at, _elapsed))
 			_beat.play()
-		_fade.color.a = clampf((_elapsed - _t.handoff_at) / maxf(_t.end_at - _t.handoff_at, 0.001), 0.0, 1.0)
+		_fade.color.a = clampf((_elapsed - _t.forge_at) / maxf(_t.end_at - _t.forge_at, 0.001), 0.0, 1.0)
+
+
+# --- The link and the copy (C41). ---
+
+## The call to the player's AI from ask_at (it runs on through the fall, never shown), the HUD coming alive with the
+## signal, the lock as its line shows (no sooner than answer_from; at answer_by the scripted line if no answer came),
+## the guide's line, the copy's rise and each of its steps, and the hand-off to C42.
+func _step_link(delta: float) -> void:
+	if _phase == Phase.DONE:
+		return
+	if _asked_at < 0.0 and _elapsed >= _t.ask_at:
+		_asked_at = _elapsed
+		_link.begin(_elapsed)
+		_event("ask")
+	if _asked_at >= 0.0:
+		_link.step(_elapsed, delta * 1000.0, _t.answer_by)
+	if _link_beat == null or _pit == null:
+		return
+	if _link_beat.badge_text() == "" and _asked_at >= 0.0:
+		_link_beat.set_agent(_link.agent())
+	_link_beat.step(_elapsed)
+	if _elapsed >= _t.signal_at and event_time("signal") < 0.0:
+		_event("signal")
+		_carrier.play()
+	if _locked_at < 0.0 and _elapsed >= _t.answer_from and _link.done():
+		_locked_at = _elapsed
+		_pit.set_lock(_elapsed)
+		_link_beat.lock(_elapsed, _link.line(), _link.live(), _link.latency_ms(), _link.why(), _link.agent())
+		_event("answer" if _link.live() else "scripted")
+		_lock.play()
+	if _elapsed >= _t.guide_at and event_time("guide_start") < 0.0:
+		_event("guide_start")
+	if _elapsed >= _t.guide_end and event_time("guide_done") < 0.0:
+		_event("guide_done")
+	if _elapsed >= _t.copy_at and event_time("rise") < 0.0:
+		_pit.set_name_tag(_user)
+		_rise.play()
+		_event("rise")
+	var heard := _pit.steps_by(_elapsed)
+	if heard > _steps_heard:
+		_steps_heard = heard
+		var foot := _steps[heard % _steps.size()]
+		foot.volume_db = SfxSynth.volume_db(_t.step_volume * lerpf(0.4, 1.0, float(heard) / PitBeat.STEPS))
+		foot.play()
+		if event_time("step") < 0.0:
+			_event("step")
+	if _elapsed >= _t.copy_stop and event_time("stand") < 0.0:
+		_event("stand")
+	if _elapsed >= _t.forge_at and event_time("forge") < 0.0:
+		_event("forge")
 
 
 ## The terminal and its screen into a viewport of their own (their picture, shown at once as it was, the window's
@@ -732,8 +853,9 @@ func _finish(skipped: bool) -> void:
 		return
 	_phase = Phase.DONE
 	_event("skipped" if skipped else "done")
-	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat] + _keys:
+	for player in [_buzz, _crackle, _hum, _whoosh, _wind, _thud, _beat, _carrier, _lock, _rise] + _keys + _steps:
 		player.stop()
+	_link.stop()
 	_release()
 	finished.emit(skipped)
 
@@ -743,6 +865,15 @@ func _finish(skipped: bool) -> void:
 func _release() -> void:
 	if _data != null:
 		_data.drop()
+	if _link != null:
+		_link.stop()
+	# The user name the copy wore goes with the data; the copy and its name tag go with the machine (C41).
+	_user = ""
+	_pit = null
+	if _link_beat != null:
+		_link_beat.visible = false
+		_link_beat.queue_free()
+		_link_beat = null
 	# The city and the machine built from the data go with it, and nothing goes on showing their pictures.
 	_layout = null
 	for view in [_world_view, _screen_view]:
@@ -796,7 +927,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
 		get_viewport().set_input_as_handled()
 	# Falling, the player may look about a little (TreeFall.LOOK_MOST), never steer.
-	if event is InputEventMouseMotion and (_phase == Phase.FALL or _phase == Phase.LANDED):
+	if event is InputEventMouseMotion and (_phase == Phase.FALL or _phase == Phase.LANDED or _phase == Phase.LINK or _phase == Phase.COPY):
 		_look = TreeFall.add_look(_look, (event as InputEventMouseMotion).relative)
 
 
@@ -849,6 +980,11 @@ func _build() -> void:
 	_wind = _player("Wind", "wind", 0.0)
 	_thud = _player("Thud", "thud", _t.thud_volume)
 	_beat = _player("Beat", "beat", _t.beat_volume)
+	_carrier = _player("Carrier", "carrier", _t.link_volume)
+	_lock = _player("Lock", "lock", _t.lock_volume)
+	_rise = _player("Rise", "rise", _t.rise_volume)
+	for i in 2:
+		_steps.append(_player("Step%d" % (i + 1), "step", _t.step_volume))
 
 
 func _full(control: Control) -> void:
@@ -895,6 +1031,14 @@ static func _sound(sound: String) -> AudioStreamWAV:
 				_sounds[sound] = SfxSynth.opener_thud()
 			"beat":
 				_sounds[sound] = SfxSynth.opener_beat()
+			"carrier":
+				_sounds[sound] = SfxSynth.opener_carrier()
+			"lock":
+				_sounds[sound] = SfxSynth.opener_lock()
+			"rise":
+				_sounds[sound] = SfxSynth.opener_rise()
+			"step":
+				_sounds[sound] = SfxSynth.opener_step()
 			_:
 				_sounds[sound] = SfxSynth.opener_key(int(sound.trim_prefix("key")))
 	return _sounds[sound]
