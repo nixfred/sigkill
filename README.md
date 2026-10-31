@@ -22,20 +22,24 @@
 ## Where we are
 
 - **Pre-alpha.** The latest release is [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (build 33, 2026-10-30, a GitHub pre-release). It came before the opener, so the opener is on `main` only for now.
-- **Built and playable on `main`, through C41:**
+- **Built and playable on `main`, through C42:**
   - the Tron arena and its skyline
   - 13 weapons, with light skins, mods and unlocks
   - SIGSTOP bullet time, code-rain vision, root and `sudo`
-  - daemons that fight back: rogue.d, zombies and runaway swarms, with seeded variants and elites
+  - daemons that fight back: rogue.d, zombies and runaway swarms, with seeded variants and elites, and (new in C42) each type's own voice: its tell, strike, hit and death
   - ICE, ICEbreakers and Black ICE
   - light-trail and LAN modes
   - your own AI as the guide
-  - the opener's first 95 seconds: the fake crash, the fake terminal, the shrink-away, the fall through your folder tree as a city, and (new in C41) the HUD coming alive as your own AI answers live, then the copy of you walking up out of the pit wearing your user name. It runs on demo data unless you switch on Settings, Privacy and AI, opener data.
+  - **the whole opener (C38 to C42), two minutes:** the fake crash, the fake terminal, the shrink-away, the fall through your folder tree as a city, your own AI answering live, and the copy of you walking up out of the pit wearing your user name. New in C42:
+    - `kill -9` forges into the rifle in your hands, and the copy types "you won't.";
+    - you fire; the derezz, the kill feed, the whisper, black, and SIGKILL slammed in on the hexagon;
+    - all of it over an original score made in code: dark synths, then heavy metal from the forge.
+  - **the first launch:** a card first asks whether the intro may use your real user name and folder names (No is the default). Then the intro plays itself once. Esc pauses it ("Skip intro" is right there), holding Space skips it, and "Play the opener" in the Esc menu replays it any time. It runs on demo data unless you say yes, or switch on Settings, Privacy and AI, opener data.
 - **Also on `main`, the teaser tool (T1):** `tools/trailer_capture.sh` renders the teaser's raw footage as real in-game clips on demo data ([docs/TRAILER.md](docs/TRAILER.md)).
 - **The teaser:** 70 seconds of that footage, with an original soundtrack, for the top of [playsigkill.com](https://playsigkill.com). The edit and the music are the producer's.
-- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.4 now, with C41): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
-- **Next:** C42, the end of the opener: the `kill -9` forge, the first kill, the title, the music, the skip logic and the first-launch question. Then the missions (C35 to C37).
-- **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`).
+- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.5 now, with C42): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
+- **Next:** C35, the mission framework, then mission 1 (C36 and C37) and the other six missions.
+- **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`). A build of `main` also shows the first-launch card and plays it once by itself; the v0.33.0 release came before the opener.
 - **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md), [the teaser footage](docs/TRAILER.md).
 
 ## Download (pre-alpha)
@@ -123,7 +127,7 @@ Built today: the greybox arena with the Tron look, tight movement, the terminal 
 
 ## Story
 
-> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38, C39 and C40 built, below; C41 next, then C42), then the missions (C35 to C37, Planned). None of the missions are built yet.
+> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38 to C42, all built, below), then the missions (C35 next, then C36 and C37). None of the missions are built yet.
 
 **You're a sysadmin jacked into your own machine, because something is spawning processes you never started.** Your AI is the only one you trust, until the trail leads to a question nobody wants answered: who wrote the daemons?
 
@@ -137,7 +141,7 @@ The campaign is told in short missions between arenas, through terminal logs you
 >
 > The first time you run SIGKILL, it notices you back.
 
-The opener runs live in the engine, never pre-rendered, and can be skipped after the first viewing. It uses your machine's real names only if you allow it, read-only: today with Settings, Privacy and AI, **opener data** (off unless you turn it on), and from C42 with a question on first launch; otherwise it runs on fake data. Esc and the window's close button always work. Status: 🟡 the first 95 seconds are built: the crash and the terminal (C38), the real-data reader behind them (C39), the shrink-away and the fall through your folders (C40), and your AI's link and the copy of you (C41); the `kill -9`, the title, music and skip logic (C42) are next.
+The opener runs live in the engine, never pre-rendered. On first launch it plays by itself once, and you can skip it at any moment: Esc pauses it in its own menu with "Skip intro", or hold Space for a second. It uses your machine's real names only if you allow it, read-only: on the first-launch card, or later with Settings, Privacy and AI, **opener data** (off unless you turn it on); otherwise it runs on fake data. The window's close button always works. Status: ✅ built, all two minutes: the crash and the terminal (C38), the real-data reader behind them (C39), the shrink-away and the fall through your folders (C40), your AI's link and the copy of you (C41), and the `kill -9` forge, the first kill, the title, the music, the skip logic and the first launch (C42).
 
 #### Built: the opener's first 35 seconds, on demo data (C38)
 
@@ -154,7 +158,7 @@ Esc, **Play the opener**. Stills in [Screenshots](#screenshots).
 - **The demo data.** Everything comes through one small interface, `OpenerData`, taken once as the opener starts. C38 shipped `DemoOpenerData`: user `user`, host `workstation`, 28 invented folders, up 3 days 07:42:15, and a file time of 03:12 on a fixed date. Nothing real is read: no file, folder, environment variable, clock, process or theme. C39 added the real reader, opt-in and read-only, behind the same interface ([below](#built-the-opener-on-your-own-machine-opt-in-and-read-only-c39)).
 - **Always a way out.** Esc leaves at any moment, mid-crash and mid-typing included, and the menu comes back as it was. The window's close button is never held. Alone, the arena is paused behind the opener and is not drawn while the opener covers the screen; in a match the entry is greyed out, since a match cannot pause.
 - **Flash-safe.** The screen's brightness never drops to black and back 3 or more times in any second, and the glitch's pattern changes 10 times a second. It jerks, never strobes.
-- **Sound.** All made by the game in code: the stuck buzz, the crackle, the silence, a low hum and a keyboard's clicks. The music comes in C42.
+- **Sound.** All made by the game in code: the stuck buzz, the crackle, the silence, a low hum and a keyboard's clicks. The score starts at the shrink-away (C42).
 
 The test, `tests/opener_test.gd` (check step 48), covers:
 - the code: no environment variable, clock, program, network or file write, and only its own `res://` files opened;
@@ -218,7 +222,7 @@ The opener goes on past the terminal, to 1:10. The same Esc menu entry, on the d
 - **Bounded.** At most 96 towers (the shallow folders first), 40 names, 1024 boxes, 96 cables and 28 streams of code light, from the first 512 folders handed over, and at most 64 nodes in the whole machine whatever the data (every box in one MultiMesh). On the development machine's GPU, which other programs were using too, the machine took 0.78 ms of GPU time a frame on average from the reveal to the landing (12.3 at worst) at 1920x1080 with 4x MSAA, the window's own drawing 0.07 ms.
 - **Always a way out.** Esc leaves mid-reveal and mid-fall as it does everywhere else, and the window's close is never held. The machine and its city are let go as the opener ends, however it ends.
 - **Flash-safe.** The screen dims smoothly as the terminal shrinks, the hot process swells less than once a second, and the end fades.
-- **Sound.** All made in code: a rush as the terminal shrinks away, the fall's wind rising and falling with its speed, the landing, and the hot process's beat as you near it. The music comes in C42.
+- **Sound.** All made in code: a rush as the terminal shrinks away, the fall's wind rising and falling with its speed, the landing, and the hot process's beat as you near it. Under it, the score's dark synths (C42).
 - **The hand-off.** At 1:09.6 the camera has landed on the pit's rim and the machine goes on drawing: C41's "Linking your agent..." starts there (below).
 
 The test, `tests/opener_fall_test.gd` (check step 50), uses invented names and fake homes only, and covers:
@@ -247,8 +251,8 @@ The opener goes on from the pit's rim to 1:35. The same Esc menu entry. Stills i
   - **It stares at you as it walks.** Standing, it mirrors where you look, as a reflection would, and tilts its head.
   - **Its tag is your user name:** the demo's `user`, or your own with opener data on. It's the same name the terminal typed, cleaned the same way. It is never sent anywhere, and it is dropped as the opener ends. The story calls it `~` from mission 1 on (docs/STORY.md).
 - **The pit's own names fade** as the copy takes their place.
-- **Sound, all made in code:** a carrier finding its line as the signal climbs, a lock as the answer lands, a low drone as the copy rises, and its heavy steps. The music comes in C42.
-- **The hand-off.** At 1:34.4 the copy stands in front of you and the machine goes on drawing: C42's `kill -9` starts there. Until it does, the opener fades to black and hands back to the menu.
+- **Sound, all made in code:** a carrier finding its line as the signal climbs, a lock as the answer lands, a low drone as the copy rises, and its heavy steps; under it, the score (C42).
+- **The hand-off.** At 1:34.4 the copy stands in front of you and the machine goes on drawing: C42's `kill -9` starts there (below).
 
 The test, `tests/opener_link_test.gd` (check step 52, 40 checks), uses invented names, a guide link on a fake detector and stub adapters only (the real Claude Code adapter runs only the stub CLI in `tests/fixtures/ai/guide`). It covers:
 - the agent run with exactly the tools-off flags, never `omarchy-agent`;
@@ -262,6 +266,47 @@ The test, `tests/opener_link_test.gd` (check step 52, 40 checks), uses invented 
 - the link, the beat, the copy and the HUD reading nothing of the machine.
 
 Deliberately broken copies (stats in the request, no 1:17 fallback, the host on the tag) each fail by a named check. Steps 48 and 50 hold the earlier beats on the longer run.
+
+#### Built: the forge, the first kill and the title (C42)
+
+The opener's last 25 seconds, from 1:35 to the end by 2:00, the music under the whole second half, and the way in on a first launch. Stills in [Screenshots](#screenshots).
+
+- **The forge.** The guide's panel shuts and `kill -9` types itself in the air between you and the copy, a letter on each eighth note of the score, in your teal. Each letter is a block of glowing cells. The letters charge and break apart, and the cells stream into your hands. There the SIGKILL rail rifle (the game's own model of it) prints itself from its back to its muzzle, a white-hot band of hex cells running down the barrel. Its four coils light on the last four sixteenths, and on the drop it kicks into your hands as the guitars come in.
+- **"you won't."** The copy squares up, stops mirroring you and stares. Its line types itself in crimson in the air by its head (the story bible's words), its face's cursor racing.
+- **The first kill.** Then the rifle is yours: a reticle, and "[left mouse]  kill -9" (whatever fire is bound to). Fire, and the shot lands on the next sixteenth of the beat. Don't, and it fires itself after a few seconds, so the opener never waits on you. A beam of the rail's light hits the copy's heart; it flares, shudders, and on the beat it bursts, its own armour flung apart in a storm of crimson and teal voxels.
+- **Then, on the beat:**
+  - the kill feed, in the game's own words over two lines: "SIGKILL sent by `<user>`" / "to `<user>`" (your user name only, never your host);
+  - the whisper, "one of 6666", breathed and shown;
+  - black and silence;
+  - the title. The nixfred hexagon slams in out of the dark on the downbeat, and it is the brand's own icon file, the white `>_` on the hexagon, never redrawn. "SIGKILL" is hammered in under it a letter at a time. The title punches on every beat of the riff and tears on the snare, over the machine's grid racing toward you, and is torn away at the end.
+- **Where it leaves you.** Played from the Esc menu, back at the menu. On a first launch, straight into the arena.
+- **The music**, original and made by the game in code as the opener starts (no sample, loop or recording of anyone's), 150 bpm in E minor:
+  - a dark synth bed with glitching arpeggios from the shrink-away, through the fall, the link and the copy's walk;
+  - heavy metal from the forge: down-tuned guitars chugging, double kick, the drop's riff;
+  - a two-bar loop while the copy waits for your shot;
+  - then the shot's crack, the derezz, the whisper, and the title's riff.
+
+  It plays on the Music bus, so the Music and Master volumes rule it, and every part peaks under full scale.
+- **Skipping, at any moment.** Esc pauses the intro in its own small menu: Resume intro, Skip intro (focused, so Esc then Enter skips), and "Skip the intro next time". Holding Space for a second skips too (one key, no Ctrl or Alt), and pressing any key shows how. The window's close button always works.
+- **The first launch.** The first time the arena loads, a card over the paused arena gives a one-line content note and asks whether the intro may show your real user name and folder names, and says what else that covers (host name, uptime, theme colours, recent file times), read-only and never saved, logged or sent.
+  - **No is highlighted:** N, Enter or Esc answer no, and opener data stays off. Y turns it on.
+  - **Then the intro plays itself, once.** Watched to the end or skipped, it never auto-plays again. If you close the window part way, it plays again at the next launch, unless you ticked "Skip the intro next time".
+  - **Where the answer lives:** the settings file's own `[intro]` section. Your unlocks' save is never touched.
+- **Replays keep your AI's calls.** Once your AI has answered live in a session, replaying the opener shows that answer again ("live  earlier") and calls nothing.
+- **The daemons have voices.** rogue.d chitters as it rears and slashes with a blade's ring; the zombie groans as its cannon charges, booms, and crumbles as it dies; the runaway's swarm buzzes, dives and bursts in a cascade of falling blips; ICE rings like glass and shatters, the hunter chirping as it locks on. Each type has a tell, a strike, a hit and a death, all made in code, from where it stands, on the Effects bus.
+
+The test, `tests/opener_end_test.gd` (check step 53), uses invented names, settings files in its own folder and a stub agent only. It covers:
+- the forge on the score's grid, the rifle printing and forged on the drop;
+- the copy's line, word for word;
+- a press too early doing nothing, the shot on the next sixteenth, and the shot firing itself when no one presses;
+- the derezz, the kill feed with the user name and never the host, the whisper, the black and the title, the end by 2:00;
+- the flash cap through the shot and the slam;
+- the score's parts, lengths, levels and sameness, on the Music bus, each on its moment;
+- the daemons' voices on the Effects bus, the volume sliders muting both;
+- skipping from all 13 beats both ways;
+- the first launch (No by default, yes and no, once only, a cut-short first play, "Skip the intro next time" across a restart, a match waiting);
+- an old C33 save still loading;
+- a kept AI answer reused with no call.
 
 ## The arsenal
 
@@ -885,7 +930,7 @@ The rules that make this safe, in plain words:
 
 - **Read-only, and only the outside of things:** names, sizes and counts. The Audit Trail visor adds process IDs, parent process IDs and CPU and memory numbers; the opener also uses modification times, the uptime, the host name and theme colours. Never file contents or command lines. The opener reads two environment variables, `HOME` and `USER`, to find your home folder and your name, and shows folders only as `~/name`, never a full path.
 - **Cosmetic kills.** Shooting a process-named enemy despawns a game object. Nothing on your system is signalled, stopped or changed.
-- **Opt-in.** On first launch SIGKILL asks before it reads any folder or process names. Say no and every feature runs on fake data. (The opener's switch is in Settings today, off unless you turn it on; its first-launch question comes with C42.)
+- **Opt-in.** On first launch SIGKILL asks before it reads any folder or process names. Say no and every feature runs on fake data. (The opener asks on its first-launch card, No by default, since C42; its switch is also in Settings, off unless you turn it on.)
 - **Nothing leaves the moment.** What is read is shown live and never saved, logged or sent anywhere. Your AI gets none of it.
 - **Demo-data mode** for every capture and trailer, so no real machine data ever ends up in a screenshot.
 
@@ -1164,6 +1209,7 @@ sigkill/
 │   ├── hud/
 │   │   ├── guide_hud.gd            The guide HUD: badge, latency, GPU, ask box on T, answers, AI toggle on O, rate limits
 │   │   ├── pause_menu.gd           The Esc menu and the settings screen: every setting on one screen, rebinding, privacy
+│   │   ├── first_launch_card.gd    FirstLaunchCard (C42): the first launch's card: a content note, may the intro use real names, No highlighted
 │   │   ├── loadout_screen.gd       The loadout screen (C33, Esc > Loadout): the arsenal, each weapon's skin cards and mod card
 │   │   ├── loadout_stage.gd        Its turntable: the weapon's own model large in a world of its own, lit live in a skin
 │   │   ├── unlock_toast.gd         "UNLOCKED: <name>" near the top the moment a skin or a mod is earned, each in turn
@@ -1204,7 +1250,8 @@ sigkill/
 │   ├── settings/
 │   │   ├── settings_file.gd        The one settings file: strict scan, versioned ConfigFile, old-file migration, safe writes
 │   │   ├── game_settings.gd        GameSettings: every setting, its default and bounds, binds, load and save
-│   │   └── settings_apply.gd       Puts the engine's settings into effect: buses, volumes, window, vsync, frame cap, binds
+│   │   ├── settings_apply.gd       Puts the engine's settings into effect: buses, volumes, window, vsync, frame cap, binds
+│   │   └── intro_state.gd          IntroState (C42): the first launch's [intro] section: asked, played, skip next time
 │   ├── unlocks/
 │   │   ├── progress.gd             Progress (C33): the local save, the feats' counts, what is earned and chosen, the earned rule
 │   │   ├── loadout.gd              Loadout: a player's look (a skin and a mod bit a weapon), cleaned, accepted, worn
@@ -1212,7 +1259,7 @@ sigkill/
 │   │   ├── weapon_skin.gd          WeaponSkin: a palette skin by name, its name and fiction, the feat that earns it
 │   │   └── weapon_mod.gd           WeaponMod: a sidegrade's gains and costs, each checked the right way, applied to a copy
 │   ├── opener/
-│   │   ├── opener.gd               Opener (C38, C40, C41): the first 95 s, the fake crash, the beats, the reveal, the link, Esc, the pause, sound, the flash model
+│   │   ├── opener.gd               Opener (C38 to C42): the whole two minutes, the beats, the reveal, the link, the kill, skipping, the pause, sound, the flash model
 │   │   ├── opener_data.gd          OpenerData: the one interface the opener reads "your machine" through, and clean()
 │   │   ├── demo_opener_data.gd     DemoOpenerData: fixed, invented values; nothing read
 │   │   ├── real_opener_data.gd     RealOpenerData (C39): the opt-in reader: names, counts, times, theme, uptime; never contents
@@ -1227,7 +1274,11 @@ sigkill/
 │   │   ├── opener_link.gd          OpenerLink (C41): the one call to your AI through the guide link, told only that the game is starting; the fallbacks
 │   │   ├── link_beat.gd            LinkBeat (C41): the guide HUD coming alive: the badge, its bars, the panel, the live mark, the guide's line
 │   │   ├── pit_beat.gd             PitBeat (C41): the signal and its rings, the copy's walk out of the pit, its steps of light, its name, its lights
-│   │   └── copy_art.gd             CopyArt (C41): the copy of you on A5's kit: the hexagon head with `_<`, the crown, the armour, a planted gait
+│   │   ├── copy_art.gd             CopyArt (C41): the copy of you on A5's kit: the hexagon head with `_<`, the crown, the armour, a planted gait
+│   │   ├── forge_beat.gd           ForgeBeat (C42): `kill -9` in cells, their stream, the rifle printing, the copy's line, the beam, the derezz
+│   │   ├── title_beat.gd           TitleBeat (C42): the reticle, the kill feed, the whisper, the black, the title slam on the brand's icon file
+│   │   ├── opener_score.gd         OpenerScore (C42): the original score made in code on a worker: bed, forge, wait loop, stinger
+│   │   └── intro_menu.gd           IntroMenu (C42): the intro's own Esc menu (Skip intro, skip next time) and hold Space to skip
 │   ├── modes/
 │   │   ├── light_trails.gd         Light-trail mode: every player's walls in one arena, laid, aged, capped, drawn and judged
 │   │   └── light_trail_tuning.gd   LightTrailTuning: spacing, height, thickness, lifetime and fade, cap, grace, ground, glow
@@ -1255,6 +1306,7 @@ sigkill/
 │   ├── daemons/
 │   │   ├── daemon_art.gd           DaemonArt: the rig: parts as MultiMesh instances posed each frame, built from a seed (A5), elites, weak points; visual only
 │   │   ├── daemon_shatter.gd       A death in shards: the creature's own parts bursting apart over the derezz, drones flying off whole (A5)
+│   │   ├── daemon_voice.gd         DaemonVoice (C42): a daemon's or ICE's own tell, strike, hit and death, on the Effects bus
 │   │   ├── rogue_daemon.gd         rogue.d: an armoured crimson mantis-scorpion on six IK legs in a tripod gait, its visor flaring as it rears
 │   │   ├── zombie_process.gd       The zombie: an amber hulk, armoured right, voxels peeling off its open left, a cannon arm, a dragging limp
 │   │   └── runaway_swarm.gd        The runaway: hot-magenta hex drones flocking as boids round a core drone; killing the core scatters them
@@ -1371,6 +1423,9 @@ sigkill/
 │   ├── opener_core.gdshader    The hottest process's core at the bottom of the pit (C40)
 │   ├── opener_signal.gdshader  The link's signal (C41): heads racing up out of the pit with tails, a trace, a flare at the lock
 │   ├── opener_floor.gdshader   Light on the pit's floor (C41): the link's teal rings, the copy's red rings, its hexagon steps
+│   ├── opener_forge.gdshader   The forge's light (C42): the cells of `kill -9` and the derezz's voxels, the shot's beam
+│   ├── opener_print.gdshader   The rifle printing itself (C42): a white-hot band of hex cells sweeping down its barrel
+│   ├── opener_post.gdshader    The machine's picture punched (C42): split, shake, torn bands, the shot's flash
 │   ├── floor_grid.gdshader     World-space floor: dark deck plates, seams, insets and vents, a faint grid and 8 m light strips
 │   ├── neon_edge.gdshaderinc   The neon edge maths, shared by the two shaders below
 │   ├── neon_edge.gdshader      Neon outline edges for boxes and hexagonal prisms; the dummies' look
@@ -1492,6 +1547,7 @@ sigkill/
 │   ├── opener_fall_test.gd     Headless opener fall test (C40): the city from names, its caps, the camera's way, fake homes, the machine dropped
 │   ├── trailer_test.gd         Headless trailer test (T1): the shot list, the demo-only refusals, the tool refusing headless, its reads, the shell's display
 │   ├── opener_link_test.gd     Headless opener link test (C41): the agent's argv and prompt, the fallbacks, the beats never waiting, the copy, Esc
+│   ├── opener_end_test.gd      Headless opener end test (C42): the forge, the shot, the title, the score, voices, skipping, the first launch
 │   ├── code_rain_vision_test.gd  Headless code-rain vision test: the meter to the frame, the silhouettes behind a wall, a match on 127.0.0.1
 │   ├── root_sudo_test.gd       Headless root and sudo test: the rules, 1.5x and free ammo on a real dummy, a match the host judges
 │   ├── spectate_top_test.gd    Headless spectate top test: the record, top's columns, Tab alone, a match on 127.0.0.1, protocol 8 (9 since C25)
@@ -1609,6 +1665,8 @@ Every one of these resources validates itself on load with `problems()`. If a va
 49. **Opener real-data test**, `tests/opener_real_test.gd`.
 50. **Opener fall test**, `tests/opener_fall_test.gd`.
 51. **Trailer test**, `tests/trailer_test.gd`.
+52. **Opener link test**, `tests/opener_link_test.gd`.
+53. **Opener end test**, `tests/opener_end_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -1803,7 +1861,10 @@ Bindings are registered in code in `scripts/controls.gd`, with mouse look and th
 | Tab (hold) | Spectate as top: the match as a process table while you hold it (alone: you and the dummies). Derezzed in a match it is up without Tab until you respawn |
 | R | Respawn all targets |
 | Esc | Open the menu (Resume, Loadout, Play the opener, Settings, Quit) and release the mouse. Loadout shows every weapon's skins and mod (C33): a card under the pointer lights the turning model, a click wears or fits, up and down pick the weapon. Esc again goes back a step. A box or question that is open takes Esc first |
-| Esc, Play the opener | Play the opener's first 95 seconds (C38 to C41) on demo data, or on your own machine's names with Settings, opener data on (C39), the arena paused behind it. Alone only: greyed out in a match |
+| Esc, Play the opener | Play the opener, all two minutes (C38 to C42), on demo data, or on your own machine's names with Settings, opener data on (C39), the arena paused behind it. Alone only: greyed out in a match |
+| Esc, while the opener plays | Pause it in its own menu: Resume intro, Skip intro (focused: Esc then Enter skips), "Skip the intro next time"; Esc again resumes (C42) |
+| Hold Space, while the opener plays | Skip it (a second's hold; C42) |
+| Fire, at the end of the opener | The first kill: the forged rifle's one shot (C42) |
 | Esc, during the opener | Leave it at once, back to the menu as it was: mid-crash, mid-typing, mid-fall, any moment. Nothing else you press does anything while it plays |
 | Mouse, during the opener's fall and after | Look about a little (C40, C41; standing, the copy mirrors it); it springs back, and it never steers |
 | Esc or Enter, on the boot screen | Skip to the arena |
@@ -1908,7 +1969,7 @@ These rules apply to every chunk, from PRD section 6, in plain language:
 - **One socket, yours.** The only network connection the game makes is the ENet socket you open by hosting or joining (UDP 9009 by default), to the address you typed. Room codes contact nothing unless you set a relay in Settings: with none (the default) the game's rendezvous is `NullRendezvous`, which sends nothing anywhere. With one set, the game talks to that relay only: its control requests (the room code, the protocol version, the host's game port, a cookie and the room's token), and the match itself through it (docs/RELAY.md). A `ws://` or `wss://` relay is one WebSocket connection (TCP) to it, with the match's datagrams passed through loopback sockets on 127.0.0.1 that only the game's own ENet may use (C16d). No discovery, no broadcast, no relay, no server of anyone's. Over it go only the protocol version, player slots and ids, a placeholder name (the display name you set in Settings stays on your own screen), positions, angles and velocities, shot intents and results, health, deaths and respawns by id, SIGSTOP's asks and the host's on-or-off word with its meter, and fork bomb throws with the host's seed and blasts: never paths, host or user names, process lists, settings or anything your AI said. Shooting and kills are in-game fiction: nothing real is signalled, killed or run.
 - **Your desktop stays yours.** No Ctrl+Alt hotkeys, and none can be bound: the settings screen refuses any Ctrl, Alt or Super key or chord. The mouse is captured only while the window is focused and is released on Esc (which opens the menu) or when focus leaves. The game never steals focus and uses no GPU when it is not running.
 - **The daemons are fiction.** The daemons that hunt you (C27b) are game objects in the arena: their names, attacks and deaths touch no real process, and nothing in the fight code signals, inspects or runs anything on your machine (the daemon AI test scans it).
-- **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc and the window's close button always work. It runs on demo data unless you turn on Settings, Privacy and AI, opener data (C39, off unless you do): then it reads names, counts, file times, your theme's colours and your uptime, read-only and never a file's contents, keeps them in memory only while it plays (the fall through your folders, C40, is built from those same names and counts, nothing more, and the copy of you, C41, wears that same user name), and lets them go as it ends; your AI is told only that the game is starting (C41); nothing is saved, logged or sent, and captures and trailers always use demo data. The first-launch content note and question come with C42; saying no gives you the same opener on fake data.
+- **The opener plays fair.** Everything that looks hacked is rendered fiction. Esc always pauses it with "Skip intro" one key away, holding Space skips it, and the window's close button always works. It runs on demo data unless you turn on Settings, Privacy and AI, opener data (C39, off unless you do): then it reads names, counts, file times, your theme's colours and your uptime, read-only and never a file's contents, keeps them in memory only while it plays (the fall through your folders, C40, is built from those same names and counts, nothing more, and the copy of you, C41, wears that same user name), and lets them go as it ends; your AI is told only that the game is starting (C41); nothing is saved, logged or sent, and captures and trailers always use demo data. The first launch asks first (C42), No highlighted; saying no gives you the same opener on fake data. The kill feed names only your user name; the score and every sound are made in code.
 - **Original art and audio.** Today's sounds are synthesised in code, and the repository contains no audio files. Concept art is always labelled as concept art.
 - **Public repository under the MIT license since 2026-10-28; nothing else goes public (releases, packages, store pages, the relay) without Fred's yes.** Every chunk reports real command output.
 
@@ -1927,7 +1988,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
 | Website, teaser and docs | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`, `bb82508`, `1087887`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com · D1 the PRD rewritten as the entire, current PRD (v0.3), this README's "Where we are", three community credits (`e1e658d`, `e79b9e5`) | 🟡 T1 footage and D1 done; the edit, the music and the site are the producer's |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
-| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9`, the title, music and skip logic · then C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission, `login` (player-facing first: the opener before the missions) | 🟡 C34 locked; C38, C39, C40 and C41 done; C42 next, then C35 to C37, Planned |
+| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9` forge, the first kill, the title slam, the score, the skip logic and the first launch, and the daemons' voices (`77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa`) · then C35 mission framework · C36 cyberpunk ruins art kit · C37 first mission, `login` (player-facing first: the opener before the missions) | 🟡 C34 locked; the opener done (C38 to C42); C35 next, then C36 and C37, Planned |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
@@ -2097,6 +2158,45 @@ Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I
 <p align="center">
   <img src="docs/media/c41-copy-960.png" alt="The copy standing in front of the camera at 960 by 540, the badge and the panel fitting the smaller window"><br>
   <em>The copy in a 960x540 window.</em>
+</p>
+
+**The forge, the first kill and the title (C42).** The first launch as a player meets it, on demo data (its card answered no), then the opener's end: the demo's guide link gives its canned answer, nothing is called, and the kill feed names the demo's user.
+
+<p align="center">
+  <img src="docs/media/c42-sequence.png" alt="Nine frames in a grid of three by three: kill -9 typing itself in teal cells in front of the copy; the cells streaming into the player's hands where the rifle is printing; the rifle whole, its coils lit, a ring of teal running out from it; the copy, you won't. in crimson by its head, the reticle and the fire hint; the shot's blast of light into the copy's heart; the copy bursting into crimson and teal voxels; the voxels on the floor and the kill feed, SIGKILL sent by user, to user; the title slamming in, rings and sparks flying off the hexagon; the title held over a teal grid, SIGKILL under the hexagon"><br>
+  <em>1:35 to 1:51: the forge, the dare, the shot, the derezz, the kill feed, the slam, the title.</em>
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-card.png" alt="The first-launch card over the dimmed arena: the brand's hexagon icon and SIGKILL // before the intro; an amber content note; the question, may the intro show your real user name and folder names; what else it covers and that nothing is saved, logged or sent; No: invented names highlighted in teal, Yes: my real names beside it"><br><sub>The first launch asks first. No is the default.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-paused.png" alt="The intro paused over the pit mid-forge: Resume intro, Skip intro focused, the Skip the intro next time switch, Esc: resume, Enter: skip, hold Space: skip; behind it the copy, and the cells streaming into the rifle"><br><sub>Esc pauses the intro: Skip intro is one key away.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-type.png" alt="kill -9 half typed in large glowing teal pixel letters in the air in front of the copy, its red hexagon head and crown behind"><br><sub><code>kill -9</code> types itself in the air, a letter on each eighth.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-stream.png" alt="The letters broken into white-hot cells streaming toward the bottom right, where the rifle is half printed, its back glowing in teal hex cells"><br><sub>The cells stream into your hands, and the rifle prints itself.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-forged.png" alt="The rifle whole in the player's hands, its four coils lit as white-blue rings, a large ring of teal running out from it, the copy standing ahead"><br><sub>Forged on the drop, its four coils lit.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-dare.png" alt="The copy standing ahead, arms spread, you won't. in crimson in the air by its head; a small reticle in the middle and [left mouse] kill -9 under it"><br><sub>"you won't." Your move.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-shot.png" alt="A blast of white light from the rifle's muzzle into the copy's chest, the copy still lit red behind it, the rifle kicking, the picture split into red, green and blue and torn in bands"><br><sub>The shot: the rail's light burning into its heart.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-derezz.png" alt="The copy bursting into a storm of crimson, teal and white voxels and its own armour plates, over the pit's rim"><br><sub>The derezz: its armour and its memory, flung apart.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-feed.png" alt="Voxels scattered across the floor; at the bottom right the kill feed, SIGKILL sent by user, and under it, to user"><br><sub>The kill feed, in the game's own words.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-whisper.png" alt="The emptied floor where the copy stood, one of 6666 spaced out dim in the middle of the screen, the kill feed still at the bottom right"><br><sub>The whisper: "one of 6666".</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c42-slam.png" alt="The nixfred hexagon with its white prompt slamming in out of the dark, a teal burst of light from it, rings and sparks flying off, its colours split"><br><sub>Black, then the slam, on the downbeat.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c42-title.png" alt="The title: the nixfred hexagon with its white prompt, SIGKILL in large mint letters under it, a teal grid floor racing toward the camera, a streak of teal light through the hexagon"><br><sub>SIGKILL, on the brand's own icon.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/media/c42-title-960.png" alt="The title at 960 by 540: the hexagon, SIGKILL under it, the grid floor"><br>
+  <em>The title in a 960x540 window.</em>
 </p>
 
 **Unlocks, mods and light skins (C33).** Every weapon's two Tron light skins and its mod, earned by playing and worn from Esc, Loadout. The progress in these stills is demo data.
