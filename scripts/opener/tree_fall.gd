@@ -82,6 +82,8 @@ const PROCESS_DOWN := 3.0
 const HOME_SIGN := "~/"
 const HOME_SIGN_PX := 0.5
 const HOME_SIGN_Y := 78.0
+## Over 1, so the sign blooms as the city's edges do.
+const HOME_SIGN_GLOW := 1.6
 ## The fog's density, the label font's size and outline.
 const FOG := 0.0028
 const LABEL_FONT_PX := 96
@@ -635,7 +637,7 @@ func _names() -> void:
 	sign.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	sign.position = TreeLayout.on_ring(TreeLayout.HOME_ANGLE, TreeLayout.RING_R[0] - 0.3, HOME_SIGN_Y)
 	sign.rotation.y = TreeLayout.facing_in(TreeLayout.HOME_ANGLE) + PI
-	sign.modulate = _neon(colours.color("accent"))
+	sign.modulate = _neon(colours.color("accent")) * HOME_SIGN_GLOW
 
 
 func _label(text: String, px: float) -> Label3D:

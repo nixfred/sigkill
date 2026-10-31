@@ -367,6 +367,8 @@ const C40_SHOTS := [["c40-ignore", 38.3], ["c40-shrink", 41.9], ["c40-panel", 44
 const C40_SMALL_AT := 57.0
 const C40_SHEET := ["c40-shrink", "c40-panel", "c40-machine", "c40-edge", "c40-drop", "c40-names", "c40-deep", "c40-landed"]
 const C40_SHEET_COLUMNS := 4
+## c40's palettes: the same moment of the fall, the machine built in each demo palette, three to a row.
+const C40_PALETTES_AT := 55.0
 const C31_ICE_HUNTER := Vector3(3.0, 0.0, -2.0)
 const C31_ICE_FRAMES := 40
 const C31_BLACK_OFF := Vector3(2.0, 0.95, 12.0)
@@ -2218,6 +2220,7 @@ func _c40() -> void:
 	print("capture: the opener done, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
 	if not tuning:
 		await _c40_small(menu)
+		await _c40_palettes()
 
 
 ## The fall again at 960x540, shot at C40_SMALL_AT.
@@ -2233,6 +2236,32 @@ func _c40_small(menu) -> void:
 	await process_frame
 	root.size = Vector2i(1920, 1080)
 	await _frames(6)
+
+
+## The fall at C40_PALETTES_AT in each demo palette (a light one's city as dark as any, its colours made to read on
+## it): machines of their own, built from the demo's city and drawn straight to a still.
+func _c40_palettes() -> void:
+	var t := load("res://resources/opener.tres") as OpenerTuning
+	var tiles: Array[Image] = []
+	for id in OpenerPalette.IDS:
+		var fall := TreeFall.new()
+		fall.shrink_at = t.shrink_at
+		fall.fall_at = t.fall_at
+		fall.land_at = t.land_at
+		fall.process_name = DemoOpenerData.TOP_PROCESS
+		fall.size = Vector2i(1920, 1080)
+		fall.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		root.add_child(fall)
+		fall.build(TreeLayout.build(PackedStringArray(DemoOpenerData.FOLDERS), PackedInt32Array(DemoOpenerData.COUNTS)), OpenerPalette.named(id).readable(), true)
+		fall.step(C40_PALETTES_AT, Vector2.ZERO)
+		await _frames(4)
+		await RenderingServer.frame_post_draw
+		var image := fall.get_texture().get_image()
+		image.convert(Image.FORMAT_RGBA8)
+		tiles.append(image)
+		fall.queue_free()
+		await process_frame
+	_save_grid("c40-palettes", tiles, C38_GRID_COLUMNS)
 
 
 ## How far apart two stills are: the mean difference per channel (0 to 255) and the share of pixels off by more
