@@ -65,6 +65,8 @@ signal loaded_changed(kind: int)
 signal picked(kind: int)
 signal cloak_ended
 
+## Where its pickups stand, in arena space: SPOTS, or (C36) an arena stood in ruins hands in theirs before it is ready.
+var spots: Array = SPOTS
 ## A BreakerTuning; null for resources/breakers.tres. Set before the node enters the tree.
 var tuning: BreakerTuning
 ## The daemons' director (who the intruders are, where, alive, sight), ICE's director, the local player,
@@ -144,7 +146,7 @@ func _ready() -> void:
 	add_to_group(GROUP)
 	tuning = BreakerTuning.usable(tuning)
 	decoys.resize(DECOYS_LAST)
-	pickups.resize(SPOTS.size())
+	pickups.resize(spots.size())
 	mine = Breakers.new(tuning.start_count, tuning.carry_cap)
 	if ice != null:
 		ice.brute_wall_scale = tuning.brute_wall_scale
@@ -223,7 +225,7 @@ func _start_fresh() -> void:
 	_word_seen = false
 	for slot in DECOYS_LAST:
 		_drop_decoy(slot, false)
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		_drop_pickup(spot, false)
 	_pickup_wait = tuning.pickup_first_s
 	if Dummy.fixed_seeds:
@@ -614,7 +616,7 @@ func marked_arts() -> Array:
 
 func _step_pickups(delta: float) -> void:
 	var live := 0
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		if pickups[spot] != null and is_instance_valid(pickups[spot]):
 			live += 1
 	_pickup_wait -= delta
@@ -623,7 +625,7 @@ func _step_pickups(delta: float) -> void:
 		if live < tuning.pickups_live:
 			_lay_pickup()
 	# Whoever walks over one takes it, unless that kind is at their cap.
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		var p: BreakerPickup = pickups[spot]
 		if p == null or not is_instance_valid(p):
 			continue
@@ -646,7 +648,7 @@ func _step_pickups(delta: float) -> void:
 ## A pickup of a seeded kind at a seeded free spot.
 func _lay_pickup() -> void:
 	var free := []
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		if pickups[spot] == null or not is_instance_valid(pickups[spot]):
 			free.append(spot)
 	if free.is_empty():
@@ -669,7 +671,7 @@ func _make_pickup(spot: int, kind: int, seed: int = -1) -> BreakerPickup:
 		seed = DaemonArt.seed_of("pickup:%d:%d" % [spot, kind]) if Dummy.fixed_seeds else _rng.randi() & DaemonArt.SEED_LAST
 	p.spawn_seed = seed
 	add_child(p)
-	p.global_position = _to_world(SPOTS[spot])
+	p.global_position = _to_world(spots[spot])
 	pickups[spot] = p
 	return p
 
@@ -688,7 +690,7 @@ func _drop_pickup(spot: int, taken: bool) -> void:
 ## The pickups out now: spot -> kind.
 func pickups_out() -> Dictionary:
 	var out := {}
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		var p = pickups[spot]
 		if p != null and is_instance_valid(p):
 			out[spot] = p.kind
@@ -697,7 +699,7 @@ func pickups_out() -> Dictionary:
 
 ## A test or a still's: a pickup of `kind` at spot `spot` now (deciding).
 func lay_pickup_at(spot: int, kind: int) -> BreakerPickup:
-	if mode != Mode.RUN or spot < 0 or spot >= SPOTS.size() or not Kinds.valid(kind):
+	if mode != Mode.RUN or spot < 0 or spot >= spots.size() or not Kinds.valid(kind):
 		return null
 	pickups_made += 1
 	return _make_pickup(spot, kind)
@@ -769,7 +771,7 @@ func word_for(id: int) -> Dictionary:
 		else:
 			ds.append_array([0.0, 0.0, 0.0, 0.0, -1.0])
 	var ps := PackedByteArray()
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		var p = pickups[spot]
 		ps.append(1 + p.kind if p != null and is_instance_valid(p) else 0)
 	var brute := PackedFloat32Array([float(brute_serial), brute_from.x, brute_from.y, brute_from.z, brute_way.x, brute_way.y, brute_way.z])
@@ -815,7 +817,7 @@ func take_word(counts: PackedByteArray, timers: PackedFloat32Array, ds: PackedFl
 			_drop_decoy(slot, false)
 			d = _make_decoy(slot, 0, seeds[slot], false)
 		d.take_word(at, landed > 0.5, ds[i + 3])
-	for spot in SPOTS.size():
+	for spot in spots.size():
 		var kind := int(ps[spot]) - 1
 		var p: BreakerPickup = pickups[spot]
 		var has := p != null and is_instance_valid(p)

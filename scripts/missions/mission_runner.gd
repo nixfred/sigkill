@@ -18,6 +18,10 @@ extends Node
 ##
 ## Alone only (STORY.md, pick 9): begin() refuses in a match, and a match starting mid-mission ends it where it stands.
 ## Esc and the window's close always work: the Esc menu (scripts/hud/pause_menu.gd) offers resume, restart and quit.
+## In ruins (C36): a mission that names a district (MissionDef.ruins) is played with the arena stood in it (scripts/
+## ruins/ruins_stage.gd, as the arena loads); begun on an arena that is not, it is queued and the arena reloaded into
+## them. There its places may be the district's points by name (place()), and its register shifts change the world
+## itself (the ruins' set_register()), not just the HUD.
 ## Story lines leave here as line_said() for the HUD (scripts/hud/mission_hud.gd): your AI's to the guide panel, the
 ## Auditor's and `~`'s to the mission's terminal. Nothing here calls an AI, reads the player's machine or writes a
 ## file of its own (the one save is MissionProgress's).
@@ -61,6 +65,10 @@ const AFTER_MISSIONS := "missions"
 static var _pending := ""
 static var _pending_try := 1
 static var _after := ""
+## The mission the arena was last reloaded to stand in its ruins for: never reloaded for twice running.
+static var _staging := ""
+## True from a reload of its own until the next arena's HUD takes it (C36): that arena comes in from black.
+static var _fade_in := false
 
 ## Set by main.gd: the player, its life alone, the daemons' director, ICE, the round HUD, the session (null alone).
 var player: Node3D = null
@@ -69,6 +77,8 @@ var daemons: DaemonDirector = null
 var ice: IceDirector = null
 var rounds: Node = null
 var session: Node = null
+## The ruins the arena stands in (C36, set by main.gd), or null on the arena itself.
+var world: RuinsWorld = null
 
 var def: MissionDef = null
 var state: State = State.IDLE
@@ -147,6 +157,19 @@ static func take_after() -> String:
 	return out
 
 
+## The next arena comes in from black (C36): a reload into a mission from elsewhere (the Missions screen, R mid-mission).
+static func mark_fade() -> void:
+	_fade_in = true
+
+
+## True once after a reload of the runner's own (start, retry, next, back to the Missions screen or to the arena),
+## for the next arena's HUD to come in from black instead of blinking.
+static func take_fade() -> bool:
+	var out := _fade_in
+	_fade_in = false
+	return out
+
+
 ## Nothing queued, nothing to open (tests).
 static func clear_pending() -> void:
 	_pending = ""
@@ -161,6 +184,16 @@ static func clear_pending() -> void:
 func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	if d == null or _online() or (not d.playable and not force) or running():
 		return false
+	if d.ruins != "" and not _in_ruins(d.ruins):
+		# Its district first: queued, and the arena reloaded to stand in it (once: a set that cannot be stood in is refused).
+		if _staging == d.id or RuinsBook.of(d.ruins) == null:
+			_staging = ""
+			return false
+		_staging = d.id
+		queue(d.id, try)
+		_reload()
+		return true
+	_staging = ""
 	def = d
 	state = State.INTRO
 	index = -1
@@ -197,15 +230,43 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 			life.died.connect(_on_died)
 		if not life.flatlined.is_connected(_on_flatlined):
 			life.flatlined.connect(_on_flatlined)
+	if world != null and is_instance_valid(world):
+		world.set_register(d.register, 0.0)
 	for entry in d.logs:
 		var pickup := MissionLogPickup.new()
 		pickup.entry = entry
 		add_child(pickup)
-		pickup.global_position = entry["at"]
+		pickup.global_position = place(entry["at"])
 		_pickups[entry["id"]] = pickup
 	began.emit(d)
 	_fire("start")
 	return true
+
+
+## True when the arena stands in ruins `id`.
+func _in_ruins(id: String) -> bool:
+	return world != null and is_instance_valid(world) and world.ruins != null and world.ruins.id == id
+
+
+## Where `at` is: a place as it is, or in ruins one of their points by name; Vector3.INF for neither.
+func place(at: Variant) -> Vector3:
+	if at is Vector3:
+		return at
+	if at is String and world != null and is_instance_valid(world):
+		return world.point(at)
+	return Vector3.INF
+
+
+## Where log `log_id` stands (its pickup's place), or Vector3.INF.
+func log_place(log_id: String) -> Vector3:
+	return place(def.log_of(log_id).get("at")) if def != null else Vector3.INF
+
+
+## Where objective `i`'s reach point is, or Vector3.INF.
+func reach_place(i: int) -> Vector3:
+	if def == null or i < 0 or i >= def.objectives.size():
+		return Vector3.INF
+	return place(def.objectives[i].get("at"))
 
 
 ## True from begin() until it fails, is done or ends.
@@ -235,7 +296,7 @@ func need() -> float:
 func target_point() -> Vector3:
 	var o := objective()
 	if o.get("kind") == "reach":
-		return o["at"]
+		return place(o["at"])
 	if o.get("kind") == "log" and _pickups.has(o["log"]) and is_instance_valid(_pickups[o["log"]]):
 		return (_pickups[o["log"]] as Node3D).global_position
 	return Vector3.INF
@@ -297,7 +358,7 @@ func _physics_process(delta: float) -> void:
 				if progress >= need():
 					_objective_done()
 		"reach":
-			var at: Vector3 = o["at"]
+			var at := place(o["at"])
 			var radius: float = float(o.get("radius", MissionDef.REACH_RADIUS))
 			var here := player.global_position
 			if Vector2(here.x - at.x, here.z - at.z).length() <= radius and absf(here.y - at.y) <= REACH_HEIGHT_M:
@@ -342,7 +403,7 @@ func _next_objective() -> void:
 		_beacon.label = str(o.get("label", ""))
 		_beacon.radius = float(o.get("radius", MissionDef.REACH_RADIUS))
 		add_child(_beacon)
-		_beacon.global_position = o["at"]
+		_beacon.global_position = place(o["at"])
 	objective_began.emit(index)
 	_fire("begin:" + str(o["id"]))
 
@@ -425,6 +486,8 @@ func _fire(trigger: String) -> void:
 		if shift.get("on") == trigger and shift.get("to") != register:
 			var from := register
 			register = shift["to"]
+			if world != null and is_instance_valid(world):
+				world.set_register(register)
 			register_shifted.emit(from, register)
 
 
@@ -496,6 +559,7 @@ func end_here() -> void:
 
 func _reload() -> void:
 	if is_inside_tree() and get_tree().current_scene != null:
+		_fade_in = true
 		get_tree().reload_current_scene()
 
 

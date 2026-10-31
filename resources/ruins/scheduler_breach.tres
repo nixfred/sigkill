@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "scheduler_breach"
+title = "the scheduler's breach"
+seed = 23606
+register = "tron"
+cells = Vector2i(9, 13)
+blocks = 6
+holes = 2
+cover = 12
+towers = 24
+giants = 18
+cables = 14
+signs = 12
+folders = PackedStringArray("migrate_tmp", "old_site_v2", "backup.2019", "untitled folder", "build-old", "do_not_delete", "final_FINAL", "notes.bak", "scratch", "spool")
+words = PackedStringArray("INIT SYSTEMS", "CRONWORKS", "LOOPBACK", "SWAPCO", "PAGE CACHE", "SEGFAULT", "INODE HOTEL", "OVERCOMMIT", "SIGPIPE")

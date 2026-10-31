@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "deep_dirs"
+title = "the deep directories"
+seed = 57065
+register = "cyberpunk"
+cells = Vector2i(11, 15)
+blocks = 9
+holes = 3
+cover = 16
+towers = 30
+giants = 22
+cables = 20
+signs = 16
+folders = PackedStringArray("dotfiles.bak", "vendor", "node_modules", "legacy_api", "mirror", "v1_DO_NOT_USE", "cache.old", "logs_2016", "fonts.old", "keep")
+words = PackedStringArray("ORPHANAGE", "CORE DUMP", "LEGACY SYS", "NIGHTLY BUILD", "KERNEL PANIC", "BAUD 2400", "DEADLINE CORP", "TTY7")

@@ -14,22 +14,28 @@ extends RefCounted
 ## An edged bucket (A2) also carries, in CUSTOM0, each vertex's barycentric place in its triangle,
 ## with the triangle's inner edges (a quad's diagonal, a fan's spokes) pushed out of reach, so a
 ## shader can draw the shapes' true edges as lines and never their triangulation.
+##
+## A painted bucket (C36) also carries a vertex colour: `paint` as each shape is written, which the
+## ruins' shaders read as per-part data (a light's phase, health and colour slot; a body's grime).
 
 ## Shapes with more sides than this are shaded smooth; the rest are faceted.
 const FACETED_SIDES := 8
 
 ## How the art is held: every shape and pivot is placed through it.
 var pose := Transform3D.IDENTITY
+## The vertex colour written into painted buckets (C36).
+var paint := Color(1.0, 1.0, 1.0, 1.0)
 
 var _tools: Array[SurfaceTool] = []
 var _counts: Array[int] = []
 var _pivots: Array[Vector3] = []
 var _edged: Array[bool] = []
+var _painted: Array[bool] = []
 
 
 ## A new bucket, its shapes relative to `pivot` (in the art's space, through the pose), carrying
-## its true edges when `edged`. Returns its id for the shapes.
-func bucket(pivot: Vector3 = Vector3.ZERO, edged: bool = false) -> int:
+## its true edges when `edged` and the kit's `paint` when `painted`. Returns its id for the shapes.
+func bucket(pivot: Vector3 = Vector3.ZERO, edged: bool = false, painted: bool = false) -> int:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	if edged:
@@ -38,6 +44,7 @@ func bucket(pivot: Vector3 = Vector3.ZERO, edged: bool = false) -> int:
 	_counts.append(0)
 	_pivots.append(pose * pivot)
 	_edged.append(edged)
+	_painted.append(painted)
 	return _tools.size() - 1
 
 
@@ -217,8 +224,11 @@ func _tri(into: int, v: Array, n: Array, outward: Vector3, inner: Vector3 = Vect
 		order = [0, 2, 1]
 	var st := _tools[into]
 	var edged := _edged[into]
+	var painted := _painted[into]
 	for k in order:
 		st.set_normal((pose.basis * (n[k] as Vector3)).normalized())
+		if painted:
+			st.set_color(paint)
 		if edged:
 			var place := inner
 			place[k] += 1.0

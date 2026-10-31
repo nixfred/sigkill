@@ -30,7 +30,7 @@ objectives = [{
 "log": "temporary",
 "text": "Pick up the terminal log"
 }, {
-"at": Vector3(0, 0.95, -14),
+"at": "exit",
 "id": "vent",
 "kind": "reach",
 "label": "spawn vent",
@@ -38,7 +38,7 @@ objectives = [{
 "text": "Follow the spawn trail to the vent"
 }]
 logs = [{
-"at": Vector3(-14, 0.95, -5),
+"at": "log_0",
 "id": "temporary",
 "name": "migrate.sh",
 "text": "#!/bin/sh\n# temporary. remove after the migration.\nexec ./watchdog --respawn --forever"
@@ -77,6 +77,7 @@ transitions = [{
 "to": "cyberpunk"
 }]
 ice = false
+ruins = "scheduler_breach"
 fail_time_s = 0.0
 next = "defunct"
 playable = true

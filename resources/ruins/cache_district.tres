@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "cache_district"
+title = "the cache district"
+seed = 830542
+register = "matrix"
+cells = Vector2i(10, 12)
+blocks = 5
+holes = 4
+cover = 14
+towers = 26
+giants = 20
+cables = 12
+signs = 10
+folders = PackedStringArray("tmp", "cache", "swap", "shm", "run", "lock", "blobs", "fragments", "sess_old")
+words = PackedStringArray("PAGE CACHE", "TMPFS", "SWAP", "VOLATILE", "NO PERSIST", "EPHEMERAL")

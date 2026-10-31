@@ -312,6 +312,7 @@ func _start_mission(id: String) -> void:
 	_was_captured = true
 	close()
 	if is_inside_tree() and get_tree().current_scene != null:
+		MissionRunner.mark_fade()  # the arena reloaded into it comes in from black (C36)
 		get_tree().reload_current_scene()
 
 

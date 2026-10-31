@@ -14,6 +14,8 @@ extends Control
 ##   the card             as it starts: the band across the screen, "MISSION 01", the title in glitched light, its
 ##                        register and goal.
 ##   the shift            a register transition: the screen tears in the new register's colour.
+##   the cut              an arena reloaded by the runner (a start, a retry, the next mission, back to the Missions
+##                        screen) comes in from black over CUT_S (C36), where it used to blink.
 ## Your AI's lines go to the guide panel (GuideHud.story_line(): "your AI", one voice), in turn, each shown for a
 ## time that fits its length. The end screens are scripts/hud/mission_end_screen.gd. Cosmetic: it changes nothing.
 
@@ -35,6 +37,8 @@ const FEED_S := 8.0
 const FADE_S := 1.0
 const LOG_S := 6.0
 const SHIFT_S := 1.8
+## Seconds an arena the runner reloaded takes to come in from black.
+const CUT_S := 0.35
 ## Where the shift's words stand, a share of the screen's height.
 const SHIFT_AT := 0.36
 ## Where the log reader's top stands, a share of the screen's height.
@@ -80,6 +84,8 @@ var _end_in := -1.0
 var _end_kind := ""
 var _end: MissionEndScreen
 var _drawn := false
+## How much of the cut from black is left, 1 to 0.
+var _cut := 0.0
 
 
 func _ready() -> void:
@@ -89,6 +95,7 @@ func _ready() -> void:
 	_end = MissionEndScreen.new()
 	_end.name = "MissionEnd"
 	add_child(_end)
+	_cut = 1.0 if MissionRunner.take_fade() else 0.0
 
 
 ## Shows `r`'s mission from now on.
@@ -200,11 +207,18 @@ func _process(delta: float) -> void:
 		_end_in -= delta
 		if _end_in < 0.0:
 			_show_end()
-	# Drawn while a mission shows, and once more as it stops; never redrawn for nothing in plain arena play.
-	var showing := _showing()
+	# Drawn while a mission shows or the cut from black runs, and once more as they stop; never redrawn for nothing in
+	# plain arena play.
+	_cut = maxf(_cut - delta / CUT_S, 0.0)
+	var showing := _showing() or _cut > 0.0
 	if showing or _drawn:
 		queue_redraw()
 	_drawn = showing
+
+
+## How much of the cut from black is left (C36): 1 as the arena comes in, 0 once it is clear.
+func cut_left() -> float:
+	return _cut
 
 
 # --- The runner's word. ---
@@ -318,8 +332,13 @@ static func key_of(id: String) -> String:
 # --- Drawing. ---
 
 func _draw() -> void:
-	if not _showing():
-		return
+	if _showing():
+		_draw_mission()
+	if _cut > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(Palette.VOID, _cut * _cut))
+
+
+func _draw_mission() -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(_k, _k))
 	var view := size / _k
 	if runner.state == MissionRunner.State.RUNNING:

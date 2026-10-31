@@ -57,3 +57,16 @@ arena_light={
 "type": "float",
 "value": 1.0
 }
+
+; The ruins' register (C36): how much of each the ruins stand in, x tron, y cyberpunk, z matrix and w "all" (the
+; finale's three at once, mixed across the place). Set by scripts/ruins/ruins_world.gd, read by the ruins' shaders.
+ruins_mix={
+"type": "vec4",
+"value": Vector4(1, 0, 0, 0)
+}
+
+; A register shift's tear in the ruins (C36): 0 calm, up to 1 at the height of a shift. Set by scripts/ruins/ruins_world.gd.
+ruins_tear={
+"type": "float",
+"value": 0.0
+}

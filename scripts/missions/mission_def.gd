@@ -7,11 +7,15 @@ extends Resource
 ## Objectives run one after another, each a dictionary:
 ##   {"id": "vent", "kind": "kill", "text": "SIGTERM the rogue.d", "daemon": "rogue", "count": 3}
 ##   kinds:  kill     daemon "rogue", "zombie", "swarm" or "any"; count
-##           reach    at (Vector3, the arena's space); radius (m, default REACH_RADIUS); label (the beacon's word)
+##           reach    at (Vector3, the arena's space, or in ruins a point's name); radius (m, default REACH_RADIUS);
+##                    label (the beacon's word)
 ##           log      log: the id of one of `logs`, picked up
 ##           survive  seconds alive, the mission's clock running
 ##   every one may add "gives": weapon ids handed over in the mission as it is done (the loadout grows).
-## Terminal logs, each {"id", "name" (the file it reads as), "text", "at" (Vector3)}: standing in the arena from the
+## Where it is played (C36): `ruins` names a ruins district (scripts/ruins/ruins_book.gd) the arena is stood in for it,
+## and there a reach's or a log's "at" may name one of the district's points ("exit", "log_0") instead of a place;
+## "" plays it on the arena itself.
+## Terminal logs, each {"id", "name" (the file it reads as), "text", "at" (Vector3, or a point's name)}: standing in the arena from the
 ## start, picked up by walking through, read on the screen. Lines, each {"on": trigger, "who": "ai", "auditor" or
 ## "tilde", "text"}: your AI's story lines go to the guide panel as "your AI" (never through the player's own AI, never
 ## sent anywhere: STORY.md section 4), the Auditor's to the audit log, and `~`'s to a terminal of its own. Transitions, each {"on": trigger, "to": register}:
@@ -60,6 +64,8 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 @export var transitions: Array = []
 ## Whether ICE (I1 to I3) stands in it; off, the system's own defences stand down while it runs.
 @export var ice := false
+## The ruins district it is played in (a RuinsSet id, C36), or "" for the arena itself.
+@export var ruins := ""
 ## Its own fail rule: seconds of its clock before the timeslice runs out (0: none). Death always fails it.
 @export var fail_time_s := 0.0
 ## The mission after it, or "".
@@ -107,8 +113,8 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 			out.append("%s: log %s has no name" % [id, entry["id"]])
 		if not (entry.get("text") is String) or entry["text"].strip_edges() == "" or entry["text"].length() > LOG_LAST:
 			out.append("%s: log %s needs 1 to %d characters of text" % [id, entry["id"], LOG_LAST])
-		if not (entry.get("at") is Vector3):
-			out.append("%s: log %s needs \"at\", a Vector3" % [id, entry["id"]])
+		if not _place_ok(entry.get("at")):
+			out.append("%s: log %s needs \"at\", a Vector3 or a point of its ruins" % [id, entry["id"]])
 	for o in objectives:
 		if o is Dictionary and o.get("kind") == "log" and not log_ids.has(str(o.get("log", ""))):
 			out.append("%s: objective %s picks up log \"%s\", which is not in its logs" % [id, o.get("id"), o.get("log")])
@@ -138,7 +144,22 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 		out.append("%s: a draft is a playable stand-in" % id)
 	if next != "" and (next == id or not _id_ok(next)):
 		out.append("%s: next \"%s\"" % [id, next])
+	if ruins != "":
+		if RuinsBook.of(ruins) == null:
+			out.append("%s: ruins \"%s\" is not a set" % [id, ruins])
+		if ice:
+			out.append("%s: ICE in ruins (its walls and nodes stand where the arena's level is: not yet)" % id)
 	return out
+
+
+## True for a good "at": a place, or in ruins the name of one of its points.
+func _place_ok(at: Variant) -> bool:
+	if at is Vector3:
+		return true
+	if not (at is String) or ruins == "":
+		return false
+	var s := RuinsBook.of(ruins)
+	return s != null and RuinsLayout.of(s).points.has(at)
 
 
 func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: PackedStringArray) -> PackedStringArray:
@@ -158,8 +179,8 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 			if not (o.get("count") is int) or o["count"] < 1 or o["count"] > 99:
 				out.append("%s: objective %s needs a count of 1 to 99" % [id, oid])
 		"reach":
-			if not (o.get("at") is Vector3):
-				out.append("%s: objective %s needs \"at\", a Vector3" % [id, oid])
+			if not _place_ok(o.get("at")):
+				out.append("%s: objective %s needs \"at\", a Vector3 or a point of its ruins" % [id, oid])
 			var r = o.get("radius", REACH_RADIUS)
 			if not (r is float or r is int) or r < 0.5 or r > 20.0:
 				out.append("%s: objective %s radius" % [id, oid])

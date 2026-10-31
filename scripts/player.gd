@@ -990,6 +990,14 @@ func slot_carried(slot: int) -> bool:
 	return slot >= 0 and slot < inventory.slot_count() and carried.has(inventory.defs[slot].id)
 
 
+## Where it stands from now on, and where a fall puts it back (C36: an arena stood in ruins starts it at theirs):
+## put there at once, at rest, facing the way `at` faces.
+func set_spawn(at: Transform3D) -> void:
+	_spawn = at
+	respawn_at(at.origin)
+	global_transform = at
+
+
 ## A mission's loadout (C35): only the weapons `ids` may be drawn ([] lifts it). The one in hand, if it is not among
 ## them, gives way at once to the first that is.
 func set_carried(ids: PackedStringArray) -> void:

@@ -351,6 +351,14 @@ func unlock_toast() -> UnlockToast:
 ## The arena's mission runner (C35), shown from now on.
 func set_mission_runner(runner: MissionRunner) -> void:
 	_mission.set_runner(runner)
+	# The arena's "daemons down" counter is the arena's: a mission's own panel counts what it needs (C36).
+	runner.began.connect(func(_def): _status.visible = false)
+	runner.ended.connect(func(): _status.visible = true)
+
+
+## True while the arena's "daemons down" counter shows (hidden while a mission runs).
+func targets_shown() -> bool:
+	return _status.visible
 
 
 func mission_hud() -> MissionHud:

@@ -546,12 +546,17 @@ func _login_checks() -> void:
 	Progress.current().clear()
 	var main := await _arena(true)
 	var runner := MissionRunner.of(main)
+	var login := MissionBook.at(1)
+	_toasts.clear()
+	# Mission 1 stands in its ruins (C36): begun on the plain arena, it reloads into them.
+	var plain_id := main.get_instance_id()
+	var reloading := runner.begin(login)
+	main = await _after_reload(plain_id)
+	runner = MissionRunner.of(main)
 	var hud = main.get_node("Hud")
 	var mh: MissionHud = hud.mission_hud()
 	var player = main.get_node("Player")
-	var login := MissionBook.at(1)
-	_toasts.clear()
-	runner.begin(login)
+	_check("acceptance (C36): mission 1 begun on the plain arena reloads into its ruins and runs there: the scheduler's breach built, the arena's own floor gone", reloading and runner.world != null and runner.world.ruins.id == login.ruins and not main.has_node("Arena/Floor") and runner.def == login)
 	await _until(func(): return runner.state == MissionRunner.State.RUNNING)
 	_check("mission 1 starts with the cannon and SIGTERM in hand (the rail not yet), the floor to hold for 20 s, \"MISSION 01\" on the panel", player.carried == PackedStringArray(["terminal_cannon", "sigterm"]) and not player.select_slot(2) and runner.objective()["id"] == "floor" and _shown_has(mh, "MISSION 01"))
 	_check("your AI's first line: \"Arena's quiet...\"", await _until(func(): return hud.guide().panel_text().contains("Arena's quiet.")))
@@ -563,12 +568,12 @@ func _login_checks() -> void:
 		rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
 		await _frames(2)
 	_check("two rogue.d down: the rail is handed over (\"kill -9 handed to you\") and draws on 3", runner.index == 2 and runner.carried.has("sigkill_rail") and player.select_slot(2) and await _until(func(): return _shown_has(mh, ">> kill -9 handed to you")))
-	player.global_position = login.log_of("temporary")["at"]
+	player.global_position = runner.log_place("temporary")
 	await _frames(3)
 	_check("the first log: \"# temporary. remove after the migration.\" in the reader", runner.index == 3 and await _until(func(): return _shown_has(mh, "# temporary. remove after the migration.")))
-	player.global_position = login.objectives[3]["at"]
+	player.global_position = runner.reach_place(3)
 	await _frames(3)
-	_check("acceptance: mission 1 completes at the vent: the grid splits into the ruins (the register shifts to cyberpunk)", runner.state == MissionRunner.State.COMPLETE and runner.register == "cyberpunk")
+	_check("acceptance: mission 1 completes at the vent: the grid splits into the ruins (the register shifts to cyberpunk, the ruins themselves with it)", runner.state == MissionRunner.State.COMPLETE and runner.register == "cyberpunk" and runner.world.register == "cyberpunk")
 	var held := true
 	for w in HANDOUT[0]:
 		held = held and Progress.current().has_weapon(w)
@@ -635,7 +640,9 @@ func _ready_arena(main: Node) -> void:
 	main.get_node("Hud").round_hud()._left_s = LONG_ROUND_S
 	var player = main.get_node("Player")
 	player.assume_captured = true
-	player.global_position = FRONT
+	# In ruins (C36: mission 1 stands in them) the player starts at theirs; FRONT is the arena's own floor.
+	var world := RuinsWorld.of(main)
+	player.global_position = world.point("start") if world != null else FRONT
 	player.velocity = Vector3.ZERO
 	await _frames(2)
 

@@ -14,7 +14,10 @@ extends Node3D
 ## Missions (C35): the arena's mission runner (scripts/missions/mission_runner.gd) beside the directors; a mission
 ## queued before this load (the Missions screen, a retry, the next one, or R mid-mission) begins as it loads, and the
 ## Missions screen opens after a mission's "Missions". The flag --mission=<id> (with --demo, or under --script: the
-## tests and captures) begins that mission once a run, the hidden test range included.
+## tests and captures) begins that mission once a run, the hidden test range included. Ruins (C36): when the mission
+## queued names a ruins district (or a set is queued with no mission: --ruins=<id> with --demo, the tests', the
+## captures'), the arena stands in it, staged before anything else is made (scripts/ruins/ruins_stage.gd): its level
+## gone, the ruins built in its place, the player, its spawns, the daemons and the ICEbreakers' pickups at their points.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -31,8 +34,9 @@ const MISSION_FLAG := "--mission="
 static var _opener_flag_taken := false
 ## The first launch (C42) is looked at once a run, as the arena first loads.
 static var _first_launch_taken := false
-## --mission=<id> is taken once a run (C35).
+## --mission=<id> is taken once a run (C35), and --ruins=<id> (C36).
 static var _mission_flag_taken := false
+static var _ruins_flag_taken := false
 
 var _remaining := 0
 var _total := 0
@@ -52,7 +56,16 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_take_mission_flag()
+	if not _ruins_flag_taken:
+		_ruins_flag_taken = true
+		RuinsStage.take_flag(launch_args)
 	_apply_palette_to_environment()
+	# Never in a match: a session already beside the arena and online is looked at, never made (NetSession.of() makes one).
+	var session_now = get_parent().get_node_or_null(NetSession.NODE_NAME) if get_parent() != null else null
+	var ruins: RuinsWorld = null
+	if session_now == null or not session_now.has_method("is_online") or not session_now.is_online():
+		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
 	DaemonVoice.prewarm()  # the daemons' and ICE's sounds (C42), made once a run, here as the arena loads
@@ -74,6 +87,11 @@ func _ready() -> void:
 	add_child(ice)
 	# ICEbreakers (I2): the intruder's one-use programs against ICE and the daemons, beside them.
 	var breakers := BreakerDirector.new()
+	if ruins != null:
+		var spots := []
+		for at in ruins.points_of("breaker"):
+			spots.append($Arena.to_local(at))
+		breakers.spots = spots
 	breakers.daemons = director
 	breakers.ice = ice
 	breakers.player = _player
@@ -96,7 +114,10 @@ func _ready() -> void:
 	runner.daemons = director
 	runner.ice = ice
 	runner.rounds = _hud.round_hud()
+	runner.world = ruins
 	add_child(runner)
+	if ruins != null and MissionRunner.pending() == "":
+		ice.stand_down = true  # ruins with no mission: ICE's walls and nodes stand where the arena's level was
 	_hud.set_mission_runner(runner)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
@@ -139,7 +160,6 @@ func _ready() -> void:
 	# --script run (the tests and the capture tools), which hand in a file of their own if they want one.
 	if DisplayServer.get_name() != "headless" and not OS.get_cmdline_args().has("--script"):
 		_hud.pause_menu().first_launch_path = SettingsFile.DEFAULT_PATH
-	_take_mission_flag()
 	var queued := MissionRunner.take_pending()
 	var after := MissionRunner.take_after()
 	if queued[0] != "":
@@ -219,6 +239,9 @@ func apply_quality() -> void:
 	var post := get_node_or_null("ScreenPost") as ScreenPost
 	if post != null:
 		post.set_effects(g["chromatic_aberration"], g["crt"])
+	var ruins := get_node_or_null("Arena/" + RuinsWorld.NODE_NAME) as RuinsWorld
+	if ruins != null:
+		ruins.apply_quality(g)
 
 
 func _on_setting_changed(section: String, key: String) -> void:
@@ -235,6 +258,8 @@ func _on_setting_changed(section: String, key: String) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("reset_arena") and not _hud.is_typing():
+		if MissionRunner.pending() != "":
+			MissionRunner.mark_fade()  # R mid-mission: its next try comes in from black (C36)
 		get_tree().reload_current_scene()
 
 

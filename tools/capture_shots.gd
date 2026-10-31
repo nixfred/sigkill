@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42 or c35):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35 or c36):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -387,6 +387,9 @@ const C42_AFTER := [["c42-shot", 0.07], ["c42-derezz", 0.62], ["c42-feed", 1.45]
 const C42_SHEET := ["c42-type", "c42-stream", "c42-forged", "c42-dare", "c42-shot", "c42-derezz", "c42-feed", "c42-slam", "c42-title"]
 const C42_SHEET_COLUMNS := 3
 const C42_PAUSE_AT := 98.1
+## c36's sheet, three a row; how many frames each register's GPU time is averaged over.
+const C36_SHEET := ["c36-tron", "c36-cyberpunk", "c36-matrix", "c36-wide", "c36-fight", "c36-mission"]
+const C36_GPU_FRAMES := 120
 ## c35's sheet: the stills in the order a player meets them, three a row.
 const C35_SHEET := ["c35-missions", "c35-card", "c35-fight", "c35-hud", "c35-complete", "c35-failed"]
 const C35_SHEET_COLUMNS := 3
@@ -511,6 +514,11 @@ func _run() -> void:
 		return
 	if _set == "c42":
 		await _c42()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c36":
+		await _c36()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -2535,6 +2543,96 @@ func _c35() -> void:
 			stills.append(sheet[name])
 	if stills.size() == C35_SHEET.size():
 		_save_grid("c35-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## c36: the ruins kit, on mission 1 (login) as the Missions screen would start it (the arena reloads into its ruins,
+## the scheduler's breach): the same view down the district from its start in each register, tron, cyberpunk and
+## matrix (the GPU's time a frame printed for each, at 1920x1080), a wide view from off the district's corner for its
+## scale (a free camera, the HUD hidden), an overlook's view out over the abyss, daemons against the ruins mid-fight
+## (the cannon fired at rogue.d, in the rain), mission 1 running in the ruins with its HUD (the log found, the vent's
+## beacon across the floor), the register shift to the ruins tearing through the world at the vent, the same at
+## 960x540, and the sheet of six (c36-sequence).
+func _c36() -> void:
+	var sheet := {}
+	var old: Node = _main
+	MissionRunner.queue("login", 1)
+	reload_current_scene()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null:
+		printerr("capture: mission 1 did not stand in ruins")
+		return
+	print("capture: mission %s in the ruins %s, register %s; %s" % [runner.def.id if runner.def != null else "-", world.ruins.id, world.register, str(world.stats())])
+	print(world.layout.ascii())
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	var ext := world.layout.half_extent()
+	var start := world.point("start")
+	var down := world.point("plaza").lerp(world.point("exit"), 0.35) + Vector3(0, 5.0, 0)
+	await _stand(_main.to_local(start + Vector3(0, 0, -1.5)), down)
+	for register in ["tron", "cyberpunk", "matrix"]:
+		world.set_register(register, 0.0)
+		await _frames(150)
+		var gpu: float = await _gpu_ms(C36_GPU_FRAMES)
+		print("capture: c36 %s at %dx%d: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [register, root.size.x, root.size.y, gpu, C36_GPU_FRAMES, Engine.get_frames_per_second()])
+		await _c35_save(sheet, "c36-" + register)
+	world.set_register("cyberpunk", 0.0)
+	await _frames(60)
+	var cam := _free_camera(Vector3(ext.x + 46.0, 34.0, ext.y + 52.0), Vector3(-ext.x * 0.1, 2.0, -ext.y * 0.2), A3_OVERVIEW_FOV)
+	await _frames(40)
+	await _c35_save(sheet, "c36-wide")
+	_free_camera_done(cam)
+	if world.has_point("vista_0"):
+		var vista := world.point("vista_0")
+		var out: Vector3 = world.layout.vistas[0]["out"]
+		await _stand(_main.to_local(vista - out * 1.2), vista + out * 40.0 + Vector3(0, 6.0, 0))
+		await _save("c36-vista")
+	# The fight, in the rain: rogue.d rearing in front of the player, a zombie and the swarm beyond it, the cannon fired.
+	var targets := _main.get_node("Arena/Targets")
+	var rogue: Node3D = targets.get_node("DummyA")
+	var plaza := world.point("plaza")
+	var from := plaza + Vector3(0.0, 0.0, 5.0)
+	await _stand(_main.to_local(from), plaza + Vector3(0, 1.2, 0))
+	_c27b_place(rogue, plaza + Vector3(0.6, -0.95, -0.5))
+	_c27b_place(targets.get_node("DummyB"), plaza + Vector3(-3.5, -0.95, -4.5))
+	_c27b_place(targets.get_node("DummyD"), plaza + Vector3(3.8, -0.95, -6.5))
+	await _frames(60)
+	_fire()
+	await _frames(4)
+	await _c35_save(sheet, "c36-fight")
+	# Mission 1 in the ruins, in its own register (tron): the floor held, the rogue.d down twice, the log found.
+	world.set_register("tron", 0.0)
+	runner.progress = runner.need() - 0.05
+	await _frames(6)
+	for i in 2:
+		while not rogue.is_alive():
+			await _frames(1)
+		rogue.hit(1000.0, Vector3.INF, Vector3.ZERO, "sigterm")
+		await _frames(3)
+	var log_at := runner.log_place("temporary")
+	_player.global_position = log_at
+	await _frames(100)
+	var exit := world.point("exit")
+	await _stand(_main.to_local(plaza + (plaza - exit).normalized() * 3.0), exit + Vector3(0, 2.0, 0))
+	await _c35_save(sheet, "c36-mission")
+	await _stand(_main.to_local(exit + (plaza - exit).normalized() * 3.2), plaza + Vector3(0, 3.0, 0))
+	_player.global_position = exit + (plaza - exit).normalized() * 1.0
+	await _frames(24)
+	await _save("c36-shift")
+	await _frames(140)
+	await _stand(_main.to_local(exit + Vector3(0, 0, 4.0)), plaza + Vector3(0, 3.0, 0))
+	root.size = Vector2i(960, 540)
+	await _frames(20)
+	await _save("c36-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(12)
+	var stills: Array[Image] = []
+	for name in C36_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == C36_SHEET.size():
+		_save_grid("c36-sequence", stills, C35_SHEET_COLUMNS)
 
 
 ## A c35 still saved as `name`, and kept in `sheet` for the contact sheet.
