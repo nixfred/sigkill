@@ -79,6 +79,7 @@ var _story_hold := 0.0
 var _end_in := -1.0
 var _end_kind := ""
 var _end: MissionEndScreen
+var _drawn := false
 
 
 func _ready() -> void:
@@ -199,7 +200,11 @@ func _process(delta: float) -> void:
 		_end_in -= delta
 		if _end_in < 0.0:
 			_show_end()
-	queue_redraw()
+	# Drawn while a mission shows, and once more as it stops; never redrawn for nothing in plain arena play.
+	var showing := _showing()
+	if showing or _drawn:
+		queue_redraw()
+	_drawn = showing
 
 
 # --- The runner's word. ---

@@ -1,4 +1,4 @@
-# SIGKILL PRD (v0.5, 2026-10-31)
+# SIGKILL PRD (v0.6, 2026-10-31)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -103,6 +103,7 @@ Lots of guns. Every weapon is a signal or shell command made physical, and every
 - **The loadout screen** (Esc, Loadout) shows each weapon on a turntable, and a toast says what was just earned.
 - Skins keep clear of the hostile colours, measured in OKLab, and protocol 19 carries a player's look into a match.
 - Two skins take their names and colours from open terminal themes, Dracula and Catppuccin, with thanks (CREDITS.md).
+- **Campaign weapons (C35):** each mission hands out the weapons it teaches for keeps (STORY.md, pick 4), kept among these unlocks as `<weapon>__campaign` and told by the same toast; the loadout screen says which mission hands out each one. Arena play and matches keep the whole arsenal whatever the campaign has handed out.
 
 ### 5.3 Abilities and modes
 - SIGSTOP bullet time: short meter, Matrix slow-mo; SIGCONT resumes.
@@ -137,6 +138,7 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
   - **C11b:** a local model loads only with the player's yes.
   - **C12:** round coaching and the opt-in roast announcer, on B.
   - **C41:** the opener's one call, at its link beat (5.7). It is told only that the game is starting, and SIGKILL shows its own copy of the fixed line the AI picked, marked live.
+  - **C35:** a mission's lines from your AI are story lines: written, the same for every player, shown in the guide panel as "your AI" with no live mark, never sent to the player's AI. No mission makes a call.
   - **C42:** a replay of the opener keeps the session's calls: once the AI has answered live this session, the replay shows that answer again, marked live and "earlier", and calls nothing (unless the AI was turned off since).
 - Tests use fakes and stub binaries only. No test or capture calls a real AI.
 - **One voice** (STORY.md, pick 2): every line in the game is "your AI's". An answer that came live from the player's own AI carries a small "live" mark, so no line is ever misattributed.
@@ -172,6 +174,27 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
 
 **The missions (M6), after the opener:**
 - **C35, the mission framework:** objectives, terminal-log pickups, AI dialogue triggers, the Auditor's log lines, a starting loadout, and the transitions between registers.
+  - **As built (C35):** every mission is data, one `MissionDef` file each in `resources/missions/`, checked as it is read. A file names:
+    - its title, order, register, goal, loadout and the weapons it hands out;
+    - its objectives: kill so many of a daemon type, reach a point, pick up a terminal log, or survive;
+    - its terminal logs, its lines (your AI's, the Auditor's, `~`'s), its register shifts, its own fail rule (a time limit) and the mission after it.
+
+    All seven are in from STORY.md: titles, order and handout real, and the objectives of 2 to 7 placeholders their chunks fill in. Mission 1, `login`, plays now as a first cut on today's arena, and C37 builds it for real. A hidden test range (never listed, never recorded) runs every kind.
+  - **The runner, in the arena:**
+    - a card, then the objectives one after another;
+    - the round clock held, ICE standing down unless the mission has it, only its loadout carried (objectives can hand weapons over mid-mission);
+    - fail by death or its own rule, then Retry or R reloads into the next try;
+    - complete records it and hands its weapons out through the C33 unlocks, all 13 by mission 6 and never sooner;
+    - solo only: refused in a match, and ended by one starting.
+  - **What the player sees:**
+    - the objective panel, with a marker through walls;
+    - your AI's story lines in the guide panel (one voice, never through the player's own AI);
+    - the Auditor's and `~`'s lines in the mission's terminal, and logs read as `$ cat <name>`;
+    - register shifts tearing the screen;
+    - `exit 0` and `exit 137` end screens;
+    - Esc, Missions (`ls -l /campaign`, locked ones redacted), and Esc mid-mission offering resume, restart and quit, the player shielded while it is open.
+
+    Progress lives in `[missions]` of `user://progress.cfg`: a C33 save loads unchanged, and a missing or damaged one is no progress. Check step 54. Also: quitting while the opener's score is still being made no longer waits for it.
 - **C36:** the cyberpunk ruins district art kit.
 - **C37:** mission 1, `login`, end to end.
 - **Missions 2 to 7:** one chunk each, after C37.
@@ -343,7 +366,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 53 steps as of C42.
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 54 steps as of C35.
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -364,13 +387,13 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
-2. The missions: C35 (next), C36 and C37 (mission 1), then missions 2 to 7.
+2. The missions: C35 (done: the framework, mission 1 a first cut), C36 (next) and C37 (mission 1), then missions 2 to 7.
 3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
 4. C43, the Audit Trail visor, then C44, the credits.
 5. 1.0.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-10-31, after C42): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-10-31, after C35): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -479,8 +502,8 @@ Statuses are taken from `git log` (2026-10-31, after C42): **done**, **in progre
 | C40 | Opener: shrink-away reveal + directory-tree fall. | done | `e6d0b73`, `2d4466e` |
 | C41 | Opener: AI link beat + the copy of you. | done | `7106cec`, `14c7c2b`, `59095b3` |
 | C42 | Opener: kill -9 forge, first kill, title slam, music, skip logic; the first-launch content note and opt-in question; the daemons' voices. | done | `77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa` |
-| C35 | Mission framework (objectives, terminal-log pickups, AI dialogue triggers). | **next** | |
-| C36 | Cyberpunk ruins district art kit. | planned | |
+| C35 | Mission framework (objectives, terminal-log pickups, AI dialogue triggers). | done | `a724aae`, `aee2e1c` |
+| C36 | Cyberpunk ruins district art kit. | **next** | |
 | C37 | First mission end to end: mission 1, `login`. | planned | |
 | Missions 2 to 7 | Further missions one chunk each. | planned | |
 

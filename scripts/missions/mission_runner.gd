@@ -93,6 +93,8 @@ var result := {}
 var reason := ""
 
 var _fired := {}
+## Its "at:<seconds>" triggers, [trigger, seconds], found once as it begins.
+var _timed: Array = []
 var _pickups := {}
 var _beacon: MissionBeacon = null
 var _targets: Array = []
@@ -172,6 +174,11 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	reason = ""
 	result = {}
 	_fired = {}
+	_timed = []
+	for item in d.lines + d.transitions:
+		var on := str(item.get("on", ""))
+		if on.begins_with("at:"):
+			_timed.append([on, float(on.trim_prefix("at:"))])
 	# Still queued while it runs: R reloads the arena into its next try.
 	_pending = d.id
 	_pending_try = attempt + 1
@@ -270,10 +277,9 @@ func _physics_process(delta: float) -> void:
 			life.shield(HELD_SHIELD_S)
 		return
 	clock += delta
-	for line in def.lines + def.transitions:
-		var on := str(line.get("on", ""))
-		if on.begins_with("at:") and not _fired.has(on) and clock >= float(on.trim_prefix("at:")):
-			_fire(on)
+	for at in _timed:
+		if not _fired.has(at[0]) and clock >= at[1]:
+			_fire(at[0])
 	if not running():
 		return
 	if def.fail_time_s > 0.0 and clock >= def.fail_time_s:
