@@ -14,7 +14,7 @@ grants = PackedStringArray("grep_seeker", "pipe_chain")
 abilities = PackedStringArray("code_rain_vision")
 objectives = [{
 "arms": ["grep_seeker"],
-"count": 3,
+"count": 4,
 "daemon": "swarm",
 "hint": "6 grep: aim to mark, then fire: it seeks",
 "id": "hot",
@@ -141,9 +141,9 @@ lines = [{
 }]
 transitions = []
 waves = [{
-"count": 3,
+"count": 4,
 "every": 0.4,
-"from": ["hot_1", "hot_2", "hot_3"],
+"from": ["hot_1", "hot_2", "hot_3", "hot_4"],
 "health": 50.0,
 "id": "hot",
 "kind": "swarm",
@@ -161,7 +161,7 @@ waves = [{
 "count": 4,
 "every": 0.5,
 "from": ["core_a", "core_b", "core_c", "core_d"],
-"health": 300.0,
+"health": 500.0,
 "hit_cap": 100.0,
 "id": "cores",
 "kind": "core",
@@ -170,7 +170,7 @@ waves = [{
 }, {
 "by": "loop",
 "count": 12,
-"health": 40.0,
+"health": 25.0,
 "id": "kids",
 "kind": "swarm",
 "tagged": false
@@ -186,6 +186,10 @@ props = [{
 }, {
 "at": "daemon_3",
 "id": "hot_3",
+"kind": "spot"
+}, {
+"at": "spawn_1",
+"id": "hot_4",
 "kind": "spot"
 }, {
 "at": "core_0",

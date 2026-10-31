@@ -349,7 +349,7 @@ func _run_checks() -> void:
 	var arena_four := false
 	for n in ["DummyA", "DummyB", "DummyC", "DummyD"]:
 		arena_four = arena_four or main.has_node("Arena/Targets/" + n)
-	_check("acceptance: its daemons are its own: the arena's four gone, its three runaways out in the cache lines, no core yet, the field standing (60 walls, some written)", not arena_four and world != null and world.ruins.id == "cache_lines" and stage.made.size() == 3 and stage.made.all(func(d): return MissionRunner.kind_of(d) == "swarm") and field != null and field.wall_count() == 60 and field.solid_count() > 0)
+	_check("acceptance: its daemons are its own: the arena's four gone, its four runaways out in the cache lines, no core yet, the field standing (60 walls, some written)", not arena_four and world != null and world.ruins.id == "cache_lines" and stage.made.size() == 4 and stage.made.all(func(d): return MissionRunner.kind_of(d) == "swarm") and field != null and field.wall_count() == 60 and field.solid_count() > 0)
 	runner.life.shield(LONG_ROUND_S)
 	# The field: written walls solid and closed in the walk grid, mid-rewrite and gone ones open and shot through.
 	var walls: Array = field.get("_walls")
@@ -382,7 +382,7 @@ func _run_checks() -> void:
 	field.driven = false
 	_check("a wall never writes in over the player: it waits mid-write with them in it, and closes once they are out of its way", gone >= 0 and held and written)
 	await _play_until(main, func(): return runner.index >= 1)
-	_check("find what's running hot: three runaways down", runner.index == 1 and stage.wave_state("hot") == "cleared")
+	_check("find what's running hot: four runaways down", runner.index == 1 and stage.wave_state("hot") == "cleared")
 	player.global_position = world.point("field_edge")
 	await _play_until(main, func(): return runner.index >= 2, 120, false)
 	await _frames(2)

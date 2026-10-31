@@ -14,7 +14,12 @@ extends SceneTree
 ## the first card to "exit 0". Demo data and the scripted guide (no AI call); it reads nothing of the machine and writes
 ## nothing. The numbers it plays by are the constants below. Since M2: --mission=<n> plays campaign mission n (1 by
 ## default); it goes after the daemons the objective running counts (a sleeper wakes as it comes near, as a player's
-## would), never wastes shots on one that is sealed, and walks through a terminal it passes near (an optional log).
+## would), never wastes shots on one that is sealed, and walks through a terminal it passes near (an optional log). Since
+## M3: in a district whose walls come and go (a cache field) it walks the walk grid's A* grid as its walls stand now
+## (RuinsWorld.walk_route(), where the field closes its written walls), so it goes round them as a player would, and
+## through a wall mid-rewrite (nothing solid) as a player may; and it follows the hints a first-timer is given: once pipe |
+## is in hand it draws it against runaways (the storm's beat: "one shot runs down the chain") and the cannon against
+## anything else (a loop's core).
 
 const MainScene = preload("res://scenes/main.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
@@ -53,6 +58,7 @@ var _world: RuinsWorld = null
 var _grid := {}
 var _path: Array[Vector3] = []
 var _path_to := Vector3.INF
+var _path_turn := 0
 var _target: Node3D = null
 var _seen_at := 0.0
 var _aim_off := Vector2.ZERO
@@ -115,6 +121,8 @@ func _run() -> void:
 			var goal := _goal()
 			print("pace: trace %.0f s: at %s, goal %s, %d waypoints, threat %s, pause %.1f, standing %d" % [_runner.clock, str(_player.global_position.snapped(Vector3.ONE * 0.1)), str(goal.snapped(Vector3.ONE * 0.1)) if goal.is_finite() else "-", _path.size(), str(_target.global_position.snapped(Vector3.ONE * 0.1)) if _target != null and is_instance_valid(_target) else "-", _pause, _runner.stage.standing().size() if _runner.stage != null else 0])
 	var done := _runner.state == MissionRunner.State.COMPLETE
+	if _runner.stage != null and (_runner.stage.loop_running or _runner.stage.loop_broken_now):
+		print("pace: the loop made %d passes and forked %d; the cache %.0f%% full when it broke" % [_runner.stage.passes, _runner.stage.forks_made.size(), _runner.stage.cache * 100.0])
 	print("pace: %s after %.1f game seconds (%.2f minutes) from the first card; its clear %.1f s of its clock (try %d), %d deaths, %d kills in the clear, %d of %d logs; %.0f damage taken in all, its health down to %.0f at worst" % ["DONE" if done else "GAVE UP", _clock - started, (_clock - started) / 60.0, _runner.clock, _runner.attempt, _deaths, _runner.kills, _runner.logs_found.size(), _runner.def.logs.size(), _hurt, _lowest])
 	if is_instance_valid(_main):
 		_main.free()
@@ -178,6 +186,7 @@ func _step() -> void:
 		# A first-timer's hand never settles: its aim wanders round the mark (a random walk, pulled back gently).
 		_aim_off += Vector2(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)) * WOBBLE * dt
 		_aim_off = (_aim_off * (1.0 - PULL * dt)).limit_length(AIM_ERROR * 1.6)
+		_arm_for(threat)
 		if _clock - _seen_at >= REACT_S:
 			var err := _turn_to(threat.threat_point(), dt)
 			fire = err < FIRE_ERROR
@@ -192,6 +201,17 @@ func _step() -> void:
 			if goal.is_finite():
 				move = _walk_to(goal, dt)
 	_player.drive_input(move, false, false, fire)
+
+
+## The weapon a first-timer who read the hints draws for `threat` (M3): pipe | against a runaway once it is in hand, the
+## cannon against anything else.
+func _arm_for(threat: Node3D) -> void:
+	var want := "terminal_cannon"
+	if MissionRunner.kind_of(threat) == "swarm" and _runner.carried.has("pipe_chain"):
+		want = "pipe_chain"
+	var slot := int(_player.inventory.slot_of(want))
+	if _player.inventory.current != slot:
+		_player.select_slot(slot)
 
 
 ## The nearest standing daemon it can see within ENGAGE_M, or null.
@@ -259,9 +279,11 @@ func _goal() -> Vector3:
 
 ## A step along the shortest way to `goal` on the walk grid: the view turned toward the next waypoint, forward.
 func _walk_to(goal: Vector3, dt: float) -> Vector2:
-	if _path.is_empty() or _path_to.distance_to(goal) > 1.0:
+	var turn := _world.field().turn if _world.field() != null else 0
+	if _path.is_empty() or _path_to.distance_to(goal) > 1.0 or turn != _path_turn:
 		_path = _route(_player.global_position, goal)
 		_path_to = goal
+		_path_turn = turn  # M3: the field rewritten, the way worked out again
 	while not _path.is_empty() and Vector2(_path[0].x - _player.global_position.x, _path[0].z - _player.global_position.z).length() < WAYPOINT_M:
 		_path.pop_front()
 	var next: Vector3 = goal if _path.is_empty() else _path[0]
@@ -290,8 +312,14 @@ func _turn_to(at: Vector3, dt: float) -> float:
 	return Vector2(dy, dp).length()
 
 
-## The walk grid's shortest way from `from` to `to` (breadth first), as waypoints in world space.
+## The walk grid's shortest way from `from` to `to` (breadth first), as waypoints in world space; in a district with a
+## cache field (M3), the A* grid's as its walls stand now.
 func _route(from: Vector3, to: Vector3) -> Array[Vector3]:
+	if _world.field() != null:
+		var live: Array[Vector3] = []
+		for p in _world.walk_route(from, to):
+			live.append(p)
+		return live
 	var open: PackedByteArray = _grid["open"]
 	var n: Vector2i = _grid["n"]
 	var ext: Vector2 = _grid["ext"]
