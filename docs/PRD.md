@@ -1,4 +1,4 @@
-# SIGKILL PRD (v0.7, 2026-10-31)
+# SIGKILL PRD (v0.8, 2026-10-31)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -179,7 +179,7 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - its objectives: kill so many of a daemon type, reach a point, pick up a terminal log, or survive;
     - its terminal logs, its lines (your AI's, the Auditor's, `~`'s), its register shifts, its own fail rule (a time limit) and the mission after it.
 
-    All seven are in from STORY.md: titles, order and handout real, and the objectives of 2 to 7 placeholders their chunks fill in. Mission 1, `login`, plays now as a first cut (on the arena as C35 built it, in its ruins since C36), and C37 builds it for real. A hidden test range (never listed, never recorded) runs every kind.
+    All seven are in from STORY.md: titles, order and handout real, and the objectives of 2 to 7 placeholders their chunks fill in. Mission 1, `login`, was a first cut (on the arena as C35 built it, in its ruins since C36) until C37 built it for real. A hidden test range (never listed, never recorded) runs every kind.
   - **The runner, in the arena:**
     - a card, then the objectives one after another;
     - the round clock held, ICE standing down unless the mission has it, only its loadout carried (objectives can hand weapons over mid-mission);
@@ -211,6 +211,14 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - **The C35 leftovers, done:** the arena's counter hides during a mission, and a reload into a mission comes in from black.
     - **Cost:** about 250,000 triangles, 2.75 to 2.90 ms of GPU a frame at 1920x1080 in the captures (high preset, a recent laptop GPU), and a 1.2 s first build. Check step 55.
 - **C37:** mission 1, `login`, end to end.
+  - **As built (C37):** mission 1 from STORY.md, no longer a draft, in the `scheduler_breach` ruins.
+    - **Its beats:** hold the floor for one timeslice (40 s, rogue.d a few at a time; the rail handed back as it is held); follow the spawn trail to the plaza; hold the plaza against the pack (ten, the last led by an elite with two escorts); read the terminal log (`# temporary. remove after the migration.`; two more are optional); follow the trail to the vent at the exit, the way on sealed by one white ICE wall you cannot pass yet; hold the vent for 30 s while it opens; drop into it: the grid splits, the world tears into the cyberpunk ruins, you fall into the rain, and a dead megacorp's sign flickers on. Your AI: "Well. That's not in the arena brochure." Then `exit 0` (or `exit 137` on a death).
+    - **Its own daemons:** waves in the mission's data, out of spawn vents in the floor that leak green code, each hunting at once and never coming back once down, so they are finite (32 at most); the arena's four are gone while it runs. A kill objective can count only named waves; a wave sets its daemons' health (mission 1's rogue.d take three cannon hits).
+    - **Set pieces as data:** vents, the white ICE wall, and a district's breach (`RuinsSet.breach`: its exit cell a hatch over a shaft, the gate onto a gangway, the pocket below with the remnant's sign).
+    - **The gate:** in a mission, weapons and abilities the campaign has not handed over yet (abilities by id: SIGSTOP, code-rain vision, sudo, the ICEbreakers) are refused and shown locked on the HUD, a refused key's press named; the ICEbreakers lie nowhere. Arena play and matches keep everything.
+    - **Feel:** each objective done restores health; the end holds 4.5 s before its card, the unlock toasts waiting for it; your AI's newest line wins.
+    - **Pace and cost:** a scripted first-timer (`tools/pace_run.gd`) clears it in 2.3 to 2.8 minutes over three seeds (a human first-timer is slower: 4 to 6 minutes is an estimate); the busiest fight, the pack in the plaza, costs 2.47 ms of GPU a frame at 1920x1080 (a recent laptop GPU, high preset).
+    - **The C36 leftovers, done:** the register chip follows the world; no neon puddle under a daemon; crisp monolith cracks; a district's first build behind a black frame with the command typed on it. Check step 56.
 - **Missions 2 to 7:** one chunk each, after C37.
 
 ### 5.7 The opener: "you got tricked into this" (DECIDED by Fred 2026-10-25 10:45 PM ET)
@@ -380,7 +388,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 55 steps as of C36.
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 56 steps as of C37.
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -401,13 +409,13 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
-2. The missions: C35 (done: the framework, mission 1 a first cut), C36 (done: the ruins art kit, mission 1 standing in its ruins), C37 (next: mission 1), then missions 2 to 7.
+2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), then missions 2 to 7 (next).
 3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
 4. C43, the Audit Trail visor, then C44, the credits.
 5. 1.0.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-10-31, after C36): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-10-31, after C37): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -518,8 +526,8 @@ Statuses are taken from `git log` (2026-10-31, after C36): **done**, **in progre
 | C42 | Opener: kill -9 forge, first kill, title slam, music, skip logic; the first-launch content note and opt-in question; the daemons' voices. | done | `77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa` |
 | C35 | Mission framework (objectives, terminal-log pickups, AI dialogue triggers). | done | `a724aae`, `aee2e1c` |
 | C36 | Cyberpunk ruins district art kit. | done | `31ef6f0`, `0650508`, `63b99bc` |
-| C37 | First mission end to end: mission 1, `login`. | **next** | |
-| Missions 2 to 7 | Further missions one chunk each. | planned | |
+| C37 | First mission end to end: mission 1, `login`. | done | `acfe8b4`, `0ace580`, `fa6e436` |
+| Missions 2 to 7 | Further missions one chunk each. | **next** | |
 
 **Website, teaser and docs**
 

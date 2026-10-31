@@ -22,7 +22,7 @@
 ## Where we are
 
 - **Pre-alpha.** The latest release is [v0.33.0-prealpha](https://github.com/nixfred/sigkill/releases/tag/v0.33.0-prealpha) (build 33, 2026-10-30, a GitHub pre-release). It came before the opener, so the opener is on `main` only for now.
-- **Built and playable on `main`, through C36:**
+- **Built and playable on `main`, through C37:**
   - the Tron arena and its skyline
   - 13 weapons, with light skins, mods and unlocks
   - SIGSTOP bullet time, code-rain vision, root and `sudo`
@@ -40,8 +40,16 @@
     - your AI's story lines in the guide panel, the Auditor's audit log and `~`'s own terminal;
     - register shifts, a fail rule, retry, and a weapon handout that gives you all 13 by mission 6, kept with your unlocks.
 
-    Mission 1, `login`, plays now as a first cut, in its ruins since C36; C37 builds it for real. Missions 2 to 7 are in, as skeletons from the story bible, and open as their chunks land.
-  - **the ruins (C36), new:** the places the missions happen in, all made in code. Decaying server-farm and filesystem ruins:
+    Missions 2 to 7 are in, as skeletons from the story bible, and open as their chunks land.
+  - **mission 1, `login` (C37), new, built for real:** the first mission after the opener, from the story bible, a few minutes long. Its beats:
+    - you hold the scheduler's floor for one timeslice while rogue.d climb out of spawn vents leaking green code, and the rail you forged in the opener is handed back;
+    - you follow the vents' trail to the plaza and hold it against a pack of ten, its leader an elite;
+    - you read the first terminal log, a comment in your own style: `# temporary. remove after the migration.`;
+    - at the exit, one white ICE wall seals the way on, and you cannot pass it yet. You hold the vent at its feet for 30 seconds while it opens;
+    - then the grid splits, the world tears from Tron into the cyberpunk ruins, and you drop 14 m into the rain, where a dead megacorp's sign flickers on. Your AI: "Well. That's not in the arena brochure."
+
+    Its daemons are its own, out of the vents and finite (no endless respawns). A mission only lets you use what the campaign has handed you so far, and the HUD says so plainly ("F SIGSTOP  locked", "sudo: locked", a locked key's press named); the arena keeps everything. Each objective done is a checkpoint that restores your health. Two more logs are hidden off the path.
+  - **the ruins (C36):** the places the missions happen in, all made in code. Decaying server-farm and filesystem ruins:
     - rack towers toppling and half sunk into the abyss, their status lights dying;
     - cut cables swinging and sparking, cracked floors glowing from below, holes into the void;
     - directory monoliths with their folder names half lit, dead terminals still typing;
@@ -52,13 +60,14 @@
     - **Cyberpunk:** rain, a violet haze, and dead megacorps' neon in magenta and amber, held in the puddles.
     - **Matrix:** dark, with green code streaming down every wall and falling through the air.
 
-    Every district is seeded: the same set always builds the same place, no two racks or monoliths are alike, and every point a mission needs can be walked to from the start. Mission 1 stands in one, and at the vent the world tears from Tron into the ruins. The GPU time, measured at 1920x1080 on a recent laptop GPU, is about 2.8 ms a frame.
+    Every district is seeded: the same set always builds the same place, no two racks or monoliths are alike, and every point a mission needs can be walked to from the start. Mission 1 stands in one, and at the vent the world tears from Tron into the ruins. The GPU time, measured at 1920x1080 on a recent laptop GPU, is about 2.8 ms a frame (C37 measured mission 1's busiest fight, the pack in the plaza: 2.47 ms).
 - **Also on `main`, the teaser tool (T1):** `tools/trailer_capture.sh` renders the teaser's raw footage as real in-game clips on demo data ([docs/TRAILER.md](docs/TRAILER.md)).
 - **The teaser:** 70 seconds of that footage, with an original soundtrack, for the top of [playsigkill.com](https://playsigkill.com). The edit and the music are the producer's.
-- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.7 now, with C36): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
-- **Next:** C37, mission 1 (`login`) end to end on the ruins kit, then missions 2 to 7, a chunk each.
+- **Docs (D1) done:** [the PRD](docs/PRD.md) is the entire, current PRD (v0.8 now, with C37): what is 1.0 and what comes after, every feature, the safety rules, and every chunk with its status.
+- **Done:** C36, the ruins kit; C37, mission 1 (`login`) end to end on it.
+- **Next:** missions 2 to 7, a chunk each (mission 2, `defunct`, first).
 - **Try the opener** from source: Esc, then "Play the opener", or start with the flag, `godot --path . -- --demo --opener` (a build of `main` takes it the same way, after `--`). A build of `main` also shows the first-launch card and plays it once by itself; the v0.33.0 release came before the opener.
-- **Try the missions** from source: Esc, then **Missions**, and Enter on mission 1 (it is solo, so not in a match). To start it at once: `godot --path . -- --demo --mission=login`. The v0.33.0 release came before them too.
+- **Play mission 1** from source: Esc, then **Missions**, and Enter on `01 login` (it is solo, so not in a match). To start it at once: `godot --path . -- --demo --mission=login`. The v0.33.0 release came before the missions too.
 - **Try the ruins** with no mission, from source: `godot --path . -- --demo --ruins=deep_dirs` (or `scheduler_breach`, mission 1's, or `cache_district`). Each stands in its own register; the daemons fight as in the arena, and ICE stands down.
 - **Read more:** [the PRD](docs/PRD.md), [the story bible](docs/STORY.md), [the design log](docs/DESIGN.md), [the teaser footage](docs/TRAILER.md).
 
@@ -147,7 +156,7 @@ Built today: the greybox arena with the Tron look, tight movement, the terminal 
 
 ## Story
 
-> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38 to C42, all built, below), then the missions: their framework is built (C35, [below](#built-the-mission-framework-c35)), mission 1 plays as a first cut, and C36 and C37 build it for real.
+> **Status: story bible locked (Fred, 2026-10-30)** ([docs/STORY.md](docs/STORY.md), C34: premise, the world's rules, characters, your AI's voice, seven missions, the ending; all ten open questions decided, each on its recommended pick). The work goes in the order a new player meets it: the opener first (C38 to C42, all built, below), then the missions: their framework (C35, [below](#built-the-mission-framework-c35)), the ruins they stand in (C36) and mission 1, `login`, built for real (C37); missions 2 to 7 next.
 
 **You're a sysadmin jacked into your own machine, because something is spawning processes you never started.** Your AI is the only one you trust, until the trail leads to a question nobody wants answered: who wrote the daemons?
 
@@ -330,7 +339,7 @@ The test, `tests/opener_end_test.gd` (check step 53), uses invented names, setti
 
 ### The missions
 
-Seven missions after the opener (STORY.md section 6): `login`, `defunct`, `while true`, `permission denied`, `sudo !!`, `nohup` and `kill -9`. Each is short, told through terminal logs you pick up, your AI's lines, the Auditor's audit log and the place itself. They are solo, and they are fiction: nothing in them reads or touches your machine. Status: 🟡 the framework built (C35) and the ruins the missions stand in (C36); mission 1 a playable first cut, in its ruins; C37 (mission 1 for real) next.
+Seven missions after the opener (STORY.md section 6): `login`, `defunct`, `while true`, `permission denied`, `sudo !!`, `nohup` and `kill -9`. Each is short, told through terminal logs you pick up, your AI's lines, the Auditor's audit log and the place itself. They are solo, and they are fiction: nothing in them reads or touches your machine. Status: 🟡 the framework built (C35), the ruins the missions stand in (C36) and mission 1, `login`, built for real (C37); missions 2 to 7 next, a chunk each.
 
 #### Built: the mission framework (C35)
 
@@ -382,7 +391,7 @@ The places the missions happen in: decaying server-farm and filesystem ruins, ma
   - `deep_dirs`, cyberpunk, dense, in the rain;
   - `cache_district`, Matrix.
 
-  A mission names one (`ruins` in its data), and its points can be the district's by name: mission 1's log stands at `log_0` and its vent at `exit`.
+  A mission names one (`ruins` in its data), and its points can be the district's by name: mission 1's first log stands at `log_1` and its vent at the `gate` (C37).
 - **The layout is seeded and repeatable.** The same set always makes the same district, on every machine; another seed makes another. It is planned on a grid of 4 m cells:
   - the outline is cut into the void, a route from the start to the exit is kept open, and a plaza is kept for the fight;
   - ruin blocks (rack clusters, directory monoliths, a fallen tower) and holes into the void are each kept only if the floor stays one piece;
@@ -428,11 +437,47 @@ The test, `tests/ruins_test.gd` (check step 55), covers:
 - **In the arena:** staging (the level gone, everything at the ruins' points, ICE stood down, the environment a copy) and the plain arena after it; mission 1 in its ruins; the counter hidden, and the cut from black.
 - **The mission data:** refusals for a point the ruins lack, for ICE in ruins, and for unknown ruins.
 
+#### Built: mission 1, `login` (C37)
+
+Stills in [Screenshots](#screenshots).
+
+The first mission after the opener, built from the story bible (STORY.md, mission 1), in the `scheduler_breach` ruins. It is no longer a draft.
+
+- **The beats, in order:**
+  1. **Hold the floor for one timeslice** (40 s). The Auditor refuses you (`result=DENIED reason="no session"`). Rogue.d climb out of spawn vents in the floor, which leak green code, a few at a time. The rail you forged in the opener is handed back as the timeslice ends: "That's the rail you forged on the way in."
+  2. **Follow the spawn trail** to the plaza. One waits for you there.
+  3. **Hold the plaza against the pack:** ten rogue.d out of the plaza's vents in three waves, the last led by an elite (bigger, tougher) with two escorts. Kills fill the rail's meter.
+  4. **Read the terminal log,** `migrate.sh`: `# temporary. remove after the migration.` Your AI: "Found a log. Your handwriting. Well. Your comment style." Two more logs, `sched.log` and `watchdog.conf`, sit off the path for whoever looks round.
+  5. **Follow the trail to the vent** at the exit. The way on is a portal onto a gangway out into the void, sealed by one white ICE wall. No hit lands on it: you cannot pass it yet. "White ICE. Policy, made solid."
+  6. **Hold the vent while it opens:** 30 seconds against three surges climbing out round you.
+  7. **Drop into the vent.** The grid splits: the hatch swings down into a shaft streaming code, and the world tears from Tron into the cyberpunk ruins. You fall 14 m into the rain, and a dead megacorp's sign, SIGSEGV INDUSTRIES, flickers on in the dark: the first remnant. "Well. That's not in the arena brochure." Then `exit 0`.
+- **Its own daemons.** Every daemon in it is one of its waves, out of its own vents, and none comes back once down: the arena's four (and the rogue.d that kept respawning) are gone while it runs. Each hunts you as soon as it is out, and never gives up. Mission 1's rogue.d take three cannon hits; the pack's leader takes about nine.
+- **What you carry.** The cannon and SIGTERM at the start, the rail from the first checkpoint: the three the story bible gives mission 1, kept for good once it is done. Anything the campaign has not handed you yet is refused in a mission, and the HUD says so plainly:
+  - its slot is a dash on the strip;
+  - SIGSTOP's and vision's lines read `F SIGSTOP  locked` and `V vision  locked`;
+  - the badge reads `sudo: locked`;
+  - a key pressed for any of them puts `<name>: not handed to you yet` on the strip.
+
+  No ICEbreakers lie about. Arena play and matches keep the whole arsenal, as always.
+- **Checkpoints.** Each objective done restores your health. A death still fails the mission (`exit 137`), and Retry or R starts it again.
+- **The end.** The place holds for 4.5 s before the end card: you land, the sign catches, your AI speaks, and only then `exit 0`. The weapons it handed over are told as the card comes up, not over the landing. Your AI's newest line always wins, so it never talks a beat behind.
+- **The C36 leftovers.**
+  - The panel's register chip follows the world's live register.
+  - No neon puddle lies under a daemon's feet in the rain.
+  - The monoliths' cracks are a crisp crazed network, not blotches.
+  - The first build of a district happens behind a black frame with the command typed on it (`$ login`), never a frozen menu.
+- **Pace and cost.**
+  - A scripted first-timer (`tools/pace_run.gd`: a human's reactions, a wobbling aim, reading every objective and log) clears it in 2.3 to 2.8 minutes over three seeds, with no deaths and down to 40 health at worst.
+  - A real first-time player is slower, so 4 to 6 minutes is my estimate. No human has timed it yet.
+  - The busiest fight, the pack in the plaza, measured 2.47 ms of GPU a frame at 1920x1080 in the final captures (2.3 to 2.5 over four capture runs), six daemons standing and the vents leaking.
+
+The test, `tests/mission1_test.gd` (check step 56), plays it through; see [How the checks work](#how-the-checks-work).
+
 ## The arsenal
 
 Every weapon is a Unix signal or shell command made physical, and each one has its own Tron light skins and a mod, unlocked by playing (C33, [below](#built-unlocks-mods-and-light-skins-c33)). They are fiction: no weapon runs, signals or touches anything real on your machine.
 
-**In the campaign** (C35): each mission hands you the weapons it teaches (the story bible, pick 4), all 13 by mission 6. Mission 1 hands out the cannon, SIGTERM and the rail; 2 `ping`, the fork bomb and `fork()`; 3 `grep` and `pipe |`; 4 `chmod 000`; 5 `cron` and `rm -rf`; 6 SIGHUP and `/dev/null`. In the arena and in matches every weapon is yours from the start.
+**In the campaign** (C35): each mission hands you the weapons it teaches (the story bible, pick 4), all 13 by mission 6. Mission 1 hands out the cannon, SIGTERM and the rail; 2 `ping`, the fork bomb and `fork()`; 3 `grep` and `pipe |`; 4 `chmod 000`; 5 `cron` and `rm -rf`; 6 SIGHUP and `/dev/null`. The abilities come the same way (C37): code-rain vision with mission 3, the ICEbreakers with 4, `sudo` and root with 5, SIGSTOP with 6. In a mission, anything not handed over yet is locked and the HUD says so (`F SIGSTOP  locked`, `sudo: locked`, a locked key's press named). In the arena and in matches every weapon and ability is yours from the start.
 
 Each one you hold is its own model in first person (A1): dark gunmetal and polymer under neon trim in the weapon's own colour, built in code from simple shapes, with its barrel's tip where its beams and muzzle flash start. They are in [Screenshots](#screenshots).
 
@@ -1375,6 +1420,7 @@ sigkill/
 │   │   ├── mission_book.gd         MissionBook: the seven in order and the test range, from a fixed list; the campaign's handout rules
 │   │   ├── mission_progress.gd     MissionProgress: [missions] of user://progress.cfg, done and best; record() hands the weapons out
 │   │   ├── mission_runner.gd       MissionRunner: the arena's runner: objectives, pickups, triggers, fail, retry, complete, next
+│   │   ├── mission_stage.gd        MissionStage (C37): a mission's own daemons in waves out of its vents, its ICE wall, its breach
 │   │   ├── mission_log_pickup.gd   A terminal log standing in the arena, picked up by walking through
 │   │   └── mission_beacon.gd       A reach objective's pillar of light and its hexagon on the floor
 │   ├── ruins/
@@ -1384,6 +1430,7 @@ sigkill/
 │   │   ├── ruins_pieces.gd         RuinsPieces: rack towers, giants, monoliths, the fallen, cover, edges, holes, slabs, cables, signs
 │   │   ├── ruins_world.gd          RuinsWorld: the build, kept per set; collision, lamps, weather, sparks, haze, drift; the register
 │   │   ├── ruins_register.gd       RuinsRegister: tron, cyberpunk, matrix and all: colours, fog, sky, sun, weather; the readability gap
+│   │   ├── ruins_vent.gd           RuinsVent (C37): a spawn vent leaking green code; the breach's hatch that opens
 │   │   └── ruins_stage.gd          RuinsStage: an arena stood in a set, its level gone, everything at the ruins' points
 │   ├── round/
 │   │   ├── round_hud.gd            Rounds: the clock, the break's summary panel, in-round callouts, the roast switch on B
@@ -1715,6 +1762,7 @@ sigkill/
 │   ├── opener_end_test.gd      Headless opener end test (C42): the forge, the shot, the title, the score, voices, skipping, the first launch
 │   ├── mission_test.gd         Headless mission test (C35): the data, the handout, the saves, the runner, the menus, net refusal
 │   ├── ruins_test.gd           Headless ruins test (C36): the code, the sets, seeded plans, reachable points, builds, variety, registers, the arena
+│   ├── mission1_test.gd        Headless mission 1 test (C37): the chain played through, the handout, the gate, finite daemons, the cards
 │   ├── code_rain_vision_test.gd  Headless code-rain vision test: the meter to the frame, the silhouettes behind a wall, a match on 127.0.0.1
 │   ├── root_sudo_test.gd       Headless root and sudo test: the rules, 1.5x and free ammo on a real dummy, a match the host judges
 │   ├── spectate_top_test.gd    Headless spectate top test: the record, top's columns, Tab alone, a match on 127.0.0.1, protocol 8 (9 since C25)
@@ -1726,8 +1774,9 @@ sigkill/
 │   └── fixtures/ai/            Fake agent settings, PATH, /sys and stubs for the AI tests, with a README.md
 │       └── guide/              Stub claude and codex CLIs that record how they were launched
 ├── tools/
-│   ├── capture_shots.gd        Demo-data stills for this page, by set: a1 the weapons, a2 the daemons, a3 the arena, a2b the creatures, a4 the lit arena, c27b the fight, c28 ping, a5 the armoured daemons, i1 ICE, i2 the ICEbreakers, i3 Black ICE, c29 to c32 bank 2, c33 the loadout, c38 to c40 the opener; the game never runs it
+│   ├── capture_shots.gd        Demo-data stills for this page, by set: a1 the weapons, a2 the daemons, a3 the arena, a2b the creatures, a4 the lit arena, c27b the fight, c28 ping, a5 the armoured daemons, i1 ICE, i2 the ICEbreakers, i3 Black ICE, c29 to c32 bank 2, c33 the loadout, c38 to c42 the opener, c35 the missions, c36 the ruins, c37 mission 1; the game never runs it
 │   ├── capture_shots.sh        Runs it on a private Xvnc display: no TCP, never the desktop, no sound, user data in a work folder
+│   ├── pace_run.gd             Mission 1 played by a scripted first-timer, headless (C37): its time, deaths, kills and damage
 │   ├── trailer.gd              The teaser's shot list (T1): real in-game clips on demo data, its own camera moves, one shot a run
 │   ├── trailer_capture.sh      Renders it with Movie Maker on a private Xvnc display from a git archive copy: one clip a shot, shots.json
 │   └── export_linux.sh         The release build: the headless export, then the tarball and its sha256 (needs the export templates)
@@ -1836,6 +1885,7 @@ Every one of these resources validates itself on load with `problems()`. If a va
 53. **Opener end test**, `tests/opener_end_test.gd`.
 54. **Mission test**, `tests/mission_test.gd`.
 55. **Ruins test**, `tests/ruins_test.gd`.
+56. **Mission 1 test**, `tests/mission1_test.gd`.
 
 It fails on any parse error, any `ERROR` or `SCRIPT ERROR` line in Godot's output, or a nonzero Godot exit. Exit 0 means clean, 1 means a problem was found, 2 means the gate itself could not run. It also takes a project directory, which is how deliberately broken copies are checked.
 
@@ -1912,13 +1962,14 @@ The tests are SceneTree scripts that drive the real scenes through a one-frame i
   - **Esc** mid-link (the call stopped) and mid-copy. **Demo data** calls nothing.
 - **Mission test** (C35). The hidden test range and mission 1 in the real arena with the scripted guide only (the guide link's call count checked unchanged); its saves in its own folder under `user://`, removed at the end; its one match on 127.0.0.1. It covers:
   - **The code.** The mission code runs no program, opens no connection, file or folder of its own, reads no environment, path, process or GPU, and reaches no AI adapter or guide link. Its one write is the `[missions]` save through the settings file's writer; your AI's lines reach the guide panel through `story_line()` alone. Every mission file is in the book's fixed list.
-  - **The data.** The seven and the test range load and validate, in the story bible's order, titles and registers. Mission 1 is a playable first cut, and 2 to 7 are skeletons. The validator refuses bad data by name, and nothing before mission 5 says 6666 or nohup, nor anything before 7 the ending.
+  - **The data.** The seven and the test range load and validate, in the story bible's order, titles and registers. Mission 1 is built (C37), and 2 to 7 are skeletons. The validator refuses bad data by name, and nothing before mission 5 says 6666 or nohup, nor anything before 7 the ending.
   - **The handout.** It follows the story bible's table, never sooner and all 13 by mission 6. Finishing 1 to 7 in turn unlocks exactly that through the C33 unlocks, each told once; a replay tells nothing new; a fresh load holds it all.
   - **The saves.** A missing save means no progress; an old C33 `progress.cfg` loads unchanged and keeps its unlocks after a mission saves beside them; garbage, a newer format and wrong kinds of value mean no progress for them.
   - **The runner.** The card and the loadout; survive, kill by type (a zombie not counting toward rogue.d), the weapon handed over, the log picked up, the register shift, the beacon reached; complete and its end screen; a time limit failing it; a skeleton refused; a death failing it (`exit 137`, Retry focused); Retry and R reloading into the next try; Free play.
   - **The menus.** Missions after Resume; the locked six redacted; Enter starting mission 1. Esc mid-mission: Resume, Restart and Quit, the clock held and the player shielded. Quit goes back to the Missions screen. The screen and the end screen whole at 960x540 and 1920x1080, with no scroll.
   - **Net modes.** A match starting mid-mission ends it; `begin()`, the menu entry and the screen all refuse in a match.
   - **Mission 1 played through.** The rail handed over and its three weapons kept, mission 2 open, the end screen, and the loadout screen's campaign line. Also the opener's score build stopping at once as the game quits.
+- **Mission 1 test** (C37). Mission 1 played through in its ruins with a scripted sure shot and the scripted guide only (no AI is called); its saves in its own folder under `user://`, removed at the end. It covers: no file, program, connection or environment read anywhere C37 added; the data (valid, no longer a draft, STORY.md's chain of seven in order, the Auditor's refusal, the `# temporary` log, the ICE wall, the breach, the last line; no `~`, 6666, nohup or ending in anything it shows, the remnant's sign included); the handout (exactly the cannon and SIGTERM in hand, the rail handed over by the first objective, the three kept); the gate (the fork bomb's key, SIGSTOP, vision and sudo refused and said on the HUD in the mission, the ICEbreakers locked, everything back in free play); the run itself (the arena's four gone, the chain done in order, the pack's leader an elite, the checkpoint's restore, the ICE wall unbreakable, the breach opening, the player falling into the pocket, the remnant lit, "exit 0" after the hold); its daemons finite (none ever back once down, never more than its waves'); a death's "exit 137"; and the C36 leftovers (the register chip, the black mount frame).
 - **Ruins test** (C36). The kit's code reads nothing of your machine; the three sets are good, with no spoiler in their names; every plan is seeded and repeatable, with every point a mission uses named, on the floor and walkable to from the start (a 0.5 m walk grid, everything grown by a player's radius), and no cable lower than 4.6 m over the floor; every set builds headless with no error inside its budgets, a ray down from every point meeting its floor and a player standing at every point clear of everything; no two of about a hundred rack towers and no two of twelve monoliths alike; tron, cyberpunk, matrix and all set the shaders' mix, the fog, the sun and the weather, a shift tearing as it runs; every ruins colour 0.1 OKLab or more from the daemons' and ICE's; a set queued stands the arena in it and the next plain arena is as it was; mission 1 runs in its ruins; the arena's counter hidden in a mission and the cut from black after a reload.
 - **Arena art test.** The sources: the arena scene holds the dressing, the skyline, a sky and a depth fog; its gameplay nodes (every block, the spawn points, the targets) and the scenes and script that make collision are byte for byte as before A3 (by sha256); the art code calls nothing outside the game, no wall clock, nothing loaded or saved at run time; the dressing has no per-frame code and the skyline's only turns its nodes; the sky never runs on the clock. In the real arena: every block but the floor dressed, the signs in the font, the holograms; the dressing, the skyline and the whole arena inside their triangle and draw-call budgets; nothing under them can collide, and the arena's collision (every body, shape, place and spawn point) and the sight lines from every spawn point to every daemon equal literals taken from the commit before A3; every vertex a player can walk into within 0.3 m of a block, nothing over a top a player stands on below a jump's reach; every surface wearing one of the palette's shared arena materials; 120 frames rebuilding nothing while the ring and the drift turn; the palette's sky and fog in the environment; a reload taking the kept meshes.
 - **Bullet time test.** SIGSTOP's resource and numbers, nine bad values refused, the meter's rules alone. A scan proves the engine's time scale is written in two places only, both in `scripts/abilities/sigstop.gd` (a hold that returns first in a match, and a restore to exactly 1.0), that the ability runs, reads and signals nothing, and that the wire is protocol 4 with the host's meter check and zero spread on its word only. F moved to G, saved to a settings file in a temporary folder and read back; Ctrl+Alt+F refused. In the real arena: no start below a quarter of the meter; during SIGSTOP the time scale is exactly 0.3, a falling body, the physics time and the round clock run at 0.3x, while the player walks 6.30 m/s against its 7.00 (0.9x in real time) and its weapon cools at 0.9x, with zero recoil and nine straight pellets; the meter drains a second per real second and refills 0.2 s a second; and the time scale is exactly 1.0 again after SIGCONT's ease, after the meter runs out, at once after a death, a round's end, the Esc menu (mid-ease too), a stray change and the arena being freed. Over 127.0.0.1: hosting mid-SIGSTOP ends it before the match's first frame; the joiner's SIGSTOP, started and ended by the host's word, never moves the time scale off 1.0 or the host's clock off 1/60 s a frame, and both players walk at their normal speed; the host draws the joiner's pellets straight while it says SIGSTOP is on and from its generator again after; an R reload keeps the host's word; a forged empty-meter ask is dropped as "sigstop"; the host's own SIGSTOP slows nothing; a death empties the meter on both sides.
@@ -2172,7 +2223,7 @@ Status from `git log`. Hashes are the commits that finished each chunk.
 | ICE and ICEbreakers | A new enemy class, the system defending itself (a community prompt by Tim Provencio, [@TimProvencio](https://x.com/TimProvencio)) · I1 white ICE and hunter ICE: walls, jam and HUD fields, the adaptive hunter, protocol 12 (`1b8fdec`) · I2 ICEbreakers: brute, exploit, cloak and decoy, pickups, your AI's pick, protocol 13 (`d87527a`) · I3 Black ICE: rare, unkillable by weapons, the flatline, exploit and brute its only kill, protocol 14 (`bf42ef9`) | ✅ Done: I1, I2 and I3 |
 | Website, teaser and docs | T1 the teaser's footage: real in-game clips on demo data, rendered with Movie Maker by `tools/trailer_capture.sh` ([docs/TRAILER.md](docs/TRAILER.md); `b2392e8`, `f17ae86`, `bb82508`, `1087887`) · the 70 second edit and its soundtrack (the producer's) for playsigkill.com · D1 the PRD rewritten as the entire, current PRD (v0.3), this README's "Where we are", three community credits (`e1e658d`, `e79b9e5`) | 🟡 T1 footage and D1 done; the edit, the music and the site are the producer's |
 | M5 Your machine is the world | Filesystem maps, process enemies, theme levels, keybind gunplay, voice commands, packet tracer arena, split-screen co-op · C43 Audit Trail visor · C44 in-game credits roll (CREDITS.md itself is already in the repo) | ⬜ Planned |
-| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9` forge, the first kill, the title slam, the score, the skip logic and the first launch, and the daemons' voices (`77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa`) · C35 the mission framework: missions as data, the runner, the objective HUD, the Missions screen, the weapon handout and the saves, mission 1 as a first cut (`a724aae`, `aee2e1c`) · C36 the cyberpunk ruins art kit: seeded districts of rack towers, monoliths, cables and signs, three registers that change the world, mission 1 standing in its ruins (`31ef6f0`, `0650508`, `63b99bc`) · then C37 first mission, `login`, end to end · missions 2 to 7 (player-facing first: the opener before the missions) | 🟡 C34 locked; the opener done (C38 to C42); C35 and C36 done; C37 next, Planned |
+| M6 Story campaign | C34 story bible, locked by Fred on 2026-10-30 ([docs/STORY.md](docs/STORY.md), `a80a229`, `431e41a`) · C38 the opener's first 35 seconds on demo data: the fake crash, the fake terminal, the typed lines (`bda0ecc`, `ee41bbd`, `0f94ca7`) · C39 the opener's real-data reader, opt-in and read-only, and wide characters (`8c74319`, `a349d1a`) · C40 the shrink-away reveal and the fall through your directory tree as a city (`e6d0b73`, `2d4466e`) · C41 the AI link and the copy of you named `~`: the HUD alive, your AI live or the scripted guide, the copy walking out of the pit wearing your user name (`7106cec`, `14c7c2b`, `59095b3`) · C42 the `kill -9` forge, the first kill, the title slam, the score, the skip logic and the first launch, and the daemons' voices (`77254c0`, `e04dffe`, `e31bd68`, `ffa5eaa`) · C35 the mission framework: missions as data, the runner, the objective HUD, the Missions screen, the weapon handout and the saves, mission 1 as a first cut (`a724aae`, `aee2e1c`) · C36 the cyberpunk ruins art kit: seeded districts of rack towers, monoliths, cables and signs, three registers that change the world, mission 1 standing in its ruins (`31ef6f0`, `0650508`, `63b99bc`) · C37 mission 1, `login`, end to end: its own finite daemons out of spawn vents, the pack and its elite, the white ICE wall, the breach and the drop into the rain, the gate on what the campaign has handed over, checkpoints (`acfe8b4`, `0ace580`, `fa6e436`) · then missions 2 to 7 (player-facing first: the opener before the missions) | 🟡 C34 locked; the opener done (C38 to C42); C35, C36 and C37 done; missions 2 to 7 next |
 
 Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
@@ -2223,7 +2274,7 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 ## Screenshots
 
-Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31, C32, C33, C38, C39, C40, C41, C42, C35 and C36). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
+Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I3, C29, C30, C31, C32, C33, C38, C39, C40, C41, C42, C35, C36 and C37). The game drew them itself on a real GPU (Vulkan) into a private virtual display, at 1920x1080, through `tools/capture_shots.sh`: never on a desktop, and every number and name on screen is demo data. They are scripted stills, not a playtest. Every still shot before A5 (the C27b and C28 ones too) shows the daemons as they were then, every one before C29 the strip's single slot row, every one before C30 bank 2 without the pipe, and every one before C31 without /dev/null.
 
 <p align="center">
   <img src="docs/media/a4-overview.png" alt="In-game overview from above after A4: the walled arena on its plinth, warm orange signs on the walls, the red swarm and the magenta-edged creatures glowing, gloss deck plates, dark megastructures with lit teal windows rising out of a teal haze all round"><br>
@@ -2383,6 +2434,36 @@ Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I
   <em>The title in a 960x540 window.</em>
 </p>
 
+**Mission 1, `login` (C37).** Started from the Missions screen as a player starts it, played through as a scripted run on demo data: the arena reloads into the scheduler's breach. Its own rogue.d climb out of spawn vents leaking green code; the plaza's pack comes at you; the white ICE seals the exit; the surge climbs out at the vent; the grid splits and tears into the cyberpunk ruins; and you land in the rain under a dead megacorp's sign. Every sign and folder name is demo text, and your AI's lines are the story's written lines (nothing is called). The player was shielded for the stills, and the beats were hurried along (the timeslice and the hold shortened, the daemons shot down by the script).
+
+<p align="center">
+  <img src="docs/media/c37-sequence.png" alt="Six frames in a grid of three by two: a rogue.d climbing out of a spawn vent glowing green in the Tron ruins, glyphs of code rising round it, the objective panel with the timeslice running and the Auditor's amber DENIED line; the plaza with three crimson rogue.d coming out of their vents at the player under leaning teal towers and a BUILD-OLD monolith; the exit, a portal of two pylons and a lit lintel sealed by a wall of white ICE, glacier crystal panes round a glowing lock, the breach's grate in front of it leaking code; the register shift, the breach's hatch swinging down into a shaft streaming green code, the world torn by magenta bands, tron >> cyberpunk; the landing in the rain, a huge pink neon sign reading SIGSEGV INDUSTRIES over dark towers with warm windows, the deck's cracks glowing, your AI's line: Well. That's not in the arena brochure.; the end screen, exit 0, MISSION 01 login COMPLETE, the three weapons handed to you"><br>
+  <em>The first rogue.d out of a vent; the pack in the plaza; the ICE at the exit; the grid splitting; the remnant in the rain; exit 0.</em>
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c37-card.png" alt="Mission 1's card over the Tron ruins: MISSION 01 spaced out in teal, login in large mint letters, register: tron, and the goal typing in under it; a monolith reading BUILD-OLD behind; the strip bottom right with F SIGSTOP locked and V vision locked"><br><sub>Its card, over the scheduler's floor.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c37-opening.png" alt="The opening: a crimson rogue.d climbing out of a spawn vent in the floor, the grate glowing green and code glyphs rising round it; the panel top left, Hold the floor for one timeslice, 00:04 of 00:40 and the hint 1 cannon never runs dry, 2 SIGTERM: get close; the Auditor's amber line, result=DENIED reason=no session; your AI: Rogue's rearing. Back up or it opens you."><br><sub>The opening: the first one out of a vent, the timeslice running.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c37-plaza.png" alt="The plaza fight: three rogue.d coming at the player, one crimson and glowing close on the left, one mid-field over a green vent, one by a vent on the right; leaning teal towers, a black monolith reading BUILD-OLD, the panel's Hold the plaza against the pack, 0 of 10 pips, kill -9 handed to you"><br><sub>The pack in the plaza: ten, in three waves, its leader an elite.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c37-gate.png" alt="The exit: a portal of two pylons and a lit lintel with a beam, sealed by a wall of white ICE, glacier crystal panes in a lattice round a glowing lock; the breach's grate in the floor in front of it leaking code; green glyphs rising from a vent close by; the panel's Follow the spawn trail to the vent, your AI: Found a log. Your handwriting."><br><sub>The exit: one white ICE wall you cannot pass yet.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c37-vent.png" alt="The surge at the vent: a rogue.d climbing out of a glowing green vent in the floor by the exit, the white ICE in the portal to the right, an upright neon sign and teal towers behind; the panel's Hold the vent while it opens, 00:00 of 00:30, hint E reloads; your AI: The vent's opening. Something's coming up first."><br><sub>Holding the vent while it opens: the surge climbs out.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c37-shift.png" alt="The grid splitting: the breach's hatch halves swinging down into a shaft streaming green code, the white ICE above it, the world torn by bands of magenta and teal mid-change from Tron to cyberpunk, REGISTER SHIFT tron >> cyberpunk, the panel's chip now CYBERPUNK and Drop into the vent, your AI: Floor's giving. Down's where they come from. So, down."><br><sub>The grid splits: the register tears the world into the ruins.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c37-remnant.png" alt="The landing in the rain, 14 metres down: a huge pink neon sign reading SIGSEGV INDUSTRIES on a dark tower, rain falling past towers with warm amber windows, the deck's cracks glowing and holding the light; the panel exit 0 every objective done, the Auditor's status=BREACHED. floor reallocated., your AI: Well. That's not in the arena brochure."><br><sub>The drop into the rain: the first remnant flickers on.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c37-exit0.png" alt="The end screen over the dimmed rain: exit 0 in large mint letters, MISSION 01 // login COMPLETE, the time with new best, 22 kills, logs 1 of 3, one try, HANDED TO YOU cannon [1], SIGTERM [2], kill -9 [3], then 02 defunct: in production, Missions and Free play; the unlock toast at the top, UNLOCKED cannon"><br><sub><code>exit 0</code>, its weapons told as the card comes up.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="docs/media/c37-missions.png" alt="The Missions screen with mission 1 done: 01 login DONE with its best time and +cannon +SIGTERM +kill -9, 02 defunct IN PRODUCTION, 03 to 07 locked behind red redaction bars; on the right MISSION 01 login with its Tron window, its goal, TEACHES cannon SIGTERM kill -9, and REPLAY"><br><sub>The Missions screen with mission 1 done.</sub></td>
+    <td align="center" width="50%"><img src="docs/media/c37-960.png" alt="The plaza fight in a 960 by 540 window: the panel, the Auditor's line, kill -9 handed to you, your AI's line, the strip with F SIGSTOP locked and V vision locked, sudo: locked, three rogue.d coming"><br><sub>In a 960x540 window: the gate on the HUD, plainly.</sub></td>
+  </tr>
+</table>
+
 **The ruins (C36).** Mission 1, `login`, started as the Missions screen starts it: the arena reloads into its ruins, the scheduler's breach. The same view down the district in each register, then its scale, a fight in the rain, the mission running and the register shift at the vent. Every sign and folder name is demo text from the set's data.
 
 <p align="center">
@@ -2413,7 +2494,7 @@ Real in-game captures, demo data only (A1, A2b, A3, A4, C27b, C28, A5, I1, I2, I
   </tr>
 </table>
 
-**The mission framework (C35).** Mission 1, `login`, as a player meets it, on demo progress: Esc, Missions, Enter. It was a first cut on that day's arena (since C36 it stands in its ruins; C37 builds it for real). Your AI's lines are the story's written lines and nothing is called; the Auditor's and the log are the mission's own data.
+**The mission framework (C35).** Mission 1, `login`, as a player meets it, on demo progress: Esc, Missions, Enter. It was a first cut on that day's arena (since C36 it stands in its ruins, and C37 built it for real: its own stills are above). Your AI's lines are the story's written lines and nothing is called; the Auditor's and the log are the mission's own data.
 
 <p align="center">
   <img src="docs/media/c35-sequence.png" alt="Six frames in a grid of three by two: the Missions screen, mission 1 login next with START lit and the six after it locked behind red redaction bars; the mission card, MISSION 01 and login in large mint letters across a dark band over the arena; the fight, the objective panel top left with one of two pips lit for rogue.d and your AI's line at the bottom; the objective HUD with the vent's pillar of light rising over the lair, the terminal's amber audit line and the log reader at the right; the end screen, exit 0, the time, kills, logs and tries, and the three weapons handed to you as chips; the failed screen, exit 137 in red, derezzed by rogue.d, Retry lit"><br>
