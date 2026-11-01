@@ -357,8 +357,28 @@ func set_staged(on: bool) -> void:
 		return
 	_clear_pieces()
 	staged = on
+	if on:
+		black_plan = -1.0  # none of the director's own (M6: a mission's Black ICE comes on its word)
 	if not on and mode == Mode.RUN:
 		_build_round()
+
+
+## Black ICE of the mission's (M6) at `at` (world space, its foot), from `seed`: its arrival's tell from now, facing the
+## nearest intruder; any other one goes first. Null unless staged and running.
+func stage_black(piece: String, at: Vector3, seed: int) -> BlackIce:
+	if not staged or mode != Mode.RUN:
+		push_warning("Black ICE %s refused: staged %s, mode %d" % [piece, str(staged), mode])
+		return null
+	_drop_black()
+	black_plan = -1.0
+	var b := _make_black(seed, Vector3.ZERO, BlackIce.Phase.ARRIVE)
+	b.name = piece
+	b.global_position = at
+	var near := _nearest_intruder(b.global_position)
+	if near.is_finite():
+		var way := near - b.global_position
+		b.rotation.y = atan2(-way.x, -way.z)
+	return b
 
 
 ## A white ICE wall of the mission's at `at` (world space, its foot), turned `yaw`, `span` wide and tall, from `seed`;
@@ -497,8 +517,7 @@ func _physics_process(delta: float) -> void:
 		if piece != null and is_instance_valid(piece) and not piece.broken:
 			piece.tick_frost(delta)  # chmod 000's freeze meters (C29)
 	if mode == Mode.RUN:
-		if not staged:
-			_step_black(delta)
+		_step_black(delta)  # staged (M6), the mission's own Black ICE, come on its word
 		for n in nodes:
 			n.step(delta, daemons, self)
 		if hunter != null and is_instance_valid(hunter):
@@ -621,7 +640,7 @@ func _nearest_intruder(from: Vector3) -> Vector3:
 ## Each step deciding: this round's Black ICE arriving when its moment comes, stepped, and every
 ## intruder's middle judged against its touch.
 func _step_black(delta: float) -> void:
-	if (black == null or not is_instance_valid(black)) and black_plan >= 0.0 and round_t >= black_plan:
+	if not staged and (black == null or not is_instance_valid(black)) and black_plan >= 0.0 and round_t >= black_plan:
 		black_plan = -1.0
 		summon_black()
 	if black == null or not is_instance_valid(black):

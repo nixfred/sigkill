@@ -397,6 +397,7 @@ const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores"
 ## m4's sheet: mission 4 as a player meets it, three a row.
 const M4_SHEET := ["m4-opening", "m4-hall", "m4-nodes", "m4-freeze", "m4-records", "m4-end"]
 const M5_SHEET := ["m5-opening", "m5-watchdog", "m5-cron", "m5-wipe", "m5-door", "m5-oldest"]
+const M6_SHEET := ["m6-opening", "m6-sighup", "m6-devnull", "m6-black", "m6-shell", "m6-core"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
 const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
@@ -548,6 +549,11 @@ func _run() -> void:
 		return
 	if _set == "m5":
 		await _m5()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m6":
+		await _m6()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -3661,6 +3667,202 @@ func _m5() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M5_SHEET.size():
 		_save_grid("m5-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 6 (m6): started from the Missions screen with missions 1 to 5 done and played through on demo data: its card
+## over the drowned city, the mixed pack out of the top terrace's vents, the ramp of racks down, SIGHUP thrown at the
+## watchers, /dev/null thrown into the crowd at the foot of the stair, Black ICE in the dark under SIGSTOP (the busiest
+## fight: its GPU time, and the 960 still), the shell typing `~`'s line, SIGHUP at the shell and its answer, the fall into
+## the core, "exit 0", and the Missions screen with 1 to 6 done; the sheet of six. The player shielded throughout (Black
+## ICE's touch flatlines only an attackable player), the beats hurried along as m5's were.
+func _m6() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	MissionProgress.current().record(MissionBook.at(2), 171.0, 3)
+	MissionProgress.current().record(MissionBook.at(3), 131.0, 2)
+	MissionProgress.current().record(MissionBook.at(4), 182.0, 1)
+	MissionProgress.current().record(MissionBook.at(5), 205.0, 2)
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(5)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "nohup":
+		printerr("capture: mission 6 did not start in its district")
+		return
+	print("capture: mission %s in the district %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var ice := IceDirector.of(_main)
+	var start := world.point("start")
+	var exit := world.point("exit")
+	var v_top: Vector3 = stage.vent("v_top").global_position
+	var v_mid: Vector3 = stage.vent("v_mid").global_position
+	var ramp0 := world.point("ramp_0")
+	var foot0 := world.point("foot_0")
+	var foot1 := world.point("foot_1")
+	var shell := world.point("shell")
+	_c37_view(Vector3(start.x + 0.4, 0.0, start.z - 1.0), exit + Vector3(0, 1.0, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m6-card", runner)
+	# The opening: the mixed pack climbing out of the top terrace's vents, the drowned city beyond.
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	await _m2_quiet()
+	_c37_view(Vector3(v_top.x + 2.8, 0.0, v_top.z + 7.5), v_top + Vector3(0, 1.1, 0))
+	await _m5_until(runner, func(): return stage.wave_state("top_1") != "waiting" and stage.wave_state("top_2") != "waiting", 0.0, false)
+	await _frames(int(1.9 * Engine.physics_ticks_per_second))
+	print("capture: m6-opening, %d standing at %.1f s" % [stage.standing().size(), runner.clock])
+	await _c37_save(sheet, "m6-opening", runner)
+	# The descent: from the head of the first ramp of racks, the pack behind, the landing and the water below.
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	_c37_view(Vector3(ramp0.x, ramp0.y, ramp0.z + 1.2), foot0 + Vector3(0, 0.6, -6.0))
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	await _c37_save({}, "m6-ramp", runner)
+	_player.global_position = foot0
+	_player.velocity = Vector3.ZERO
+	await _m5_until(runner, func(): return runner.index >= 1, 0.0, false)
+	# SIGHUP: thrown at the watchers out of the plaza's vent, its carrier wave over them.
+	await _m5_until(runner, func(): return stage.wave_daemons("watch_1").filter(func(d): return d.is_alive()).size() >= 3, 0.0, false)
+	var threw := 0
+	while threw < 5 and runner.index == 1:
+		_c37_view(Vector3(v_mid.x, v_mid.y, v_mid.z + 5.5), v_mid + Vector3(0, 1.0, 0))
+		await _m5_until(runner, func(): return runner.index != 1 or stage.wave_daemons("watch_1").filter(func(d): return d.is_alive() and d.global_position.distance_to(_player.global_position) < 6.5).size() >= 2, 6.0, false)
+		var alive: Array = stage.wave_daemons("watch_1").filter(func(d): return d.is_alive())
+		if alive.is_empty():
+			break
+		var target: Node3D = alive[0]
+		var ok := await _m6_throw("sighup", _m5_point(target))
+		threw += 1
+		if threw == 1:
+			await _frames(int(0.55 * Engine.physics_ticks_per_second))
+			_m3_aim(_m5_point(target) if target.is_alive() else v_mid + Vector3(0, 1, 0))
+			print("capture: m6-sighup, throw %s, %d bursts, progress %.0f" % [str(ok), get_nodes_in_group(&"sighup").size(), runner.progress])
+			await _c37_save(sheet, "m6-sighup", runner)
+		await _m5_until(runner, func(): return runner.index != 1 or runner.progress >= float(threw), 5.0, false)
+	await _m5_until(runner, func(): return runner.index >= 3, 0.0)
+	# /dev/null: thrown into the queue at the foot of the stair; the hole pulling them in.
+	await _m5_until(runner, func(): return stage.wave_daemons("queue_1").size() >= 4 and stage.wave_awake("queue_1"), 0.0, false)
+	await _m2_quiet()
+	var queue: Array = stage.wave_daemons("queue_1").filter(func(d): return d.is_alive())
+	var middle := Vector3.ZERO
+	for d in queue:
+		middle += d.global_position
+	middle /= maxf(float(queue.size()), 1.0)
+	_c37_view(Vector3(middle.x + 6.0, foot1.y, middle.z + 2.5), middle + Vector3(0, 0.9, 0))
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	await _m6_throw("dev_null", middle + Vector3(0, 0.9, 0))
+	await _m5_until(runner, func(): return get_nodes_in_group(&"dev_null").size() >= 1, 4.0, false)
+	await _frames(int(1.4 * Engine.physics_ticks_per_second))
+	_m3_aim(middle + Vector3(0, 1.2, 0))
+	print("capture: m6-devnull, holes %d, %d standing, kills %d at %.1f s" % [get_nodes_in_group(&"dev_null").size(), stage.standing().size(), runner.kills, runner.clock])
+	await _c37_save(sheet, "m6-devnull", runner)
+	await _m5_until(runner, func(): return runner.index >= 4, 0.0)
+	# Black ICE: the set piece. Formed on the lowest terrace in the dark, the link cut; the world stopped as it comes.
+	await _m5_until(runner, func(): return ice.black != null and is_instance_valid(ice.black), 20.0, false)
+	var black: BlackIce = ice.black
+	_c37_view(Vector3(foot1.x + 5.0, foot1.y, foot1.z - 4.0), black.global_position + Vector3(0, 2.2, 0))
+	await _m5_until(runner, func(): return black.phase == BlackIce.Phase.OUT, 12.0, false)
+	await _m5_until(runner, func(): return stage.wave_state("dark_1") != "waiting", 12.0, false)
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	_m3_aim(black.aim_point())
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m6 the dark at %dx%d, %d standing, Black ICE %.1f m off: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), black.global_position.distance_to(_player.global_position), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("the dark")
+	_player.sigstop.press()
+	await _frames(int(0.35 * Engine.physics_ticks_per_second))
+	_m3_aim(black.aim_point())
+	print("capture: m6-black, phase %s, link cut %s, lights %.2f, SIGSTOP %s" % [black.phase_name(), str(_main.get_node("Hud").guide().link_cut()), ArenaArt.light_level, str(_player.sigstop.is_on())])
+	await _c37_save(sheet, "m6-black", runner)
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m6-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	_player.sigstop.press()
+	await _frames(6)
+	# The oldest directory: Black ICE recalled, the link back, the shell waking and `~`'s line typing itself.
+	_player.global_position = shell
+	_player.velocity = Vector3.ZERO
+	await _m5_until(runner, func(): return runner.index >= 5, 0.0, false)
+	var screen: Dictionary = world.shell_screen()
+	var sat: Vector3 = screen["at"]
+	var sout: Vector3 = screen["out"]
+	_c37_view(Vector3(shell.x + 0.6, shell.y, shell.z + 0.9), sat - sout * 0.2 + Vector3(0, 2.3, 0))
+	await _m5_until(runner, func(): return stage.shell_text().length() >= 26, 20.0, false)
+	print("capture: m6-shell, typed \"%s\", power %.2f, link cut %s" % [stage.shell_text().replace("\n", " / "), world.shell_power(), str(_main.get_node("Hud").guide().link_cut())])
+	await _c37_save(sheet, "m6-shell", runner)
+	await _m5_until(runner, func(): return runner.index >= 6, 0.0, false)
+	# SIGHUP at the shell: thrown at the screen, ignored, "nohup. remember?" typed; then the floor gives way.
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	await _m6_throw("sighup", sat + sout * 0.3 + Vector3(0, 2.2, 0))
+	await _m5_until(runner, func(): return runner.index >= 7, 8.0, false)
+	await _m5_until(runner, func(): return stage.shell_text().to_lower().contains("remember"), 8.0, false)
+	await _frames(int(0.9 * Engine.physics_ticks_per_second))
+	_m3_aim(sat - sout * 0.2 + Vector3(0, 2.3, 0))
+	print("capture: m6-hangup, typed \"%s\", hatch open %s" % [stage.shell_text().replace("\n", " / "), str(world.breach().is_open())])
+	await _c37_save({}, "m6-hangup", runner)
+	await _m5_until(runner, func(): return world.breach() != null and world.breach().is_open(), 10.0, false)
+	await _m5_until(runner, func(): return _player.global_position.y < exit.y - 2.0, 6.0, false)
+	_m3_aim(world.point("below") + Vector3(0, -6.0, 0))
+	await _c37_save({}, "m6-fall", runner)
+	await _m5_until(runner, func(): return runner.state == MissionRunner.State.COMPLETE, 10.0, false)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	var below := world.point("below")
+	_m3_aim(Vector3(below.x + 4.0, below.y - 12.0, below.z - 8.0))
+	print("capture: m6-core, the core lit %.2f, state %s, player y %.1f" % [world.remnant_power(), MissionRunner.State.keys()[runner.state], _player.global_position.y])
+	await _c37_save(sheet, "m6-core", runner)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "m6-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(5)
+	await _frames(70)
+	await _save("m6-missions")
+	var stills: Array[Image] = []
+	for name in M6_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M6_SHEET.size():
+		_save_grid("m6-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Weapon `weapon` drawn and thrown at `at` (m6): the swap waited out, then one press; true once it was thrown.
+func _m6_throw(weapon: String, at: Vector3) -> bool:
+	var slot := int(_player.inventory.slot_of(weapon))
+	_player.select_slot(slot)
+	var waited := 0
+	while waited < 120 and (_player.inventory.is_swapping() or _player.inventory.current != slot):
+		await _frames(1)
+		waited += 1
+	if _player.inventory.current != slot:
+		return false
+	for i in 3:
+		_m3_aim(at)
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+	_player.drive_input(Vector2.ZERO)
+	return true
 
 
 ## Seconds to job `id`'s next run (m5), or INF when it is not scheduled.

@@ -315,12 +315,12 @@ static func _triggers_of(d: MissionDef) -> PackedStringArray:
 		if on != "" and not out.has(on):
 			out.append(on)
 	for w in d.waves:
-		for key in ["wakes", "sealed"]:
+		for key in ["wakes", "sealed", "withdraws"]:
 			var on := str(w.get(key, ""))
 			if on != "" and not out.has(on):
 				out.append(on)
 	for p in d.props:
-		for key in ["opens", "lights", "runs", "on"]:
+		for key in ["opens", "lights", "runs", "on", "wakes"]:
 			var on := str(p.get(key, ""))
 			if on != "" and not out.has(on):
 				out.append(on)
@@ -397,6 +397,37 @@ func _make_stage(d: MissionDef) -> void:
 	stage.job_ran.connect(_on_job_ran)
 	stage.job_due.connect(func(_id: String, reason: String) -> void: _fail(reason))
 	stage.job_removed.connect(func(id: String) -> void: line_said.emit("auditor", "audit: crontab: %s removed." % _job_name(id)))
+	stage.hung_up.connect(_on_hung_up)
+	stage.shell_hung_up.connect(_on_shell_hung_up)
+	line_said.connect(func(who: String, text: String) -> void:
+		if who == "tilde" and stage != null and is_instance_valid(stage):
+			stage.type_line(text))  # M6: `~`'s lines type themselves on the shell's screen too
+
+
+## A daemon of its waves hung up by SIGHUP (M6): the hup beat counts it.
+func _on_hung_up(dummy: Node3D) -> void:
+	if state != State.RUNNING:
+		return
+	var o := objective()
+	if o.get("kind") != "hup" or o.has("prop"):
+		return
+	var of: Array = o.get("of", [])
+	if not of.is_empty() and not of.has(str(dummy.get_meta(&"wave", ""))):
+		return
+	progress = minf(progress + 1.0, need())
+	progressed.emit(index)
+	if progress >= need():
+		_objective_done()
+
+
+## A SIGHUP reached the shell (M6): the hangup beat on it is done (it does not even flicker).
+func _on_shell_hung_up() -> void:
+	if state != State.RUNNING:
+		return
+	var o := objective()
+	if o.get("kind") == "hup" and o.has("prop"):
+		progress = need()
+		_objective_done()
 
 
 ## The cache full (M3): out of memory, the mission failed.
@@ -503,6 +534,8 @@ func need() -> float:
 			return float(o["count"])
 		"survive":
 			return float(o["seconds"])
+		"hup":
+			return 1.0 if o.has("prop") else float(o.get("count", 1))
 	return 1.0
 
 
@@ -727,6 +760,8 @@ func _on_downed(dummy: Node3D) -> void:
 ## A daemon's type as the objectives name it: "rogue", "zombie", "swarm" or (M2) "parent" (its art's); (M4) a piece of
 ## ICE's: "wall", "node" or "hunter".
 static func kind_of(dummy: Node) -> String:
+	if dummy is BlackIce:
+		return "black"
 	if dummy is IceBarrier:
 		return "wall"
 	if dummy is IceNode:

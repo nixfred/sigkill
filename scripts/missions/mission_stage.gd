@@ -54,6 +54,10 @@ signal reaped(count: int)
 signal job_ran(id: String, run: int, runs: int)
 signal job_due(id: String, reason: String)
 signal job_removed(id: String)
+## Mission 6's (M6): a daemon of its waves caught by a SIGHUP burst (scripts/weapons/sighup_burst.gd); a burst reaching
+## the shell (`~`'s terminal: it does not even flicker).
+signal hung_up(dummy: Node3D)
+signal shell_hung_up
 ## Its loop (M3): a pass made (the field rewritten, its cores forking); a core forked `child`; the cache past a mark (per
 ## cent) and full; the loop broken (its last core down).
 signal passed(turn: int)
@@ -137,6 +141,21 @@ var _doors: Array = []
 var _board_label: Label3D = null
 ## Seconds a done job stays on the crontab.
 const JOB_DONE_SHOWN_S := 6.0
+## The shell (M6): its prop's wake trigger, its rows of type over the district's screen, what is typing and the rows
+## waiting, how far the row typing has got; the SIGHUP bursts seen so far; its one hangup.
+const SHELL_CPS := 16.0
+const SHELL_ROWS := 6
+const SHELL_WRAP := 34
+const SHELL_ROW_M := 0.42
+const SHELL_HUP_M := 9.0
+var _shell_wake := ""
+var _shell_labels: Array = []
+var _shell_queue: Array = []
+var _shell_text := ""
+var _shell_typed := 0.0
+var _shell_row := 0
+var _shell_hup_done := false
+var _bursts_seen := {}
 
 
 ## Builds `d`'s set pieces here: its vents and its walls (its waves wait for their triggers).
@@ -167,6 +186,28 @@ func build(d: MissionDef) -> void:
 				_pickup_spot[p["id"]] = _pickup_spot.size()
 			"job":
 				_jobs[p["id"]] = {"p": p, "left": -1.0, "run": 0, "live": false, "done": false, "done_s": 0.0}
+			"shell":
+				_shell_wake = str(p.get("wakes", ""))
+				if world != null and is_instance_valid(world) and world.has_shell():
+					# `~`'s rows (M6): type over the screen, under its baked prompt, in its colour.
+					var screen: Dictionary = world.shell_screen()
+					var sout: Vector3 = screen["out"]
+					var size: Vector2 = screen["size"]
+					for i in SHELL_ROWS:
+						var label := Label3D.new()
+						label.name = "ShellRow%d" % i
+						label.font = Palette.mono_font()
+						label.font_size = 64
+						label.pixel_size = 0.0042
+						label.modulate = Palette.CRIMSON
+						label.outline_modulate = Color(0, 0, 0, 0.9)
+						label.outline_size = 8
+						label.shaded = false
+						label.text = ""
+						add_child(label)
+						label.global_position = (screen["at"] as Vector3) + sout * 0.3 + Vector3(0, 1.1 + size.y - 0.9 - 0.62 - SHELL_ROW_M * float(i), 0)
+						label.rotation.y = atan2(sout.x, sout.z)
+						_shell_labels.append(label)
 			"door":
 				var door := RootDoor.new()
 				door.name = "Door_" + str(p["id"])
@@ -218,7 +259,15 @@ func fire(trigger: String) -> void:
 		var wave: Dictionary = _waves[id]
 		var w: Dictionary = wave["def"]
 		if wave["state"] == "waiting" and str(w.get("on", "")) == trigger:
-			_start(id)
+			var delay := float(w.get("delay", 0.0))
+			if delay > 0.0:
+				wave["delay_left"] = delay  # M6: a wave held back past its trigger, by the mission's clock
+			else:
+				_start(id)
+		if w.get("kind") == "black" and str(w.get("withdraws", "")) == trigger:
+			for piece in wave["alive"]:
+				if is_instance_valid(piece) and piece is BlackIce:
+					(piece as BlackIce).withdraw_now()  # M6: the Auditor recalls it
 		if not wave["awake"] and str(w.get("wakes", "")) == trigger:
 			_wake(id)
 		if str(w.get("sealed", "")) == trigger:
@@ -249,12 +298,21 @@ func fire(trigger: String) -> void:
 			world.light_vault()
 		if p.get("kind") == "shop" and str(p.get("dark", "")) == trigger:
 			world.shop_dark()
+		if p.get("kind") == "shell" and str(p.get("wakes", "")) == trigger:
+			world.wake_shell()
 		if p.get("kind") != "breach":
 			continue
+		var after := float(p.get("after", 0.0))
 		if str(p.get("opens", "")) == trigger:
-			world.open_breach()
+			if after > 0.0:
+				_timed.append([after, world.open_breach])  # M6: the floor gives way a beat after the word
+			else:
+				world.open_breach()
 		if str(p.get("lights", "")) == trigger:
-			world.light_remnant()
+			if after > 0.0:
+				_timed.append([after, world.light_remnant])
+			else:
+				world.light_remnant()
 
 
 ## No more daemons: its waves stop where they are (those standing stay).
@@ -337,17 +395,31 @@ func _start(id: String) -> void:
 	wave_began.emit(id)
 
 
+## A delayed wave's start (M6), its wait over: only if nothing started it meanwhile.
+func _start_if_waiting(id: String) -> void:
+	if _waves.has(id) and _waves[id]["state"] == "waiting":
+		_start(id)
+
+
 func _physics_process(delta: float) -> void:
 	_step_timed(delta)
 	_step_loop(delta)
 	_lay_pickups()
 	_step_jobs(delta)
 	_step_doors()
+	_step_shell(delta)
+	_watch_bursts()
 	for id in _order:
 		var wave: Dictionary = _waves[id]
 		var w: Dictionary = wave["def"]
 		match wave["state"]:
 			"waiting":
+				if float(wave.get("delay_left", -1.0)) >= 0.0 and not held and not stopped:
+					wave["delay_left"] = float(wave["delay_left"]) - delta
+					if float(wave["delay_left"]) <= 0.0:
+						wave.erase("delay_left")
+						_start(id)
+					continue
 				var after := str(w.get("after", ""))
 				if after != "" and _waves.has(after):
 					var before: Dictionary = _waves[after]
@@ -511,6 +583,8 @@ func _place_ice(id: String, i: int, w: Dictionary, wave: Dictionary) -> Node3D:
 		"hunter":
 			var face: Vector3 = _floor(place.call(w["face"])) if w.has("face") else (player.global_position if player != null and is_instance_valid(player) else at + Vector3.BACK)
 			piece = ice.stage_hunter(piece_name, at, face, seed, health)
+		"black":
+			piece = ice.stage_black(piece_name, at, seed)  # M6: the machine's last resort, on the mission's word
 	if piece == null:
 		return null
 	piece.set_meta(&"wave", id)
@@ -829,7 +903,97 @@ func _seed(id: String, i: int, elite: bool) -> int:
 
 
 ## `at` on the floor under it: a ruins point where a player stands has its stand height taken off.
-static func _floor(at: Vector3) -> Vector3:
+func _floor(at: Vector3) -> Vector3:
 	if not at.is_finite():
 		return Vector3.ZERO
+	if world != null and is_instance_valid(world):
+		# Its band's floor (M6: terraces): a point standing on it, or at a player's height over it, put on it.
+		var fy := world.floor_y_at(at)
+		if absf(at.y - fy) < 0.05 or absf(at.y - (fy + RuinsLayout.STAND_Y)) < 0.05:
+			return Vector3(at.x, fy, at.z)
+		return at
 	return at - Vector3(0, RuinsLayout.STAND_Y, 0) if absf(at.y - RuinsLayout.STAND_Y) < 0.05 else at
+
+
+# --- The shell and the hangups (M6). ---
+
+## `~`'s line `text` typed on the shell's screen, row by row, after whatever is typing.
+func type_line(text: String) -> void:
+	if _shell_labels.is_empty():
+		return
+	var words := text.split(" ", false)
+	var row := ""
+	for word in words:
+		if row != "" and row.length() + 1 + word.length() > SHELL_WRAP:
+			_shell_queue.append(row)
+			row = word
+		else:
+			row = word if row == "" else row + " " + word
+	if row != "":
+		_shell_queue.append(row)
+
+
+## True while a row is typing or waiting to.
+func shell_typing() -> bool:
+	return _shell_text != "" or not _shell_queue.is_empty()
+
+
+## Every row typed on the shell so far, the one typing included, a "\n" between two.
+func shell_text() -> String:
+	var rows := PackedStringArray()
+	for label in _shell_labels:
+		if (label as Label3D).text != "":
+			rows.append((label as Label3D).text.trim_suffix("_"))
+	return "\n".join(rows)
+
+
+func _step_shell(delta: float) -> void:
+	if _shell_labels.is_empty():
+		return
+	if _shell_text == "":
+		if _shell_queue.is_empty():
+			return
+		_shell_text = _shell_queue.pop_front()
+		_shell_typed = 0.0
+		if _shell_row >= SHELL_ROWS:
+			# The screen full: every row up one, the last cleared (a terminal scrolling).
+			for i in SHELL_ROWS - 1:
+				(_shell_labels[i] as Label3D).text = (_shell_labels[i + 1] as Label3D).text
+			_shell_row = SHELL_ROWS - 1
+	_shell_typed += SHELL_CPS * delta
+	var n := mini(int(_shell_typed), _shell_text.length())
+	var label: Label3D = _shell_labels[_shell_row]
+	label.text = _shell_text.substr(0, n) + ("_" if n < _shell_text.length() else "")
+	if n >= _shell_text.length():
+		_shell_text = ""
+		_shell_row += 1
+
+
+## Every SIGHUP burst in the arena watched once (M6): what it catches, and where it goes off.
+func _watch_bursts() -> void:
+	if not is_inside_tree():
+		return
+	for burst in get_tree().get_nodes_in_group(&"sighup"):
+		var key := burst.get_instance_id()
+		if _bursts_seen.has(key):
+			continue
+		_bursts_seen[key] = true
+		if burst.has_signal("caught"):
+			burst.caught.connect(_on_hup)
+		if burst.has_signal("went_off"):
+			burst.went_off.connect(_on_burst)
+
+
+func _on_hup(what: Node, _at: Vector3) -> void:
+	if what is Node3D and what.has_meta(&"wave") and made.has(what):
+		hung_up.emit(what)
+
+
+func _on_burst(at: Vector3) -> void:
+	if _shell_hup_done or world == null or not is_instance_valid(world) or not world.has_shell():
+		return
+	var screen: Dictionary = world.shell_screen()
+	var middle: Vector3 = (screen["at"] as Vector3) + Vector3(0, 2.2, 0)
+	if at.distance_to(middle) <= SHELL_HUP_M:
+		_shell_hup_done = true
+		shell_hung_up.emit()

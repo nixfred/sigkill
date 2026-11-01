@@ -89,7 +89,7 @@ extends Resource
 
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
-const KINDS := ["kill", "reach", "log", "survive", "root"]
+const KINDS := ["kill", "reach", "log", "survive", "root", "hup"]
 ## A scheduled job's (M5) name on the crontab, at most this long; its countdown, seconds; a root door's span (wide, tall).
 const JOB_NAME_LAST := 24
 const JOB_EVERY := Vector2(3.0, 300.0)
@@ -97,7 +97,12 @@ const DOOR_SPAN := Vector2(3.4, 3.6)
 const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "any"]
 ## A mission's own ICE (M4): wave kinds that are pieces of ICE, placed through the ICE director (white ICE walls, white ICE
 ## nodes, hunter ICE); a node wave names each node's kind; a wall's span (wide, tall) when the data gives none.
-const ICE_KINDS := ["wall", "node", "hunter"]
+const ICE_KINDS := ["wall", "node", "hunter", "black"]
+## Mission 6's (M6): a wave may wait "delay" seconds past its trigger (at most this); a "hup" objective counts daemons
+## hung up by SIGHUP (at most this many), or one SIGHUP reaching the shell ("prop"); a shell prop wakes the district's
+## shell on a trigger; a breach may open "after" seconds past its trigger; a Black ICE wave "withdraws" on a trigger.
+const DELAY_LAST := 60.0
+const HUP_COUNT_LAST := 20
 const NODE_KINDS := ["jam", "hud"]
 const ICE_SPAN := Vector2(3.4, 3.6)
 ## Who says a line: your AI (the guide panel), the Auditor (the audit log), or `~` (its own terminal, from mission 3 on).
@@ -114,8 +119,8 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## The abilities a mission may hand over (C37), by id, with the words the menus show.
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
-const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter"]
-const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter", "job", "door"]
+const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "black"]
+const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter", "job", "door", "shell"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
 ## A dormant wave wakes as the player comes this near one of its daemons, metres (M2).
@@ -312,6 +317,15 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 			# Become root (M5): done the moment the player is root#; only where the campaign has handed sudo over.
 			if not allowed_abilities().has("sudo"):
 				out.append("%s: objective %s needs root in a mission the campaign has not handed sudo to" % [id, oid])
+		"hup":
+			# Hang up (M6): so many daemons of its waves caught by SIGHUP, or ("prop") one SIGHUP reaching the shell.
+			if o.has("prop"):
+				if prop_of(str(o["prop"])).get("kind") != "shell":
+					out.append("%s: objective %s hangs up \"%s\", which is not a shell prop" % [id, oid, o.get("prop")])
+			elif not (o.get("count") is int) or o["count"] < 1 or o["count"] > HUP_COUNT_LAST:
+				out.append("%s: objective %s needs a count of 1 to %d to hang up" % [id, oid, HUP_COUNT_LAST])
+			if not (loadout.has("sighup") or _handed_before(oid, "sighup")):
+				out.append("%s: objective %s hangs up without SIGHUP in hand by then" % [id, oid])
 		_:
 			out.append("%s: objective %s kind \"%s\"" % [id, oid, o.get("kind")])
 	var unlocks = o.get("unlocks", [])
@@ -332,6 +346,22 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 			elif loadout.has(w):
 				out.append("%s: objective %s %s %s, already in its loadout" % [id, oid, key, w])
 	return out
+
+
+## True when weapon `w` is in hand by the time objective `oid` begins (M6): in the loadout, or handed by it or one before.
+func _handed_before(oid: String, w: String) -> bool:
+	if loadout.has(w):
+		return true
+	for o in objectives:
+		if not (o is Dictionary):
+			continue
+		if o.get("arms", []).has(w):
+			return true
+		if str(o.get("id", "")) == oid:
+			return false
+		if o.get("gives", []).has(w):
+			return true
+	return false
 
 
 ## True for a trigger that names something it has: "start", "complete", "fail", "begin:<objective>",
@@ -590,6 +620,17 @@ func _prop_problems() -> PackedStringArray:
 					var t := str(p.get(key, ""))
 					if t != "" and not trigger_ok(t, _objective_ids(), _log_ids(), wave_ids()):
 						out.append("%s: breach %s %s trigger \"%s\"" % [id, p["id"], key, t])
+				var after = p.get("after", 0.0)
+				if not (after is float or after is int) or after < 0.0 or after > WAIT_LAST:
+					out.append("%s: breach %s after (0 to %.0f seconds)" % [id, p["id"], WAIT_LAST])
+			"shell":
+				# `~`'s terminal (M6): the district's shell, woken on a trigger; its lines type as `~` speaks.
+				var s := RuinsBook.of(ruins) if ruins != "" else null
+				if s == null or s.shell == "":
+					out.append("%s: shell %s, but its ruins have none" % [id, p["id"]])
+				var t := str(p.get("wakes", ""))
+				if not trigger_ok(t, _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: shell %s wakes trigger \"%s\"" % [id, p["id"], t])
 			_:
 				out.append("%s: prop %s kind \"%s\" (%s)" % [id, p["id"], p.get("kind"), ", ".join(PROP_KINDS)])
 	return out
@@ -686,6 +727,15 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 						out.append("%s: wave %s stands at \"%s\", which is neither a Vector3 nor a point of its ruins" % [id, wid, v])
 			if w.get("kind") == "hunter" and count != 1:
 				out.append("%s: wave %s: a hunter wave is one hunter" % [id, wid])
+			if w.get("kind") == "black":
+				# Black ICE (M6): one, staged through the director, withdrawn on a trigger or broken by the breakers.
+				if count != 1:
+					out.append("%s: wave %s: a black wave is one Black ICE" % [id, wid])
+				var back := str(w.get("withdraws", ""))
+				if back != "" and not trigger_ok(back, objective_ids, log_ids, ids):
+					out.append("%s: wave %s withdraws on \"%s\"" % [id, wid, back])
+			elif w.has("withdraws"):
+				out.append("%s: wave %s withdraws, but only Black ICE does" % [id, wid])
 			if w.get("kind") == "node":
 				var kinds = w.get("nodes", [])
 				if not (kinds is Array) or (count is int and kinds.size() != count):
@@ -714,6 +764,9 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		var every = w.get("every", WAVE_EVERY_S)
 		if not (every is float or every is int) or every < 0.1 or every > 30.0:
 			out.append("%s: wave %s every (0.1 to 30 seconds)" % [id, wid])
+		var delay = w.get("delay", 0.0)
+		if not (delay is float or delay is int) or delay < 0.0 or delay > DELAY_LAST:
+			out.append("%s: wave %s delay (0 to %.0f seconds past its trigger)" % [id, wid, DELAY_LAST])
 		var on := str(w.get("on", ""))
 		var after := str(w.get("after", ""))
 		if by != "":

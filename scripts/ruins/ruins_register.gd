@@ -37,6 +37,21 @@ const SLOTS := {
 	"cyberpunk": [Palette.TEAL, RAIN_VIOLET, NEON_MAGENTA, NEON_AMBER, NEON_AMBER, Palette.TEAL, HOT_WHITE, RAIN_VIOLET],
 	"matrix": [Palette.MATRIX_GREEN, Palette.MATRIX_GREEN, Palette.MATRIX_GREEN, Palette.MATRIX_HEAD, Palette.MATRIX_HEAD, Palette.MATRIX_GREEN, Palette.MATRIX_HEAD, Palette.MATRIX_GREEN],
 }
+## A palette (M6): a set's own colours for its cyberpunk, in place of the register's (RuinsSet.palette). "abyss" is the
+## deepest ruins', mission 6's drowned city: ice-cyan and acid neon, ultramarine strips, a deep blue haze and fog, black
+## water holding the light. Every colour keeps READABLE_GAP from the daemons' and ICE's (the tests measure these too).
+const ICE_CYAN := Color(0.55, 0.95, 1.0)
+const ACID := Color(0.8, 1.0, 0.2)
+const ULTRA := Color(0.45, 0.4, 1.0)
+const WHITE_BLUE := Color(0.8, 0.9, 1.0)
+const PALETTES := {
+	"abyss": {
+		"slots": [ICE_CYAN, ULTRA, ICE_CYAN, ACID, WHITE_BLUE, ICE_CYAN, HOT_WHITE, ULTRA],
+		"env": {"fog": Color(0.015, 0.04, 0.12), "fog_density": 0.95, "fog_end": 300.0, "horizon": Color(0.02, 0.05, 0.16), "abyss": Color(0.0, 0.006, 0.02), "glow": ICE_CYAN, "points": ACID, "glow_energy": 0.35, "ambient": ULTRA, "ambient_energy": 0.07, "sun": Color(0.45, 0.6, 1.0), "sun_energy": 0.3, "rain": 1.0, "motes": 0.1, "glyphs": 0.0},
+		"edge": ULTRA, "vein": ICE_CYAN, "sheen": ULTRA, "grid": ULTRA, "crack": ICE_CYAN, "puddle": ICE_CYAN, "puddle_b": ULTRA,
+		"haze": Color(0.08, 0.18, 0.5), "water": Color(0.004, 0.012, 0.045), "water_rim": ULTRA,
+	},
+}
 ## The colours the ruins must keep their distance from.
 const FOES := [Palette.CRIMSON, Palette.HOSTILE_AMBER, Palette.HOT_MAGENTA, Palette.GLITCH_SPLIT, Palette.HOSTILE_RED, Palette.GLACIER, Palette.HUNTER_COBALT, Palette.BLACK_ICE]
 
@@ -68,11 +83,16 @@ static func shares(mix: Vector4) -> Vector3:
 	return s / total if total > 0.0 else Vector3(1, 0, 0)
 
 
-## The place's settings at `mix`: each of ENV's keys, mixed by its shares.
-static func env_at(mix: Vector4) -> Dictionary:
+## The place's settings at `mix`: each of ENV's keys, mixed by its shares; with a `palette` (M6), its cyberpunk is the
+## palette's.
+static func env_at(mix: Vector4, palette: String = "") -> Dictionary:
 	var s := shares(mix)
 	var out := {}
-	var parts := [ENV["tron"], ENV["cyberpunk"], ENV["matrix"]]
+	var cyber: Dictionary = ENV["cyberpunk"]
+	if palette != "" and PALETTES.has(palette):
+		cyber = cyber.duplicate()
+		cyber.merge(PALETTES[palette]["env"], true)
+	var parts := [ENV["tron"], cyber, ENV["matrix"]]
 	for key in ENV["tron"]:
 		var a = parts[0][key]
 		var b = parts[1][key]
@@ -84,7 +104,15 @@ static func env_at(mix: Vector4) -> Dictionary:
 	return out
 
 
-## Every colour of the ruins' own light (every register's slots but the white-hot spark, the signs' neon among them).
+## Register `register`'s colour for light slot `slot`, or (M6) the palette's where it has one for its cyberpunk.
+static func slot_of(register: String, slot: int, palette: String = "") -> Color:
+	if register == "cyberpunk" and palette != "" and PALETTES.has(palette):
+		return PALETTES[palette]["slots"][slot]
+	return SLOTS.get(register, SLOTS["tron"])[slot]
+
+
+## Every colour of the ruins' own light (every register's slots but the white-hot spark, the signs' neon among them;
+## M6: every palette's slots and tints too).
 static func colours() -> Array[Color]:
 	var out: Array[Color] = []
 	for name in SLOTS:
@@ -94,7 +122,31 @@ static func colours() -> Array[Color]:
 				out.append(slots[i])
 	out.append(RAIN_VIOLET)
 	out.append(RAIN_INDIGO)
+	for name in PALETTES:
+		var pal: Dictionary = PALETTES[name]
+		for i in (pal["slots"] as Array).size():
+			if i != 6:
+				out.append(pal["slots"][i])
+		for key in ["edge", "vein", "sheen", "grid", "crack", "puddle", "puddle_b", "water_rim"]:
+			out.append(pal[key])
 	return out
+
+
+## Dresses a set's own materials (M6) in palette `name`: its cyberpunk colours over the register's.
+static func dress_palette(name: String, body: ShaderMaterial, light: ShaderMaterial, floor: ShaderMaterial, haze: ShaderMaterial) -> void:
+	var pal: Dictionary = PALETTES[name]
+	body.set_shader_parameter("edge_cyber", pal["edge"])
+	body.set_shader_parameter("vein_cyber", pal["vein"])
+	body.set_shader_parameter("sheen_color", pal["sheen"])
+	var arr := PackedVector4Array()
+	for c in pal["slots"]:
+		arr.append(Vector4(c.r, c.g, c.b, 1.0))
+	light.set_shader_parameter("cyber_slots", arr)
+	floor.set_shader_parameter("grid_cyber", pal["grid"])
+	floor.set_shader_parameter("crack_cyber", pal["crack"])
+	floor.set_shader_parameter("puddle_tint", pal["puddle"])
+	floor.set_shader_parameter("puddle_tint_b", pal["puddle_b"])
+	haze.set_shader_parameter("haze_cyber", pal["haze"])
 
 
 ## Sets the ruins' materials' register colours, once as they are built.

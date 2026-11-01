@@ -164,10 +164,11 @@ func _build_checks() -> void:
 		var blocked := PackedStringArray()
 		for name in w.layout.points:
 			var at := w.point(name)
-			var foot := Vector3(at.x, holder.position.y, at.z)
+			var fy := w.layout.floor_y(w.layout.cell_at(w.to_local(at)))  # its band's floor (M6: terraces)
+			var foot := Vector3(at.x, holder.position.y + fy, at.z)
 			var ray := PhysicsRayQueryParameters3D.create(foot + Vector3(0, 1.6, 0), foot + Vector3(0, -1.0, 0), 1)
 			var hit := space.intersect_ray(ray)
-			if hit.is_empty() or absf(hit["position"].y - RuinsLayout.FLOOR_Y) > 0.01:
+			if hit.is_empty() or absf(hit["position"].y - foot.y) > 0.01:
 				floorless.append(name)
 			var capsule := CapsuleShape3D.new()
 			capsule.radius = PLAYER_R

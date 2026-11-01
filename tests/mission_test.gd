@@ -140,12 +140,12 @@ func _data_checks() -> void:
 		registers.append(def.register)
 	_check("each in STORY.md's register (Tron into ruins, ruins, Matrix, Tron, Tron into Matrix, the deepest ruins, all three), with its own transition where it changes", registers == PackedStringArray(["tron", "cyberpunk", "matrix", "tron", "tron", "cyberpunk", "all"]) and _shifts_to(defs[0]) == "cyberpunk" and _shifts_to(defs[4]) == "matrix")
 	var skeletons := true
-	for i in range(5, defs.size()):
+	for i in range(6, defs.size()):
 		skeletons = skeletons and not defs[i].playable and not defs[i].draft and not defs[i].objectives.is_empty()
 	var built := true
-	for i in 5:
+	for i in 6:
 		built = built and defs[i].playable and not defs[i].draft and defs[i].ruins != ""
-	_check("missions 1 to 5 are built for real (C37, M2, M3, M4, M5: playable, not drafts), each in its ruins; 6 and 7 are skeletons with their objectives, logs and lines in place, listed but not yet startable", built and skeletons)
+	_check("missions 1 to 6 are built for real (C37, M2, M3, M4, M5, M6: playable, not drafts), each in its ruins; 7 is a skeleton with its objectives, logs and lines in place, listed but not yet startable", built and skeletons)
 	var t := MissionBook.test_range()
 	var kinds := {}
 	var gives := false
@@ -383,7 +383,7 @@ func _runner_checks() -> void:
 	runner2.begin(timed)
 	await _until(func(): return runner2.state == MissionRunner.State.FAILED)
 	_check("acceptance (fail by the mission's own rule): its time limit runs out: failed, \"the timeslice ran out\", its logs and beacon cleared away", runner2.state == MissionRunner.State.FAILED and runner2.reason == MissionRunner.TIMED_OUT and runner2.pickup("note") == null)
-	_check("a mission that is not built yet is refused (mission 6 is a skeleton)", not runner2.begin(MissionBook.at(6)) and runner2.state == MissionRunner.State.FAILED)
+	_check("a mission that is not built yet is refused (mission 7 is a skeleton)", not runner2.begin(MissionBook.at(7)) and runner2.state == MissionRunner.State.FAILED)
 
 
 # --- A death failing it, and Retry. ---

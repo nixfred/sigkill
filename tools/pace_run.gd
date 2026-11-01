@@ -58,6 +58,17 @@ const MINE_M := 3.0
 const MINE_GAP_S := 6.0
 const RM_BAND := Vector2(7.0, 15.0)
 const DOOR_M := 4.0
+## Mission 6 (M6): SIGHUP thrown at a watcher this near, no two throws closer than this; /dev/null thrown into a crowd whose
+## middle is in this band, no two closer than its gap; Black ICE kept this far off (F pressed as it comes nearer, no
+## two presses closer than its gap); SIGHUP at the shell from this near.
+const HUP_M := 8.0
+const HUP_GAP_S := 2.5
+const SINK_BAND := Vector2(4.0, 13.0)
+const SINK_GAP_S := 8.0
+const BLACK_NEAR_M := 10.0
+const BLACK_FLEE_M := 7.0
+const STOP_GAP_S := 16.0
+const SHELL_M := 6.0
 const WALL_NEAR_M := 4.0
 
 var _rng := RandomNumberGenerator.new()
@@ -92,6 +103,9 @@ var _beam_held := 0.0
 var _beam_rest := 0.0
 ## The clock when the last mine was placed (M5), and how many were.
 var _mine_at := -100.0
+var _hup_at := -100.0
+var _sink_at := -100.0
+var _stop_at := -100.0
 var _mines := 0
 var _last_move := Vector2.ZERO
 
@@ -224,7 +238,35 @@ func _step() -> void:
 		if o.get("kind") == "root" or at_door:
 			sudo.press()
 			print("pace: Z (sudo) at %.1f s of its clock, for %s" % [_runner.clock, "root" if o.get("kind") == "root" else "the door"])
-	if threat != null:
+	# Black ICE out (M6): never shot, kept at arm's length, the world stopped as it comes near, the goal walked to meanwhile.
+	var black := _black_near()
+	var throwing := _throw_step(o, dt)
+	if black != null:
+		var flat := Vector2(black.global_position.x - _player.global_position.x, black.global_position.z - _player.global_position.z)
+		var sigstop = _player.get("sigstop")
+		if sigstop != null and not sigstop.is_on() and _player.ability_ok("sigstop") and _clock - _stop_at > STOP_GAP_S and flat.length() < BLACK_NEAR_M:
+			sigstop.press()
+			_stop_at = _clock
+			print("pace: F (SIGSTOP) with Black ICE %.1f m off, at %.1f s of its clock" % [flat.length(), _runner.clock])
+		if flat.length() < BLACK_NEAR_M:
+			# Near: a first-timer who read the hint runs for the beat's goal and shoots nothing; where the way runs into
+			# it, a sidestep away first.
+			var goal := _goal()
+			var step := _walk_to(goal, dt) if goal.is_finite() else Vector2.ZERO
+			var basis := _player.global_transform.basis
+			var to_black := Vector3(flat.x, 0, flat.y).normalized()
+			var ahead := -basis.z
+			if flat.length() < BLACK_FLEE_M and ahead.dot(to_black) > 0.2:
+				var side := Vector3(-to_black.z, 0, to_black.x) * float(_seed_side())
+				var away := (side - to_black * 0.6).normalized()
+				step = Vector2(away.dot(basis.x), away.dot(basis.z))
+			_last_move = step
+			_player.drive_input(step, false, false, false)
+			return
+	if not throwing.is_empty():
+		move = throwing[0]
+		fire = throwing[1]
+	elif threat != null:
 		if threat != _target:
 			_target = threat
 			_seen_at = _clock
@@ -310,6 +352,98 @@ func _step() -> void:
 				move = _walk_to(goal, dt)
 	_last_move = move
 	_player.drive_input(move, false, false, fire)
+
+
+## Black ICE hunting now (M6), or null: the ICE director's, present.
+func _black_near() -> Node3D:
+	var ice := IceDirector.of(_main)
+	if ice == null or ice.black == null or not is_instance_valid(ice.black) or not ice.black.present_now():
+		return null
+	return ice.black
+
+
+## Mission 6 (M6): the beats that throw. SIGHUP at the nearest watcher the hup beat counts once it is within HUP_M and in
+## sight (one throw every HUP_GAP_S); /dev/null into the crowd on the beat that hands it over, at the middle of the three
+## nearest once that middle is in SINK_BAND; SIGHUP at the shell's screen on the hangup beat from SHELL_M. [move, fire]
+## while it is doing one, else [].
+func _throw_step(o: Dictionary, dt: float) -> Array:
+	var kind := str(o.get("kind", ""))
+	if kind == "hup" and o.has("prop"):
+		if not _runner.carried.has("sighup"):
+			return []
+		var shell: Vector3 = _world.point("shell")
+		var screen: Dictionary = _world.shell_screen()
+		if not shell.is_finite() or screen.is_empty():
+			return []
+		var flat := Vector2(shell.x - _player.global_position.x, shell.z - _player.global_position.z)
+		if flat.length() > 1.2:
+			return [_walk_to(shell, dt), false]
+		var at: Vector3 = (screen["at"] as Vector3) + (screen["out"] as Vector3) * 0.3 + Vector3(0, 2.2, 0)
+		return _throw_at("sighup", at, dt, HUP_GAP_S)
+	if kind == "hup":
+		if not _runner.carried.has("sighup") or _runner.stage == null:
+			return []
+		var of: Array = o.get("of", [])
+		var best: Node3D = null
+		var best_d := INF
+		for d in _runner.stage.standing():
+			if not d.is_alive() or (not of.is_empty() and not of.has(str(d.get_meta(&"wave", "")))):
+				continue
+			if d.has_method("confused") and d.brain != null and d.brain.confused():
+				continue
+			var dist: float = d.global_position.distance_to(_player.global_position)
+			if dist < best_d and _clear(_player.eye_position(), _point_of(d)):
+				best = d
+				best_d = dist
+		if best == null:
+			return []
+		if best_d > HUP_M:
+			return [_walk_to(best.global_position, dt), false]
+		return _throw_at("sighup", _point_of(best), dt, HUP_GAP_S)
+	if kind == "kill" and o.get("arms", []).has("dev_null") and _runner.carried.has("dev_null") and _runner.stage != null and _clock - _sink_at > SINK_GAP_S:
+		var of: Array = o.get("of", [])
+		var near: Array = []
+		for d in _runner.stage.standing():
+			if d.is_alive() and (of.is_empty() or of.has(str(d.get_meta(&"wave", "")))) and _clear(_player.eye_position(), _point_of(d)):
+				near.append(d)
+		if near.size() < 2:
+			return []
+		near.sort_custom(func(a, b): return a.global_position.distance_to(_player.global_position) < b.global_position.distance_to(_player.global_position))
+		var middle := Vector3.ZERO
+		var n := mini(near.size(), 3)
+		for i in n:
+			middle += near[i].global_position
+		middle /= float(n)
+		var gap := Vector2(middle.x - _player.global_position.x, middle.z - _player.global_position.z).length()
+		if gap < SINK_BAND.x:
+			return [Vector2(0, 1), false]  # back off first: the hole takes the thrower's own too near
+		if gap > SINK_BAND.y:
+			return []
+		var out := _throw_at("dev_null", middle + Vector3(0, 0.9, 0), dt, SINK_GAP_S)
+		if out[1]:
+			_sink_at = _clock
+			print("pace: /dev/null into %d of the crowd, %.1f m off, at %.1f s of its clock" % [n, gap, _runner.clock])
+		return out
+	return []
+
+
+## Weapon `weapon` drawn and thrown at `at`, no two throws closer than `gap_s` (the last throw's time kept in _hup_at for
+## SIGHUP): [move, fire].
+func _throw_at(weapon: String, at: Vector3, dt: float, gap_s: float) -> Array:
+	var slot := int(_player.inventory.slot_of(weapon))
+	if _player.inventory.current != slot:
+		_player.select_slot(slot)
+		return [Vector2.ZERO, false]
+	if _player.inventory.is_swapping():
+		return [Vector2.ZERO, false]
+	if weapon == "sighup" and _clock - _hup_at < gap_s:
+		return [Vector2.ZERO, false]
+	if _turn_to(at, dt) > 0.25:
+		return [Vector2.ZERO, false]
+	if weapon == "sighup":
+		_hup_at = _clock
+		print("pace: SIGHUP thrown at %.1f s of its clock" % _runner.clock)
+	return [Vector2.ZERO, true]
 
 
 ## Mission 5 (M5): on the beat that hands cron over, a first-timer who read the hint walks to the job's vent and places a
@@ -402,6 +536,8 @@ func _threat() -> Node3D:
 	for d in _runner.stage.standing():
 		if not d.is_alive() or (not (d is IcePiece) and d.sealed):
 			continue  # a sealed one (M2) takes nothing: a first-timer stops wasting shots on it
+		if d is BlackIce:
+			continue  # never shot (M6): weapons only flash it; the hint says run
 		var at: Vector3 = _point_of(d)
 		var dist := eye.distance_to(at)
 		if d is IceBarrier:
@@ -439,9 +575,20 @@ func _goal() -> Vector3:
 				return breakers.pickups[spot].global_position
 	match o.get("kind"):
 		"reach":
-			if o.get("id") == "drop":
-				return _world.point("breach")
+			if o.get("id") == "drop" or o.get("at") == "below":
+				return _world.point("breach")  # the pocket is reached by falling (C37, M6): stand on the hatch
 			return _runner.reach_place(_runner.index)
+		"hup":
+			if o.has("prop"):
+				return _world.point("shell")
+			var of: Array = o.get("of", [])
+			var best: Node3D = null
+			for d in (_runner.stage.standing() if _runner.stage != null else []):
+				if not d.is_alive() or (not of.is_empty() and not of.has(str(d.get_meta(&"wave", "")))):
+					continue
+				if best == null or d.global_position.distance_to(_player.global_position) < best.global_position.distance_to(_player.global_position):
+					best = d
+			return best.global_position if best != null else Vector3.INF
 		"log":
 			return _runner.log_place(str(o["log"]))
 		"kill":

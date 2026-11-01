@@ -108,6 +108,21 @@ const ROOM_LONG_LEAST := 8
 const ROOM_WALL_H := 9.0
 ## The crontab board's screen (M5): wide and tall, metres; it stands on a block two cells wide.
 const BOARD_SCREEN := Vector2(7.2, 4.2)
+## Terraces (M6): at most so many steps down, each between these depths (over a jump, under a ramp's slope at
+## RAMP_CELLS cells long), bands of at least so many rows; the ramp's cells (the route straight down it), the lip on a
+## drop edge (over a step, under a jump), the cliff's and a ramp rail's thickness, the rail's height, and the screen of a
+## shell at the exit end.
+const TERRACES_MOST := 3
+const DROP_LEAST := 3.0
+const DROP_MOST := 6.0
+const BAND_ROWS_LEAST := 5
+const RAMP_CELLS := 2
+const LIP_H := 0.6
+const LIP_T := 0.3
+const CLIFF_T := 0.5
+const RAIL_T := 0.2
+const RAIL_H := 0.9
+const SHELL_SCREEN := Vector2(6.4, 3.8)
 const VAULT_SCREEN := Vector2(11.0, 6.4)
 const VAULT_LINE_LAST := 40
 const VAULT_POST := Vector3(0.6, 3.4, 0.6)
@@ -166,6 +181,13 @@ var room := {}
 ## The crontab board (M5), or {}: its block (rect), the side it faces (front), its face's middle (face), the way out
 ## from it (out), along its front (along) and its width, as the shop's.
 var board := {}
+## The shell (M6), or {}: its block (rect), the side it faces (front), its face's middle (face), the way out from it
+## (out), along its front (along) and its width, as the board's.
+var shell := {}
+## The ramps (M6), one a step down the route: {"x", "upper": Vector2i (the cell above the step), "cells": [Vector2i] (its
+## RAMP_CELLS cells on the lower band), "band" (the lower band's index), "top": Vector3 (the step line's middle on the
+## upper floor), "foot": Vector3 (the lower floor where it ends)}.
+var ramps: Array = []
 var gate := {}
 var pocket := {}
 var gangway := {}
@@ -192,6 +214,7 @@ func _init(from: RuinsSet) -> void:
 	_ruins()
 	_shop()
 	_board()
+	_shell()
 	_edges()
 	_points()
 	_floor_boxes()
@@ -225,9 +248,38 @@ func _put(c: Vector2i, kind: int) -> void:
 	cells[c.y * size.x + c.x] = kind
 
 
-## The middle of cell `c` on the floor, in the district's space.
+## The middle of cell `c` on the floor, in the district's space (M6: at its band's height).
 func center(c: Vector2i) -> Vector3:
-	return Vector3((float(c.x) - (size.x - 1) * 0.5) * CELL_M, FLOOR_Y, (float(c.y) - (size.y - 1) * 0.5) * CELL_M)
+	return Vector3((float(c.x) - (size.x - 1) * 0.5) * CELL_M, floor_y(c), (float(c.y) - (size.y - 1) * 0.5) * CELL_M)
+
+
+## Which band row `row` is in (M6): 0 the start's (the highest), up to the set's terraces for the exit's (the lowest);
+## 0 everywhere in a flat set. The bands are equal from the start, the exit's taking what is left.
+func band(row: int) -> int:
+	if ruins == null or ruins.terraces <= 0:
+		return 0
+	var rows := size.y / (ruins.terraces + 1)
+	return clampi((size.y - 1 - row) / rows, 0, ruins.terraces)
+
+
+## The floor's height at cell `c` (M6): FLOOR_Y on the start's band, a drop lower each band down.
+func floor_y(c: Vector2i) -> float:
+	return FLOOR_Y - float(band(c.y)) * (ruins.drop_m if ruins != null else 0.0)
+
+
+## The row a step line stands over (M6): band `b`'s first row (its highest index), for b from 1; the line runs
+## between it and the row before it (the band above's last).
+func step_row(b: int) -> int:
+	var rows := size.y / (ruins.terraces + 1)
+	return size.y - 1 - b * rows
+
+
+## True for a cell of a ramp (M6): walked on, never built on, no point stands there.
+func on_ramp(c: Vector2i) -> bool:
+	for r in ramps:
+		if (r["cells"] as Array).has(c):
+			return true
+	return false
 
 
 ## The cell a place on the floor is in.
@@ -272,21 +324,32 @@ func _route() -> void:
 		return
 	var roomed := ruins.room != ""
 	# A sealed room (M5): the exit is the cell inside it, a row in from the end, and the route comes to it straight
-	# down the middle through its doorway.
-	exit_cell = Vector2i(size.x / 2, 1) if roomed else Vector2i(clampi(size.x / 2 + _rng.randi_range(-2, 2), 1, size.x - 2), 0)
+	# down the middle through its doorway. A shell (M6): the exit a row in from the end too, the shell's block behind it.
+	exit_cell = Vector2i(size.x / 2, 1) if roomed or ruins.shell != "" else Vector2i(clampi(size.x / 2 + _rng.randi_range(-2, 2), 1, size.x - 2), 0)
 	for c in [start_cell, exit_cell, start_cell + Vector2i(0, -1), exit_cell + Vector2i(0, 1)]:
 		_put(c, Cell.FLOOR)
 	var here := start_cell
 	route = [here]
+	var straight := 0
 	while here != exit_cell:
 		var step := Vector2i(0, -1)
-		if here.y == exit_cell.y or (roomed and here.y <= exit_cell.y + 2 and here.x != exit_cell.x):
+		if straight > 0:
+			straight -= 1  # down a ramp (M6): straight on to its foot and the landing past it
+		elif here.y == exit_cell.y or (roomed and here.y <= exit_cell.y + 2 and here.x != exit_cell.x):
 			step = Vector2i(signi(exit_cell.x - here.x), 0)
 		elif _rng.randf() < 0.35 and not (roomed and here.y <= exit_cell.y + 3):
 			var side := _rng.randi_range(0, 1) * 2 - 1
 			if here.x + side >= 1 and here.x + side <= size.x - 2:
 				step = Vector2i(side, 0)
-		here += step
+		var next := here + step
+		if step.y < 0 and band(next.y) > band(here.y):
+			# A step down (M6): the cell entered and the one after are the ramp, the one past them the landing.
+			var cells: Array = []
+			for k in RAMP_CELLS:
+				cells.append(Vector2i(here.x, here.y - 1 - k))
+			ramps.append({"x": here.x, "upper": here, "cells": cells, "band": band(next.y), "top": center(here) + Vector3(0, 0, -CELL_M * 0.5), "foot": center(Vector2i(here.x, here.y - RAMP_CELLS)) + Vector3(0, 0, -CELL_M * 0.5)})
+			straight = RAMP_CELLS
+		here = next
 		_put(here, Cell.FLOOR)
 		route.append(here)
 	plaza_cell = Vector2i(clampi(size.x / 2 + _rng.randi_range(-1, 1), 1, size.x - 2), clampi(size.y / 2 + _rng.randi_range(-1, 1), 2, size.y - 3))
@@ -294,11 +357,21 @@ func _route() -> void:
 		for dz in range(-1, 2):
 			_put(plaza_cell + Vector2i(dx, dz), Cell.FLOOR)
 	_field_cells()
+	if not ramps.is_empty():
+		# Beside a ramp (M6): a cell with no way in but across the ramp is the void (the stair's sides).
+		var reach := _reach_from_start()
+		for c in floor_cells():
+			if not reach.has(c):
+				_put(c, Cell.VOID)
 
 
 func _reserved(c: Vector2i) -> bool:
 	if route.has(c):
 		return true
+	for r in ramps:
+		for rc in r["cells"]:
+			if absi(c.x - rc.x) <= 1 and c.y == rc.y:
+				return true  # a ramp and the cells beside it (M6)
 	if not vault.is_empty():
 		return true  # the hall is the vault's plan (M4): no ruin or hole of the dice
 	if not room.is_empty() and (room["rect"] as Rect2i).grow(1).has_point(c):
@@ -397,6 +470,25 @@ func _board() -> void:
 		blocks.append({"rect": rect, "kind": "board", "seed": hash("%d:board" % ruins.seed), "front": front})
 		board = {"rect": rect, "front": front, "face": mid + out * (CELL_M * 0.5 - BLOCK_INSET), "out": out, "along": Vector3(out.z, 0, -out.x), "width": CELL_M * 2.0 - BLOCK_INSET * 2.0}
 		return
+
+
+## The shell (M6): a block of two cells on the end row behind the exit cell (the exit a row in from the end), its back
+## on the void and its face to the start, with the exit cell before it: `~`'s terminal, read from the hatch.
+func _shell() -> void:
+	if ruins.shell == "":
+		return
+	var c := Vector2i(exit_cell.x, exit_cell.y - 1)
+	var c2 := c + Vector2i(1 if exit_cell.x + 1 <= size.x - 2 else -1, 0)
+	for cc in [c, c2]:
+		_put(cc, Cell.FLOOR)
+	var rect := Rect2i(Vector2i(mini(c.x, c2.x), c.y), Vector2i(2, 1))
+	for x in range(rect.position.x, rect.end.x):
+		_put(Vector2i(x, rect.position.y), Cell.BLOCK)
+	var front := 2  # south: toward the start
+	var out := Vector3(SIDES[front].x, 0, SIDES[front].y)
+	var mid := (center(rect.position) + center(rect.end - Vector2i.ONE)) * 0.5
+	blocks.append({"rect": rect, "kind": "shell", "seed": hash("%d:shell" % ruins.seed), "front": front})
+	shell = {"rect": rect, "front": front, "face": mid + out * (CELL_M * 0.5 - BLOCK_INSET), "out": out, "along": Vector3(out.z, 0, -out.x), "width": CELL_M * 2.0 - BLOCK_INSET * 2.0}
 
 
 ## How far `p` (world space) is down the decay (M5): 0 at the start's row and before it, 1 at the exit's row and past
@@ -547,6 +639,8 @@ func _shop() -> void:
 
 ## Marks `rect` as `kind` if every cell of it is open floor off the route, and the floor stays one piece; else nothing.
 func _try_mark(rect: Rect2i, kind: int) -> bool:
+	if band(rect.position.y) != band(rect.end.y - 1):
+		return false  # never across a step line (M6)
 	for x in range(rect.position.x, rect.end.x):
 		for z in range(rect.position.y, rect.end.y):
 			var c := Vector2i(x, z)
@@ -564,16 +658,27 @@ func _try_mark(rect: Rect2i, kind: int) -> bool:
 
 
 func _floor_connected() -> bool:
+	return _reach_from_start().size() == floor_cells().size()
+
+
+## Every floor cell a walk from the start reaches, cell to cell; a ramp (M6) is entered and left only along its length
+## (its rails wall its sides), so a cell whose one way in is across a ramp is not reached.
+func _reach_from_start() -> Dictionary:
 	var seen := {start_cell: true}
 	var todo: Array[Vector2i] = [start_cell]
 	while not todo.is_empty():
 		var c: Vector2i = todo.pop_back()
 		for s in SIDES:
 			var n: Vector2i = c + s
-			if not seen.has(n) and cell(n) == Cell.FLOOR:
-				seen[n] = true
-				todo.append(n)
-	return seen.size() == floor_cells().size()
+			if seen.has(n) or cell(n) != Cell.FLOOR:
+				continue
+			if s.x != 0 and (on_ramp(c) or on_ramp(n)):
+				continue
+			if band(c.y) != band(n.y) and not (on_ramp(c) or on_ramp(n)):
+				continue  # a step line is crossed on a ramp alone (the cliff stands everywhere else)
+			seen[n] = true
+			todo.append(n)
+	return seen
 
 
 ## Every floor cell.
@@ -592,6 +697,9 @@ func _edges() -> void:
 			var n := cell(c + SIDES[side])
 			if n == Cell.VOID or n == Cell.HOLE:
 				edges.append({"cell": c, "side": side, "hole": n == Cell.HOLE, "overlook": n == Cell.VOID and _rng.randf() < 0.45, "seed": _rng.randi()})
+			elif band(c.y + SIDES[side].y) > band(c.y) and not _ramp_top(c, side):
+				# A step down (M6): a lip along the upper cell's edge, the cliff of racks under it.
+				edges.append({"cell": c, "side": side, "hole": false, "overlook": false, "drop": true, "seed": _rng.randi()})
 	if ruins.breach != "":
 		# The exit's side onto the void (the far side first) is the gate: a portal onto a gangway, no overlook.
 		for side in [0, 3, 1]:
@@ -607,10 +715,33 @@ func _edges() -> void:
 			if found:
 				break
 	for e in edges:
-		var at := center(e["cell"]) + Vector3(SIDES[e["side"]].x, 0.0, SIDES[e["side"]].y) * (CELL_M * 0.5 + PARAPET_T * 0.5)
 		var along_x: bool = e["side"] % 2 == 0
+		if e.get("drop", false):
+			# The lip (M6): low enough to jump, high enough to stop a walker; the cliff under the edge, down to the band below.
+			var out := Vector3(SIDES[e["side"]].x, 0.0, SIDES[e["side"]].y)
+			var lip_at := center(e["cell"]) + out * (CELL_M * 0.5 - LIP_T * 0.5)
+			var lip := Vector3(CELL_M, LIP_H, LIP_T) if along_x else Vector3(LIP_T, LIP_H, CELL_M)
+			boxes.append({"xform": Transform3D(Basis.IDENTITY, lip_at + Vector3(0, LIP_H * 0.5, 0)), "size": lip, "kind": "lip"})
+			var drop := floor_y(e["cell"]) - floor_y(e["cell"] + SIDES[e["side"]])
+			var cliff_at := center(e["cell"]) + out * (CELL_M * 0.5 - CLIFF_T * 0.5)
+			var cliff := Vector3(CELL_M + CLIFF_T, drop, CLIFF_T) if along_x else Vector3(CLIFF_T, drop, CELL_M + CLIFF_T)
+			boxes.append({"xform": Transform3D(Basis.IDENTITY, cliff_at - Vector3(0, drop * 0.5, 0)), "size": cliff, "kind": "cliff"})
+			continue
+		var at := center(e["cell"]) + Vector3(SIDES[e["side"]].x, 0.0, SIDES[e["side"]].y) * (CELL_M * 0.5 + PARAPET_T * 0.5)
 		var box := Vector3(CELL_M + PARAPET_T, PARAPET_H, PARAPET_T) if along_x else Vector3(PARAPET_T, PARAPET_H, CELL_M + PARAPET_T)
 		boxes.append({"xform": Transform3D(Basis.IDENTITY, at + Vector3(0, PARAPET_H * 0.5, 0)), "size": box, "kind": "parapet"})
+	for r in ramps:
+		# A ramp (M6): a slab thick enough to fill the wedge under it, its top the slope from the step line to its foot;
+		# a rail along each side, stopping short of the foot so the landing opens.
+		var xf := ramp_xform(r)
+		var top: Vector3 = r["top"]
+		var foot: Vector3 = r["foot"]
+		var length := top.distance_to(foot)
+		var thick := ruins.drop_m + SLAB_M
+		boxes.append({"xform": Transform3D(xf.basis, xf.origin - xf.basis.y * (thick * 0.5)), "size": Vector3(CELL_M, thick, length), "kind": "ramp"})
+		for sx in [-1.0, 1.0]:
+			var rail_at := xf.origin + xf.basis.x * float(sx) * (CELL_M * 0.5 - RAIL_T * 0.5) + xf.basis.y * (RAIL_H * 0.5) + xf.basis.z * 0.5
+			boxes.append({"xform": Transform3D(xf.basis, rail_at), "size": Vector3(RAIL_T, RAIL_H, length - 1.0), "kind": "cliff"})
 	for b in blocks:
 		var r: Rect2i = b["rect"]
 		var tall := BLOCK_H if b["kind"] != "fallen" else 4.2
@@ -622,6 +753,23 @@ func _edges() -> void:
 		var hi := center(r.end - Vector2i.ONE) + Vector3(CELL_M, 0, CELL_M) * 0.5
 		var sz := Vector3(hi.x - lo.x - BLOCK_INSET * 2.0, tall, hi.z - lo.z - BLOCK_INSET * 2.0)
 		boxes.append({"xform": Transform3D(Basis.IDENTITY, (lo + hi) * 0.5 + Vector3(0, tall * 0.5, 0)), "size": sz, "kind": "block"})
+
+
+## True when `side` of cell `c` is the head of a ramp (M6): no lip, no cliff there.
+func _ramp_top(c: Vector2i, side: int) -> bool:
+	for r in ramps:
+		if r["upper"] == c and side == 0:
+			return true
+	return false
+
+
+## A ramp's frame (M6): its origin the middle of its slope, x across it, y its surface's normal, z up the slope.
+static func ramp_xform(r: Dictionary) -> Transform3D:
+	var top: Vector3 = r["top"]
+	var foot: Vector3 = r["foot"]
+	var down := (foot - top).normalized()
+	var normal := Vector3.RIGHT.cross(down).normalized()
+	return Transform3D(Basis(Vector3.RIGHT, normal, -down), (top + foot) * 0.5)
 
 
 func _floor_boxes() -> void:
@@ -688,6 +836,27 @@ func _points() -> void:
 				var c := Vector2i(x, z) + front
 				if not taken.has(c):
 					taken.append(c)
+	if not shell.is_empty():
+		# The shell (M6): read from the exit cell, the hatch under the reader; the cells before it taken.
+		points["shell"] = center(exit_cell) + Vector3(0, STAND_Y, 0)
+		var front: Vector2i = SIDES[shell["front"]]
+		var rect: Rect2i = shell["rect"]
+		for x in range(rect.position.x, rect.end.x):
+			for z in range(rect.position.y, rect.end.y):
+				var c := Vector2i(x, z) + front
+				if not taken.has(c):
+					taken.append(c)
+	for i in ramps.size():
+		# The ramps (M6): the head of each on the band above, its landing on the band below; its cells never a point's.
+		var r: Dictionary = ramps[i]
+		points["ramp_%d" % i] = center(r["upper"]) + Vector3(0, STAND_Y, 0)
+		var landing: Vector2i = Vector2i(r["x"], (r["upper"] as Vector2i).y - RAMP_CELLS - 1)
+		points["foot_%d" % i] = center(landing) + Vector3(0, STAND_Y, 0)
+		for c in r["cells"]:
+			if not taken.has(c):
+				taken.append(c)
+		if not taken.has(landing):
+			taken.append(landing)
 	# Logs: tucked against a ruin or an edge, away from each other.
 	var nooks: Array[Vector2i] = []
 	for c in open:
@@ -949,7 +1118,7 @@ func point_names() -> PackedStringArray:
 # --- Cover. ---
 
 func _cover() -> void:
-	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell and not _reserved_field(c))
+	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell and not _reserved_field(c) and not on_ramp(c))
 	for t in ruins.cover * 3:
 		if cover.size() >= ruins.cover or open.is_empty():
 			break
@@ -1010,7 +1179,7 @@ func unreachable() -> PackedStringArray:
 				todo.append(m)
 	var out := PackedStringArray()
 	for name in points:
-		if (points[name] as Vector3).y < FLOOR_Y - 1.0:
+		if name == "below":
 			continue  # the pocket under a breach (C37): reached by falling, never walked to
 		var g: Vector2i = at_of.call(points[name])
 		if seen[g.y * n.x + g.x] == 0:
@@ -1030,7 +1199,7 @@ func walk_grid() -> Dictionary:
 		for i in n.x:
 			var w := Vector3(-ext.x + (i + 0.5) * WALK_M, 0, -ext.y + (j + 0.5) * WALK_M)
 			open[j * n.x + i] = 1 if cell(cell_at(w)) == Cell.FLOOR else 0
-	var solid: Array = boxes.filter(func(b): return not ["floor", "hatch", "pocket"].has(b["kind"]) and b["size"].y > STEP_H)
+	var solid: Array = boxes.filter(func(b): return not ["floor", "hatch", "pocket", "ramp"].has(b["kind"]) and b["size"].y > STEP_H)
 	for p in cover:
 		solid.append({"xform": Transform3D(Basis(Vector3.UP, p["yaw"]), p["at"]), "size": p["size"]})
 	# Each box drawn onto the squares under it, grown by a player's radius.
@@ -1080,7 +1249,9 @@ func walk_route(from: Vector3, to: Vector3) -> PackedVector3Array:
 		return out
 	var ids := a.get_id_path(start, end)
 	for k in range(1, ids.size()):
-		out.append(Vector3(-ext.x + (ids[k].x + 0.5) * WALK_M, FLOOR_Y, -ext.y + (ids[k].y + 0.5) * WALK_M))
+		var w := Vector3(-ext.x + (ids[k].x + 0.5) * WALK_M, FLOOR_Y, -ext.y + (ids[k].y + 0.5) * WALK_M)
+		w.y = floor_y(cell_at(w))  # its band's floor (M6)
+		out.append(w)
 	return out
 
 
@@ -1156,7 +1327,7 @@ func in_breach_way(at: Vector3, reach: float) -> bool:
 # --- Scenery. ---
 
 func _scenery() -> void:
-	var outer := edges.filter(func(e): return not e["hole"])
+	var outer := edges.filter(func(e): return not e["hole"] and not e.get("drop", false))
 	var tries := 0
 	while towers.size() < ruins.towers and tries < ruins.towers * 8 and not outer.is_empty():
 		tries += 1
@@ -1295,11 +1466,11 @@ func cable_low(c: Dictionary) -> float:
 		for i in line.size():
 			var p: Vector3 = line[i]
 			if cell(cell_at(p)) != Cell.VOID:
-				low = minf(low, p.y - FLOOR_Y)
+				low = minf(low, p.y - floor_y(cell_at(p)))
 			if i > 0:
 				var mid: Vector3 = (p + (line[i - 1] as Vector3)) * 0.5
 				if cell(cell_at(mid)) != Cell.VOID:
-					low = minf(low, mid.y - FLOOR_Y)
+					low = minf(low, mid.y - floor_y(cell_at(mid)))
 	return low
 
 
@@ -1340,6 +1511,8 @@ func ascii() -> String:
 		for x in size.x:
 			var c := Vector2i(x, z)
 			var ch: String = [".", "#", "B", "o"][cell(c)]
+			if on_ramp(c):
+				ch = "/"
 			if c == start_cell:
 				ch = "S"
 			elif c == exit_cell:

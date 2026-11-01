@@ -82,6 +82,26 @@ extends Resource
 ## two); the point "board" in front of it.
 @export var board := ""
 @export var board_lines := ""
+## Its terraces (M6): how many times the floor steps down between the start and the exit (0: flat), each step `drop_m`
+## deep (RuinsLayout.floor_y()): the floor is cut into bands of rows, the start's the highest, the exit's the lowest; a
+## ramp of racks carries the route down each step and a cliff of racks stands along the rest of it. STORY.md mission 6:
+## a vertical descent through nested directories.
+@export var terraces := 0
+@export var drop_m := 4.5
+## Its water (M6), metres under the lowest floor (0: none): the void is a drowned plain, its surface holding the signs'
+## neon and the rain; what falls into it is gone (the fall puts the player back at the start).
+@export var water := 0.0
+## Its own colours (M6), a RuinsRegister.PALETTES name, or "" for the register's own: the signs, strips, screens, fog,
+## sky and puddles of its cyberpunk read in another family (the deepest ruins are not mission 2's street).
+@export var palette := ""
+## Its shell (M6), "exit" or "" for none: a terminal screen on a block at the exit end facing the start, dark until a
+## mission wakes it, where `~`'s lines type themselves (the point "shell" in front of it); shell_lines is what it shows
+## before anything types (lines in the sign font, a "|" between two). Not with a room, a vault or a board.
+@export var shell := ""
+@export var shell_lines := ""
+## Its breach's pocket is the core's (M6): no remnant tower or sign below, a red heat far under the deck instead, dark
+## until a mission lights it (the drop into the core). Needs a breach; remnant may be "".
+@export var breach_core := false
 
 
 ## What is wrong with it; empty when it is good.
@@ -106,8 +126,10 @@ func problems() -> PackedStringArray:
 		out.append("%s: breach \"%s\" (only the exit: its cell is never under cover, and its gate meets the void)" % [id, breach])
 	if breach != "" and (breach_depth < 6.0 or breach_depth > 24.0):
 		out.append("%s: breach_depth %.1f outside 6 to 24" % [id, breach_depth])
-	if breach != "" and remnant.strip_edges() == "":
+	if breach != "" and remnant.strip_edges() == "" and not breach_core:
 		out.append("%s: a breach with no remnant sign" % id)
+	if breach_core and breach == "":
+		out.append("%s: the core under a breach it has not" % id)
 	if shop != "" and shop != "plaza":
 		out.append("%s: shop \"%s\" (only by the plaza)" % [id, shop])
 	if shop != "" and (shop_sign.strip_edges() == "" or shop_screen.strip_edges() == ""):
@@ -186,4 +208,29 @@ func problems() -> PackedStringArray:
 		for word in RuinsLayout.NEVER_SHOWN:
 			if text.to_lower().contains(word):
 				out.append("%s: \"%s\" gives the story away (\"%s\")" % [id, text, word])
+	if terraces < 0 or terraces > RuinsLayout.TERRACES_MOST:
+		out.append("%s: terraces %d (0 to %d)" % [id, terraces, RuinsLayout.TERRACES_MOST])
+	if terraces > 0 and (drop_m < RuinsLayout.DROP_LEAST or drop_m > RuinsLayout.DROP_MOST):
+		out.append("%s: drop_m %.1f (%.1f to %.1f: a jump cannot clear it, a ramp can carry it)" % [id, drop_m, RuinsLayout.DROP_LEAST, RuinsLayout.DROP_MOST])
+	if terraces > 0 and cells.y < (terraces + 1) * RuinsLayout.BAND_ROWS_LEAST:
+		out.append("%s: %d terraces need cells at least %d long (%d rows a band)" % [id, terraces, (terraces + 1) * RuinsLayout.BAND_ROWS_LEAST, RuinsLayout.BAND_ROWS_LEAST])
+	if terraces > 0 and (vault != "" or room != "" or field != "" or pristine):
+		out.append("%s: terraces with a vault, a room, a field or pristine (the flat sets)" % id)
+	if water < 0.0 or water > 30.0:
+		out.append("%s: water %.1f (0 none, else up to 30 m under the lowest floor)" % [id, water])
+	if palette != "" and not RuinsRegister.PALETTES.has(palette):
+		out.append("%s: palette \"%s\" (%s)" % [id, palette, ", ".join(RuinsRegister.PALETTES.keys())])
+	if shell != "" and shell != "exit":
+		out.append("%s: shell \"%s\" (only at the exit end)" % [id, shell])
+	if shell != "" and (room != "" or vault != "" or board != ""):
+		out.append("%s: a shell with a room, a vault or a board (one screen a district)" % id)
+	if shell != "" and shell_lines.strip_edges() == "":
+		out.append("%s: a shell with no lines on its screen" % id)
+	if shell != "":
+		for line in shell_lines.split("|", false):
+			if not RuinsLayout.legible_up_to(line.strip_edges(), RuinsLayout.VAULT_LINE_LAST):
+				out.append("%s: shell line \"%s\" is not legible in the sign font (up to %d letters)" % [id, line.strip_edges(), RuinsLayout.VAULT_LINE_LAST])
+			for word in RuinsLayout.NEVER_SHOWN:
+				if line.to_lower().contains(word):
+					out.append("%s: shell line \"%s\" gives the story away" % [id, line.strip_edges()])
 	return out

@@ -9,46 +9,316 @@ order = 6
 title = "nohup"
 register = "cyberpunk"
 goal = "Go down to the oldest directory in the machine and find the shell that never hung up."
-loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon", "sighup", "dev_null")
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon")
 grants = PackedStringArray("sighup", "dev_null")
 abilities = PackedStringArray("sigstop")
 objectives = [{
-"at": Vector3(0, 0.95, -14),
+"at": "foot_0",
+"hint": "down the ramp of racks. Jump the lip to drop",
 "id": "down",
 "kind": "reach",
-"label": "oldest directory",
+"label": "the first landing",
 "radius": 2.5,
-"text": "Go down to the oldest directory"
+"text": "Go down: the first landing"
 }, {
-"id": "alone",
-"kind": "survive",
-"seconds": 60.0,
-"text": "Hold on alone: the link is cut"
+"arms": ["sighup"],
+"count": 3,
+"hint": "Shift+4 SIGHUP: they reload and forget you",
+"id": "hangup",
+"kind": "hup",
+"of": ["watch_1", "watch_2"],
+"text": "Hang up on the watchers"
 }, {
-"count": 6,
+"count": 3,
 "daemon": "any",
-"id": "shell",
+"hint": "confused, they lash at whatever is nearest",
+"id": "clear",
 "kind": "kill",
-"text": "Clear the drowned city"
+"of": ["watch_1", "watch_2"],
+"text": "Clear the landing"
+}, {
+"arms": ["dev_null"],
+"count": 5,
+"daemon": "any",
+"hint": "Shift+3 /dev/null: throw it into the crowd",
+"id": "sink",
+"kind": "kill",
+"of": ["queue_1", "queue_2"],
+"text": "Send the crowd at the stair to /dev/null"
+}, {
+"at": "shell",
+"hint": "F SIGSTOP: stop the world. Don't touch it",
+"id": "dark",
+"kind": "reach",
+"label": "the oldest directory",
+"radius": 3.0,
+"text": "Reach the oldest directory in the dark",
+"unlocks": ["sigstop"]
+}, {
+"hint": "it is typing. to you",
+"id": "listen",
+"kind": "survive",
+"seconds": 9.0,
+"text": "Let the shell finish"
+}, {
+"hint": "Shift+4 SIGHUP: throw it at the screen",
+"id": "hup",
+"kind": "hup",
+"prop": "shell",
+"text": "Hang up the shell"
+}, {
+"at": "below",
+"hint": "the floor is going",
+"id": "fall",
+"kind": "reach",
+"label": "the core",
+"radius": 7.0,
+"text": "Fall"
 }]
-logs = []
+logs = [{
+"at": "log_0",
+"id": "mount",
+"name": "mount.log",
+"text": "mount /oldest\n# flooded. nothing here has been opened in years.\n# the lights are on. nobody is home."
+}, {
+"at": "log_1",
+"id": "todo",
+"name": "TODO.old",
+"text": "# TODO: finish this\n# TODO: come back for the rest\n# TODO: log out\n(none of them done)"
+}, {
+"at": "log_2",
+"id": "last",
+"name": "last.log",
+"text": "LAST LOGIN: years ago\nSESSION: still open\nTERMINAL: gone\n# a shell with no terminal keeps running."
+}, {
+"at": "log_3",
+"id": "zero",
+"name": "project_zero/README",
+"text": "# project zero\n# the first one. the one that started it all.\n# status: running"
+}]
 lines = [{
-"on": "done:alone",
-"text": "...still here? I lost you for a second. Don't do that again.",
+"on": "start",
+"text": "audit: user=? action=enter path=/oldest result=DENIED reason=\"escalation approved\"",
+"who": "auditor"
+}, {
+"on": "start",
+"text": "The bottom of the tree. Your oldest projects, drowned. Whatever never logged out is down there.",
 "who": "ai"
 }, {
-"on": "begin:shell",
+"on": "begin:down",
+"text": "Everything's awake down here. All three kinds. The way down is a ramp of racks: find it, and keep moving.",
+"wait": 3.0,
+"who": "ai"
+}, {
+"on": "begin:hangup",
+"text": "audit: depth=2. watchers reniced. escalation pending.",
+"who": "auditor"
+}, {
+"on": "begin:hangup",
+"text": "SIGHUP. Hang up on them: a process that loses its terminal rereads its config and forgets what it was doing.",
+"wait": 1.0,
+"who": "ai"
+}, {
+"on": "done:hangup",
+"text": "They've lost the thread. Confused, they lash at whatever's nearest. Each other included.",
+"who": "ai"
+}, {
+"on": "begin:sink",
+"text": "The whole queue, at the foot of the stair. /dev/null: throw it into the middle. Everything near it goes too.",
+"who": "ai"
+}, {
+"on": "begin:dark",
+"text": "audit: escalation approved. black ICE dispatched to depth=3.",
+"who": "auditor"
+}, {
+"on": "begin:dark",
+"text": "Black ICE. Don't shoot it. Don't touch it. Get the brute ready and get *out*.",
+"wait": 0.6,
+"who": "ai"
+}, {
+"on": "begin:dark",
+"text": "SIGSTOP's yours now. F stops the world, you included, almost. The lights are going. If I drop, run. Don't wait for m",
+"wait": 2.6,
+"who": "ai"
+}, {
+"on": "wave:black_1",
+"text": "audit: black ICE on the floor. link severed. intruder alone at depth=3.",
+"who": "auditor"
+}, {
+"on": "done:dark",
+"text": "audit: path=/oldest owner=user. black ICE recalled: the user will handle it.",
+"who": "auditor"
+}, {
+"on": "done:dark",
+"text": "...still here? I lost you for a second. Don't do that again.",
+"wait": 2.0,
+"who": "ai"
+}, {
+"on": "begin:listen",
 "text": "log out. i'll keep it all running. you never did anyway.",
+"wait": 1.5,
 "who": "tilde"
 }, {
-"on": "complete",
+"on": "begin:listen",
+"text": "That shell's been open for four years. It never logged out. It never *slept*.",
+"wait": 6.5,
+"who": "ai"
+}, {
+"on": "begin:hup",
+"text": "It's talking to you. Hang up on it. SIGHUP: every shell dies when its terminal goes.",
+"who": "ai"
+}, {
+"on": "done:hup",
 "text": "nohup. remember?",
+"wait": 1.0,
 "who": "tilde"
+}, {
+"on": "done:hup",
+"text": "...it ignores hangups. It's been ignoring them for years. Move. The floor.",
+"wait": 3.2,
+"who": "ai"
+}, {
+"on": "complete",
+"text": "That heat. That's the core. That's where it lives. Next time we go in, we go in with everything.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "fail",
+"text": "Drowned, or flatlined. Either way the shell's still running. Again.",
+"who": "ai"
 }]
 transitions = []
+waves = [{
+"count": 3,
+"every": 0.6,
+"from": ["v_top"],
+"health": 60.0,
+"id": "top_1",
+"kind": "rogue",
+"on": "start"
+}, {
+"count": 3,
+"every": 0.7,
+"from": ["v_top2"],
+"health": 60.0,
+"id": "top_2",
+"kind": "zombie",
+"on": "start"
+}, {
+"count": 1,
+"delay": 6.0,
+"from": ["v_top"],
+"health": 90.0,
+"id": "top_3",
+"kind": "swarm",
+"on": "start"
+}, {
+"count": 3,
+"every": 0.6,
+"from": ["v_mid"],
+"health": 60.0,
+"id": "watch_1",
+"kind": "rogue",
+"on": "begin:hangup"
+}, {
+"count": 2,
+"every": 0.7,
+"from": ["v_mid2"],
+"health": 60.0,
+"id": "watch_2",
+"kind": "zombie",
+"on": "begin:hangup"
+}, {
+"count": 4,
+"dormant": true,
+"from": ["q_foot"],
+"health": 60.0,
+"id": "queue_1",
+"kind": "zombie",
+"on": "begin:clear",
+"tagged": false,
+"wakes": "begin:sink"
+}, {
+"count": 3,
+"every": 0.6,
+"from": ["v_low"],
+"health": 60.0,
+"id": "queue_2",
+"kind": "rogue",
+"on": "begin:sink"
+}, {
+"count": 1,
+"delay": 4.0,
+"from": [Vector3(12, -8.05, -20)],
+"id": "black_1",
+"kind": "black",
+"on": "begin:dark",
+"withdraws": "done:dark"
+}, {
+"count": 4,
+"delay": 11.0,
+"every": 0.8,
+"from": ["v_bottom"],
+"health": 60.0,
+"id": "dark_1",
+"kind": "zombie",
+"on": "begin:dark"
+}, {
+"count": 1,
+"delay": 15.0,
+"from": ["v_low"],
+"health": 90.0,
+"id": "dark_2",
+"kind": "swarm",
+"on": "begin:dark"
+}]
+props = [{
+"at": Vector3(0, 0.95, 24),
+"id": "v_top",
+"kind": "vent"
+}, {
+"at": Vector3(-8, 0.95, 32),
+"id": "v_top2",
+"kind": "vent"
+}, {
+"at": Vector3(12, -3.55, 0),
+"id": "v_mid",
+"kind": "vent"
+}, {
+"at": Vector3(-8, -3.55, -8),
+"id": "v_mid2",
+"kind": "vent"
+}, {
+"at": Vector3(8, -8.05, -28),
+"id": "v_low",
+"kind": "vent"
+}, {
+"at": Vector3(-16, -8.05, -28),
+"id": "v_bottom",
+"kind": "vent"
+}, {
+"at": Vector3(-12, -8.05, -25),
+"gap": 1.6,
+"id": "q_foot",
+"kind": "queue",
+"yaw": 180.0
+}, {
+"id": "shell",
+"kind": "shell",
+"wakes": "done:dark"
+}, {
+"after": 4.5,
+"id": "breach",
+"kind": "breach",
+"lights": "done:hup",
+"opens": "done:hup"
+}]
+end_hold_s = 7.0
+restores = true
 ice = true
+ruins = "deep_dirs"
 fail_time_s = 0.0
 next = "kill_9"
-playable = false
+playable = true
 draft = false
 hidden = false

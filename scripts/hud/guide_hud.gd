@@ -666,6 +666,8 @@ func _show_answer(text: String) -> void:
 ## False, and nothing shown, while the panel is in use: the ask box, a question, a model load, a call in flight or a
 ## live answer still up; the mission tries it again.
 func story_line(text: String, ms: float = -1.0) -> bool:
+	if link_cut():
+		return false  # Black ICE has the line (M6, STORY.md mission 6): the scripted silence; the line waits
 	if _typing or _consent_prompt or _load_ui != "" or _asking or (_answer_ms_left > 0.0 and _body.visible):
 		return false
 	_title.text = STORY_TITLE

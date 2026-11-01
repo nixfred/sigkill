@@ -62,8 +62,10 @@ static func paint_light(kit: ShapeKit, phase: float, health: float, slot: int, e
 	kit.paint = Color(fposmod(phase, 1.0), clampf(health, 0.0, 1.0), float(slot) / 8.0, clampf(energy / ENERGY_MOST, 0.0, 1.0))
 
 
-static func paint_floor(kit: ShapeKit, damage: float, rims: int) -> void:
-	kit.paint = Color(clampf(damage, 0.0, 1.0), float(rims) / 15.0, 0.0, 1.0)
+## A slab's paint: its damage, its rims, and (M6) how far under FLOOR_Y its top lies, in sixteenths of a metre per
+## eighth (the shader lights a broken side where it meets its own top, wherever that stands).
+static func paint_floor(kit: ShapeKit, damage: float, rims: int, top_y: float = 0.0) -> void:
+	kit.paint = Color(clampf(damage, 0.0, 1.0), float(rims) / 15.0, clampf(-top_y / 16.0, 0.0, 1.0), 1.0)
 
 
 ## A flat light quad `size` big, centred on `at` in the kit's pose, facing `out` (one of the axes).
@@ -524,7 +526,85 @@ static func cover(kit: ShapeKit, b: Dictionary, p: Dictionary, rng: RandomNumber
 static func edge(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, rng: RandomNumberGenerator) -> void:
 	var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 	var out := Vector3(side.x, 0, side.y)
+	if e.get("drop", false):
+		lip_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, rng)
+		return
 	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng, layout.pristine_at(layout.center(e["cell"])))
+
+
+## A lip along a step's upper edge (M6): a low rail of light a cell long (RuinsLayout.LIP_H: over a walker's step, under a
+## jump), its middle on the floor's edge at `line`, facing `out` (the drop), a strip of light along its top so the edge
+## reads from across the floor and from below.
+static func lip_at(kit: ShapeKit, b: Dictionary, line: Vector3, out: Vector3, rng: RandomNumberGenerator) -> void:
+	var along := Vector3(out.z, 0, -out.x)
+	var base := Transform3D(Basis(along, Vector3.UP, out), line)
+	var half := RuinsLayout.CELL_M * 0.5
+	var t := RuinsLayout.LIP_T
+	var h := RuinsLayout.LIP_H
+	kit.pose = base
+	paint_body(kit, 0.35, 0.9)
+	kit.box(b["body"], Vector3(0, h * 0.5, -t * 0.5), Vector3(half * 2.0, h, t * 0.9))
+	for x in [-half + 0.3, 0.0, half - 0.3]:
+		kit.box(b["body"], Vector3(x, h * 0.5 + 0.06, -t * 0.5), Vector3(0.12, h + 0.12, t * 1.2))
+	paint_light(kit, rng.randf(), _health(rng, 0.9), Slot.STRIP, 2.2)
+	kit.box(b["light"], Vector3(0, h + 0.02, -t * 0.5), Vector3(half * 1.9, 0.03, t * 0.5))
+	paint_light(kit, rng.randf(), _health(rng, 0.8), Slot.STRIP, 1.6)
+	kit.box(b["light"], Vector3(0, 0.1, 0.01), Vector3(half * 1.9, 0.03, 0.012))
+
+
+## A cliff under a step's upper edge (M6): the band above's floor standing on a wall of racks down to the band below,
+## a cell wide, its modules' lights facing the lower floor; `e` the drop edge of `layout`.
+static func cliff(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, rng: RandomNumberGenerator) -> void:
+	var side: Vector2i = RuinsLayout.SIDES[e["side"]]
+	var out := Vector3(side.x, 0, side.y)
+	var c: Vector2i = e["cell"]
+	var drop := layout.floor_y(c) - layout.floor_y(c + side)
+	var at := layout.center(c) + out * (RuinsLayout.CELL_M * 0.5 - 0.45)
+	var t := {"at": at, "tall": -RuinsLayout.SLAB_M - 0.02, "foot": drop + 0.4, "width": RuinsLayout.CELL_M - 0.05, "depth": 0.9, "yaw": atan2(-out.x, -out.z), "lean": Vector2.ZERO, "seed": rng.randi(), "inside": false}
+	rack_tower(kit, b, t, rng, false)
+
+
+## A ramp down a step (M6): the slope from the step line to its foot as plates of floor, a rail of light along each side
+## (the rails' boxes are the plan's), its sides racks down to the band below, so from the floor it reads as a stair of
+## servers; `r` a ramp of `layout`.
+static func ramp(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, r: Dictionary, rng: RandomNumberGenerator) -> void:
+	var xf := RuinsLayout.ramp_xform(r)
+	var top: Vector3 = r["top"]
+	var foot: Vector3 = r["foot"]
+	var length := top.distance_to(foot)
+	var w := RuinsLayout.CELL_M
+	kit.pose = xf
+	# The deck: plates along the slope, each a slab's face.
+	var plates := maxi(int(length / 2.0), 2)
+	var pitch := length / float(plates)
+	for i in plates:
+		var z := -length * 0.5 + pitch * (i + 0.5)
+		paint_floor(kit, rng.randf_range(0.1, 0.5), 0, top.y)
+		kit.box(b["floor"], Vector3(0, -RuinsLayout.SLAB_M * 0.5, z), Vector3(w, RuinsLayout.SLAB_M, pitch - 0.04))
+	# The rails: posts and a lit top bar, stopping short of the foot.
+	var rail_len := length - 1.0
+	for sx in [-1.0, 1.0]:
+		var rx := float(sx) * (w * 0.5 - RuinsLayout.RAIL_T * 0.5)
+		paint_body(kit, 0.3, 0.9)
+		var z := -rail_len * 0.5 + 0.5
+		while z < rail_len * 0.5 + 0.5:
+			kit.box(b["body"], Vector3(rx, RuinsLayout.RAIL_H * 0.5, z), Vector3(0.1, RuinsLayout.RAIL_H, 0.1))
+			z += 1.6
+		kit.box(b["body"], Vector3(rx, RuinsLayout.RAIL_H - 0.03, 0.5), Vector3(RuinsLayout.RAIL_T, 0.06, rail_len))
+		paint_light(kit, rng.randf(), 1.0, Slot.STRIP, 1.1)
+		kit.box(b["light"], Vector3(rx, RuinsLayout.RAIL_H + 0.02, 0.5), Vector3(0.06, 0.025, rail_len * 0.98))
+	# The sides: racks under the deck, down to the band below, facing out.
+	var drop := top.y - foot.y
+	var modules := maxi(int(length / 3.0), 2)
+	for sx in [-1.0, 1.0]:
+		for i in modules:
+			var k := (float(i) + 0.5) / float(modules)
+			var at := top.lerp(foot, k) + Vector3(float(sx) * (w * 0.5 - 0.5), 0, 0)
+			var deep := drop * (1.0 - k) + 0.3
+			if deep < 0.8:
+				continue
+			var t := {"at": at, "tall": -0.5, "foot": deep, "width": length / float(modules) * 0.95, "depth": 0.9, "yaw": atan2(-float(sx), 0.0), "lean": Vector2.ZERO, "seed": rng.randi(), "inside": false}
+			rack_tower(kit, b, t, rng, false)
 
 
 ## A parapet (or an overlook) a cell long, its middle on the floor's edge at `line`, facing `out` (C37: anywhere, the
@@ -618,7 +698,7 @@ static func slab(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, c: Vector2i,
 ## A cell's slab with its top's middle at `at` (C37: anywhere, the pocket's deck).
 static func slab_at(kit: ShapeKit, b: Dictionary, at: Vector3, damage: float, rims: int) -> void:
 	kit.pose = Transform3D.IDENTITY
-	paint_floor(kit, damage, rims)
+	paint_floor(kit, damage, rims, at.y)
 	kit.box(b["floor"], at - Vector3(0, RuinsLayout.SLAB_M * 0.5, 0), Vector3(RuinsLayout.CELL_M, RuinsLayout.SLAB_M, RuinsLayout.CELL_M))
 
 
@@ -702,7 +782,7 @@ static func shaft(kit: ShapeKit, b: Dictionary, top: Vector3, opening: float, de
 	var inner := opening * 0.5
 	var rim := half - inner
 	kit.pose = Transform3D(Basis.IDENTITY, top)
-	paint_floor(kit, 0.4, 0)
+	paint_floor(kit, 0.4, 0, top.y)
 	for side in 4:
 		var o := Vector3(RuinsLayout.SIDES[side].x, 0, RuinsLayout.SIDES[side].y)
 		var across := Vector3(absf(o.z), 0, absf(o.x))

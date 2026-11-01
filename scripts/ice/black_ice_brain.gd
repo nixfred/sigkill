@@ -190,8 +190,8 @@ func _free_step(from: Vector3, step: Vector3, d) -> Vector3:
 	var body := bt.radius_m * 0.8
 	var way := step / length
 	var hit: Dictionary = d.cast(from, from + way * (length + body))
-	if hit.is_empty():
-		return step
+	if hit.is_empty() or _walkable(hit):
+		return step  # a ramp's deck is floor to it too (M6)
 	var normal: Vector3 = hit["normal"]
 	normal.y = 0.0
 	normal = normal.normalized() if normal.length_squared() > 0.0001 else -way
@@ -200,4 +200,4 @@ func _free_step(from: Vector3, step: Vector3, d) -> Vector3:
 	if slid.length() < 0.000001:
 		return Vector3.ZERO
 	var again: Dictionary = d.cast(from, from + slid.normalized() * (slid.length() + body))
-	return slid if again.is_empty() else Vector3.ZERO
+	return slid if again.is_empty() or _walkable(again) else Vector3.ZERO

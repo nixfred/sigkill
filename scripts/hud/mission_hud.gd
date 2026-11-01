@@ -74,7 +74,7 @@ const ABILITY_ACTIONS := {"code_rain_vision": "code_rain_vision", "sigstop": "si
 ## The cache meter (M3): its words, and the share past which it reads hot.
 const CACHE_WORDS := "cache"
 const CACHE_HOT := 0.75
-const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "any": "daemons"}
+const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "black": "Black ICE", "any": "daemons"}
 ## The crontab (M5): its heading, the most jobs shown, a row's height, and under how many seconds a job that fails
 ## at the end blinks.
 const CRONTAB := "crontab -l"
@@ -177,6 +177,8 @@ func progress_text() -> String:
 			var entry := runner.def.log_of(str(o["log"]))
 			var at := runner.target_point()
 			return ("find %s  %d m" % [str(entry.get("name", "the log")), roundi(_metres_to(at))]) if at != Vector3.INF else "read"
+		"hup":
+			return "the shell" if o.has("prop") else "hung up  %d/%d" % [int(runner.progress), int(runner.need())]
 	return ""
 
 

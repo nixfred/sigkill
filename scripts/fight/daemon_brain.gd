@@ -138,6 +138,11 @@ const LOOK_SNAP_S := 0.22
 const WANDER_LEASH := 0.8
 ## A mission's walker's way round the ruins (M2): worked out again this often, seconds; a place on it this near reached.
 const ROUTE_EVERY_S := 0.6
+## A slope this flat under a cast is floor to walk, not a wall (M6: the ruins' ramps); how far down a walker looks for
+## its floor each step (a terrace's drop and more), and how high over its prey a mission's runaway flies (M6).
+const WALK_NORMAL_Y := 0.72
+const GROUND_SNAP_M := 7.0
+const SWARM_OVER_M := 1.0
 const ROUTE_REACHED_M := 0.8
 
 var dummy: Node3D
@@ -469,8 +474,8 @@ func _step_hunt(delta: float, d) -> void:
 		# A mission's daemon (C37) hears where its prey is now, and goes on.
 		last_seen = target
 		unseen_t = 0.0
-	elif unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m:
-		_go_home()
+	elif not relentless and (unseen_t > d.tuning.lose_s or _from_home() > d.tuning.leash_m):
+		_go_home()  # a mission's daemon has no leash (M6: down a ramp, a terrace from its vent, it goes on)
 		return
 	var chase: Vector3 = target if sees or d.is_decoy(prey) else last_seen
 	if not chase.is_finite():
@@ -612,6 +617,8 @@ func _step_recover(delta: float, d) -> void:
 
 func _step_return(delta: float, d) -> void:
 	art.drive(DaemonArt.Act.MOVE)
+	if relentless and alert(d):
+		return  # a mission's daemon (M6) takes the hunt up again wherever it is
 	_walk(home.origin, _speed(d), delta, d)
 	_face_way(delta, d)
 	if _flat(dummy.global_position - home.origin).length() <= HOME_M:
@@ -1223,7 +1230,8 @@ func _orbit_goal(target: Vector3, _delta: float, d) -> Vector3:
 		out = Vector3.BACK
 	var around := out.normalized().rotated(Vector3.UP, 0.5) * t.swarm_orbit_m
 	var goal := target + around
-	goal.y = home.origin.y if has_home else dummy.global_position.y
+	# At its spot's height; a mission's (no spot, M6) a little over its prey, down the terraces with it.
+	goal.y = home.origin.y if has_home else (target.y + SWARM_OVER_M if relentless else dummy.global_position.y)
 	return goal
 
 
@@ -1314,6 +1322,11 @@ func _shove(step: Vector3, d, fly: bool = false) -> bool:
 		var below: Dictionary = d.cast(next + Vector3.UP * MIDDLE_M, next + Vector3.DOWN * 3.0)
 		if not below.is_empty():
 			next.y = maxf(next.y, (below["position"] as Vector3).y - SWARM_LOW_M)
+	elif not fly:
+		# A walker keeps its feet on the floor under it (M6: down a ramp, onto a lower terrace).
+		var ground: Dictionary = d.cast(next + Vector3.UP * KNEE_M, next + Vector3.DOWN * GROUND_SNAP_M)
+		if not ground.is_empty() and (ground["normal"] as Vector3).y > WALK_NORMAL_Y:
+			next.y = (ground["position"] as Vector3).y
 	dummy.global_position = next
 	moved = true
 	var dt := maxf(dummy.get_physics_process_delta_time(), 0.0001)
@@ -1360,7 +1373,7 @@ func _free_step(from: Vector3, step: Vector3, d) -> Vector3:
 		return Vector3.ZERO
 	var way := step / length
 	var hit: Dictionary = d.cast(from, from + way * (length + RADIUS_M))
-	if hit.is_empty():
+	if hit.is_empty() or _walkable(hit):
 		return step
 	var normal: Vector3 = hit["normal"]
 	if kind != "swarm":
@@ -1372,7 +1385,12 @@ func _free_step(from: Vector3, step: Vector3, d) -> Vector3:
 	if slid.length() < 0.000001:
 		return Vector3.ZERO
 	var again: Dictionary = d.cast(from, from + slid.normalized() * (slid.length() + RADIUS_M))
-	return slid if again.is_empty() else Vector3.ZERO
+	return slid if again.is_empty() or _walkable(again) else Vector3.ZERO
+
+
+## True for a walker's cast that met a slope flat enough to walk (M6: a ramp's deck), never for a flyer's.
+func _walkable(hit: Dictionary) -> bool:
+	return kind != "swarm" and (hit["normal"] as Vector3).y > WALK_NORMAL_Y
 
 
 ## Its feelers: ahead blocked within feeler_m, it turns to the nearer clear side of ahead.
@@ -1383,11 +1401,13 @@ func _steer(want: Vector3, d) -> Vector3:
 	var way := want / speed
 	var from := dummy.global_position + Vector3.UP * (MIDDLE_M if kind == "swarm" else KNEE_M)
 	var reach: float = d.tuning.feeler_m
-	if d.cast(from, from + way * reach).is_empty():
+	var ahead: Dictionary = d.cast(from, from + way * reach)
+	if ahead.is_empty() or _walkable(ahead):
 		return want
 	for turn in [FEELER_ANGLE, -FEELER_ANGLE, 2.0 * FEELER_ANGLE, -2.0 * FEELER_ANGLE]:
 		var side := way.rotated(Vector3.UP, turn)
-		if d.cast(from, from + side * reach).is_empty():
+		var beside: Dictionary = d.cast(from, from + side * reach)
+		if beside.is_empty() or _walkable(beside):
 			return side * speed
 	return want * 0.3
 

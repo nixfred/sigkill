@@ -31,11 +31,12 @@ const BODY_SHADER := preload("res://shaders/ruins_body.gdshader")
 const LIGHT_SHADER := preload("res://shaders/ruins_light.gdshader")
 const FLOOR_SHADER := preload("res://shaders/ruins_floor.gdshader")
 const HAZE_SHADER := preload("res://shaders/ruins_haze.gdshader")
+const WATER_SHADER := preload("res://shaders/ruins_water.gdshader")
 
 const GROUP := &"ruins_world"
 const NODE_NAME := "Ruins"
 ## Bumped whenever the pieces or the build change, so a kept build is never reused for a different one.
-const BUILD_VERSION := 3
+const BUILD_VERSION := 4
 const CHUNK_M := 16.0
 ## Seconds a register shift takes.
 const SHIFT_S := 1.4
@@ -125,6 +126,24 @@ var _vault_lamp: OmniLight3D = null
 ## The crontab board's lamp (M5), and its light.
 const BOARD_LAMP := 5.0
 var _board_lamp: OmniLight3D = null
+## The shell (M6): its screen waking over SHELL_S as the vault's does, its lamp; the water, a plane as wide as the
+## void it drowns, holding the lamps' light (WATER_LAMPS of them, the brightest); the core's heat under a breach.
+const SHELL_S := 1.6
+const SHELL_LAMP := 6.0
+const WATER_SIZE := 720.0
+const WATER_LAMPS := 16
+const CORE_LAMP := 14.0
+const CORE_GLOW := 3.2
+var _shell_light: ShaderMaterial = null
+var _shell_lamp: OmniLight3D = null
+var _shell_t := -1.0
+var _shell_power := 0.0
+var _water: MeshInstance3D = null
+var _water_mat: ShaderMaterial = null
+var _core_mat: StandardMaterial3D = null
+var _core_lamp: OmniLight3D = null
+## The materials dressed in a palette (M6), once a run each, shared by every set with it.
+static var _palette_materials := {}
 var _vault_t := -1.0
 var _vault_power := 0.0
 var _lamp_level := 1.0
@@ -176,6 +195,14 @@ func point(name: String) -> Vector3:
 
 func has_point(name: String) -> bool:
 	return layout != null and layout.points.has(name)
+
+
+## The floor's height under `at` (world space; M6: its band's), or the district's floor where there is no plan.
+func floor_y_at(at: Vector3) -> float:
+	if layout == null:
+		return global_position.y + RuinsLayout.FLOOR_Y
+	var local := to_local(at)
+	return global_position.y + layout.floor_y(layout.cell_at(local))
 
 
 ## Every point whose name begins with `prefix` + "_", in order, in world space.
@@ -244,6 +271,7 @@ func _process(delta: float) -> void:
 	_step_remnant(delta)
 	_step_shop(delta)
 	_step_vault(delta)
+	_step_shell(delta)
 	_step_hush(delta)
 	if ArenaArt.light_level != _lamp_level:
 		_lamp_level = ArenaArt.light_level
@@ -256,7 +284,7 @@ func _push() -> void:
 	RenderingServer.global_shader_parameter_set(TEAR_GLOBAL, tear)
 	pushed_mix = mix
 	pushed_tear = tear
-	var env := RuinsRegister.env_at(mix)
+	var env := RuinsRegister.env_at(mix, ruins.palette if ruins != null else "")
 	if environment != null:
 		environment.fog_light_color = env["fog"]
 		environment.fog_density = env["fog_density"]
@@ -294,13 +322,36 @@ func _push_lamps() -> void:
 		var col := _slot_colour(lamp["slot"], s)
 		light.light_color = col
 		light.light_energy = lamp["energy"] * (1.0 - 0.75 * s.x * float(lamp["slot"] == RuinsPieces.Slot.SIGN_A or lamp["slot"] == RuinsPieces.Slot.SIGN_B)) * ArenaArt.light_level
+	_push_water()
 
 
 func _slot_colour(slot: int, s: Vector3) -> Color:
 	var a: Color = RuinsRegister.SLOTS["tron"][slot]
-	var b: Color = RuinsRegister.SLOTS["cyberpunk"][slot]
+	var b: Color = RuinsRegister.slot_of("cyberpunk", slot, ruins.palette if ruins != null else "")
 	var c: Color = RuinsRegister.SLOTS["matrix"][slot]
 	return Color(a.r * s.x + b.r * s.y + c.r * s.z, a.g * s.x + b.g * s.y + c.g * s.z, a.b * s.x + b.b * s.y + c.b * s.z)
+
+
+## The water's lamps (M6): the brightest of the district's, their places, colours and energies, so its surface holds
+## their light; pushed whenever the lamps change.
+func _push_water() -> void:
+	if _water_mat == null:
+		return
+	var lit: Array = _lamps.filter(func(l): return (l["light"] as OmniLight3D).light_energy > 0.5)
+	lit.sort_custom(func(a, b): return (a["light"] as OmniLight3D).light_energy > (b["light"] as OmniLight3D).light_energy)
+	var at := PackedVector4Array()
+	var colours := PackedVector4Array()
+	for i in mini(lit.size(), WATER_LAMPS):
+		var light: OmniLight3D = lit[i]["light"]
+		var p := light.global_position
+		at.append(Vector4(p.x, p.y, p.z, light.light_energy))
+		colours.append(Vector4(light.light_color.r, light.light_color.g, light.light_color.b, 1.0))
+	while at.size() < WATER_LAMPS:
+		at.append(Vector4.ZERO)
+		colours.append(Vector4.ZERO)
+	_water_mat.set_shader_parameter("lamps", at)
+	_water_mat.set_shader_parameter("lamp_colors", colours)
+	_water_mat.set_shader_parameter("lamp_count", mini(lit.size(), WATER_LAMPS))
 
 
 # --- The settings. ---
@@ -322,6 +373,20 @@ static func materials() -> Dictionary:
 			_materials[pair[0]] = m
 		RuinsRegister.dress(_materials["body"], _materials["light"], _materials["floor"], _materials["haze"])
 	return _materials
+
+
+## This set's materials: the shared ones, or (M6) copies dressed in its palette, made once a run a palette.
+func _mats() -> Dictionary:
+	var name := ruins.palette if ruins != null else ""
+	if name == "" or not RuinsRegister.PALETTES.has(name):
+		return materials()
+	if not _palette_materials.has(name):
+		var own := {}
+		for key in materials():
+			own[key] = (materials()[key] as ShaderMaterial).duplicate() as ShaderMaterial
+		RuinsRegister.dress_palette(name, own["body"], own["light"], own["floor"], own["haze"])
+		_palette_materials[name] = own
+	return _palette_materials[name]
 
 
 func _build() -> Dictionary:
@@ -374,6 +439,12 @@ func _build() -> Dictionary:
 			RuinsPieces.gate(at[0], at[1], layout.gate, dice.call("edge", i))
 			continue
 		RuinsPieces.edge(at[0], at[1], layout, e, dice.call("edge", i))
+		if e.get("drop", false):
+			RuinsPieces.cliff(at[0], at[1], layout, e, dice.call("cliff", i))  # the step's racks under the lip (M6)
+	for i in layout.ramps.size():
+		var r: Dictionary = layout.ramps[i]
+		var at: Array = near_kit.call((r["top"] + r["foot"]) * 0.5)
+		RuinsPieces.ramp(at[0], at[1], layout, r, dice.call("ramp", i))
 	for i in layout.holes.size():
 		var h: Dictionary = layout.holes[i]
 		var mid := (layout.center(h["rect"].position) + layout.center(h["rect"].end - Vector2i.ONE)) * 0.5
@@ -385,8 +456,8 @@ func _build() -> Dictionary:
 		var r: Rect2i = bl["rect"]
 		var lo := layout.center(r.position) - Vector3(RuinsLayout.CELL_M, 0, RuinsLayout.CELL_M) * 0.5 + Vector3.ONE * RuinsLayout.BLOCK_INSET
 		var hi := layout.center(r.end - Vector2i.ONE) + Vector3(RuinsLayout.CELL_M, 0, RuinsLayout.CELL_M) * 0.5 - Vector3.ONE * RuinsLayout.BLOCK_INSET
-		lo.y = 0.0
-		hi.y = 0.0
+		lo.y = layout.floor_y(r.position)
+		hi.y = lo.y
 		var at: Array = near_kit.call((lo + hi) * 0.5)
 		match bl["kind"]:
 			"monolith":
@@ -401,6 +472,8 @@ func _build() -> Dictionary:
 				RuinsPieces.stack(at[0], at[1], lo, hi, str(bl.get("name", "")), RuinsLayout.ROOM_WALL_H, dice.call("wall", i))  # the sealed room's (M5)
 			"board":
 				_build_board(dice.call("board", i), out)
+			"shell":
+				_build_shell(dice.call("shell", i), out)
 	for i in layout.cover.size():
 		var p: Dictionary = layout.cover[i]
 		var at: Array = near_kit.call(p["at"])
@@ -415,7 +488,7 @@ func _build() -> Dictionary:
 	var pylons := 0
 	for i in layout.edges.size():
 		var e: Dictionary = layout.edges[i]
-		if e["hole"] or i % 3 != 0:
+		if e["hole"] or e.get("drop", false) or i % 3 != 0:
 			continue
 		var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 		var r: RandomNumberGenerator = dice.call("pylon", i)
@@ -442,8 +515,9 @@ func _build() -> Dictionary:
 		out["signs"].append([lamp, RuinsPieces.Slot.SIGN_A if s["slot"] == 0 else RuinsPieces.Slot.SIGN_B])
 	_build_breach(near_kit, dice, out)
 	_build_vault(dice, out)
+	_build_water(out)
 	# Commit: per chunk, a solid mesh (bodies and the floor, throwing shadows unless far) and a light mesh.
-	var mats := materials()
+	var mats := _mats()
 	var meshes := []
 	var triangles := 0
 	var surfaces := 0
@@ -477,6 +551,15 @@ func _build() -> Dictionary:
 	if out.has("board"):
 		triangles += int(out["board"]["triangles"])  # the crontab board's own mesh (M5)
 		surfaces += 2
+	if out.has("shell"):
+		triangles += int(out["shell"]["triangles"])  # the shell's own mesh (M6)
+		surfaces += 2
+	if out.has("water"):
+		triangles += 2  # the water (M6): one quad
+		surfaces += 1
+	if out.has("core"):
+		triangles += 2
+		surfaces += 1
 	var haze := _haze_mesh()
 	surfaces += 2 * DRIFT_TURN.size()
 	triangles += 2 * int(haze.get_meta(&"cards", 0))
@@ -507,7 +590,7 @@ func _build_shop(rng: RandomNumberGenerator, out: Dictionary) -> void:
 	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
 	var lamp := RuinsPieces.storefront(kit, b, layout.shop, ruins.shop_sign, ruins.shop_screen, rng)
 	var mesh := ArrayMesh.new()
-	var mats := materials()
+	var mats := _mats()
 	kit.commit(b["body"], mesh)
 	mesh.surface_set_material(0, mats["body"])
 	kit.commit(b["light"], mesh)
@@ -528,7 +611,7 @@ func _build_vault(dice: Callable, out: Dictionary) -> void:
 	var console: Dictionary = layout.vault["console"]
 	RuinsPieces.cover(kit, b, {"kind": "console", "at": console["at"], "yaw": float(console["yaw"]), "size": Vector3(1.7, 1.2, 1.0), "seed": 0}, rng)
 	var mesh := ArrayMesh.new()
-	var mats := materials()
+	var mats := _mats()
 	kit.commit(b["body"], mesh)
 	mesh.surface_set_material(0, mats["body"])
 	kit.commit(b["light"], mesh)
@@ -548,12 +631,43 @@ func _build_board(rng: RandomNumberGenerator, out: Dictionary) -> void:
 	var screen := {"at": face - layout.board["out"] * 0.35, "out": layout.board["out"], "size": RuinsLayout.BOARD_SCREEN}
 	var lamp := RuinsPieces.records_screen(kit, b, screen, ruins.board_lines, rng)
 	var mesh := ArrayMesh.new()
-	var mats := materials()
+	var mats := _mats()
 	kit.commit(b["body"], mesh)
 	mesh.surface_set_material(0, mats["body"])
 	kit.commit(b["light"], mesh)
 	mesh.surface_set_material(1, mats["light"])
 	out["board"] = {"mesh": mesh, "lamp": lamp, "screen": screen, "triangles": (kit.count(b["body"]) + kit.count(b["light"])) / 3}
+
+
+## The shell (M6), when the plan has one: a screen on its block's face toward the exit cell, dark until a mission wakes
+## it (its light a material of its own, as the vault's), a mesh of its own (out["shell"]) with its lamp's place and
+## its screen (where `~`'s lines type).
+func _build_shell(rng: RandomNumberGenerator, out: Dictionary) -> void:
+	if layout.shell.is_empty():
+		return
+	var kit := ShapeKit.new()
+	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true), "mark": kit.bucket(Vector3.ZERO, false, false)}
+	var face: Vector3 = layout.shell["face"]
+	var screen := {"at": face - layout.shell["out"] * 0.35, "out": layout.shell["out"], "size": RuinsLayout.SHELL_SCREEN}
+	var lamp := RuinsPieces.records_screen(kit, b, screen, ruins.shell_lines, rng)
+	var mesh := ArrayMesh.new()
+	var mats := _mats()
+	kit.commit(b["body"], mesh)
+	mesh.surface_set_material(0, mats["body"])
+	kit.commit(b["light"], mesh)
+	mesh.surface_set_material(1, mats["light"])
+	out["shell"] = {"mesh": mesh, "lamp": lamp, "screen": screen, "triangles": (kit.count(b["body"]) + kit.count(b["light"])) / 3}
+
+
+## The water (M6), when the set has it: one plane under the lowest floor, as wide as the void, its own shader.
+func _build_water(out: Dictionary) -> void:
+	if ruins.water <= 0.0:
+		return
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(WATER_SIZE, WATER_SIZE)
+	plane.subdivide_width = 24
+	plane.subdivide_depth = 24
+	out["water"] = {"mesh": plane, "y": layout.floor_y(layout.exit_cell) - ruins.water}
 
 
 ## The breach's pieces (C37), when the plan has one: the gangway out from the gate; the pocket's deck (its slabs on the
@@ -596,6 +710,12 @@ func _build_breach(near_kit: Callable, dice: Callable, out: Dictionary) -> void:
 	vk.pose = Transform3D(Basis.IDENTITY, deck + Vector3(0, -30.0, 0))
 	RuinsPieces.paint_light(vk, gr.randf(), 1.0, RuinsPieces.Slot.VOID, 1.4)
 	RuinsPieces.light_quad(vk, void_at[1]["light"], Vector3.ZERO, Vector2.ONE * RuinsLayout.POCKET_M * 2.0, Vector3.UP)
+	if ruins.breach_core:
+		# The core's heat (M6): a red glow far under the deck in place of a remnant, dark until a mission lights it.
+		var glow := PlaneMesh.new()
+		glow.size = Vector2.ONE * RuinsLayout.POCKET_M * 2.6
+		out["core"] = {"mesh": glow, "at": deck + Vector3(0, -9.0, 0)}
+		return
 	var t: Dictionary = layout.remnant["tower"]
 	var tower_at: Array = near_kit.call(t["at"])
 	RuinsPieces.rack_tower(tower_at[0], tower_at[1], t, dice.call("remnant", 0), false)
@@ -603,7 +723,7 @@ func _build_breach(near_kit: Callable, dice: Callable, out: Dictionary) -> void:
 	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
 	var lamp := RuinsPieces.sign(kit, b, t, layout.remnant["sign"], dice.call("remnant_sign", 0))
 	var mesh := ArrayMesh.new()
-	var mats := materials()
+	var mats := _mats()
 	kit.commit(b["body"], mesh)
 	mesh.surface_set_material(0, mats["body"])
 	kit.commit(b["light"], mesh)
@@ -618,7 +738,7 @@ func _drift_meshes() -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("%d:drift" % ruins.seed)
 	var ext := layout.half_extent()
-	var mats := materials()
+	var mats := _mats()
 	for ring in DRIFT_TURN.size():
 		var kit := ShapeKit.new()
 		var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true)}
@@ -676,7 +796,7 @@ func _haze_mesh() -> ArrayMesh:
 			card.call(mid + Vector3(0, -2.0, 0), Vector2(3.4, 9.0), facing, 1.0, 1.0)
 	var mesh := st.commit()
 	if mesh.get_surface_count() > 0:
-		mesh.surface_set_material(0, materials()["haze"])
+		mesh.surface_set_material(0, _mats()["haze"])
 	mesh.set_meta(&"cards", 34 + 3 * layout.holes.size())
 	return mesh
 
@@ -728,6 +848,8 @@ func _show() -> void:
 	_show_shop()
 	_show_vault()
 	_show_board()
+	_show_shell()
+	_show_water()
 	if not layout.field.is_empty():
 		_field = CacheField.new()
 		_field.layout = layout
@@ -741,7 +863,7 @@ func _show_shop() -> void:
 	var front := MeshInstance3D.new()
 	front.name = "Shop"
 	front.mesh = _built["shop"]["mesh"]
-	_shop_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_shop_light = (_mats()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
 	front.set_surface_override_material(1, _shop_light)
 	add_child(front)
 	_shop_lamp = OmniLight3D.new()
@@ -776,6 +898,104 @@ func _show_board() -> void:
 	_push_lamps()
 
 
+## The shell's screen (M6), dark: its light at power 0 until a mission wakes it (wake_shell()).
+func _show_shell() -> void:
+	if not _built.has("shell"):
+		return
+	var node := MeshInstance3D.new()
+	node.name = "Shell"
+	node.mesh = _built["shell"]["mesh"]
+	_shell_light = (_mats()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_shell_light.set_shader_parameter("power", 0.0)
+	node.set_surface_override_material(1, _shell_light)
+	add_child(node)
+	_shell_lamp = OmniLight3D.new()
+	_shell_lamp.name = "ShellLamp"
+	_shell_lamp.position = _built["shell"]["lamp"]
+	_shell_lamp.omni_range = 14.0
+	_shell_lamp.omni_attenuation = 1.2
+	_shell_lamp.shadow_enabled = false
+	_shell_lamp.light_energy = 0.0
+	add_child(_shell_lamp)
+	_lamps.append({"light": _shell_lamp, "slot": RuinsPieces.Slot.SCREEN, "energy": 0.0, "shell": true})
+
+
+## The water (M6): its plane under the lowest floor, its lamps pushed with the district's.
+func _show_water() -> void:
+	if not _built.has("water"):
+		return
+	_water = MeshInstance3D.new()
+	_water.name = "Water"
+	_water.mesh = _built["water"]["mesh"]
+	_water.position = Vector3(0, float(_built["water"]["y"]), 0)
+	_water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_water_mat = ShaderMaterial.new()
+	_water_mat.shader = WATER_SHADER
+	var pal: Dictionary = RuinsRegister.PALETTES.get(ruins.palette, {})
+	_water_mat.set_shader_parameter("deep_color", pal.get("water", Color(0.008, 0.012, 0.03)))
+	_water_mat.set_shader_parameter("rim_color", pal.get("water_rim", RuinsRegister.RAIN_INDIGO))
+	_water.material_override = _water_mat
+	add_child(_water)
+	_push_water()
+
+
+## True for a district with a shell (M6); its screen (world space, as the board's); where its light falls.
+func has_shell() -> bool:
+	return _built.has("shell")
+
+
+func shell_screen() -> Dictionary:
+	return _built["shell"]["screen"] if _built.has("shell") else {}
+
+
+func shell_at() -> Vector3:
+	return _shell_lamp.global_position if _shell_lamp != null else Vector3.INF
+
+
+## The shell's screen wakes (M6): lit over SHELL_S as the vault's is; nothing without one, or once it is lit.
+func wake_shell() -> bool:
+	if _shell_light == null or _shell_t >= 0.0:
+		return false
+	_shell_t = 0.0
+	return true
+
+
+## How lit the shell's screen is, 0 to 1.
+func shell_power() -> float:
+	return _shell_power
+
+
+func _step_shell(delta: float) -> void:
+	if _shell_t < 0.0 or _shell_light == null:
+		return
+	_shell_t += delta
+	var k := clampf(_shell_t / SHELL_S, 0.0, 1.0)
+	var tick := int(floor(_shell_t * 24.0))
+	var dice := fposmod(sin(float(tick) * 12.9898 + 3.0) * 43758.5453, 1.0)
+	var on := 0.0
+	if k < 1.0:
+		on = 1.0 if dice < k * k * 1.3 else 0.05
+	else:
+		on = 0.5 if dice < 0.02 else 1.0
+	if is_equal_approx(on, _shell_power):
+		return
+	_shell_power = on
+	_shell_light.set_shader_parameter("power", on)
+	for lamp in _lamps:
+		if lamp.get("shell", false):
+			lamp["energy"] = SHELL_LAMP * on
+	_push_lamps()
+
+
+## True for a district with water (M6), and its surface's height (world space), or -INF.
+func has_water() -> bool:
+	return _water != null
+
+
+func water_y() -> float:
+	return _water.global_position.y if _water != null else -INF
+
+
 ## True for a district with a crontab board (M5); where its screen stands (world space: its foot's middle, the way it
 ## faces and its size), or {}; and where its light falls, or Vector3.INF.
 func has_board() -> bool:
@@ -798,7 +1018,7 @@ func _show_vault() -> void:
 	var node := MeshInstance3D.new()
 	node.name = "Vault"
 	node.mesh = _built["vault"]["mesh"]
-	_vault_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_vault_light = (_mats()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
 	_vault_light.set_shader_parameter("power", 0.0)
 	node.set_surface_override_material(1, _vault_light)
 	# The redaction bar: unshaded, so its colour is its albedo alone (an unshaded material draws no emission), driven
@@ -830,12 +1050,34 @@ func _show_breach() -> void:
 	_hatch.size = RuinsLayout.BREACH_OPENING
 	_hatch.position = layout.center(layout.breach_cell)
 	add_child(_hatch)
+	if _built.has("core"):
+		# The core's heat (M6): a red plane far under the deck and a red lamp, both dark until lit (light_remnant()).
+		var glow := MeshInstance3D.new()
+		glow.name = "Core"
+		glow.mesh = _built["core"]["mesh"]
+		glow.position = _built["core"]["at"]
+		glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_core_mat = StandardMaterial3D.new()
+		_core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_core_mat.albedo_color = Color(0.0, 0.0, 0.0)
+		_core_mat.disable_fog = true
+		glow.material_override = _core_mat
+		add_child(glow)
+		_core_lamp = OmniLight3D.new()
+		_core_lamp.name = "CoreLamp"
+		_core_lamp.position = (_built["core"]["at"] as Vector3) + Vector3(0, 4.0, 0)
+		_core_lamp.omni_range = 34.0
+		_core_lamp.omni_attenuation = 1.1
+		_core_lamp.light_color = Palette.HOSTILE_RED
+		_core_lamp.shadow_enabled = false
+		_core_lamp.light_energy = 0.0
+		add_child(_core_lamp)
 	if not _built.has("remnant"):
 		return
 	var sign := MeshInstance3D.new()
 	sign.name = "Remnant"
 	sign.mesh = _built["remnant"]["mesh"]
-	_remnant_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_remnant_light = (_mats()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
 	_remnant_light.set_shader_parameter("power", 0.0)
 	sign.set_surface_override_material(1, _remnant_light)
 	add_child(sign)
@@ -865,9 +1107,10 @@ func open_breach() -> bool:
 	return true
 
 
-## The remnant's sign flickers on in the dark, over REMNANT_S (nothing, without one, or when it is already lit).
+## The remnant's sign flickers on in the dark, over REMNANT_S (nothing, without one, or when it is already lit); in a
+## district whose pocket is the core's (M6), the core's heat comes up instead.
 func light_remnant() -> bool:
-	if _remnant_light == null or _remnant_t >= 0.0:
+	if (_remnant_light == null and _core_mat == null) or _remnant_t >= 0.0:
 		return false
 	_remnant_t = 0.0
 	return true
@@ -1035,7 +1278,7 @@ func _step_shop(delta: float) -> void:
 
 
 func _step_remnant(delta: float) -> void:
-	if _remnant_t < 0.0 or _remnant_light == null:
+	if _remnant_t < 0.0 or (_remnant_light == null and _core_mat == null):
 		return
 	_remnant_t += delta
 	var k := clampf(_remnant_t / REMNANT_S, 0.0, 1.0)
@@ -1050,7 +1293,14 @@ func _step_remnant(delta: float) -> void:
 	else:
 		on = 0.35 if dice < 0.015 else 1.0
 	_remnant_power = on
-	_remnant_light.set_shader_parameter("power", on)
+	if _remnant_light != null:
+		_remnant_light.set_shader_parameter("power", on)
+	if _core_mat != null:
+		# The core (M6): a slow swell of heat under the flicker, never quite steady.
+		var heat := on * (0.85 + 0.15 * sin(_remnant_t * 2.3))
+		_core_mat.albedo_color = Palette.HOSTILE_RED * (CORE_GLOW * heat)
+		if _core_lamp != null:
+			_core_lamp.light_energy = CORE_LAMP * heat * ArenaArt.light_level
 	for lamp in _lamps:
 		if lamp.get("remnant", false):
 			lamp["energy"] = 9.0 * on
@@ -1271,7 +1521,7 @@ func _feed_rain() -> void:
 		return
 	_driver_uploads = uploads
 	for part in ["body", "floor"]:
-		var mat: ShaderMaterial = materials()[part]
+		var mat: ShaderMaterial = _mats()[part]
 		mat.set_shader_parameter("enemies", _driver.slots())
 		mat.set_shader_parameter("enemy_count", _driver.slot_count() if _driver.is_enabled() else 0)
 
