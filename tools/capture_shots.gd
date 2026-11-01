@@ -4637,8 +4637,8 @@ func _w3() -> void:
 	var sheet := {}
 	UnlockToast.drop_waiting()
 	GameSettings.current().set_value("gameplay", "practice", true)
-	ThemeShift.fight_s = 100000.0
-	ThemeShift.ambush_s = 100000.0
+	ThemeShift.fight_s = 600.0  # ten minutes: long enough for every still, a real-looking clock on the panel
+	ThemeShift.ambush_s = 600.0
 	for i in ThemeBook.ORDER.size():
 		var id: String = ThemeBook.ORDER[i]
 		await _w3_go(i)
