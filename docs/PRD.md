@@ -1,4 +1,4 @@
-# SIGKILL PRD (v1.6, 2026-11-01)
+# SIGKILL PRD (v1.7, 2026-11-01)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -8,7 +8,7 @@ This is the entire, current PRD (Fred, 2026-10-30 8:37 PM ET). [docs/DESIGN.md](
 
 ## Scope: 1.0, after 1.0, and 2.0
 
-- **1.0 is locked** (Fred, 2026-10-29 10:42 AM ET): everything in the design doc at the lock is 1.0. In this PRD that is sections 1 to 5.9, the safety rules (6) and every chunk in section 8 down to C44, apart from what is marked post-1.0 or 2.0 below.
+- **1.0 is locked** (Fred, 2026-10-29 10:42 AM ET): everything in the design doc at the lock is 1.0. In this PRD that is sections 1 to 5.9, the safety rules (6) and every chunk in section 8 down to C44 and M5's world features (W1 onward), apart from what is marked post-1.0 or 2.0 below.
 - **Post-1.0:** every new idea after the lock, unless Fred pulls it in. That includes the community ideas from Carlos Granier, Jeremy and MindGameLabs (5.10). One older decision is post-1.0 in its own words: ICE taking its look from the names of security software on the host (1.x, with process enemies; 5.9). VR is a stretch beyond that, likely 2.x.
 - **2.0:** the browser version (Fred, 2026-10-28 12:46 AM ET): a Godot web export (WebGL renderer, shader fallbacks) on the WebSocket relay, with demo-data maps only (no filesystem, processes, local announcer or voice in a browser). It is not being built now; the native game ships first.
 - **Set aside:** the story's forks that were not picked (a second ending, nine missions, co-op missions; STORY.md section 8) are not planned at all.
@@ -144,9 +144,19 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
 - **One voice** (STORY.md, pick 2): every line in the game is "your AI's". An answer that came live from the player's own AI carries a small "live" mark, so no line is ever misattributed.
 
 ### 5.5 Your machine is the world (later milestone)
-1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. The Audit Trail visor (C43) is built (2026-11-01; the producer's two-layer decision below); live process enemies stay a later chunk. Its features other than C43 have no chunk numbers yet; the producer numbers them when they come up.
+1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. The Audit Trail visor (C43) is built (2026-11-01; the producer's two-layer decision below), and so are live process enemies (W1, 2026-11-01).
+- **Numbering (producer decision, 2026-11-01, the W1 brief):** M5's world features are numbered W1, W2, ... in the order a player meets them. W1 is live process enemies, because the visor's real layer already reads processes and C43 listed them as its medium known issue. The order of the rest is proposed in 8.2, the producer's to confirm.
 - Filesystem maps: rooms from the player's real folder tree (names and sizes only), node_modules is the endless maze.
 - Live process enemies: real running processes become enemies (browser tabs swarm, pegged CPU core is a boss). Cosmetic only.
+  - **As built (W1):**
+    - **The mode:** the process hunt, a mode of the free arena. Esc, **Process hunt** reloads the arena into it, and **Leave process hunt** back out; `--procs` starts it on a demo or test run. Solo only: greyed in a match or a mission, ended where it stands if a match starts. The arena's own four daemons are parked while it runs, ICE stands down and the rounds hold; its own panel (a live `top` of its enemies, the table named, its last few events, kills marked simulated) stands where a mission's would, compact under 1280 wide.
+    - **Two layers, as C43's:** the default demo layer is a table the game makes up (a compositor, a browser and its tabs that open and close with a heavy page now and then, its GPU helper, an editor and its language server, a sync daemon with many threads, a chat client, a sound daemon, a scheduled check, a terminal and its shell running a build every 64 s: compilers forked and gone, one left a zombie, then the linker pegging a core for 26 s), seeded, its numbers moving every second; every test and capture uses only it. The opt-in real layer is C43's reader behind the same answer (opener data, real-machine data on, never a demo run), within C43's budget; it now also reads the Threads line of `status`. Off, no reader is made.
+    - **The mapping:** a process at 90% CPU or more is the boss, the hottest one only, kept while it runs at 50% or more; a process with 4 or more children of one name is a nest with a drone for each (12 a swarm), one running 24 threads or more a nest of thread drones (8, labelled with their process's name and PID); every other process a daemon (rogue.d; a zombie for Z) sized and healthed by its memory, asleep while idle. Init, the game itself and the session's holder are left out. Caps: 40 enemies, 24 drones, 3 swarms, 12 daemons, 1 boss.
+    - **The table drives the arena:** new processes fork in (staggered, a drone out of its nest, a daemon beside its parent), exits derezz on their own (nobody's kill), a role change (a core pegged, a boss cooled) remakes the enemy. A kill derezzes it and nothing else: nothing real is signaled, stopped, reniced or touched, and while its process runs it forks back in after 10 s.
+    - **The look:** the boss a pegged core, silicon's diamond lattice (18 atoms, 16 bonds) in an armoured die frame with heat-sink fins and heat haze, crimson to white-hot and 1.35 to 2.1 times its size with its live CPU, under a PEGGED banner, a 1.1 s tell (drawn in, burning white) before every fanned volley of red bolts; the nest a floating ball of hex cells, one lit per drone out; the drones angular vermilion craft flown as one cloud by their flock, which gathers tight (its tell) before they dive. Every one built from its own seed.
+    - **The visor over it:** each enemy hangs from its real parent in the table (its enemy, or a ring for its process), up through the redacted session holder to init; a thread drone draws no line; every PPID shown is the table's. The free arena's sever applies (cosmetic).
+    - **Frame time:** at 1920x1080 on the private display, the dev laptop's GPU under its power-saver profile, about 30 enemies up: the GPU 4.16 to 4.61 ms a frame (the visor off and on).
+    - **The gate's step 65:** tests/proc_hunt_test.gd, fake tables only.
 - Audit Trail visor (community prompt by Albert / @QuantaCortex, 2026-10-26, accepted by Fred): a visor mode that draws glowing lineage lines from each enemy back to its parent process, up the real process tree. Severing a spawn chain (killing a parent) collapses or reshapes that part of the arena and despawns its children. Reads only PID, parent PID, process name and CPU/memory numbers. Never command-line arguments, open files, environment or paths, so no private file names can show. Severing is cosmetic in-game; nothing real is signaled. Its HUD carries the tag "visor design: @QuantaCortex".
   - **Two layers (producer decision, 2026-11-01, the C43 brief):** live process enemies were to come first, but no process reader existed, so the visor ships in two layers and the full live-process-enemies feature (tab swarms, a pegged-core boss) stays a later chunk.
     - **The default (demo) layer:** every daemon, zombie, runaway and boss in the arenas and missions carries a simulated PID, PPID, name and CPU/memory from the game's own data, in a believable spawn tree. It works fully with zero reads of the player's machine; the tests and captures use only it.
@@ -451,7 +461,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 64 steps as of the credits roll (C44).
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 65 steps as of live process enemies (W1).
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -475,13 +485,13 @@ Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What
 2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), M7 (done: mission 7, `kill -9`, the finale).
 3. C43, the Audit Trail visor: done (its demo layer first, and its opt-in real layer; the producer's decision in 5.5).
 4. C44, the credits: done.
-5. M5's world features, live process enemies among them. The producer numbers them when they come up: next.
+5. M5's world features, numbered W1 onward in player-facing order (producer, 2026-11-01): W1, live process enemies, done; W2 onward next (8.2).
 6. 1.0.
 
-What remains for 1.0, after C44: M5's world features (5.5's live process enemies among them; the visor's real layer already reads processes, read-only and opt-in), the relay's hosting (open question 1), the producer's verification of every chunk, and a release on Fred's yes. The story, the opener, all seven missions, the visor and the credits are built.
+What remains for 1.0, after W1: the rest of M5's world features (W2 to W7 in 8.2), the relay's hosting (open question 1), the producer's verification of every chunk, and a release on Fred's yes. The story, the opener, all seven missions, the visor, the credits and live process enemies are built.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-11-01, after C44): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-11-01, after W1): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -576,7 +586,13 @@ Statuses are taken from `git log` (2026-11-01, after C44): **done**, **in progre
 
 | Chunk | What | Status | Commits |
 |---|---|---|---|
-| M5 world features | Filesystem maps, live process enemies, theme-shift levels, keybind gunplay, Ramblr voice commands, packet tracer arena, Hyprland split-screen co-op. | planned; not yet numbered | |
+| W1 | Live process enemies: the process hunt, a demo table and the opt-in real layer (C43's reader), a pegged core the boss, tabs and threads swarms round a nest, the rest daemons by memory, forks and exits following the table, kills simulated, the visor's real lineage over them, step 65. | done | `3e74f6c`, `02d3441`, `4d90df2`, `1b3338d` |
+| W2 | Filesystem maps: rooms from the player's real folder tree (names and sizes only), `node_modules` the endless maze. | planned (proposed order, the producer's to confirm) | |
+| W3 | Theme-shift levels from Omarchy themes; palette-only enemies. | planned (proposed order) | |
+| W4 | Keybind gunplay mapped to real Omarchy shortcuts (opt-in, no conflicts). | planned (proposed order) | |
+| W5 | Packet tracer arena: tailnet machines as islands. | planned (proposed order) | |
+| W6 | Hyprland split-screen co-op. | planned (proposed order) | |
+| W7 | Ramblr voice commands (read Ramblr's existing output, never open the mic). | planned (proposed order) | |
 | C43 | Audit Trail visor: lineage lines, a simulated spawn tree (the demo layer) and an opt-in read-only reader of PID/PPID/name/CPU/mem from stat and status only (the real layer), chain-sever arena reaction, credit tag. Live process enemies stay a later chunk (producer, 2026-11-01). | done | `f6d5f8d` |
 | C44 | CREDITS.md + in-game top-style credits roll (demo data for captures). CREDITS.md itself is in the repo since C6c; the roll is C44's: once per ending, skippable, replayable from the Esc menu once finished, its own score in code; the shell's bolts in its own red. | done | `861b015`, `4d3f012`, `44b32a7` |
 

@@ -170,7 +170,7 @@ func _map_checks() -> void:
 	var t := _table()
 	var plan := ProcMap.plan(t, {}, 999)
 	var e: Dictionary = plan["enemies"]
-	_check("the mapping: a pegged core is the boss, one only, the hottest (97%% over 93%%)", e.has("310") and e["310"]["role"] == "boss" and e.has("311") and e["311"]["role"] == "daemon" and _count(e, "boss") == 1, str(e.get("310", {})))
+	_check("the mapping: a pegged core is the boss, one only, the hottest (97% over 93%)", e.has("310") and e["310"]["role"] == "boss" and e.has("311") and e["311"]["role"] == "daemon" and _count(e, "boss") == 1, str(e.get("310", {})))
 	_check("the mapping: a process with %d children of one name is a nest, each child a drone of its swarm; three of a name are not a swarm (daemons)" % ProcMap.SWARM_KIDS, e.has("200") and e["200"]["role"] == "nest" and _all_drones(e, [210, 211, 212, 213, 214, 215], "200") and e.has("230") and e["230"]["role"] == "daemon" and e.has("701") and e["701"]["role"] == "daemon" and e["700"]["role"] == "daemon")
 	var threads := 0
 	for k in e:
