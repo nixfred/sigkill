@@ -10,12 +10,12 @@ extends DaemonArt
 ## none, its light's pulse and now and then a flickering light. Never an elite: a drone is small by design. Faceless:
 ## armour and light. Visual only: its dummy keeps its own small hit volume, sized by the hunt (scripts/procs/proc_hunt.gd).
 
-const HULL_W := 0.42
-const HULL_H := 0.11
-const WING_L := 0.46
-const LIGHT_M := 0.13
+const HULL_W := 0.58
+const HULL_H := 0.15
+const WING_L := 0.66
+const LIGHT_M := 0.18
 const FIN_L := 0.22
-const TRAIL_L := 0.5
+const TRAIL_L := 0.8
 const FLUTTER_HZ := 9.0
 
 ## Set by its flock each frame: how hard it banks (radians, its roll into a turn), its pace (0 still to 1 at speed).

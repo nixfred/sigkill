@@ -1,7 +1,7 @@
 extends SceneTree
 ## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37, m2, m3, m4, m5, m6 or m7):
 ## (c43 also: the Audit Trail visor; see _c43(). c44: the credits roll; see _c44(). Its stills are the ending's: only
-## c44-title is ever public.)
+## c44-title is ever public. w1: live process enemies, the process hunt on its demo table; see _w1().)
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -410,6 +410,9 @@ const DummySceneC43 = preload("res://scenes/target_dummy.tscn")
 ## c44's sheet: the credits roll across its clock (never committed: the roll is the ending; only c44-title is public).
 const C44_SHEET := ["c44-title", "c44-fred", "c44-sigkill", "c44-rain", "c44-thanks", "c44-last", "c44-wait", "c44-derezz", "c44-hexagon"]
 const C44_GPU_FRAMES := 120
+## w1's sheet, and its frames a measure.
+const W1_SHEET := ["w1-pegged", "w1-gather", "w1-swarm", "w1-boss-tell", "w1-boss", "w1-visor"]
+const W1_GPU_FRAMES := 120
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
@@ -578,6 +581,11 @@ func _run() -> void:
 		return
 	if _set == "c44":
 		await _c44()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w1":
+		await _w1()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4361,6 +4369,155 @@ func _c44_measure(roll: CreditsRoll, label: String) -> void:
 		most = maxi(most, roll.draw_us)
 	RenderingServer.viewport_set_measure_render_time(rid, false)
 	print("capture: c44 %s, %.1f to %.1f s of the roll at %dx%d: the GPU %.2f ms a frame; the roll's own drawing %.2f ms a frame on the main thread (most %.2f); the engine's process step %.2f ms (%d frames)" % [label, from, roll.elapsed(), root.size.x, root.size.y, gpu / C44_GPU_FRAMES, draw / C44_GPU_FRAMES, most / 1000.0, cpu / C44_GPU_FRAMES, C44_GPU_FRAMES])
+
+
+## w1: live process enemies (W1), the process hunt begun on its demo table (never the real layer: a demo run), the player
+## shielded and the daemons fighting: the biggest swarm gathered tight over its nest (w1-gather, its tell) and its drones
+## diving (w1-swarm); the build's linker pegging a core, the boss climbing out under its banner (w1-pegged), drawn in and
+## burning white before a volley (w1-boss-tell) and the volley out (w1-boss); the visor over the live enemies, every line
+## its process's real parent in the table (w1-visor); the same at 960x540 (w1-960); the sheet (w1-sequence). The frame time
+## in the mode is printed (the GPU's and the engine's process step, the visor off and on, W1_GPU_FRAMES frames each).
+func _w1() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	_c43_life().shield(100000.0)
+	var hunt := ProcHunt.of(_main)
+	if hunt == null or not hunt.begin():
+		printerr("capture: w1 the hunt did not begin")
+		return
+	var formed := 0
+	while formed < 900 and (hunt.plan.is_empty() or hunt.enemies().size() < (hunt.plan["enemies"] as Dictionary).size()):
+		await _frames(1)
+		formed += 1
+	await _frames(int(2.0 * Engine.physics_ticks_per_second))
+	print("capture: w1 formed after %d frames: %d enemies from %d processes (demo table)" % [formed, hunt.enemies().size(), hunt.process_count()])
+	# The biggest swarm: the player out in front of its nest, looking at it.
+	var flock: SwarmFlock = null
+	for k in hunt.flocks():
+		var f: SwarmFlock = hunt.flocks()[k]
+		var tabs: bool = not f.drones.is_empty() and not str(f.drones[0].get_meta(&"proc", "")).contains("/")
+		if tabs and f.nest != null and is_instance_valid(f.nest) and (flock == null or f.drones.size() > flock.drones.size()):
+			flock = f
+	if flock == null:
+		printerr("capture: w1 no swarm")
+		return
+	var c := flock.centre
+	var out := Vector3(-c.x, 0.0, -c.z).normalized()
+	_c37_view(Vector3(c.x, 0.0, c.z) + out * 7.5, c + Vector3(0.0, -0.4, 0.0))
+	var waited := 0
+	while waited < 900 and not (flock.phase == SwarmFlock.Phase.TELL and flock.phase_t > SwarmFlock.TELL_S * 0.6):
+		await _w1_exposed(1)
+		waited += 1
+	await _w1_save(sheet, "w1-gather")
+	waited = 0
+	while waited < 120 and flock.dives < 2:
+		await _w1_exposed(1)
+		waited += 1
+	await _w1_exposed(4)
+	await _w1_save(sheet, "w1-swarm")
+	print("capture: w1 swarm: %d drones, %d tells, %d dives, %d landed" % [flock.drones.size(), flock.tells, flock.dives, flock.hits])
+	# The pegged core: the table on to the build's linker.
+	var table := hunt.table as DemoProcs
+	var want := DemoProcs.BUILD_FIRST + DemoProcs.LINK_AT + 3
+	var ahead := posmod(want - table.tick, DemoProcs.BUILD_EVERY)
+	hunt.advance_table(ahead)
+	waited = 0
+	while waited < 600 and hunt.boss() == null:
+		await _frames(1)
+		waited += 1
+	var boss := hunt.boss()
+	if boss == null:
+		printerr("capture: w1 no boss")
+		return
+	var home: Vector3 = boss.global_position
+	var to_mid := Vector3(-home.x, 0.0, -home.z + 10.0).normalized()
+	_c37_view(Vector3(home.x, 0.0, home.z) + to_mid * 13.0, home + Vector3(0.0, 2.6, 0.0))
+	await _w1_exposed(int(1.4 * Engine.physics_ticks_per_second))
+	await _w1_save(sheet, "w1-pegged")
+	waited = 0
+	while waited < 900 and not (boss.brain._pegged_tell > 0.0 and boss.brain._pegged_tell < 0.35):
+		_c37_view(Vector3(home.x, 0.0, home.z) + to_mid * 14.0, boss.art_node().anchor())
+		await _w1_exposed(1)
+		waited += 1
+	await _w1_save(sheet, "w1-boss-tell")
+	waited = 0
+	while waited < 120 and (boss.brain.volleys < 1 or boss.brain._volley_left > 2):
+		await _w1_exposed(1)
+		waited += 1
+	await _w1_exposed(3)
+	await _w1_save(sheet, "w1-boss")
+	print("capture: w1 boss: heat %.2f, size %.2f, %d tells, %d volleys" % [boss.art_node().heat, boss.art_node().size_scale, boss.brain.pegged_tells, boss.brain.volleys])
+	# The visor over it all, from the south, the boss and the swarms in view.
+	var visor := AuditVisor.of(_main)
+	_c37_view(_main.to_global(Vector3(0.0, 0.0, 17.5)) - Vector3(0.0, _main.global_position.y, 0.0), _main.to_global(Vector3(0.0, 4.5, -6.0)))
+	visor.set_on(true)
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	_c37_view(_main.to_global(Vector3(0.0, 0.0, 17.5)) - Vector3(0.0, _main.global_position.y, 0.0), _main.to_global(Vector3(0.0, 4.5, -6.0)))
+	await _frames(2)
+	await _w1_save(sheet, "w1-visor")
+	print("capture: w1 visor: %d lines, %d rings" % [visor.lines().drawn_lines, visor._hunt_rings.size()])
+	# The frame time in the mode: the visor on, then off, then on again.
+	_c37_render_info("w1 visor")
+	await _w1_measure(hunt, "the visor on")
+	visor.set_on(false)
+	await _w1_measure(hunt, "the visor off")
+	visor.set_on(true)
+	await _w1_measure(hunt, "the visor on again")
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	await _w1_save({}, "w1-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	var stills: Array[Image] = []
+	for name in W1_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W1_SHEET.size():
+		_save_grid("w1-sequence", stills, 3)
+
+
+## `frames` frames with the player open to attack (no spawn protection, so the daemons tell and strike), its health
+## topped up every frame so it never goes down.
+func _w1_exposed(frames: int) -> void:
+	var life := _c43_life()
+	for i in frames:
+		life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+		if life.alive():
+			life.restore()
+		await _frames(1)
+
+
+## A w1 still with no protection line on the HUD, the shield back after.
+func _w1_save(sheet: Dictionary, name: String) -> void:
+	var life := _c43_life()
+	life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	life.restore()
+	await process_frame
+	await _c35_save(sheet, name)
+	life.shield(100000.0)
+
+
+## The GPU's time a frame and the engine's process step in the hunt, over W1_GPU_FRAMES frames.
+func _w1_measure(hunt: ProcHunt, label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	var phys := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	var standing := 0
+	for key in hunt.enemies():
+		if hunt.enemies()[key]["body"].is_alive():
+			standing += 1
+	print("capture: w1 frame time, %s, at %dx%d, %d enemies standing: the GPU %.2f ms a frame; the engine's process step %.2f ms, its physics step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, standing, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, phys / W1_GPU_FRAMES, W1_GPU_FRAMES])
 
 
 ## The arena's life alone (its SoloLife).

@@ -52,12 +52,16 @@ const GRID_HALF := 5
 const SPOT_CLEAR_M := 0.9
 const PLAYER_CLEAR_M := 8.0
 const NEST_CLEAR_M := 3.0
-const NEST_LIFT_M := 1.9
+const NEST_LIFT_M := 2.3
+## Nests hang no farther than this from the arena's middle (out of the corners, where walls hide them).
+const NEST_REACH_M := 13.0
 ## A daemon forks in this far from its parent.
 const FORK_OFF_M := 2.2
 ## Sizes and health: a drone's hit volume; a nest's and a boss's health; a boss's size cool and at a full core.
-const DRONE_RADIUS := 0.42
-const DRONE_HEIGHT := 0.84
+const DRONE_RADIUS := 0.5
+const DRONE_HEIGHT := 1.0
+## A drone's label shows within this many metres only.
+const DRONE_TAG_M := 6.0
 const NEST_HEALTH := 40.0
 const BOSS_HEALTH := 400.0
 const BOSS_SIZE_COOL := 1.35
@@ -326,6 +330,12 @@ func _fork(key: String, spec: Dictionary) -> Node3D:
 			dummy.resize_volume(DRONE_RADIUS, DRONE_HEIGHT)
 			dummy.climb_depth_m = 0.0
 			dummy.spawn_in(DRONE_S)
+			# A swarm's labels never a wall of text: small, near only; a thread's none (its nest carries its name and PID).
+			var tag := dummy.get_node("Tag") as Label3D
+			tag.font_size = 30
+			tag.visibility_range_end = DRONE_TAG_M
+			if int(spec.get("thread", 0)) > 0:
+				dummy.hide_tag(true)
 			var flock := _flock_for(spec["nest"])
 			flock.add(dummy)
 			var nest = _body(spec["nest"])
@@ -682,7 +692,7 @@ func _find_spots() -> void:
 	# Nests: spots with air round them, spread out (each the farthest from those already taken and the boss).
 	var air: Array = []
 	for s in _spots:
-		if _clear_at(s + Vector3.UP * (NEST_LIFT_M + 0.9), NEST_CLEAR_M) and s.distance_to(_boss_home) > 7.0:
+		if _clear_at(s + Vector3.UP * (NEST_LIFT_M + 0.9), NEST_CLEAR_M) and s.distance_to(_boss_home) > 7.0 and Vector2(s.x - middle.x, s.z - middle.z).length() <= NEST_REACH_M:
 			air.append(s + Vector3.UP * NEST_LIFT_M)
 	var picked: Array = [_boss_home]
 	for i in ProcMap.SWARMS_MOST + 1:

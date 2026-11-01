@@ -10,6 +10,10 @@ const Palette = preload("res://scripts/palette.gd")
 const PANEL_AT := Vector2(16, 98)
 const PANEL_W := 372.0
 const ROWS := 6
+## Below this viewport width the panel is compact: fewer rows and lines, so a small window keeps its view.
+const COMPACT_W := 1280.0
+const ROWS_COMPACT := 3
+const LINES_COMPACT := 2
 const LINE := 17.0
 const BANNER_S := 3.2
 const ALPHA := 0.8
@@ -59,8 +63,9 @@ func _draw_view() -> void:
 		return
 	var v := _view
 	var real := hunt.layer == "real"
-	var rows := hunt.hottest(ROWS)
-	var lines := hunt.events
+	var compact := v.size.x < COMPACT_W
+	var rows := hunt.hottest(ROWS_COMPACT if compact else ROWS)
+	var lines: Array = hunt.events.slice(maxi(hunt.events.size() - LINES_COMPACT, 0)) if compact else hunt.events
 	var h := 88.0 + LINE * (rows.size() + 1) + 10.0 + LINE * lines.size() + 16.0
 	var rect := Rect2(PANEL_AT, Vector2(PANEL_W, h))
 	v.draw_rect(rect, Color(Palette.VOID, ALPHA))

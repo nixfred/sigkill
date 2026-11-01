@@ -155,11 +155,11 @@ func _pose(t: float, delta: float) -> void:
 		var inner := _inner[i] == 1
 		var m := (INNER_M if inner else ATOM_M) * (1.0 + 0.35 * beat + 0.3 * tell)
 		orient(_atoms[i], at[i], frame * Vector3.UP, m, m * 0.85)
-		brighten(_atoms[i], (2.2 if inner else 1.3) + 1.6 * hot + 1.2 * beat + 3.0 * tell + 2.0 * snap)
+		brighten(_atoms[i], (1.6 if inner else 1.0) + 0.7 * hot + 0.8 * beat + 2.4 * tell + 1.5 * snap)
 	for k in _bonds.size():
 		var e := _bond_ends[k]
 		bone(_bonds[k], at[e.x], at[e.y], BOND_W * (1.0 + 0.5 * tell))
-		brighten(_bonds[k], 1.0 + 1.3 * hot + 0.8 * beat + 2.0 * tell)
+		brighten(_bonds[k], 0.7 + 0.5 * hot + 0.4 * beat + 1.8 * tell)
 	for k in _frame.size():
 		var e := _frame_ends[k]
 		var a := middle + frame * (_sites[e.x] * size * 1.08)
@@ -176,27 +176,27 @@ func _pose(t: float, delta: float) -> void:
 		lay(_fins[k], middle + radial * FIN_R * (1.0 + 0.1 * snap - 0.06 * tell), basis)
 	# The heart: white-hot, beating; its halo round the long diagonal.
 	orient(_heart, middle, frame * _axis, HEART_M * (1.0 + 0.4 * beat + 0.5 * tell), HEART_M * 0.9)
-	brighten(_heart, 3.0 + 2.0 * hot + 1.5 * beat + 4.0 * tell + 2.0 * hurt)
+	brighten(_heart, 2.4 + 1.0 * hot + 1.2 * beat + 3.5 * tell + 1.5 * hurt)
 	orient(_halo, middle, frame * _axis, 0.05, HEART_M * 3.2 * (1.0 + 0.2 * beat - 0.25 * tell))
-	brighten(_halo, 1.2 + 1.0 * hot + 2.0 * tell)
+	brighten(_halo, 1.0 + 0.5 * hot + 2.0 * tell)
 	# Heat haze: slivers rising off the top, taller and quicker the hotter it runs.
 	for k in _haze.size():
 		var u := fposmod(float(k) / float(HAZE) + t * (0.35 + 0.6 * hot), 1.0)
 		var a := TAU * (float(k) * 0.381966 + 0.1 * sin(t + k))
 		var base := middle + Vector3(cos(a) * 0.55, HALF * 1.1 + 1.6 * u * (0.6 + hot), sin(a) * 0.55)
 		bone(_haze[k], base, base + Vector3(0.08 * sin(t * 3.0 + k), 0.4 + 0.6 * hot, 0.0), 0.06 * (1.0 - u))
-		brighten(_haze[k], (0.6 + 1.4 * hot) * (1.0 - u))
+		brighten(_haze[k], (0.5 + 0.8 * hot) * (1.0 - u))
 	if _lamp != null:
 		_lamp.position = middle
-		_lamp.light_energy = (LAMP_ENERGY * (0.5 + hot) + 2.0 * beat + 4.0 * tell + 3.0 * snap) * ArenaArt.light_level
+		_lamp.light_energy = (LAMP_ENERGY * (0.4 + 0.6 * hot) + 1.5 * beat + 4.0 * tell + 3.0 * snap) * ArenaArt.light_level
 
 
 ## Its colour for its heat: crimson, through ember orange, to white.
 func heat_color() -> Color:
 	var h := clampf(heat, 0.0, 1.0)
-	if h < 0.6:
-		return Palette.CRIMSON.lerp(Palette.EMBER, h / 0.6)
-	return Palette.EMBER.lerp(Palette.HEAT_HI, (h - 0.6) / 0.4)
+	if h < 0.65:
+		return Palette.CRIMSON.lerp(Palette.EMBER, h / 0.65)
+	return Palette.EMBER.lerp(Palette.HEAT_HI, 0.45 * (h - 0.65) / 0.35)  # never all white: the lattice must read
 
 
 func _send_heat() -> void:

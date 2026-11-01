@@ -146,6 +146,7 @@ func _ready() -> void:
 	hunt.rounds = _hud.round_hud()
 	hunt.guide = _hud.guide()
 	hunt.spawned.connect(_on_mission_daemon)
+	_hud.set_proc_hunt(hunt)
 	add_child(hunt)
 	ProcHunt.take_flag(launch_args)
 	GameSettings.current().changed.connect(_on_setting_changed)

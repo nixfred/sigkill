@@ -354,6 +354,11 @@ func unlock_toast() -> UnlockToast:
 	return _toast
 
 
+## The process hunt (W1): its own panel counts its enemies, so the arena's "daemons down" counter gives way while it runs.
+func set_proc_hunt(hunt: ProcHunt) -> void:
+	hunt.began.connect(func(): _status.visible = false)
+
+
 ## The arena's mission runner (C35), shown from now on.
 func set_mission_runner(runner: MissionRunner) -> void:
 	_mission.set_runner(runner)

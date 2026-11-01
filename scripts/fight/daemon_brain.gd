@@ -109,7 +109,7 @@ const BOSS := ["shell", "pegged"]
 ## W1's pegged core (a live process running a core flat out): its hover over its home, orbit and rise, its tell before
 ## each volley, the volley (bolts fanned across its prey), and its wait between volleys, from cool (half a core) to a
 ## full core.
-const PEGGED_HOVER_M := 3.4
+const PEGGED_HOVER_M := 5.2
 const PEGGED_ORBIT_M := 3.5
 const PEGGED_TURN := 0.3
 const PEGGED_RISE_S := 3.0

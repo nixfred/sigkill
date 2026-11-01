@@ -14,16 +14,16 @@ extends DaemonArt
 
 const CELLS_LOW := 14
 const CELLS_HIGH := 22
-const SHELL_R := 1.0
-const CELL := Vector3(0.36, 0.1, 0.36)
-const CELL_LIGHT := 0.11
-const CORE_W := 0.62
-const CORE_H := 0.16
-const HEART_M := 0.3
-const ANTENNA_L := 0.7
+const SHELL_R := 1.35
+const CELL := Vector3(0.5, 0.13, 0.5)
+const CELL_LIGHT := 0.15
+const CORE_W := 0.85
+const CORE_H := 0.22
+const HEART_M := 0.42
+const ANTENNA_L := 1.0
 const TURN := 0.35
 const BREATH_HZ := 0.45
-const BOX := Vector3(2.4, 2.4, 2.4)
+const BOX := Vector3(3.2, 3.2, 3.2)
 const FORK_FLASH_S := 0.6
 
 ## Set by the hunt: how many of its cells are lit (its drones out now).
@@ -55,8 +55,8 @@ func _build() -> void:
 	glyph_high = 1.2
 	glyph_size = 0.15
 	glyph_turns = 0.08
-	reach = AABB(Vector3(-2.0, -2.0, -2.0), Vector3(4.0, 4.4, 4.0))
-	tag_height = 1.9
+	reach = AABB(Vector3(-2.6, -2.6, -2.6), Vector3(5.2, 5.8, 5.2))
+	tag_height = 2.4
 	budget_triangles = 6000
 	budget_draw_calls = 9
 	size_low = 0.95
