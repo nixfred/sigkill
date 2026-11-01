@@ -260,9 +260,14 @@ func _ending_checks() -> void:
 	_check("the finale's card: \"exit 0\" and Credits first, and no roll yet", end.buttons()[0].text == MissionEndScreen.CREDITS and CreditsRoll.plays == plays and not mh.credits_screen().is_up())
 	var credits: CreditsHandoff = mh.credits_screen()
 	var roll := credits.roll()
+	old_id = main.get_instance_id()
 	end.choose("next")
 	await _frames(2)
-	_check("Credits rolls them, once, for the ending, over the card (the card down, the player's input stopped)", credits.is_up() and roll.reason == "ending" and CreditsRoll.plays == plays + 1 and not end.is_up() and player.input_blocked)
+	var rolled: bool = is_instance_valid(credits) and credits.is_up()
+	_check("Credits rolls them, once, for the ending, over the card (the card down, the player's input stopped)", rolled and roll.reason == "ending" and CreditsRoll.plays == plays + 1 and not end.is_up() and player.input_blocked)
+	if not rolled:
+		await _skip_reload(old_id)
+		return
 	await _until(func(): return roll.elapsed() >= CreditsRoll.FADE_S + 0.1)
 	await _frames(2)
 	_check("once the screen is black, the arena's 3D view is not drawn under it", root.disable_3d)
@@ -345,8 +350,13 @@ func _second_ending_checks() -> void:
 	var end: MissionEndScreen = mh.end_screen()
 	await _until(func(): return end.is_up())
 	var credits: CreditsHandoff = mh.credits_screen()
+	old_id = main.get_instance_id()
 	end.choose("free_play")
 	await _frames(2)
+	if not (is_instance_valid(credits) and credits.is_up()):
+		_check("a second ending, its card left by Free play: the roll again, once for it (0; it never came up)", false)
+		await _skip_reload(old_id)
+		return
 	var once: bool = credits.is_up() and CreditsRoll.plays == plays + 1 and not runner.roll_credits("missions") and runner.credits_then() == "free_play"
 	credits.roll().seek(CreditsRoll.CAST_AT + 1.0)
 	await process_frame
@@ -418,6 +428,12 @@ func _seen_checks() -> void:
 
 
 # --- Helpers. ---
+
+## A part that failed to roll: on past the reload its card's choice asked for, so the checks after it run on a fresh arena.
+func _skip_reload(old_id: int) -> void:
+	await _until(func(): return current_scene != null and current_scene.get_instance_id() != old_id and current_scene.has_node("Hud") and current_scene.is_node_ready())
+	if current_scene != null:
+		await _ready_arena(current_scene)
 
 func _arena() -> Node:
 	MissionRunner.clear_pending()
