@@ -258,9 +258,10 @@ func _district_checks() -> void:
 	_check("its palette keeps the daemons and ICE readable: every colour of it at least %.2f OKLab from theirs (nearest %.3f)" % [RuinsRegister.READABLE_GAP, worst], worst >= RuinsRegister.READABLE_GAP)
 	var others := PackedStringArray()
 	for rset in RuinsBook.all():
-		if rset.id != "deep_dirs" and (rset.terraces != 0 or rset.water > 0.0 or rset.shell != "" or rset.palette != "" or rset.breach_core):
+		# Water and a palette are the finale's too since M7 (its sea of heat, its own colours); the rest is this district's alone.
+		if rset.id != "deep_dirs" and (rset.terraces != 0 or rset.shell != "" or rset.breach_core or ((rset.water > 0.0 or rset.palette != "") and rset.id != "core_lattice")):
 			others.append(rset.id)
-	_check("only its district steps down, drowns, has a shell, a palette and the core: the other districts plan as before (flat, at FLOOR_Y)", others.is_empty() and RuinsLayout.of(RuinsBook.of("sudoers")).floor_y(Vector2i(4, 1)) == RuinsLayout.FLOOR_Y, ", ".join(others))
+	_check("only its district steps down, has a shell and the core (water and a palette the finale's too since M7): the other districts plan as before (flat, at FLOOR_Y)", others.is_empty() and RuinsLayout.of(RuinsBook.of("sudoers")).floor_y(Vector2i(4, 1)) == RuinsLayout.FLOOR_Y, ", ".join(others))
 
 
 # --- The gate. ---
