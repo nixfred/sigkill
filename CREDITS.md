@@ -41,7 +41,7 @@ The theme shift (W3) plays its six levels in the same six palettes, in this orde
 
 ## The shortcuts keybind gunplay teaches
 
-Keybind gunplay (W4) teaches Omarchy's default key bindings, with thanks to Omarchy (MIT, by Basecamp): the chords and the meanings its own binding files give them, Super with one key, as copied at [this commit](https://github.com/basecamp/omarchy/tree/63f60f4fcc4786d97e5c0384be640bcdef46f9a1/default/hypr/bindings). Every card shows Omarchy's own words for its shortcut. What a shortcut does in the game (a terminal blasting open, a window folding shut, the rest), the windows, the sounds and the daemons are SIGKILL's own, made in code. With opener data on, the drills follow the player's own binds, read and never changed.
+Keybind gunplay (W4) teaches Omarchy's default key bindings, with thanks to [Omarchy](https://github.com/basecamp/omarchy/tree/63f60f4fcc4786d97e5c0384be640bcdef46f9a1/default/hypr/bindings) (MIT, by Basecamp): the chords and the meanings its own binding files give them, Super with one key, as copied at commit 63f60f4. Every card shows Omarchy's own words for its shortcut. What a shortcut does in the game (a terminal blasting open, a window folding shut, the rest), the windows, the sounds and the daemons are SIGKILL's own, made in code. With opener data on, the drills follow the player's own binds, read and never changed.
 
 ## The pattern the pit's maze borrows
 

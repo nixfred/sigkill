@@ -33,6 +33,7 @@ const THANKS := [
 	[15, "[Nord] an opener palette"],
 	[16, "[Everforest] an opener palette"],
 	[17, "[10 PRINT] the pit's maze, after the C64"],
+	[18, "[Omarchy] the shortcuts keybind gunplay teaches"],
 ]
 const THANKS_USER := "root"
 const THANKS_CPU := 0.0
