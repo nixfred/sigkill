@@ -190,7 +190,7 @@ func _sync() -> void:
 	var stage := _stage()
 	var fresh: Array = []
 	for body in get_tree().get_nodes_in_group("targets"):
-		if _is_daemon(body) and (body.is_alive() or body.climbing()) and not _by_body.has(body.get_instance_id()) and not _thread_drone(body):
+		if _is_daemon(body) and (body.is_alive() or body.climbing()) and not _by_body.has(body.get_instance_id()) and (not _thread_drone(body) or _thread_parent(body) >= 0):
 			fresh.append(body)
 	# Parents before children: the rooted and the flying first, then rogue.d, then the runaways, then the rest.
 	fresh.sort_custom(func(a, b): return _rank(a) < _rank(b))
@@ -238,8 +238,12 @@ func _register(body: Node3D, stage: MissionStage) -> void:
 		return
 	var kind := MissionRunner.kind_of(body)
 	var hunt := _hunt()
-	var id := tree.add_daemon(body, str(body.tag_text), kind, _hunt_parent(hunt.ppid_of(int(body.get_meta(&"proc_pid", 0))), hunt, 0) if hunt != null and body.has_meta(&"proc") else _parent_for(body, kind, stage))
+	var thread := hunt != null and _thread_drone(body)
+	var parent := _thread_parent(body) if thread else (_hunt_parent(hunt.ppid_of(int(body.get_meta(&"proc_pid", 0))), hunt, 0) if hunt != null and body.has_meta(&"proc") else _parent_for(body, kind, stage))
+	var id := tree.add_daemon(body, str(body.tag_text), kind, parent)
 	var n: ProcTree.ProcNode = tree.node(id)
+	if thread:
+		n.set_meta(&"thread", str(body.get_meta(&"proc")).get_slice("/", 1))
 	if hunt != null and body.has_meta(&"proc"):
 		_hunt_label(n, int(body.get_meta(&"proc_pid", 0)), hunt)
 	var art = body.art_node()
@@ -803,9 +807,21 @@ func _hunt() -> ProcHunt:
 	return h if h != null and h.running else null
 
 
-## A drone of a process's threads (its key "pid/n"): no process of its own, so no node and no line.
+## A drone of a process's threads (its key "pid/n"). W2 (W1's known issue, folded in): a thread is no process of its own,
+## so it hangs from its process (its nest) with its process's PID, as the kernel reports a thread's (the thread group's).
 static func _thread_drone(body: Node) -> bool:
 	return body.has_meta(&"proc") and str(body.get_meta(&"proc")).contains("/")
+
+
+## The node a thread drone hangs from: its process's (its nest's), or -1 while that has none yet.
+func _thread_parent(body: Node) -> int:
+	var hunt := _hunt()
+	if hunt == null:
+		return -1
+	var nest = hunt.enemy_for_pid(int(body.get_meta(&"proc_pid", 0)))
+	if nest == null or nest == body or not is_instance_valid(nest):
+		return -1
+	return int(_by_body.get(nest.get_instance_id(), -1))
 
 
 ## The tree node a hunt's process `pid` hangs from: its parent's enemy where one stands, the session's holder (redacted),
@@ -841,6 +857,8 @@ func _hunt_label(n: ProcTree.ProcNode, pid: int, hunt: ProcHunt) -> void:
 	n.real = hunt.layer == "real"
 	if not row.is_empty():
 		n.name = str(row.get("comm", n.name))
+		if n.has_meta(&"thread"):
+			n.name = ("%s/t%s" % [n.name, str(n.get_meta(&"thread"))]).left(ProcReader.COMM_LONGEST)
 		n.demo_name = n.name
 		n.cpu = float(row.get("cpu", 0.0))
 		n.mem_kb = int(row.get("mem_kb", 0))
@@ -862,8 +880,8 @@ func _sync_hunt() -> void:
 		if n == null or not n.has_meta(&"proc") or n.down_s >= 0.0 or _burn.has(id):
 			continue
 		var pid := int(n.get_meta(&"proc"))
-		var want := _hunt_parent(hunt.ppid_of(pid), hunt, 0)
-		if want != n.parent and tree.has(want):
+		var want := _thread_parent(n.body) if n.has_meta(&"thread") and n.body != null and is_instance_valid(n.body) else _hunt_parent(hunt.ppid_of(pid), hunt, 0)
+		if want >= 0 and want != n.parent and tree.has(want):
 			tree.reparent(id, want)
 		_hunt_label(n, pid, hunt)
 	for pid in _hunt_rings.keys():

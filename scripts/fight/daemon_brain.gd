@@ -390,6 +390,12 @@ func rest(delta: float, d) -> void:
 		_down(d)
 		art.displays = true
 		return
+	if kind == "pegged":
+		art.displays = true
+		art.drive(DaemonArt.Act.IDLE)
+		clock += delta
+		_pegged_hover(delta)  # W2: a pegged core rises and turns in practice too, never firing
+		return
 	if ROOTED.has(kind) or BOSS.has(kind):
 		art.displays = true
 		art.drive(DaemonArt.Act.IDLE)
@@ -1285,18 +1291,7 @@ func _step_shell(delta: float, d) -> void:
 ## and burns white, PEGGED_TELL_S), then a volley of bolts fanned across its prey from its heart, then a wait that is
 ## shorter the hotter it runs (its art's heat, the process's live CPU). It takes no attacker's slot: it is the event.
 func _step_pegged(delta: float, d) -> void:
-	if not has_home:
-		take_home()
-	_risen = minf(_risen + delta / PEGGED_RISE_S, 1.0)
-	var rise := smoothstep(0.0, 1.0, _risen)
-	_orbit = fmod(_orbit + PEGGED_TURN * delta, TAU)
-	var centre := home.origin
-	var goal := centre + Vector3(cos(_orbit), 0.0, sin(_orbit)) * PEGGED_ORBIT_M * rise
-	goal.y = centre.y + PEGGED_HOVER_M * rise + PEGGED_BOB_M * sin(clock * 0.9) * rise
-	var step := (goal - dummy.global_position).limit_length(PEGGED_SPEED * delta)
-	dummy.global_position += step
-	moved = true
-	velocity = step / maxf(delta, 0.0001)
+	_pegged_hover(delta)
 	if prey == 0 or not d.prey_valid(prey) or d.prey_hidden(prey):
 		prey = 0
 		for id in d.prey_ids():
@@ -1345,6 +1340,23 @@ func _step_pegged(delta: float, d) -> void:
 		tells += 1
 		_enter(State.TELL)
 		_note("tell")
+
+
+## A pegged core rising over its spot and turning round it as it hangs there: in a fight, and (W2, W1's known issue
+## folded in) in practice too, where it rises and turns and never fires.
+func _pegged_hover(delta: float) -> void:
+	if not has_home:
+		take_home()
+	_risen = minf(_risen + delta / PEGGED_RISE_S, 1.0)
+	var rise := smoothstep(0.0, 1.0, _risen)
+	_orbit = fmod(_orbit + PEGGED_TURN * delta, TAU)
+	var centre := home.origin
+	var goal := centre + Vector3(cos(_orbit), 0.0, sin(_orbit)) * PEGGED_ORBIT_M * rise
+	goal.y = centre.y + PEGGED_HOVER_M * rise + PEGGED_BOB_M * sin(clock * 0.9) * rise
+	var step := (goal - dummy.global_position).limit_length(PEGGED_SPEED * delta)
+	dummy.global_position += step
+	moved = true
+	velocity = step / maxf(delta, 0.0001)
 
 
 ## The `k`th bolt of a pegged core's volley, fanned across its prey from its heart, thrown only where nothing of the level

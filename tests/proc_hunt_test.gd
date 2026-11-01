@@ -77,6 +77,7 @@ func _run() -> void:
 	_demo_checks()
 	_fit_checks()
 	await _arena_checks()
+	await _practice_boss_checks()
 	await _fight_checks()
 	await _visor_checks()
 	await _real_checks()
@@ -402,6 +403,17 @@ func _role_count(hunt: ProcHunt, role: String) -> int:
 
 # --- The boss and the swarm fighting; a kill. ---
 
+## W2 (W1's known issue folded in): in practice the pegged core (the demo build's linker) still rises over its spot and
+## turns there, never firing.
+func _practice_boss_checks() -> void:
+	var main := await _arena(true)
+	var hunt := ProcHunt.of(main)
+	var up := await _until(func(): return hunt.running and hunt.boss() != null and not hunt.boss().climbing())
+	var low: float = hunt.boss().global_position.y if up else 0.0
+	var rose := await _until(func(): return hunt.boss() != null and hunt.boss().global_position.y > low + 2.5)
+	_check("in practice the pegged core rises over the floor and turns there, never firing (it no longer sits on the floor)", up and rose and GameSettings.current().value("gameplay", "practice") == true and hunt.boss().brain.volleys == 0)
+
+
 func _fight_checks() -> void:
 	var main := await _arena(true, false)
 	var hunt := ProcHunt.of(main)
@@ -502,7 +514,7 @@ func _visor_checks() -> void:
 	var nodes := 0
 	for id in tree.daemons():
 		var n: ProcTree.ProcNode = tree.node(id)
-		if not n.has_meta(&"proc") or n.down_s >= 0.0:
+		if not n.has_meta(&"proc") or n.down_s >= 0.0 or n.has_meta(&"thread"):
 			continue
 		nodes += 1
 		var pid := int(n.get_meta(&"proc"))
@@ -515,11 +527,20 @@ func _visor_checks() -> void:
 			truth = false
 			why = "%d: shown %s, table %s" % [pid, shown, expect]
 	var threads := 0
+	var thread_drones := 0
+	var to_nest := true
 	for key in hunt.enemies():
-		if key.contains("/") and visor._by_body.has(hunt.enemies()[key]["body"].get_instance_id()):
+		if not key.contains("/"):
+			continue
+		thread_drones += 1
+		var body = hunt.enemies()[key]["body"]
+		if visor._by_body.has(body.get_instance_id()):
 			threads += 1
+			var tn: ProcTree.ProcNode = tree.node(visor._by_body[body.get_instance_id()])
+			var nest = hunt.enemy_for_pid(int(key.get_slice("/", 0)))
+			to_nest = to_nest and nest != null and tn.parent == visor._by_body.get(nest.get_instance_id(), -2) and tn.pid == int(key.get_slice("/", 0))
 	_check("acceptance: the visor draws the real lineage over live enemies: every enemy's line to its parent in the table (its enemy, or a ring for its process), the session's holder redacted, every PPID shown the table's (%d nodes, %d rings)" % [nodes, visor._hunt_rings.size()], truth and nodes >= 8 and visor.lines().drawn_lines > nodes, why)
-	_check("a thread drone is no process of its own: no node, no line", threads == 0)
+	_check("a thread drone hangs from its process (W2, W1's known issue folded in): a line from each (%d of %d) to its nest, its PID its process's, as the kernel reports a thread's" % [threads, thread_drones], thread_drones > 0 and threads == thread_drones and to_nest)
 	# The sever: a nest's death with the visor on burns down to its drones, reaped (cosmetic); they fork back in.
 	var nest_key := ""
 	for key in hunt.enemies():
