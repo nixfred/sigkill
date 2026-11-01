@@ -521,7 +521,7 @@ func leave() -> void:
 		return
 	_going = true
 	clear()
-	MissionRunner.reload_after_mount(get_tree(), "$ exit")
+	SceneTear.reload_scene(get_tree(), "$ exit")
 
 
 func _go(to: PackedStringArray, to_level: int, label: String, from: String) -> void:
@@ -539,7 +539,7 @@ func _go(to: PackedStringArray, to_level: int, label: String, from: String) -> v
 	came_from = from
 	_going = true
 	_note("cd", label)
-	MissionRunner.reload_after_mount(get_tree(), label)
+	SceneTear.reload_scene(get_tree(), label)  # W3: the wait for the next room behind a tear, not a black frame
 
 
 func _physics_process(delta: float) -> void:

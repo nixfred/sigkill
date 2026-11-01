@@ -103,6 +103,10 @@ const PROC_HUNT_MISSION := "Not during a mission: quit it first."
 const FOLDER_MAP := "Folder map"
 const FOLDER_MAP_LEAVE := "Leave folder map"
 const FOLDER_MAP_TIP := "Your folders as the level: a folder is a room as big as it is, its subfolders doors, node_modules an endless maze. A made-up home unless you said yes to opener data (then your own, read only: folder names, sizes and counts, never what is in a file; hidden folders and links skipped). Nothing is ever changed."
+## The theme shift (W3): a run of levels in terminal themes' colours; the entry turns to its way out while it runs.
+const THEME_SHIFT := "Theme shift"
+const THEME_SHIFT_LEAVE := "Leave theme shift"
+const THEME_SHIFT_TIP := "A run of levels, each in a terminal theme's colours and a world of its own (Tokyo Night, Gruvbox Material, Nord, Everforest, Catppuccin Mocha and Latte), the theme tearing in under you between them. Some daemons show only in their own theme: shift to it and they wake. Opener data adds a level in your own Omarchy theme's colours (read only; your theme is never changed)."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
 const RESTART_MISSION := "Restart mission"
@@ -185,6 +189,7 @@ var _opener_button: Button
 var _credits_button: Button
 var _hunt_button: Button
 var _map_button: Button
+var _theme_button: Button
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -350,6 +355,7 @@ func toggle_proc_hunt() -> void:
 		ProcHunt.clear()
 	else:
 		FolderMap.clear()
+		ThemeShift.clear()
 		ProcHunt.queue()
 	_was_captured = true
 	close()
@@ -367,6 +373,7 @@ func toggle_folder_map() -> void:
 		FolderMap.clear()
 	else:
 		ProcHunt.clear()
+		ThemeShift.clear()
 		FolderMap.queue()
 	_was_captured = true
 	close()
@@ -377,6 +384,29 @@ func toggle_folder_map() -> void:
 ## The Esc menu's folder map entry (the checks).
 func map_button() -> Button:
 	return _map_button
+
+
+## The theme shift (W3) on or off: the arena reloads into its first level, or out of it. Alone and outside a mission only;
+## the process hunt and the folder map end as it begins (one world mode at a time).
+func toggle_theme_shift() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if ThemeShift.queued:
+		ThemeShift.clear()
+	else:
+		ProcHunt.clear()
+		FolderMap.clear()
+		ThemeShift.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), "$ export THEME=" + ThemeBook.slug_of(ThemeBook.ORDER[0]) if ThemeShift.queued else "$ exit")
+
+
+## The Esc menu's theme shift entry (the checks).
+func theme_button() -> Button:
+	return _theme_button
 
 
 ## The Esc menu's process hunt entry (the checks).
@@ -710,6 +740,9 @@ func _show_pause() -> void:
 	_map_button.text = FOLDER_MAP_LEAVE if FolderMap.queued else FOLDER_MAP
 	_map_button.disabled = _online() or running != null
 	_map_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else FOLDER_MAP_TIP
+	_theme_button.text = THEME_SHIFT_LEAVE if ThemeShift.queued else THEME_SHIFT
+	_theme_button.disabled = _online() or running != null
+	_theme_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else THEME_SHIFT_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -932,7 +965,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -947,6 +980,8 @@ func _build() -> void:
 				_hunt_button = button
 			FOLDER_MAP:
 				_map_button = button
+			THEME_SHIFT:
+				_theme_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

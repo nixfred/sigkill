@@ -74,6 +74,8 @@ func _ready() -> void:
 	var guide_now = _hud.guide()
 	var link = guide_now.session_link() if guide_now != null and guide_now.has_method("session_link") else null
 	FolderMap.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
+	# The theme shift (W3): the district of the level it is on, queued for the stage when it is (alone, no mission).
+	ThemeShift.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
 	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 	add_child(ParticleFx.new())
@@ -167,6 +169,19 @@ func _ready() -> void:
 	fsmap.spawned.connect(_on_mission_daemon)
 	_hud.set_folder_map(fsmap)
 	add_child(fsmap)
+	# The theme shift (W3): a run of levels in terminal themes' colours, when queued; its daemons the arena's own to the HUD
+	# and the kills.
+	var themes := ThemeShift.new()
+	themes.player = _player
+	themes.director = director
+	themes.runner = runner
+	themes.ice = ice
+	themes.rounds = _hud.round_hud()
+	themes.guide = _hud.guide()
+	themes.visor = visor
+	themes.spawned.connect(_on_mission_daemon)
+	_hud.set_theme_shift(themes)
+	add_child(themes)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -213,6 +228,10 @@ func _ready() -> void:
 	if queued[0] != "":
 		ProcHunt.clear()  # a mission ends the process hunt (W1)
 		FolderMap.clear()  # and the folder map (W2)
+		ThemeShift.clear()  # and the theme shift (W3)
+	elif ThemeShift.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		themes.begin.call_deferred()
 	elif FolderMap.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		fsmap.begin.call_deferred()

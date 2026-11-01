@@ -33,9 +33,11 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 
 Two of the weapons' light skins (C33) take their names and colours from open terminal themes, with thanks: [Dracula](https://draculatheme.com) (the cannon's purple and green) and [Catppuccin](https://catppuccin.com) (SIGTERM's pink and mauve). Others only nod by name to old machines and tools: green phosphor and `tty1`, CGA's cyan and yellow, the Commodore 64's blue, the VT220's white. A skin is two colours and a line of text; nothing of these projects is bundled.
 
-## Colours the opener's terminal borrows
+## Colours the opener's terminal and the theme shift borrow
 
 The opener's fake terminal (C38) ships six demo palettes, and each takes its colours, and only its colours, from an open terminal theme that Omarchy includes, with thanks: [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (the default), [Catppuccin](https://catppuccin.com) Mocha and Latte, [Gruvbox Material](https://github.com/sainnhe/gruvbox-material), [Nord](https://www.nordtheme.com) and [Everforest](https://github.com/sainnhe/everforest). A palette is a list of colours under Omarchy's names for them; nothing else of these projects is bundled.
+
+The theme shift (W3) plays its six levels in the same six palettes, in this order: Tokyo Night, Gruvbox Material, Nord, Everforest, Catppuccin Mocha and Catppuccin Latte. Each level's name on screen is the theme's own, and its colours are those values and nothing more: the worlds, the daemons and the tear between themes are SIGKILL's own, made in code. With opener data on, one more level plays in the player's own Omarchy theme's colours, read and never changed.
 
 ## The pattern the pit's maze borrows
 
