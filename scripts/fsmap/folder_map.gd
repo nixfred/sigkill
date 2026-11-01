@@ -77,6 +77,10 @@ static var gate: Callable
 static var home_root := ""
 static var _flag_taken := false
 static var _going := false
+## Loads in a row that did not stand in the room asked for (a guard: past MISSES_MOST the map gives up, never reloading on
+## and on).
+static var _misses := 0
+const MISSES_MOST := 2
 
 signal began
 signal ended
@@ -98,6 +102,8 @@ var room: Dictionary = {}
 var world: RuinsWorld = null
 var maze: NodeMaze = null
 var maze_view: MazeWorld = null
+## Steps to the maze's way out from every cell (made once with the maze: the HUD's count and the visor's line read it).
+var maze_out := {}
 ## Its doors: {index, name, child (a folder, {} for the back door), d (the layout's door), label, tag}.
 var doors: Array = []
 var enemies: Array = []
@@ -234,10 +240,20 @@ func begin() -> bool:
 	add_child(_lines)
 	room = source.node_at(path) if source.ready_for(path) else {}
 	if room.is_empty() or world == null or world.ruins == null or world.ruins.id != (FolderRooms.id_for(path, level)):
-		# Not stood in its room yet (the reader still reading, or a plain arena): read it here, then go.
+		# Not stood in its room yet (the reader still reading, or a plain arena): read it here, then go; given up past
+		# MISSES_MOST loads that stood somewhere else.
+		if room.is_empty():
+			_misses = 0
+		else:
+			_misses += 1
+		if _misses > MISSES_MOST:
+			_misses = 0
+			end()
+			return false
 		_go(path, level, "$ cd " + FolderTree.path_text(path), came_from)
 		began.emit()
 		return true
+	_misses = 0
 	if level > 0:
 		_build_maze()
 	else:
@@ -387,6 +403,7 @@ func door_info(entry: Dictionary) -> String:
 
 func _build_maze() -> void:
 	maze = NodeMaze.new(world.layout, FolderRooms.seed_for(path, level) ^ 0x5a5a, level)
+	maze_out = maze.distances(maze.exit)
 	maze_view = MazeWorld.new()
 	maze_view.maze = maze
 	maze_view.names = _package_names()
@@ -601,7 +618,7 @@ func visor_lines() -> Array:
 	var xf := world.global_transform
 	if maze != null and player != null and is_instance_valid(player):
 		var here := world.layout.cell_at(world.to_local(player.global_position))
-		var way := maze.path(here, maze.exit) if maze.dist.has(here) else []
+		var way := way_out_from(here)
 		for i in mini(way.size() - 1, VisorLines.LINES_MOST):
 			out.append(_line(xf * (world.layout.center(way[i]) + Vector3(0, 0.25, 0)), xf * (world.layout.center(way[i + 1]) + Vector3(0, 0.25, 0)), 0.85, i))
 		return out
@@ -617,6 +634,23 @@ func visor_lines() -> Array:
 			continue
 		var d: Dictionary = e["d"]
 		out.append(_line(xf * ((d["at"] as Vector3) + Vector3(0, RuinsPieces.door_tall(d) + 0.6, 0)), top, clampf(float(d["share"]), 0.1, 1.0), int(e["index"])))
+	return out
+
+
+## The way out of the maze from cell `here`, cell by cell (both ends in), walked down the steps to it: [] off the maze.
+func way_out_from(here: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if maze == null or not maze_out.has(here):
+		return out
+	var at := here
+	out.append(at)
+	while int(maze_out[at]) > 0 and out.size() <= maze.cells.size():
+		for side in 4:
+			var n: Vector2i = at + RuinsLayout.SIDES[side]
+			if maze.is_open(at, side) and int(maze_out.get(n, 1 << 30)) == int(maze_out[at]) - 1:
+				at = n
+				break
+		out.append(at)
 	return out
 
 

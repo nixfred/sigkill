@@ -222,7 +222,11 @@ func _layout_checks() -> void:
 	for t in layout.towers:
 		if not t["inside"]:
 			clear = clear and not layout.in_door_way(t["at"], 0.0)
-	_check("the doors stand on the floor's edge onto the void, one a subfolder (%d) and the back door behind the start, no two on one edge, no tower in a door's way" % s.doors.size(), layout.doors.size() == s.doors.size() + 1 and void_ok and seen.size() == layout.doors.size() and not back.is_empty() and back["cell"] == layout.start_cell and int(back["side"]) == 2 and clear)
+	var thresholds := 0
+	for name in layout.points:
+		if str(name).begins_with("folder_door_"):
+			thresholds += 1
+	_check("the doors stand on the floor's edge onto the void, one a subfolder (%d) and the back door behind the start, no two on one edge, no tower in a door's way, every threshold a point (no cover in it, walkable from the start)" % s.doors.size(), layout.doors.size() == s.doors.size() + 1 and void_ok and seen.size() == layout.doors.size() and not back.is_empty() and back["cell"] == layout.start_cell and int(back["side"]) == 2 and clear and thresholds == layout.doors.size() and layout.unreachable().is_empty())
 	var big := layout.door(0)
 	var small := layout.door(s.doors.size() - 1)
 	_check("a bigger folder's door stands taller and its island is bigger and farther out (%.1f m and %.1f m tall)" % [RuinsPieces.door_tall(big), RuinsPieces.door_tall(small)], RuinsPieces.door_tall(big) > RuinsPieces.door_tall(small) and float(big["island_r"]) > float(small["island_r"]) and float(big["bridge"]) > float(small["bridge"]))
@@ -395,7 +399,10 @@ func _reader_checks() -> void:
 	var delta := reader.node_at(PackedStringArray(["Alpha", "Beta", "Gamma", "Delta"]))
 	var crowd := reader.node_at(PackedStringArray(["Crowd"]))
 	_check("caps: depth (Gamma, %d levels down, known by name only and marked partial; nothing under it read), entries (Crowd stops at %d of its 30 and is partial), home marked partial" % [reader.depth_most + 1, reader.entries_most], not gamma.is_empty() and not bool(gamma["scanned"]) and bool(gamma["partial"]) and delta.is_empty() and int(crowd["own_files"]) == reader.entries_most and bool(crowd["partial"]) and bool(reader.home["partial"]))
-	_check("the reader never blocks the frame past its budget: %d steps, the longest %.2f ms (budget %.1f ms, a slice a frame)" % [run[0], float(run[1]) / 1000.0, float(reader.budget_us) / 1000.0], int(run[1]) < reader.budget_us + 6000 and int(run[0]) >= 1)
+	var sliced := FolderReader.new(home)
+	sliced.budget_us = 1
+	var thin := _scan(sliced, PackedStringArray())
+	_check("the reader never blocks the frame past its budget: %d steps, the longest %.2f ms (budget %.1f ms, a slice a frame); held to 1 us a frame it reads a few entries a step (%d steps)" % [run[0], float(run[1]) / 1000.0, float(reader.budget_us) / 1000.0, thin[0]], int(run[1]) < reader.budget_us + 6000 and int(run[0]) >= 1 and int(thin[0]) >= 12)
 	var deeper := _scan(reader, PackedStringArray(["Alpha", "Beta"]))
 	var now_delta := reader.node_at(PackedStringArray(["Alpha", "Beta", "Gamma", "Delta"]))
 	_check("going into a folder reads deeper from there (Delta listed once Beta is asked for), what was read kept", reader.ready_for(PackedStringArray(["Alpha", "Beta"])) and not now_delta.is_empty() and int(reader.node_at(PackedStringArray(["Alpha"]))["own_files"]) == 3 and int(deeper[0]) >= 1)
@@ -404,6 +411,22 @@ func _reader_checks() -> void:
 	_scan(timed, PackedStringArray())
 	_check("the time cap: a scan given no time ends at once, partial, and still says it is done (the map never waits on it forever)", timed.ready_for(PackedStringArray()) and bool(timed.home["partial"]))
 	_check("acceptance (safety): the reader changed nothing: every file, folder and link under the test's tree exactly as it was (sizes and times the same, nothing added or removed)", _snapshot(_abs) == before, "%d before, %d after" % [before.size(), _snapshot(_abs).size()])
+	# Cut off mid-listing (a door walked through while home is still being read): nothing is ever counted twice.
+	var cut := FolderReader.new(home)
+	cut.budget_us = 1
+	cut.depth_most = 1
+	cut.want(PackedStringArray())
+	for i in 4:
+		cut.step(1.0 / 60.0)
+	_scan(cut, PackedStringArray(["Crowd"]))
+	_scan(cut, PackedStringArray())
+	var names := {}
+	var twice := false
+	for d in cut.home["dirs"]:
+		twice = twice or names.has(d["name"])
+		names[d["name"]] = true
+	var crowd2 := cut.node_at(PackedStringArray(["Crowd"]))
+	_check("a scan cut off mid-listing by another folder is listed afresh, never counted twice (home's folders once each, Crowd's 30 files 30)", not twice and names.has("Alpha") and int(crowd2.get("own_files", 0)) == 30 and int(cut.home["own_files"]) == 0, "%s, crowd %d" % [str(names.keys()), int(crowd2.get("own_files", -1))])
 	reader.drop()
 	_check("drop() lets every name and number go", reader.home["dirs"].is_empty() and not reader.ready_for(PackedStringArray()))
 
@@ -574,6 +597,8 @@ func _maze_arena_checks() -> void:
 	map.visor.set_on(true)
 	await _frames(4)
 	var way := map.maze.path(map.maze.start, map.maze.exit)
+	var walked := map.way_out_from(map.maze.start)
+	_check("the visor's way out is the maze's own shortest way (%d cells walked down its steps, %d by the search)" % [walked.size(), way.size()], walked.size() == way.size() and walked[walked.size() - 1] == map.maze.exit and walked[0] == map.maze.start)
 	_check("the visor in the maze draws the way out, cell by cell, from where the player stands (%d lines), and its breadcrumb says the depth" % map._lines.drawn_lines, map._lines.drawn_lines >= mini(way.size() - 1, VisorLines.LINES_MOST) - 2 and map._lines.drawn_lines > 2 and map._hud.breadcrumb_text().contains("node_modules") and map._hud.breadcrumb_text().contains("depth 1") and tall_enough)
 	map.visor.set_on(false)
 	var first_cells: int = map.maze.cells.size()

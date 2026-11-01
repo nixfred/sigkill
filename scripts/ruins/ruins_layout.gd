@@ -922,6 +922,10 @@ func _points() -> void:
 	var spawns := _spread(open.filter(func(c): return not taken.has(c)), POINTS["spawn"] - 1, [start_cell] + daemons, taken)
 	for i in spawns.size():
 		points["spawn_%d" % (i + 1)] = center(spawns[i]) + Vector3(0, STAND_Y, 0)
+	# The folder doors (W2): a point just inside each threshold, so no cover stands in a door's way and every door can be
+	# walked to; named folder_door_<n>, the back door 0.
+	for d in doors:
+		points["folder_door_%d" % (int(d["index"]) + 1)] = (d["at"] as Vector3) - (d["out"] as Vector3) * 1.2 + Vector3(0, STAND_Y, 0)
 	var looks := edges.filter(func(e): return e["overlook"] and not taken.has(e["cell"]))
 	for i in mini(looks.size(), 4):
 		var e: Dictionary = looks[(i * 7 + 3) % looks.size()]

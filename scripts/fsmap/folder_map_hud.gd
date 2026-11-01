@@ -13,6 +13,7 @@ const PANEL_W := 392.0
 const DOORS_SHOWN := 5
 const DOORS_COMPACT := 2
 const COMPACT_W := 1280.0
+const COMPACT_CLEAR := 230.0
 const LINE := 17.0
 const ALPHA := 0.8
 const TITLE := "FOLDER MAP"
@@ -59,7 +60,7 @@ func lines() -> PackedStringArray:
 	if map.maze != null:
 		out.append("depth %d   %s%s in %s files" % [FolderMap.level, more, FolderTree.human_size(int(n.get("size", 0))), FolderTree.thousands(int(n.get("files", 0)))])
 		var here := map.world.layout.cell_at(map.world.to_local(map.player.global_position)) if map.player != null and is_instance_valid(map.player) else map.maze.start
-		var steps := int(map.maze.distances(map.maze.exit).get(here, -1))
+		var steps := int(map.maze_out.get(here, -1))
 		out.append("the way out: %s   ways down: %d" % ["%d cells" % steps if steps >= 0 else "?", map.maze.pits.size()])
 	else:
 		out.append("%s%s   %s files here   %d folders" % [more, FolderTree.human_size(int(n.get("size", 0))), FolderTree.thousands(int(n.get("own_files", 0))), (n.get("dirs", []) as Array).size() + int(n.get("more", 0))])
@@ -160,10 +161,11 @@ func _draw_view() -> void:
 	# The visor's breadcrumb, across the top under the visor's own header (in a small window, at the bottom over the key
 	# hints, clear of the panel; shortened to fit: the sizes dropped but the last, then the oldest folders).
 	var size := 18 if not compact else 13
-	var crumb := fit_breadcrumb(v.size.x - 48.0, size)
+	# In a small window it keeps clear of the weapons' panel at the bottom right (COMPACT_CLEAR wide).
+	var crumb := fit_breadcrumb(v.size.x - 48.0 if not compact else v.size.x - COMPACT_CLEAR * 2.0, size)
 	if crumb != "":
 		var w := _font.get_string_size(crumb, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		var at := Vector2(maxf((v.size.x - w) * 0.5, 12.0), 92.0 if not compact else v.size.y - 64.0)
+		var at := Vector2(maxf((v.size.x - w) * 0.5, 12.0), 92.0) if not compact else Vector2(maxf(v.size.x - COMPACT_CLEAR - w, 12.0), v.size.y - 64.0)
 		v.draw_rect(Rect2(at.x - 12, at.y - size - 4, minf(w + 24, v.size.x - 2.0 * at.x + 24.0), size + 12), Color(Palette.VOID, 0.7))
 		v.draw_rect(Rect2(at.x - 12, at.y + 7, minf(w + 24, v.size.x - 2.0 * at.x + 24.0), 2), Color(Palette.HOSTILE_AMBER, 0.85))
 		v.draw_string(_font, at, crumb, HORIZONTAL_ALIGNMENT_LEFT, v.size.x - at.x - 12.0, size, Palette.HOSTILE_AMBER.lerp(Color.WHITE, 0.25))

@@ -150,6 +150,14 @@ func _open(rel: String, depth: int) -> void:
 			for d in n["dirs"]:
 				_queue.append([(rel + "/" if rel != "" else "") + str(d["name"]), depth + 1])
 		return
+	# Listed afresh: whatever a scan cut off mid-listing (another folder asked for first) is counted again from nothing,
+	# never twice.
+	n["own_files"] = 0
+	n["own_size"] = 0
+	n["more"] = 0
+	n["dirs"] = []
+	for k in FolderTree.KINDS:
+		n["kinds"][k] = 0
 	lists += 1
 	if keep_trail:
 		listed.append(rel)
