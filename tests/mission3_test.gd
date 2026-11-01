@@ -250,9 +250,9 @@ func _district_checks() -> void:
 				other_n += 1
 	_check("its rewrites: over 300 passes every cell of the field can always be walked to from outside it, each pass the same every time it is asked, and the walls round a core's cell standing more often (%.0f%% against %.0f%%), so its cores hide" % [100.0 * screened / screened_n, 100.0 * other / other_n], always_open and same and float(screened) / screened_n > float(other) / other_n + 0.15)
 	var others := PackedStringArray()
-	for set in RuinsBook.all():
-		if set.id != "cache_lines" and not RuinsLayout.of(set).field.is_empty():
-			others.append(set.id)
+	for rset in RuinsBook.all():
+		if rset.id != "cache_lines" and not RuinsLayout.of(rset).field.is_empty():
+			others.append(rset.id)
 	_check("only its district has a field: the other districts plan as before", others.is_empty(), ", ".join(others))
 	# The M2 leftover it measures: the walkers' route worked out for a crowd at once, on the biggest grid any mission uses.
 	var started := Time.get_ticks_usec()
