@@ -55,7 +55,8 @@ signal ended
 ## One of its own daemons climbed out of a vent (C37): scripts/main.gd counts its kills as the arena's.
 signal daemon_spawned(dummy: Node3D)
 ## A shot refused by one of its daemons (M7: the shell's true body takes only kill -9), for the HUD to say what became of
-## it; the finale done and its credits wanted (the end card's Credits: the hand-off to the roll, C44's).
+## it; the finale done and its credits wanted (C44: whichever way its card is left, the roll plays once, then where it
+## was asked to go: credits_then()).
 signal refused(weapon: String)
 signal credits_wanted
 
@@ -147,6 +148,9 @@ var _downed_by_wave := {}
 var _waiting: Array = []
 var _beacon: MissionBeacon = null
 var _targets: Array = []
+## The credits (C44): rolled for this ending already; where the player goes once they end ("missions" or "free_play").
+var _rolled := false
+var _credits_then := "missions"
 
 
 func _init() -> void:
@@ -270,6 +274,9 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	_downed_by_wave = {}
 	_waiting = []
 	unlocked = PackedStringArray()
+	_rolled = false
+	if is_finale(d):
+		CreditsScore.prepare()  # the credits' score made on a worker while the finale plays (C44)
 	for on in _triggers_of(d):
 		if on.begins_with("at:"):
 			_timed.append([on, float(on.trim_prefix("at:"))])
@@ -930,7 +937,7 @@ func retry() -> void:
 ## The mission after this one, from its first try; after the finale (M7), the credits instead.
 func next_mission() -> void:
 	if def != null and def.next == "" and is_finale(def):
-		credits_wanted.emit()
+		roll_credits("missions")
 		return
 	var after := MissionBook.of(def.next) if def != null and def.next != "" else null
 	if after == null or not after.playable:
@@ -942,6 +949,31 @@ func next_mission() -> void:
 ## True for the campaign's last mission (M7).
 static func is_finale(d: MissionDef) -> bool:
 	return d != null and d.order > 0 and d.order == MissionBook.campaign().size()
+
+
+## The finale won (C44): the credits roll, once for this ending, then `then` ("missions" or "free_play"). False when it
+## is not the finale won, or the roll has played for it already.
+func roll_credits(then: String) -> bool:
+	if _rolled or state != State.COMPLETE or not is_finale(def):
+		return false
+	_rolled = true
+	_credits_then = then if then == "free_play" else "missions"
+	MissionProgress.current().finish_campaign()
+	credits_wanted.emit()
+	return true
+
+
+## Where the player goes once the credits end: "missions" or "free_play".
+func credits_then() -> String:
+	return _credits_then
+
+
+## The credits over (C44): on to where the player asked, the campaign kept as finished.
+func after_credits() -> void:
+	if _credits_then == "free_play":
+		free_play()
+	else:
+		to_missions()
 
 
 ## Back to the Missions screen, over a fresh arena.

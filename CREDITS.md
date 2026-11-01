@@ -39,6 +39,10 @@ The opener's fake terminal (C38) ships six demo palettes, and each takes its col
 
 The opener's node_modules pit (C40) is walled in the classic "10 PRINT" maze, a diagonal one way or the other in each cell, after the one-line Commodore 64 BASIC program `10 PRINT CHR$(205.5+RND(1)); : GOTO 10` that made it famous (and the book about it, *10 PRINT CHR$(205.5+RND(1)); : GOTO 10*, MIT Press, 2012). The game's own shader draws it; nothing is bundled.
 
+## The engine
+
+SIGKILL is made with [Godot Engine](https://godotengine.org) (MIT licensed), with thanks. The in-game credits thank it, and every project above, by name.
+
 ## Brand
 
 nixfred hexagon logo, locked. Art and audio original or properly licensed.

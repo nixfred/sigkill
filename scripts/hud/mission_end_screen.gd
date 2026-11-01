@@ -182,13 +182,17 @@ func hide_screen() -> void:
 	_block(false)
 
 
-## One of its choices: "retry" or "next" (the first button), "missions", "free_play".
+## One of its choices: "retry" or "next" (the first button), "missions", "free_play". After the finale's win (C44)
+## every way off the card rolls the credits first, once: Credits and Missions (Esc too) land on the Missions screen after
+## them, Free play in the arena.
 func choose(what: String) -> void:
 	if not visible:
 		return
 	hide_screen()
 	chose.emit(what)
 	if runner == null or not is_instance_valid(runner):
+		return
+	if what != "retry" and runner.roll_credits("free_play" if what == "free_play" else "missions"):
 		return
 	match what:
 		"retry":

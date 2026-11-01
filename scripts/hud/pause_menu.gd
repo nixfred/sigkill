@@ -55,6 +55,11 @@ extends Control
 ## menu says so, and offers Restart mission (its next try) and Quit mission (back to the Missions screen) beside
 ## Resume; nothing can hurt the player while the menu is up then (the mission shields it), and the opener waits for the
 ## mission to end. Reset progress wipes the missions too, with the unlocks they handed out.
+##
+## Credits (C44): once the campaign is finished (the ending reached, kept in the progress file), the menu offers Credits
+## under Play the opener: the credits roll (scripts/credits/credits_roll.gd) over everything, the arena paused behind it,
+## and this menu back as it was when it ends or is skipped. Until then the entry is not there at all. Alone only, and
+## not during a mission, as the opener's.
 
 signal closed
 
@@ -87,6 +92,7 @@ const RESET_WAIT_S := 4.0
 const OPENER := "Play the opener"
 const OPENER_ONLINE := "Not during a match: it pauses the game."
 const OPENER_MISSION := "Not during a mission: quit it first."
+const CREDITS := "Credits"
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
 const RESTART_MISSION := "Restart mission"
@@ -166,6 +172,8 @@ var _reset: Button
 var _reset_left := 0.0
 var _version: Label
 var _opener_button: Button
+var _credits_button: Button
+var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
 var _quit_mission_button: Button
@@ -219,6 +227,8 @@ func open() -> void:
 		return
 	_open = true
 	_status_text = ""
+	if MissionProgress.current().campaign_finished():
+		CreditsScore.prepare()  # the credits' score made while the menu is up, for a replay (C44)
 	Progress.current().flush()  # a pause is a good moment to keep what this run has earned (C33)
 	_was_captured = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or (player != null and is_instance_valid(player) and player.get("assume_captured") == true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -237,6 +247,8 @@ func close() -> void:
 		return
 	if showing_opener():
 		_opener.skip()
+	if showing_credits():
+		_credits_roll.end_now()
 	_capturing = ""
 	if _loadout.is_open():
 		_loadout.visible = false
@@ -370,6 +382,46 @@ func _opener_source() -> OpenerData:
 	return real_opener_source.call()
 
 
+## The credits (C44): the roll over everything, the arena paused behind it, this menu back as it was when it ends. Only
+## once the campaign is finished; alone and outside a mission only (null otherwise).
+func open_credits() -> CreditsRoll:
+	if _online() or mission() != null or not MissionProgress.current().campaign_finished():
+		return null
+	if not _open:
+		open()
+	if showing_credits():
+		return _credits_roll
+	_capturing = ""
+	_loadout.visible = false
+	_sheet.visible = false
+	visible = false
+	_credits_roll = CreditsRoll.new()
+	_credits_roll.name = "CreditsRoll"
+	_credits_roll.pause_world = true
+	_credits_roll.finished.connect(_on_credits_finished)
+	add_child(_credits_roll)
+	_credits_roll.open("menu")
+	return _credits_roll
+
+
+func showing_credits() -> bool:
+	return _credits_roll != null and is_instance_valid(_credits_roll) and _credits_roll.is_up()
+
+
+## The Esc menu's Credits entry (the checks): hidden until the campaign is finished.
+func credits_button() -> Button:
+	return _credits_button
+
+
+func _on_credits_finished(_skipped: bool) -> void:
+	if _credits_roll != null and is_instance_valid(_credits_roll):
+		_credits_roll.queue_free()
+	_credits_roll = null
+	visible = true
+	if _open:
+		_show_pause()
+
+
 func showing_opener() -> bool:
 	return _opener != null and is_instance_valid(_opener) and _opener.playing()
 
@@ -404,7 +456,7 @@ func _on_skip_next(on: bool) -> void:
 ## Once a run, from the arena: the first-launch card if it was never answered, then the opener playing itself if it has
 ## not played yet (and is not marked to skip). Alone only. True when it started either.
 func begin_first_launch() -> bool:
-	if first_launch_path == "" or _online() or showing_opener() or showing_card():
+	if first_launch_path == "" or _online() or showing_opener() or showing_card() or showing_credits():
 		return false
 	if IntroState.should_ask(first_launch_path):
 		open()
@@ -545,7 +597,7 @@ func begin_rebind(action: String) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open or _loadout.is_open() or _missions.is_open() or showing_opener() or showing_card():
+	if not _open or _loadout.is_open() or _missions.is_open() or showing_opener() or showing_card() or showing_credits():
 		return  # the loadout and Missions screens, the opener and the first-launch card take their own keys
 	if _capturing != "":
 		var button := event is InputEventKey or event is InputEventMouseButton
@@ -594,6 +646,9 @@ func _show_pause() -> void:
 	var running := mission()
 	_opener_button.disabled = _online() or running != null
 	_opener_button.tooltip_text = OPENER_ONLINE if _online() else OPENER_MISSION if running != null else ""
+	_credits_button.visible = MissionProgress.current().campaign_finished()
+	_credits_button.disabled = _online() or running != null
+	_credits_button.tooltip_text = _opener_button.tooltip_text
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -816,7 +871,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -824,6 +879,9 @@ func _build() -> void:
 		match pair[0]:
 			OPENER:
 				_opener_button = button
+			CREDITS:
+				_credits_button = button
+				button.visible = false
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

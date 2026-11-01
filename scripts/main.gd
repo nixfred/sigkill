@@ -320,6 +320,7 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		OpenerScore.cancel()  # quitting while the opener's score is still being made: never wait it out (C35)
+		CreditsScore.stop()  # and the credits' (C44)
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
 		Progress.current().flush()
 

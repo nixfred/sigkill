@@ -139,7 +139,7 @@ func _ready() -> void:
 	add_child(_credits)
 	_credits.finished.connect(func() -> void:
 		if runner != null and is_instance_valid(runner):
-			runner.to_missions())
+			runner.after_credits())
 	_cut = 1.0 if MissionRunner.take_fade() else 0.0
 
 
@@ -157,7 +157,7 @@ func end_screen() -> MissionEndScreen:
 	return _end
 
 
-## The credits hand-off (M7), up once the finale's card hands over to it.
+## The credits hand-off (M7; the roll since C44), up once the finale's card hands over to it.
 func credits_screen() -> CreditsHandoff:
 	return _credits
 
@@ -388,7 +388,7 @@ func _on_refused(weapon: String) -> void:
 	_refuse_age = 0.0
 
 
-## The finale's card handed over to the credits (M7): the hand-off up over everything.
+## The finale's card handed over to the credits (M7, C44): the roll up over everything.
 func _on_credits_wanted() -> void:
 	_end.hide_screen()
 	_credits.open()

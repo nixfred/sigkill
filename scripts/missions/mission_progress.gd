@@ -9,6 +9,7 @@ extends RefCounted
 ##               done_<id>=true      a campaign mission finished
 ##               best_<id>=<s>       its fastest clear, in seconds of its clock
 ##               logs_<id>=<n>       the most of its terminal logs found in one clear
+##               finished=true       the campaign finished: the ending reached (C44; the Esc menu's Credits opens)
 ## A missing or damaged file, a section from another format, or a key that is not the right kind is no progress for
 ## it (nothing done), never a crash; the next save writes a good one. Only the campaign's own ids are kept.
 ##
@@ -32,6 +33,8 @@ var last_load := "defaults"
 var done := {}
 var best_s := {}
 var best_logs := {}
+## The ending reached (C44): kept as the finale is recorded, and as the credits roll.
+var finished := false
 
 static var _current: MissionProgress
 
@@ -50,6 +53,7 @@ func clear() -> void:
 	done = {}
 	best_s = {}
 	best_logs = {}
+	finished = false
 
 
 ## Reads `path`'s [missions]: each good value taken, anything else left out.
@@ -74,8 +78,8 @@ func load_file() -> String:
 		last_load = "unreadable"
 		return last_load
 	for def in MissionBook.campaign():
-		var finished = section.get("done_" + def.id)
-		if finished is bool and finished:
+		var cleared = section.get("done_" + def.id)
+		if cleared is bool and cleared:
 			done[def.id] = true
 		var s = section.get("best_" + def.id)
 		if (s is float or s is int) and s > 0.0 and s <= BEST_LAST and done.has(def.id):
@@ -83,6 +87,8 @@ func load_file() -> String:
 		var n = section.get("logs_" + def.id)
 		if n is int and n >= 0 and n <= def.logs.size() and done.has(def.id):
 			best_logs[def.id] = n
+	var ended = section.get("finished")
+	finished = ended is bool and ended
 	last_load = "loaded"
 	return last_load
 
@@ -98,11 +104,27 @@ func save() -> bool:
 		keys["best_" + id] = snappedf(best_s[id], 0.1)
 	for id in best_logs:
 		keys["logs_" + id] = best_logs[id]
+	if finished:
+		keys["finished"] = true
 	return SettingsFile.write_sections(path, {SECTION: keys})
 
 
 func is_done(id: String) -> bool:
 	return done.has(id)
+
+
+## True once the campaign is finished (C44): the ending reached, the credits theirs to replay from the Esc menu.
+func campaign_finished() -> bool:
+	return finished
+
+
+## The campaign finished (C44): kept and saved; true when it was not already.
+func finish_campaign() -> bool:
+	if finished:
+		return false
+	finished = true
+	save()
+	return true
 
 
 ## True when campaign mission `def` may be started: the first always, any other once the one before it is done.
@@ -137,6 +159,8 @@ func record(def: MissionDef, seconds: float, logs: int) -> Dictionary:
 		out["best"] = true
 		best_s[def.id] = s
 	best_logs[def.id] = maxi(int(best_logs.get(def.id, 0)), clampi(logs, 0, def.logs.size()))
+	if MissionRunner.is_finale(def):
+		finished = true  # the ending reached (C44): saved with the rest just below
 	save()
 	for w in def.grants:
 		if Progress.current().grant_weapon(w):

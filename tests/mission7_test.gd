@@ -19,7 +19,7 @@ extends SceneTree
 ## that order, the cannon refused all the while, the fourth hit and the world recombined ("all") with Black ICE
 ## dispatched, "you won't." typed, the fifth hit the kill: every daemon reaped with no kill credited, the ICE stood down,
 ## the kill feed's line, the Auditor's adoption, the ending's two lines said exactly once, "exit 0" with Credits first,
-## the hand-off up once and no row of the roll in it, and the Missions screen with all seven done, the earlier missions
+## the credits rolling once (C44: `$ top` and its table, skipped to the bare prompt), and the Missions screen with all seven done, the earlier missions
 ## still startable. A death fails it ("exit 137"), and so does Black ICE's touch. Its files live in its own folder under
 ## user://, removed at the end.
 
@@ -30,7 +30,7 @@ const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 const Palette = preload("res://scripts/palette.gd")
 
 ## What M7 added or changed that runs in a mission: none of it may touch anything of the player's.
-const M7_CODE := ["res://scripts/missions/mission_stage.gd", "res://scripts/missions/mission_runner.gd", "res://scripts/missions/mission_def.gd", "res://scripts/daemons/shell_core.gd", "res://scripts/fight/daemon_brain.gd", "res://scripts/target_dummy.gd", "res://scripts/ice/ice_piece.gd", "res://scripts/ruins/ruins_set.gd", "res://scripts/ruins/ruins_layout.gd", "res://scripts/ruins/ruins_world.gd", "res://scripts/ruins/ruins_register.gd", "res://scripts/hud/mission_hud.gd", "res://scripts/hud/mission_end_screen.gd", "res://scripts/hud/credits_handoff.gd"]
+const M7_CODE := ["res://scripts/missions/mission_stage.gd", "res://scripts/missions/mission_runner.gd", "res://scripts/missions/mission_def.gd", "res://scripts/daemons/shell_core.gd", "res://scripts/fight/daemon_brain.gd", "res://scripts/target_dummy.gd", "res://scripts/ice/ice_piece.gd", "res://scripts/ruins/ruins_set.gd", "res://scripts/ruins/ruins_layout.gd", "res://scripts/ruins/ruins_world.gd", "res://scripts/ruins/ruins_register.gd", "res://scripts/hud/mission_hud.gd", "res://scripts/hud/mission_end_screen.gd", "res://scripts/hud/credits_handoff.gd", "res://scripts/credits/credits_roll.gd", "res://scripts/credits/credits_cast.gd", "res://scripts/credits/credits_score.gd"]
 ## (The dummy reads the game's own command line for --demo, to fix its seeds: the game's, not the machine's.)
 const NEVER := ["OS.execute", "create_process", "OS.kill", "shell_open", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "WebSocket", "FileAccess", "get_file_as_string", "DirAccess", "OS.get_environment", "get_user_data_dir", "get_system_dir", "get_executable_path", "OpenerData", "RealData"]
 ## STORY.md mission 7's beats, in order.
@@ -41,8 +41,6 @@ const WONT := "you won't."
 const RESTORED := "audit: session restored. user=you"
 const WELCOME := "...welcome back."
 const FEED := "SIGKILL sent by you to ~"
-## The rows the credits' roll keeps for C44: none of them in the hand-off.
-const ROLL_ROWS := ["6666", "thanks for running me", "@"]
 const MOST_FRAMES := 3600
 const LONG_ROUND_S := 100000.0
 
@@ -431,27 +429,24 @@ func _run_checks() -> void:
 	var end: MissionEndScreen = mh.end_screen()
 	var card := await _until(func(): return end.is_up())
 	_check("acceptance (win card): \"exit 0\" and COMPLETE come up after its hold, nothing handed (no chips, no handout ever told: %d), Credits the first choice, focused" % _handed, card and end.kind() == "complete" and _text_has(end.shown_text(), "exit 0") and _text_has(end.shown_text(), "COMPLETE") and not _text_has(end.shown_text(), "HANDED") and end.buttons()[0].visible and end.buttons()[0].text == MissionEndScreen.CREDITS and not end.buttons()[0].disabled and _handed == 0)
-	# The hand-off to the credits: up once, no row of the roll in it, then the bare prompt, then the Missions screen.
+	# The credits (C44): Credits rolls them once, over the card; Esc skips to the bare prompt; then the Missions screen.
 	var credits: CreditsHandoff = mh.credits_screen()
 	var opened := [0]
 	runner.credits_wanted.connect(func() -> void: opened[0] += 1)
+	var plays_before := CreditsRoll.plays
 	end.choose("next")
 	await _frames(2)
 	var up: bool = credits.is_up() and not end.is_up()
-	await _until(func(): return credits.shown_text().size() >= 4)
+	await _until(func(): return credits.shown_text().size() >= 4 and credits.roll().elapsed() >= CreditsRoll.TITLE_AT + 0.3)
 	var rows := credits.shown_text()
-	var leak := PackedStringArray()
-	for row in rows:
-		for w in ROLL_ROWS:
-			if row.contains(w):
-				leak.append(row)
-	var has_top := _text_has(rows, "$ top") and _text_has(rows, "init") and _text_has(rows, "PID")
+	var has_top := _text_has(rows, "$ top") and _text_has(rows, "PID") and _text_has(rows, "COMMAND")
 	credits.skip()
 	await _frames(2)
 	var prompt: bool = credits.at_prompt() and _text_has(credits.shown_text(), ">_")
 	old_id = main.get_instance_id()
 	var reload_asked := await _until(func(): return MissionRunner.mounting() != "" or current_scene.get_instance_id() != old_id)
-	_check("acceptance (the credits hand-off): Credits opens the hand-off once (%d), over the card: `$ top`, the table's head and init's row (PID 1, adopting orphans), no row of the roll (C44's) in it; a key moves it on to STORY.md's bare `>_` with a blinking cursor; then the Missions screen is asked for" % opened[0], opened[0] == 1 and up and has_top and leak.is_empty() and prompt and reload_asked, "opened %d up %s top %s leak [%s] prompt %s reload %s" % [opened[0], str(up), str(has_top), ", ".join(leak), str(prompt), str(reload_asked)])
+	var plays := CreditsRoll.plays - plays_before
+	_check("acceptance (the credits, C44): Credits rolls them once (%d, %d plays), over the card: `$ top` and the table's head; Esc skips to STORY.md's bare `>_` with a blinking cursor; then the Missions screen is asked for" % [opened[0], plays], opened[0] == 1 and plays == 1 and up and has_top and prompt and reload_asked, "opened %d plays %d up %s top %s prompt %s reload %s" % [opened[0], plays, str(up), str(has_top), str(prompt), str(reload_asked)])
 	main = await _after_reload(old_id)
 	runner = MissionRunner.of(main)
 	var menu = main.get_node("Hud").pause_menu()
