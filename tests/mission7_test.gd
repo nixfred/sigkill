@@ -55,6 +55,7 @@ var _names: PackedStringArray = []
 var _fired: Array = []
 var _handed := 0
 var _struck: Array = []
+var _back := 0
 
 
 func _initialize() -> void:
@@ -470,12 +471,11 @@ func _run_checks() -> void:
 	runner = MissionRunner.of(main)
 	await _until(func(): return runner.state == MissionRunner.State.INTRO or runner.state == MissionRunner.State.RUNNING)
 	_check("...and plays in its own district with its own loadout (mission 1's two as it starts, the rail handed back in it), the finale's thirteen not carried into it", runner.def != null and runner.def.id == "login" and runner.world != null and runner.world.ruins.id == "scheduler_breach" and runner.carried == MissionBook.at(1).loadout and runner.carried.size() < 13, "def %s ruins %s carried %s state %d" % [runner.def.id if runner.def != null else "-", runner.world.ruins.id if runner.world != null else "-", str(runner.carried), runner.state])
-	var standing := 0
 	var daemons := 0
 	for n in _names:
 		if not n.contains("black") and not n.contains("ice_"):
 			daemons += 1
-	_check("acceptance: its daemons were finite and its own: %d made of its waves' %d at most, each stood once and none ever back once down, the arena's four never there" % [_names.size(), m7.daemons_total()], _names.size() <= m7.daemons_total() and daemons >= 12 and not main.has_node("Arena/Targets/DummyA"))
+	_check("acceptance: its daemons were finite and its own: %d made of its waves' %d at most, each stood once (%d climbed out) and none ever back once down (%d down, every one of them for good), the arena's four never there" % [_names.size(), m7.daemons_total(), _back, _down], _names.size() <= m7.daemons_total() and daemons >= 12 and _back == daemons and _down >= daemons - 1 and not main.has_node("Arena/Targets/DummyA"), "names %d daemons %d back %d down %d" % [_names.size(), daemons, _back, _down])
 	_check("the chain ran in STORY.md's order, every beat begun once: %s" % ", ".join(_began), _began == PackedStringArray(CHAIN))
 	await _drop(main)
 
@@ -578,6 +578,8 @@ func _watch(d: Node3D) -> void:
 	_names.append(key)
 	if d.has_signal("downed"):
 		d.downed.connect(func(_x): _down += 1)
+	if d.has_signal("respawned"):
+		d.respawned.connect(func(_x): _back += 1)  # once a daemon as it climbs out; again only if it ever came back
 
 
 ## How many times the daemons of wave `id` went down (by their names).

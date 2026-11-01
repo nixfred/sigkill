@@ -62,8 +62,8 @@ const LAMP_BEAT := 2.5
 const LAMP_BLOW := 4.0
 const LAMP_HEAT := 2.0
 ## The glow a node and a strut's seam show: the cage reads red-hot from far off.
-const NODE_GLOW := 1.5
-const RING_GLOW := 1.3
+const NODE_GLOW := 1.3
+const RING_GLOW := 1.2
 
 var _verts := PackedVector3Array()
 var _edges: Array[Vector2i] = []
@@ -101,11 +101,11 @@ func _build() -> void:
 	core_color = Palette.HOSTILE_RED
 	edge_color = Palette.HOSTILE_RED
 	gutter = 1.4
-	glyph_count = 22
+	glyph_count = 14
 	glyph_radius = 2.5
 	glyph_low = -2.2
 	glyph_high = 2.2
-	glyph_size = 0.26
+	glyph_size = 0.22
 	glyph_turns = 0.05
 	reach = AABB(Vector3(-2.9, -2.9, -2.9), Vector3(5.8, 5.8, 5.8))
 	tag_height = 2.7
@@ -241,9 +241,9 @@ func _pose(t: float, delta: float) -> void:
 		lay(_shutters[i], middle + frame * (radial * (SHUT_R + SHUT_OPEN * open)), basis)
 	# The heart and its halo: white-hot, beating, brighter the more it is hurt; blazing as it blows apart.
 	orient(_heart, middle, frame * Vector3.UP, HEART_M * (1.0 + 0.25 * beat + 0.4 * out), HEART_M * 0.9 * (1.0 + 0.2 * beat))
-	brighten(_heart, 3.2 + 1.6 * beat + 2.0 * hurt + 4.0 * out)
+	brighten(_heart, 2.6 + 1.4 * beat + 2.0 * hurt + 4.0 * out)
 	orient(_halo, middle, frame * _axis, 0.05, (HEART_M * 2.6) * (1.0 + 0.4 * out + 0.1 * beat))
-	brighten(_halo, 1.6 + 0.6 * beat + 1.2 * hurt + 2.0 * out)
+	brighten(_halo, 1.3 + 0.6 * beat + 1.2 * hurt + 2.0 * out)
 	# Heat off the heart: eight trails streaming out and round, their roots at the heart, faster as it is hurt.
 	for i in TRAILS:
 		var u := fposmod(_trail_phase[i] + t * (0.25 + 0.3 * hurt), 1.0)

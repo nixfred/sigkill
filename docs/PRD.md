@@ -1,4 +1,4 @@
-# SIGKILL PRD (v1.3, 2026-11-01)
+# SIGKILL PRD (v1.4, 2026-11-01)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -259,7 +259,13 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - **New mission data:** an objective of kind `hup` (`count` and `of`, or `prop` naming a shell); a wave of kind `black` (one, `withdraws` on a trigger); a wave's `delay` (seconds past its trigger, by the mission's clock); a `shell` prop (`wakes`); a breach's `after`. The stage places Black ICE through the director (`IceDirector.stage_black()`, stepped while staged), recalls it, types `~`'s lines on the shell, watches every SIGHUP burst for its catches and for one reaching the shell.
     - **The gate and the handout:** missions 1 to 5's eleven in hand; SIGHUP (Shift+4) put in hand at the watchers, `/dev/null` (Shift+3) at the crowd, SIGSTOP (F) unlocked at Black ICE, with "IN HAND" toasts; after mission 6 all thirteen weapons and every ability are held.
     - **Pace and cost:** the scripted first-timer clears it in 1.4 minutes over three seeds (1.42, 1.43, 1.44), no deaths, down to 28 health at worst (before it learned to run from Black ICE instead of shooting past it, it died nine times in a row; a human first-timer is slower: 5 to 8 minutes is an estimate); the busiest fight, the dark on the lowest terrace, costs 6.53 ms of GPU a frame at 1920x1080 in the final capture, measured under the dev machine's power-saver profile. Check step 61.
-- **Mission 7:** one chunk, after mission 6.
+- **Mission 7, `kill -9` (M7):** end to end, the finale.
+  - **As built (M7):** mission 7 from STORY.md, built for real on missions 1 to 6's machinery, in a district of its own, `core_lattice`: the core, the one district in every register at once (`RuinsSet.register` "all": the three mixed across the place by a slow noise), a clearing of two cells kept open round the plaza (`RuinsSet.clearing`: nothing of the dice in it; the points `ring_0` to `ring_3` at its edges), its own palette ("core": pale gold, straw and amber, white-hot beacons, a dark ember glow from the void), and a sea of heat 3 m under the floor (the water shader's own glow, `water_glow`). STORY.md's register shifts as data: torn to Tron, Matrix and the cyberpunk ruins on the threat's first three hits and recombined ("all") on the fourth.
+    - **Its beats, in kinds:** reach the plaza; a hit beat (SIGTERM sent at the threat, refused and counted); a kill beat (three of what it sheds, the rail's meter filling); a hit beat (three landing rail hits); a hit beat (one more); a kill beat (the threat). No handout and no ability of its own: all thirteen in hand from the start and every ability allowed. Then `exit 0` (or `exit 137` on a death or Black ICE's touch).
+    - **Its enemy, mechanically:** one wave of kind `shell` (`scripts/daemons/shell_core.gd`, a lattice the size of a house hanging over the plaza, flown by its brain in a slow orbit with volleys of bolts; `DaemonBrain` "shell": never rooted, never a walker, never frozen, hung up or held), reached only by the rail (`only`: every other hit refused, flashing it and said on the HUD; SIGHUP's bursts refused too), its hits capped so it takes exactly five, shedding a wave of runaways off itself from the fill beat (`sheds`, `shed_every`, `shed_standing`, `sheds_on`), calling ICE nodes, a hunter and Black ICE on its hits (through the staged director), rogue.d and zombies with elites among them; eleven waves, 32 at most, finite. Its death reaps every daemon still standing (`reaps` "any", init adopting the orphans), withdraws Black ICE and stands the rest of the ICE down (`IcePiece.stand_down()`); the HUD's terminal carries the kill feed's line and the Auditor's lines. Nothing of the ending's words here: STORY.md has them.
+    - **New mission data:** an objective of kind `hit` (`weapon`, `count`, `of`, `word`); the wave kind `shell` and its fields; the trigger `hit:<wave>:<n>`; `reaps` "any" and an epitaph on a shell wave. New HUD: the threat's bar, the refused readout, the kill feed's line in the mission terminal.
+    - **After the win:** the end card's first choice is Credits (`MissionEndScreen.CREDITS`), which opens the hand-off (`scripts/hud/credits_handoff.gd`: `$ top`, the table's head, init's row, a note that the roll comes later), then STORY.md's bare prompt for a moment, then the Missions screen with all seven done; the roll and its locked last row are C44's.
+    - **Pace and cost:** the scripted first-timer clears it in 1.6 to 2.1 minutes on two seeds with no deaths (down to 32 health at worst) and in 5.4 minutes on a third with two deaths in its last stretch (a human first-timer is slower: 6 to 10 minutes is an estimate); its busiest stretch costs 7.03 ms of GPU a frame at 1920x1080 in the final capture (6.08 in the round before it), measured under the dev machine's power-saver profile with nothing else on the GPU. Check step 62 (tests/mission7_test.gd, 39 checks). Its stills stay under the dev machine's scratch (never committed; the Missions screen with all seven done is the one in docs/media).
 
 ### 5.7 The opener: "you got tricked into this" (DECIDED by Fred 2026-10-25 10:45 PM ET)
 A 2-minute, darkest-possible cold open, real-time in-engine (never pre-rendered), built from the player's real machine so it makes them blink. Skippable after the first viewing.
@@ -449,7 +455,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
-2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), then mission 7 (next).
+2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), M7 (done: mission 7, `kill -9`, the finale).
 3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
 4. C43, the Audit Trail visor, then C44, the credits.
 5. 1.0.
@@ -572,7 +578,7 @@ Statuses are taken from `git log` (2026-11-01, after mission 5): **done**, **in 
 | M4 | Mission 4, `permission denied`, end to end, in its own district; its own ICE through the director. | done | `b7f8e4d`, `631d7a4`, `57fcc23`, `721f2a8`, `9fb1433`, `2f94a4d`, `d3ecf13`, `3f90a61` |
 | M5 | Mission 5, `sudo !!`, end to end, in its own district; jobs on a timer, root, the elites' moves. | done | `310122c`, `e05b5b5`, `8d98dd9`, `452b7ac` |
 | M6 | Mission 6, `nohup`, end to end, in its own district; terraces, water, a palette, Black ICE on the mission's word. | done | `8457dd1`, `ab556ed` |
-| Mission 7 | The finale, `kill -9`, one chunk. | **next** | |
+| M7 | Mission 7, `kill -9`, the finale, end to end, in its own district; the shell's true body; the hand-off to the credits. | done | `9cf6be1` |
 
 **Website, teaser and docs**
 

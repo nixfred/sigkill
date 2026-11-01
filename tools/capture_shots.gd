@@ -3931,8 +3931,8 @@ func _m7() -> void:
 	_player.global_position = plaza
 	_player.velocity = Vector3.ZERO
 	await _m5_until(runner, func(): return runner.index >= 1, 8.0, false)
-	await _m5_until(runner, func(): return _main.get_node("Hud").guide().story_waiting() == 0 if _main.get_node("Hud").guide().has_method("story_waiting") else true, 2.0, false)
-	_c37_view(Vector3(plaza.x + 6.5, 0.0, plaza.z + 3.0), boss.threat_point())
+	await _m5_until(runner, func(): return mh.story_waiting() == 0, 2.0, false)
+	_c37_view(Vector3(plaza.x + 11.0, 0.0, plaza.z + 5.0), boss.threat_point())
 	await _frames(int(1.2 * Engine.physics_ticks_per_second))
 	await _m7_fire("sigterm", boss.threat_point(), 3)
 	await _m5_until(runner, func(): return mh.refused_text().contains("trapped"), 3.0, false)
@@ -3991,7 +3991,7 @@ func _m7() -> void:
 	await _frames(int(0.4 * Engine.physics_ticks_per_second))
 	print("capture: m7-matrix, register %s, standing %d" % [world.register, stage.standing().size()])
 	await _c37_save(sheet, "m7-matrix", runner)
-	# The third hit (direct): the cyberpunk ruins.
+	# The third hit (direct): the cyberpunk ruins, its old scripts round the player.
 	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
 	await _m5_until(runner, func(): return world.register == "cyberpunk" and not world.shifting(), 8.0, false)
 	await _frames(int(1.2 * Engine.physics_ticks_per_second))
@@ -3999,8 +3999,11 @@ func _m7() -> void:
 	await _frames(int(0.4 * Engine.physics_ticks_per_second))
 	print("capture: m7-ruins, register %s" % world.register)
 	await _c37_save({}, "m7-ruins", runner)
-	# The last phase: the world recombined, Black ICE on the floor; the busiest fight's GPU time.
-	await _m5_until(runner, func(): return runner.index >= 4 and world.register == "all" and not world.shifting(), 8.0, false)
+	await _m5_until(runner, func(): return runner.index >= 4, 6.0, false)
+	# The fourth hit (direct): the last phase, the world recombined, Black ICE on the floor; the busiest fight's GPU time.
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
+	await _m5_until(runner, func(): return runner.index >= 5 and world.register == "all" and not world.shifting(), 8.0, false)
 	await _m5_until(runner, func(): return ice.black != null and is_instance_valid(ice.black) and ice.black.phase == BlackIce.Phase.OUT, 16.0, false)
 	await _m2_quiet()
 	var black: BlackIce = ice.black
@@ -4021,12 +4024,10 @@ func _m7() -> void:
 	await _c37_save({}, "m7-960", runner)
 	root.size = Vector2i(1920, 1080)
 	await _frames(4)
-	# The fourth hit (direct): the last moment, `~`'s "you won't." in the terminal.
-	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
-	await _m5_until(runner, func(): return runner.index >= 5, 6.0, false)
+	# The last moment: `~`'s "you won't." in the terminal, Black ICE on the floor between the player and the heart.
 	await _m5_until(runner, func(): return _m7_feed_has(mh, "you won't"), 6.0, false)
 	await _frames(int(1.1 * Engine.physics_ticks_per_second))
-	_c37_view(Vector3(plaza.x + 8.0, 0.0, plaza.z + 3.0), boss.threat_point())
+	_c37_view(Vector3(plaza.x + 9.0, 0.0, plaza.z + 3.0), boss.threat_point())
 	await _frames(int(0.3 * Engine.physics_ticks_per_second))
 	_m3_aim(boss.threat_point())
 	print("capture: m7-wont, health %.0f, index %d" % [boss.health(), runner.index])
@@ -4036,8 +4037,8 @@ func _m7() -> void:
 	await _frames(int(0.55 * Engine.physics_ticks_per_second))
 	print("capture: m7-kill, alive %s, reaped %d, state %s" % [str(boss.is_alive()), stage.reaped_count, MissionRunner.State.keys()[runner.state]])
 	await _c37_save(sheet, "m7-kill", runner)
-	await _m5_until(runner, func(): return _m7_feed_has(mh, "welcome back") or _main.get_node("Hud").guide().story_waiting() == 0 and runner.clock > 0.0 and _m7_feed_has(mh, "session restored"), 12.0, false)
-	await _frames(int(3.5 * Engine.physics_ticks_per_second))
+	await _m5_until(runner, func(): return _m7_feed_has(mh, "session restored"), 12.0, false)
+	await _frames(int(3.8 * Engine.physics_ticks_per_second))
 	print("capture: m7-restored, feed %s" % str(mh.shown_text()))
 	await _c37_save({}, "m7-restored", runner)
 	var end: MissionEndScreen = mh.end_screen()
@@ -4059,7 +4060,9 @@ func _m7() -> void:
 	if not menu.showing_missions():
 		menu.open()
 		menu.open_missions()
-	menu.missions_screen().select(6)
+	MissionProgress.current().best_s["kill_9"] = 372.0  # demo data, as the other rows' bests: the run above was the test's direct hits
+	MissionProgress.current().best_logs["kill_9"] = 2
+	menu.missions_screen().select(0)  # mission 1 in the pane: the list says 7/7 done, the pane gives nothing of the finale away
 	await _frames(70)
 	await _save("m7-missions")
 	var stills: Array[Image] = []
