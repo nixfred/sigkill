@@ -13,6 +13,7 @@ extends Node3D
 ##
 ## Its look: a cut amber crystal, a white-hot core inside, both made once and shared by every
 ## bolt; it glitches sideways a hand's width now and then and flickers. Nothing is made per frame.
+## The shell's true body (M7) throws the same bolt in its own red (C44): crimson crystal, a pink-white core, red sparks.
 ## Fiction only.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -57,6 +58,10 @@ static var _shell_mesh: ArrayMesh
 static var _core_mesh: ArrayMesh
 static var _shell_material: StandardMaterial3D
 static var _core_material: StandardMaterial3D
+static var _shell_red: StandardMaterial3D
+static var _core_red: StandardMaterial3D
+var _shell_mi: MeshInstance3D
+var _core_mi: MeshInstance3D
 
 
 func _init() -> void:
@@ -69,11 +74,13 @@ func _init() -> void:
 	shell.material_override = _shell_material
 	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_look.add_child(shell)
+	_shell_mi = shell
 	var core := MeshInstance3D.new()
 	core.mesh = _core_mesh
 	core.material_override = _core_material
 	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_look.add_child(core)
+	_core_mi = core
 	visible = false
 	set_physics_process(false)
 
@@ -97,9 +104,13 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	live = true
 	visible = true
 	set_physics_process(true)
+	# The shell's own red (M7's leftover, C44), every other thrower's amber.
+	var red := owner_brain != null and owner_brain.kind == "shell"
+	_shell_mi.material_override = _shell_red if red else _shell_material
+	_core_mi.material_override = _core_red if red else _core_material
 	var fx := ParticleFx.of(self)
 	if fx != null:
-		fx.follow(self, Palette.HOSTILE_AMBER)
+		fx.follow(self, Palette.CRIMSON if red else Palette.HOSTILE_AMBER)
 
 
 func _physics_process(delta: float) -> void:
@@ -218,6 +229,8 @@ static func _statics() -> void:
 	_core_mesh = _crystal(LENGTH_M * CORE_SHARE, WIDTH_M * CORE_SHARE)
 	_shell_material = _glow(Palette.HOSTILE_AMBER, ENERGY, 0.85)
 	_core_material = _glow(Color(1.0, 0.95, 0.8), ENERGY * 1.4, 1.0)
+	_shell_red = _glow(Palette.CRIMSON, ENERGY, 0.85)
+	_core_red = _glow(Color(1.0, 0.82, 0.86), ENERGY * 1.4, 1.0)
 
 
 ## A six-sided crystal along -Z, `length` long and `width` across, pointed at both ends, longer
