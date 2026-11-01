@@ -73,6 +73,7 @@ func _run() -> void:
 	_code_checks()
 	_map_checks()
 	_demo_checks()
+	_fit_checks()
 	await _arena_checks()
 	await _fight_checks()
 	await _visor_checks()
@@ -249,6 +250,31 @@ func _demo_checks() -> void:
 				pegged = true
 	_check("the demo table is the same every run for a seed (90 ticks on, two tables equal)", JSON.stringify(a.snapshot) == JSON.stringify(b.snapshot) and a.snapshot.size() > 15)
 	_check("acceptance (privacy): the demo table's names are its own made-up ones only, never a real process of this machine's; and its build pegs a core", names and pegged, odd)
+
+
+# --- C43's leftover: the real layer's labels hold through a refit. ---
+
+func _fit_checks() -> void:
+	var t := ProcTree.new(4087)
+	var ids: Array[int] = []
+	for i in 4:
+		ids.append(t.add_daemon(null, "d%d" % i, "rogue", t.hidden))
+	var snap := {1: {"ppid": 0, "comm": "fakeinit", "cpu": 0.0, "mem_kb": 1}, 10: {"ppid": 1, "comm": "fakesession", "cpu": 0.0, "mem_kb": 1}}
+	for i in 8:
+		snap[100 + i] = {"ppid": 10, "comm": "fake%d" % i, "cpu": float(i), "mem_kb": 1000}
+	t.fit(snap)
+	var first := {}
+	for id in ids:
+		first[id] = t.node(id).pid
+	# The arena's count changes (a fifth daemon) and the numbers move: the refit keeps every label already up.
+	ids.append(t.add_daemon(null, "d4", "rogue", t.hidden))
+	for i in 8:
+		snap[100 + i]["cpu"] = float(20 - i)
+	t.fit(snap)
+	var kept := true
+	for id in first:
+		kept = kept and t.node(id).pid == first[id] and t.node(id).real
+	_check("C43's leftover folded in: a refit after the arena's count changed keeps every real label already up (no shuffle), the new node takes a free one", kept and t.node(ids[4]).real and not first.values().has(t.node(ids[4]).pid), str(first))
 
 
 # --- The arena. ---

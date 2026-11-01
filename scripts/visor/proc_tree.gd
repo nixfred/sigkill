@@ -245,8 +245,14 @@ func of_kind(kind: Kind) -> Array[int]:
 ## over the tree, top down: init takes PID 1; the hidden parent the real child of PID 1 with the most below it (its
 ## label stays redacted); every other node an unused real child of its tree parent's process, the busiest first and a
 ## parent with children of its own for a node with children. A node with no fit keeps its demo label, and so does
-## everything under it. Labels only: the shape stays. Returns how many nodes carry a real label.
+## everything under it. Labels only: the shape stays. Returns how many nodes carry a real label. A node that had a real
+## process before keeps it while that process is still one of its options (W1, C43's leftover: a refit after the arena's
+## count changed no longer shuffles the labels already up).
 func fit(snapshot: Dictionary) -> int:
+	var before := {}
+	for k in nodes:
+		if nodes[k].real:
+			before[k] = real_pid(nodes[k])
 	for k in nodes:
 		_demo_label(nodes[k])
 	if snapshot.is_empty() or not snapshot.has(INIT_PID):
@@ -285,6 +291,8 @@ func fit(snapshot: Dictionary) -> int:
 				if below[p] >= want:
 					pick = p
 					break
+			if before.has(c) and options.has(before[c]):
+				pick = before[c]  # its own process from the last fit, kept
 			options.erase(pick)
 			used[pick] = true
 			_real_label(nodes[c], pick, snapshot[pick])
