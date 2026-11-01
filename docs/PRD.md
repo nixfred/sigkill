@@ -1,4 +1,4 @@
-# SIGKILL PRD (v1.2, 2026-11-01)
+# SIGKILL PRD (v1.3, 2026-11-01)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -253,7 +253,13 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
     - **The elites' own moves** (`DaemonBrain`): a rogue elite flanks as it hunts and its lunge is a pounce from 2.2 times the reach, 2.6 times as far; a zombie elite throws no bolt: it charges at 7.5 m/s for 0.95 s and rams once at 1.3 times its bolt; a runaway elite's bursts are twice as long with tells 0.6 as long, and its flock flies as two rings turning against each other. The arena's rare elites have them too.
     - **The gate and the handout:** missions 1 to 4's nine in hand; sudo unlocked as the first job's beat begins ("IN HAND"), `cron` put in hand as the job to mine begins, `rm -rf` as the job to stop begins; SIGSTOP, `/dev/null` and SIGHUP still locked.
     - **Pace and cost:** the scripted first-timer clears it in 1.9 to 2.2 minutes over three seeds, no deaths, down to 40 health at worst (a human first-timer is slower: 5 to 8 minutes is an estimate); the busiest fight, the wipe on the plaza, costs 7.98 ms of GPU a frame at 1920x1080 in the final capture, measured under the dev machine's power-saver profile. Check step 60.
-- **Missions 6 and 7:** one chunk each, after mission 5.
+- **Mission 6, `nohup` (M6):** end to end.
+  - **As built (M6):** mission 6 from STORY.md, built for real on missions 1 to 5's machinery, in a district of its own: `deep_dirs`, the C36 set remade as the deepest cyberpunk, a drowned city. Its floor is three terraces (`RuinsSet.terraces`, `drop_m`: `RuinsLayout.band()` and `floor_y()`, every piece at its band's height), each step carried by a ramp of racks the route runs down (`RuinsLayout.ramps`, a sloped deck with lit rails as collision, racks down its sides) and walled elsewhere by a lip over a cliff of racks (boxes `lip` and `cliff`; a block or a hole never across a step line; a cell with no way in but across a ramp pruned to the void; the walk grid and the cell graph both ramp-aware); black water under the lowest floor (`RuinsSet.water`, `shaders/ruins_water.gdshader`: a swell, rain rings, the lamps held as streaks toward the viewer); its own colours (`RuinsSet.palette` "abyss": `RuinsRegister.PALETTES`, materials dressed per palette, every colour at least 0.10 OKLab from the daemons' and ICE's); a terminal screen on a block behind the exit cell (`RuinsSet.shell`, woken by the mission, `~`'s rows typed on it) read from the hatch; the core's heat under the breach in place of a remnant (`RuinsSet.breach_core`). No register shift: the deepest cyberpunk start to end.
+    - **Its beats:** go down to the first landing (the mixed pack out of the top terrace's vents, a runaway six seconds behind; walkers keep their feet on the floor under them and a mission's daemon has no leash); hang up on the watchers (SIGHUP put in hand; an objective of kind `hup`: three catches by the burst, no kill needed); clear the landing (the confused lash at each other); send the crowd at the stair to /dev/null (`/dev/null` put in hand; a queue asleep at the foot of the second ramp and rogue.d from a vent); reach the oldest directory in the dark (the set piece: Black ICE, a wave of kind `black`, placed through the staged ICE director four seconds after your AI's warning, the lights dying, the link cut mid-sentence, the guide silent until it is back; SIGSTOP unlocked as the beat begins; its touch flatlines); let the shell finish (Black ICE recalled by the Auditor, the link back with STORY.md's line, the screen waking, `~`'s "log out. i'll keep it all running. you never did anyway." typing itself); hang up the shell (a `hup` objective on the shell prop: SIGHUP at the screen, ignored, "nohup. remember?"); fall (the breach opens 4.5 s after the word, the core lights, the drop through the flood into the heat). `exit 0` after 7 s.
+    - **New mission data:** an objective of kind `hup` (`count` and `of`, or `prop` naming a shell); a wave of kind `black` (one, `withdraws` on a trigger); a wave's `delay` (seconds past its trigger, by the mission's clock); a `shell` prop (`wakes`); a breach's `after`. The stage places Black ICE through the director (`IceDirector.stage_black()`, stepped while staged), recalls it, types `~`'s lines on the shell, watches every SIGHUP burst for its catches and for one reaching the shell.
+    - **The gate and the handout:** missions 1 to 5's eleven in hand; SIGHUP (Shift+4) put in hand at the watchers, `/dev/null` (Shift+3) at the crowd, SIGSTOP (F) unlocked at Black ICE, with "IN HAND" toasts; after mission 6 all thirteen weapons and every ability are held.
+    - **Pace and cost:** the scripted first-timer clears it in 1.4 minutes over three seeds (1.42, 1.43, 1.44), no deaths, down to 28 health at worst (before it learned to run from Black ICE instead of shooting past it, it died nine times in a row; a human first-timer is slower: 5 to 8 minutes is an estimate); the busiest fight, the dark on the lowest terrace, costs 6.53 ms of GPU a frame at 1920x1080 in the final capture, measured under the dev machine's power-saver profile. Check step 61.
+- **Mission 7:** one chunk, after mission 6.
 
 ### 5.7 The opener: "you got tricked into this" (DECIDED by Fred 2026-10-25 10:45 PM ET)
 A 2-minute, darkest-possible cold open, real-time in-engine (never pre-rendered), built from the player's real machine so it makes them blink. Skippable after the first viewing.
@@ -422,7 +428,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 60 steps as of mission 5 (M5).
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 61 steps as of mission 6 (M6).
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -443,7 +449,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 ### 8.1 Build order: player-facing first
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
-2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), then missions 6 and 7 (next).
+2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), then mission 7 (next).
 3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
 4. C43, the Audit Trail visor, then C44, the credits.
 5. 1.0.
@@ -565,7 +571,8 @@ Statuses are taken from `git log` (2026-11-01, after mission 5): **done**, **in 
 | M3 | Mission 3, `while true`, end to end, in its own district; the cheap M2 leftover; two test-only gate fixes. | done | `6a63d1b`, `f4615bd`, `5a42477`, `042d8a0`, `1949e4c`, `8251281` |
 | M4 | Mission 4, `permission denied`, end to end, in its own district; its own ICE through the director. | done | `b7f8e4d`, `631d7a4`, `57fcc23`, `721f2a8`, `9fb1433`, `2f94a4d`, `d3ecf13`, `3f90a61` |
 | M5 | Mission 5, `sudo !!`, end to end, in its own district; jobs on a timer, root, the elites' moves. | done | `310122c`, `e05b5b5`, `8d98dd9`, `452b7ac` |
-| Missions 6 and 7 | Further missions one chunk each. | **next** | |
+| M6 | Mission 6, `nohup`, end to end, in its own district; terraces, water, a palette, Black ICE on the mission's word. | done | `8457dd1`, `ab556ed` |
+| Mission 7 | The finale, `kill -9`, one chunk. | **next** | |
 
 **Website, teaser and docs**
 
