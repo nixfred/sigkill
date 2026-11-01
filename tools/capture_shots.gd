@@ -3281,7 +3281,7 @@ func _m4() -> void:
 	# The hall from the first bay: the stacks either side, the posts down the aisle, the second gate sealed ahead.
 	var bay_a := world.point("post_1").lerp(world.point("post_2"), 0.5) + Vector3(0, 0, 4.0)
 	_c37_view(Vector3(bay_a.x - 1.2, 0.0, bay_a.z + 1.0), gate2 + Vector3(0.5, 2.2, 0))
-	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))  # the first rule's shards mostly down
 	await _m2_quiet()
 	print("capture: m4-hall, %d standing" % stage.standing().size())
 	await _c37_save(sheet, "m4-hall", runner)
@@ -3316,17 +3316,18 @@ func _m4() -> void:
 	# until it freezes; its tank runs 4 s, so the hold is let go for a breath once past 2.6 s.
 	waited = 0
 	var held := 0
+	# (The player's scripted input lasts one physics frame, and _frames() sets it idle: the hold awaits the frame itself.)
 	while waited < 420 and not hunter.chmod_frozen():
 		_m3_aim(hunter.aim_point())
 		var on := held < int(2.6 * Engine.physics_ticks_per_second)
 		_player.drive_input(Vector2.ZERO, false, false, on)
 		held = held + 1 if on else (0 if held >= int(4.6 * Engine.physics_ticks_per_second) else held + 1)
-		await _frames(1)
+		await physics_frame
 		waited += 1
 	for i in int(0.35 * Engine.physics_ticks_per_second):
 		_m3_aim(hunter.aim_point())
 		_player.drive_input(Vector2.ZERO, false, false, true)  # the beam on it as it stands frozen, for the frame
-		await _frames(1)
+		await physics_frame
 	print("capture: m4-freeze after %d frames, the hunter frozen %s, adapted to %s %d%%" % [waited, hunter.chmod_frozen(), ice.adapt_weapon, ice.adapt_percent()])
 	await _c37_save(sheet, "m4-freeze", runner)
 	_player.drive_input(Vector2.ZERO)
@@ -3362,12 +3363,14 @@ func _m4() -> void:
 	while not runner.logs_found.has("owner"):
 		await _frames(1)
 	var mh: MissionHud = _main.get_node("Hud").mission_hud()
-	var read_at := Time.get_ticks_msec()
+	var since := 0  # the game's frames since the record was read (not the wall clock: the game runs at a fixed 60 fps)
 	_c37_view(world.point("records") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(2.2, 0, 5.5), screen_at + Vector3(0, 1.4, -2.0))
-	while world.vault_power() < 1.0:
+	while world.vault_power() < 1.0 and since < 600:
 		await _frames(1)
-	while Time.get_ticks_msec() - read_at < 3400:
+		since += 1
+	while since < int(3.4 * Engine.physics_ticks_per_second):
 		await _frames(1)
+		since += 1
 	print("capture: m4-records, the screen lit %.2f, the reader open %s" % [world.vault_power(), mh.showing_log()])
 	await _c37_save(sheet, "m4-records", runner)
 	# The end beat: the Auditor's escalation, and the lights stuttering: the frame with them down. The mission's own
