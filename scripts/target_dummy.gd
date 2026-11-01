@@ -64,6 +64,9 @@ signal downed(dummy: Node3D)
 signal respawned(dummy: Node3D)
 ## Emitted once by a dummy that does not respawn (C37), as its derezz ends, just before it is freed.
 signal gone(dummy: Node3D)
+## A shot met it alive (M7): `source` the weapon's id, `landed` false when the hit was refused (only_from: the shell traps
+## SIGTERM and ignores the rest; only kill -9 reaches it).
+signal struck(dummy: Node3D, source: String, landed: bool)
 
 ## Smallest body scale while rematerialising, so its transform never collapses to zero.
 const MIN_BODY_SCALE := 0.001
@@ -131,6 +134,10 @@ var voice: DaemonVoice
 var sealed := false
 ## The most one hit takes off it (M2, a mission wave's "hit_cap"; 0 for no limit): a parent outlasts a single kill -9.
 var hit_cap := 0.0
+## The only weapons whose hits land on it (M7, a mission wave's "only"; empty for every weapon): the shell's true body
+## traps SIGTERM, ignores SIGHUP and shrugs off the rest, and only kill -9 reaches it. A refused hit flashes it, lands
+## nothing and says so (struck, landed false).
+var only_from := PackedStringArray()
 ## Its name tag kept hidden (M2): a sleeper standing in the rain is found by ping or by its waking, not by a label.
 var tag_hidden := false
 ## Its climb out of a spawn vent (C37): the seconds it takes (0 for none), and where its body stands when whole.
@@ -235,9 +242,9 @@ func hide_tag(hidden: bool) -> void:
 
 
 ## True for a daemon rooted where it stands (M2: a mission's parent; M3: a loop's core): it never moves, strikes, freezes
-## or hangs up.
+## or hangs up; and (M7) for the shell's true body, which moves on its own and is never frozen, hung up or held either.
 func sessile() -> bool:
-	return _art != null and DaemonBrain.ROOTED.has(_art.ai_kind)
+	return _art != null and (DaemonBrain.ROOTED.has(_art.ai_kind) or DaemonBrain.BOSS.has(_art.ai_kind))
 
 
 ## Reaped (M2): its parent gone, init adopts it and it drops where it stands, a derezz credited to nobody (no kill, no
@@ -300,6 +307,12 @@ func _show_hup() -> void:
 func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vector3.ZERO, source: String = "") -> bool:
 	if state != State.ALIVE or _follows() or sealed:
 		return false
+	if not only_from.is_empty() and not only_from.has(source):
+		# Refused (M7): the shot met it, flashed it, and took nothing off it. Said, so its mission can count the signal
+		# sent and the HUD can say what became of it.
+		_art.flash()
+		struck.emit(self, source, false)
+		return true
 	# An exploit breaker's bonus on a weak seam (I2): this machine's own shot, or the joiner's the host
 	# is judging.
 	var breakers := BreakerDirector.of(self)
@@ -316,6 +329,7 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	if hit_cap > 0.0:
 		dealt = minf(dealt, hit_cap)
 	_health -= dealt
+	struck.emit(self, source, true)
 	var ice := IceDirector.of(self)
 	if ice != null:
 		ice.note_damage(source, damage)  # the system learns which weapon hits it hardest (I1)

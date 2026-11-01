@@ -55,6 +55,9 @@ var art: IceArt
 var build_seed := 0
 ## True once it has broken this round.
 var broken := false
+## Whether its breaking was the player's kill (M7: a piece stood down by its director's word, the machine's defences
+## standing down, breaks credited to nobody; a mission's runner reads this as it does a daemon's).
+var credited := true
 ## The hits it took this life, for the checks.
 var hits := 0
 ## Its freeze meter and freeze (C29): the hunter's and the nodes'; null for a wall (and Black ICE), which
@@ -286,6 +289,16 @@ func _break(point: Vector3, direction: Vector3) -> void:
 	if voice != null:
 		voice.death()
 	broke.emit(self)
+
+
+## Stands down (M7, docs/STORY.md's ending: "Black ICE stands down", and the rest of the machine's defences with it):
+## broken where it stands, with its own burst, credited to nobody. Nothing once broken.
+func stand_down() -> void:
+	if broken:
+		return
+	credited = false
+	_health = 0.0
+	_break(Vector3.INF, Vector3.ZERO)
 
 
 ## Where a ping's ring meets it and grep's dart aims (C29): its middle.

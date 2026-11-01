@@ -101,6 +101,22 @@ const ELITE_SWARM_BURST := 2
 const ELITE_SWARM_TELL := 0.6
 ## The kinds rooted where they stand, never moving, looking, striking or roused (M2's parent, M3's loop core).
 const ROOTED := ["parent", "core"]
+## The shell's true body (M7, scripts/daemons/shell_core.gd): never rooted, never a walker. It flies a slow orbit over its
+## home at SHELL_HOVER_M, rising there over SHELL_RISE_S as it stands, bobbing SHELL_BOB_M, and every SHELL_VOLLEY_S with
+## its prey in sight it throws SHELL_VOLLEY bolts from its heart SHELL_VOLLEY_GAP_S apart. Nothing holds it: no freeze, no
+## hangup, no hole (its dummy refuses them); SIGSTOP freezes it as any.
+const BOSS := ["shell"]
+const SHELL_HOVER_M := 6.0
+const SHELL_ORBIT_M := 5.0
+const SHELL_TURN := 0.22
+const SHELL_RISE_S := 4.0
+const SHELL_BOB_M := 0.6
+const SHELL_SPEED := 4.0
+const SHELL_EYE_M := 2.16
+const SHELL_VOLLEY_S := 7.0
+const SHELL_VOLLEY := 3
+const SHELL_VOLLEY_GAP_S := 0.18
+const SHELL_BOLT_OUT_M := 2.0
 const STATE_NAMES := ["home", "hunt", "tell", "strike", "recover", "return", "scatter", "down"]
 ## The level: what blocks sight, a bolt and a step.
 const LEVEL_MASK := 1
@@ -248,6 +264,13 @@ var _look_from := 0.0
 var _look_to := 0.0
 var _look_snap := 0.0
 var _hup_rng := RandomNumberGenerator.new()
+## The shell's (M7): how far round its orbit it is, how far risen (0 to 1), the bolts left in its volley and the wait to
+## the next, and how many volleys it has thrown.
+var _orbit := 0.0
+var _risen := 0.0
+var _volley_left := 0
+var _volley_wait := 0.0
+var volleys := 0
 
 
 func _init(owner: Node3D, daemon_art: DaemonArt) -> void:
@@ -302,6 +325,9 @@ func step(delta: float, d) -> void:
 	clock += delta
 	state_t += delta
 	cooldown = maxf(cooldown - delta, 0.0)
+	if BOSS.has(kind):
+		_step_shell(delta, d)  # M7: the shell's own flight and volleys, whatever state it is in
+		return
 	if hup != Hup.NONE:
 		_step_confused(delta, d, d.runs() and kind != "hunter")  # SIGHUP (C32): no prey, no lure, its own wander
 		return
@@ -335,10 +361,10 @@ func rest(delta: float, d) -> void:
 		_down(d)
 		art.displays = true
 		return
-	if ROOTED.has(kind):
+	if ROOTED.has(kind) or BOSS.has(kind):
 		art.displays = true
 		art.drive(DaemonArt.Act.IDLE)
-		return
+		return  # rooted, or (M7) the shell: it hangs where it is in practice
 	if _held_by_chmod(d):
 		return  # frozen in practice too (C29): it stands where the beam caught it
 	if hup_pending:
@@ -1162,10 +1188,62 @@ func _sees(at: Vector3, d) -> bool:
 	return at.is_finite() and d.clear(_eye(d), at)
 
 
-## Where it looks from: a walker's eye, the swarm's nest.
+## Where it looks from: a walker's eye, the swarm's nest, the shell's heart (M7).
 func _eye(d) -> Vector3:
-	var height: float = MIDDLE_M if kind == "swarm" else d.tuning.eye_height_m
+	var height: float = MIDDLE_M if kind == "swarm" else (SHELL_EYE_M if BOSS.has(kind) else d.tuning.eye_height_m)
 	return dummy.global_position + Vector3.UP * height
+
+
+## The shell's step (M7): up to its height over its home and round its orbit, facing its prey, a volley of bolts from its
+## heart every SHELL_VOLLEY_S while the prey is in sight and attackable. It takes no attacker's slot: it is the fight.
+func _step_shell(delta: float, d) -> void:
+	if not has_home:
+		take_home()
+	_risen = minf(_risen + delta / SHELL_RISE_S, 1.0)
+	var rise := smoothstep(0.0, 1.0, _risen)
+	_orbit = fmod(_orbit + SHELL_TURN * delta, TAU)
+	var centre := home.origin
+	var goal := centre + Vector3(cos(_orbit), 0.0, sin(_orbit)) * SHELL_ORBIT_M * rise
+	goal.y = centre.y + SHELL_HOVER_M * rise + SHELL_BOB_M * sin(clock * 0.7) * rise
+	var to := goal - dummy.global_position
+	var step := to.limit_length(SHELL_SPEED * delta)
+	dummy.global_position += step
+	moved = true
+	velocity = step / maxf(delta, 0.0001)
+	art.drive(DaemonArt.Act.MOVE if _volley_left <= 0 else DaemonArt.Act.STRIKE)
+	if prey == 0 or not d.prey_valid(prey) or d.prey_hidden(prey):
+		prey = 0
+		for id in d.prey_ids():
+			if d.prey_valid(id) and not d.prey_hidden(id):
+				prey = id
+				break
+	if prey == 0:
+		_volley_left = 0
+		return
+	var target: Vector3 = d.prey_point(prey)
+	if not target.is_finite():
+		return
+	last_seen = target
+	_face(target, delta, d)
+	var middle := _eye(d)
+	if _volley_left > 0:
+		_volley_wait -= delta
+		if _volley_wait <= 0.0:
+			_volley_wait = SHELL_VOLLEY_GAP_S
+			_volley_left -= 1
+			var dir := (target - middle).normalized()
+			if d.clear(middle + dir * SHELL_BOLT_OUT_M, target):
+				d.throw_bolt(self, middle + dir * SHELL_BOLT_OUT_M, dir)
+			else:
+				_note("miss")
+		return
+	if cooldown <= 0.0 and _risen >= 1.0 and d.prey_attackable(prey) and d.clear(middle, target):
+		cooldown = SHELL_VOLLEY_S
+		_volley_left = SHELL_VOLLEY
+		_volley_wait = 0.0
+		volleys += 1
+		attacks += 1
+		_note("attack")
 
 
 ## Where the zombie's bolt leaves: its raised claw, as its art last posed it, kept near its body.

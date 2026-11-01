@@ -74,7 +74,18 @@ const ABILITY_ACTIONS := {"code_rain_vision": "code_rain_vision", "sigstop": "si
 ## The cache meter (M3): its words, and the share past which it reads hot.
 const CACHE_WORDS := "cache"
 const CACHE_HOT := 0.75
-const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "black": "Black ICE", "any": "daemons"}
+const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "shell": "the shell", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "black": "Black ICE", "any": "daemons"}
+## A hit beat's verb (M7) when its data gives none; what the HUD says of a shot the shell refused, by weapon (the rest
+## REFUSED_PLAIN), under the crosshair for REFUSE_S, no oftener than REFUSE_GAP_S for one weapon; the kill feed's colour.
+const HIT_WORD := "landed"
+const REFUSALS := {"sigterm": "SIGTERM  trapped: trap -- '' SIGTERM", "sighup": "SIGHUP  ignored: nohup", "terminal_cannon": "cannon  no effect: it owns the terminal", "chmod_000": "chmod: Operation not permitted", "dev_null": "/dev/null  it writes nothing", "rm_rf_cannon": "rm: cannot remove: in use", "cron_mines": "cron  it owns the crontab", "fork_bomb": "fork  it forks faster", "fork_shotgun": "fork  it forks faster", "grep_seeker": "grep  no match", "pipe_chain": "pipe  broken pipe", "ping_sonar": "ping  no reply"}
+const REFUSED_PLAIN := "%s  no effect: only kill -9 reaches it"
+const REFUSE_S := 1.7
+const REFUSE_GAP_S := 1.2
+const REFUSE_DROP := 58.0
+## The shell's bar (M7): its name, the bar's cells, where it stands over the bottom edge.
+const BOSS_CELLS := 24
+const BOSS_BOTTOM := 96.0
 ## The crontab (M5): its heading, the most jobs shown, a row's height, and under how many seconds a job that fails
 ## at the end blinks.
 const CRONTAB := "crontab -l"
@@ -106,7 +117,12 @@ var _story_ms := 0.0
 var _end_in := -1.0
 var _end_kind := ""
 var _end: MissionEndScreen
+var _credits: CreditsHandoff
 var _drawn := false
+## A refused shot's readout (M7): its words and its age; when each weapon's was last shown.
+var _refuse := {}
+var _refuse_age := -1.0
+var _refused_at := {}
 ## How much of the cut from black is left, 1 to 0.
 var _cut := 0.0
 
@@ -118,6 +134,12 @@ func _ready() -> void:
 	_end = MissionEndScreen.new()
 	_end.name = "MissionEnd"
 	add_child(_end)
+	_credits = CreditsHandoff.new()
+	_credits.name = "Credits"
+	add_child(_credits)
+	_credits.finished.connect(func() -> void:
+		if runner != null and is_instance_valid(runner):
+			runner.to_missions())
 	_cut = 1.0 if MissionRunner.take_fade() else 0.0
 
 
@@ -125,13 +147,37 @@ func _ready() -> void:
 func set_runner(r: MissionRunner) -> void:
 	runner = r
 	_end.runner = r
-	for pair in [["began", _on_began], ["objective_began", _on_objective_began], ["objective_done", _on_objective_done], ["progressed", _on_progressed], ["line_said", _on_line], ["log_found", _on_log], ["handed", _on_handed], ["ability_handed", _on_ability_handed], ["register_shifted", _on_shift], ["failed", _on_failed], ["completed", _on_completed], ["ended", _on_ended]]:
+	_credits.runner = r
+	for pair in [["began", _on_began], ["objective_began", _on_objective_began], ["objective_done", _on_objective_done], ["progressed", _on_progressed], ["line_said", _on_line], ["log_found", _on_log], ["handed", _on_handed], ["ability_handed", _on_ability_handed], ["register_shifted", _on_shift], ["failed", _on_failed], ["completed", _on_completed], ["ended", _on_ended], ["refused", _on_refused], ["credits_wanted", _on_credits_wanted]]:
 		if not r.is_connected(pair[0], pair[1]):
 			r.connect(pair[0], pair[1])
 
 
 func end_screen() -> MissionEndScreen:
 	return _end
+
+
+## The credits hand-off (M7), up once the finale's card hands over to it.
+func credits_screen() -> CreditsHandoff:
+	return _credits
+
+
+## The shell's true body standing now (M7), or null; its health as a share, 0 to 1.
+func boss() -> Node3D:
+	if runner == null or not is_instance_valid(runner) or runner.stage == null or not is_instance_valid(runner.stage):
+		return null
+	var b: Node3D = runner.stage.boss
+	return b if b != null and is_instance_valid(b) and b.is_alive() else null
+
+
+func boss_share() -> float:
+	var b := boss()
+	return clampf(float(b.health()) / maxf(float(b.max_health), 0.001), 0.0, 1.0) if b != null else 0.0
+
+
+## What the HUD says of a refused shot now (M7), or "".
+func refused_text() -> String:
+	return str(_refuse.get("text", "")) if _refuse_age >= 0.0 else ""
 
 
 ## Every line on show, for the checks: the panel's, the terminal's, the log's and the card's, as typed so far.
@@ -153,6 +199,10 @@ func shown_text() -> PackedStringArray:
 			out.append(hint_text())
 		if cache_text() != "":
 			out.append(cache_text())
+	if refused_text() != "":
+		out.append(refused_text())
+	if boss() != null:
+		out.append("~  %d%%" % roundi(boss_share() * 100.0))
 	for line in _feed:
 		out.append(_typed(str(line["prefix"]) + str(line["text"]), line["age"], line["cps"]))
 	if _log_age >= 0.0:
@@ -179,6 +229,8 @@ func progress_text() -> String:
 			return ("find %s  %d m" % [str(entry.get("name", "the log")), roundi(_metres_to(at))]) if at != Vector3.INF else "read"
 		"hup":
 			return "the shell" if o.has("prop") else "hung up  %d/%d" % [int(runner.progress), int(runner.need())]
+		"hit":
+			return "%s %s  %d/%d" % [MissionEndScreen.short_of(str(o.get("weapon", ""))), str(o.get("word", HIT_WORD)), int(runner.progress), int(runner.need())]
 	return ""
 
 
@@ -279,6 +331,10 @@ func _process(delta: float) -> void:
 		_end_in -= delta
 		if _end_in < 0.0:
 			_show_end()
+	if _refuse_age >= 0.0:
+		_refuse_age += delta
+		if _refuse_age > REFUSE_S:
+			_refuse_age = -1.0
 	# Drawn while a mission shows or the cut from black runs, and once more as they stop; never redrawn for nothing in
 	# plain arena play.
 	_cut = maxf(_cut - delta / CUT_S, 0.0)
@@ -319,8 +375,23 @@ func _on_objective_done(index: int) -> void:
 
 
 func _on_progressed(_index: int) -> void:
-	if runner.objective().get("kind") == "kill":
+	if runner.objective().get("kind") == "kill" or runner.objective().get("kind") == "hit":
 		_pop = 1.0
+
+
+## A shot the shell refused (M7): said under the crosshair, in its red, no oftener than REFUSE_GAP_S a weapon.
+func _on_refused(weapon: String) -> void:
+	if _age - float(_refused_at.get(weapon, -100.0)) < REFUSE_GAP_S:
+		return
+	_refused_at[weapon] = _age
+	_refuse = {"text": REFUSALS.get(weapon, REFUSED_PLAIN % MissionEndScreen.short_of(weapon))}
+	_refuse_age = 0.0
+
+
+## The finale's card handed over to the credits (M7): the hand-off up over everything.
+func _on_credits_wanted() -> void:
+	_end.hide_screen()
+	_credits.open()
 
 
 func _on_line(who: String, text: String) -> void:
@@ -333,6 +404,8 @@ func _on_line(who: String, text: String) -> void:
 				_story.pop_front()
 		"tilde":
 			_push_feed(TILDE_PREFIX, text, Palette.CRIMSON, TILDE_CPS)
+		"feed":
+			_push_feed("", text, Palette.ICE_HI, FEED_CPS)  # M7: the kill feed's line, in the rail's own light
 		_:
 			_push_feed(AUDIT_PREFIX, text, Palette.HOSTILE_AMBER, FEED_CPS)
 
@@ -380,6 +453,7 @@ func _on_ended() -> void:
 	_end_in = -1.0
 	_card_age = -1.0
 	_log_age = -1.0
+	_refuse_age = -1.0
 	_feed.clear()
 	_story.clear()
 	_end.hide_screen()
@@ -440,6 +514,10 @@ func _draw_mission() -> void:
 	var bottom := _draw_panel()
 	if _card_age < 0.0:
 		_draw_feed(Vector2(PANEL_AT.x, bottom + 12.0))
+	if _refuse_age >= 0.0 and runner.state == MissionRunner.State.RUNNING:
+		_draw_refused(view)
+	if boss() != null and runner.state == MissionRunner.State.RUNNING:
+		_draw_boss(view)
 	if _log_age >= 0.0:
 		_draw_log(view)
 	if _card_age >= 0.0:
@@ -549,7 +627,7 @@ func _draw_progress(at: Vector2, w: float) -> void:
 	var o := runner.objective()
 	var words := progress_text()
 	match o.get("kind"):
-		"kill":
+		"kill", "hit":
 			var need := int(runner.need())
 			var got := int(runner.progress)
 			var pip := clampf((w - 150.0) / float(need), 6.0, 14.0)
@@ -643,6 +721,42 @@ func _draw_feed(at: Vector2) -> void:
 			var last: String = _wrap(typed, FEED_WRAP)[-1] if typed != "" else ""
 			draw_rect(Rect2(at.x + 6 + _width(last, 12), y - 11, 7, 13), Color(colour, alpha))
 		y += 4.0
+
+
+## A refused shot's words (M7), under the crosshair in the shell's red, fading out.
+func _draw_refused(view: Vector2) -> void:
+	var text := refused_text()
+	if text == "":
+		return
+	var a := clampf((REFUSE_S - _refuse_age) / 0.4, 0.0, 1.0) * clampf(_refuse_age / 0.08, 0.0, 1.0)
+	var w := _width(text, 13)
+	var at := Vector2((view.x - w) * 0.5, view.y * 0.5 + REFUSE_DROP)
+	var jitter := sin(_refuse_age * 60.0) * 2.0 * clampf(1.0 - _refuse_age / 0.3, 0.0, 1.0)
+	draw_rect(Rect2(at.x - 8.0 + jitter, at.y - 13.0, w + 16.0, 18.0), Color(Palette.VOID, 0.7 * a))
+	_text(Vector2(at.x + jitter, at.y), text, 13, Color(Palette.CRIMSON, a))
+
+
+## The shell's bar (M7): `~` and its health as a bar of cells in its red over the bottom edge, flashing as a hit lands.
+func _draw_boss(view: Vector2) -> void:
+	var share := boss_share()
+	var cells := BOSS_CELLS
+	var cell_w := 10.0
+	var gap := 3.0
+	var bar_w := cells * (cell_w + gap) - gap
+	var x := (view.x - bar_w) * 0.5
+	var y := view.y - BOSS_BOTTOM
+	var name := "~"
+	draw_rect(Rect2(x - 40.0, y - 18.0, bar_w + 80.0, 30.0), Color(Palette.VOID, 0.6))
+	_text(Vector2(x - 28.0, y + 1.0), name, 16, Palette.CRIMSON.lerp(Palette.FLASH, _pop))
+	var lit := roundi(share * cells)
+	for i in cells:
+		var r := Rect2(x + i * (cell_w + gap), y - 10.0, cell_w, 10.0)
+		if i < lit:
+			draw_rect(r, Palette.CRIMSON.lerp(Palette.FLASH, _pop * 0.5))
+		else:
+			draw_rect(r, Color(Palette.CRIMSON, 0.3), false, 1.0)
+	var pct := "%d%%" % roundi(share * 100.0)
+	_text(Vector2(x + bar_w + 10.0, y + 1.0), pct, 12, Color(Palette.CRIMSON, 0.9))
 
 
 func _draw_log(view: Vector2) -> void:

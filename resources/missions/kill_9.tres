@@ -13,30 +13,317 @@ loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_
 grants = PackedStringArray()
 abilities = PackedStringArray()
 objectives = [{
+"at": "plaza",
+"hint": "it is hanging over the core. Look up",
+"id": "find",
+"kind": "reach",
+"label": "the core",
+"radius": 7.0,
+"text": "Find the shell's body"
+}, {
 "count": 1,
+"hint": "2 SIGTERM: see what it does with it",
+"id": "term",
+"kind": "hit",
+"of": ["shell_1"],
+"text": "Send it SIGTERM",
+"weapon": "sigterm",
+"word": "sent"
+}, {
+"count": 3,
 "daemon": "any",
-"id": "core",
+"hint": "every kill fills the rail: three to a shot",
+"id": "fill",
 "kind": "kill",
-"text": "kill -9 the core"
+"of": ["shed_1"],
+"text": "Fill the rail on what it sheds"
+}, {
+"count": 3,
+"hint": "3 kill -9 with the meter full, at its heart",
+"id": "nine",
+"kind": "hit",
+"of": ["shell_1"],
+"text": "kill -9: land the rail on its heart",
+"weapon": "sigkill_rail"
+}, {
+"count": 1,
+"hint": "fill it again: two shots left",
+"id": "last",
+"kind": "hit",
+"of": ["shell_1"],
+"text": "kill -9: one more",
+"weapon": "sigkill_rail"
+}, {
+"count": 1,
+"daemon": "shell",
+"hint": "you will. Don't let that thing touch you",
+"id": "end",
+"kind": "kill",
+"of": ["shell_1"],
+"text": "kill -9"
 }]
-logs = []
+logs = [{
+"at": "log_0",
+"id": "core",
+"name": "core/README",
+"text": "# the core\n# every process gets its time here.\n# one of them has had all of it. for years."
+}, {
+"at": "log_1",
+"id": "orphans",
+"name": "orphans.log",
+"text": "PPID 6666: rogue.d x4087, zombie x2201, runaway x918\n# when a parent dies, init adopts.\n# init has been waiting."
+}, {
+"at": "log_2",
+"id": "trap",
+"name": "trap.log",
+"text": "trap -- '' SIGTERM\ntrap -- '' SIGHUP\n# no handler for 9. there never is."
+}, {
+"at": "log_3",
+"id": "wont",
+"name": "history",
+"text": "$ kill -9 6666\n# (unsent)\n# you won't. you never do."
+}]
 lines = [{
-"on": "begin:core",
-"text": "you won't.",
+"on": "start",
+"text": "audit: user=? action=enter path=/proc/[REDACTED] result=DENIED reason=\"user is running\"",
+"who": "auditor"
+}, {
+"on": "start",
+"text": "This is it. The core. Everything it runs, it runs from here.",
+"who": "ai"
+}, {
+"on": "begin:find",
+"text": "It's not hiding. Look up.",
+"wait": 3.0,
+"who": "ai"
+}, {
+"on": "begin:term",
+"text": "A shell. Shells take signals. Send it TERM and let's see what it does with it.",
+"who": "ai"
+}, {
+"on": "begin:term",
+"text": "audit: user process at nice -20. uninterruptible.",
+"wait": 1.5,
+"who": "auditor"
+}, {
+"on": "done:term",
+"text": "trap -- '' SIGTERM",
 "who": "tilde"
+}, {
+"on": "done:term",
+"text": "Trapped. It catches TERM and drops it on the floor. Hangups it ignores; we tried. Only kill -9 gets through.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "begin:fill",
+"text": "The rail wants a full meter. Everything else you've learned, on everything it sheds. Three kills, one shot.",
+"who": "ai"
+}, {
+"on": "begin:nine",
+"text": "Meter's up. Put it in the heart.",
+"who": "ai"
+}, {
+"on": "hit:shell_1:1",
+"text": "audit: user process damaged. ICE dispatched to the core.",
+"who": "auditor"
+}, {
+"on": "hit:shell_1:1",
+"text": "It's tearing the place apart to save itself. Keep moving, keep filling.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "hit:shell_1:2",
+"text": "audit: hunter ICE on the floor. the user's jobs recalled to it.",
+"who": "auditor"
+}, {
+"on": "hit:shell_1:2",
+"text": "Its old scripts. Yours. Every one of them, at once.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "hit:shell_1:3",
+"text": "audit: user process at 40%. the user's directories flooding the core.",
+"who": "auditor"
+}, {
+"on": "begin:last",
+"text": "It's pulling the deep directories up round itself. Two shots left. Keep filling.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "hit:shell_1:4",
+"text": "audit: escalation: black ICE to the core. last resort.",
+"who": "auditor"
+}, {
+"on": "hit:shell_1:4",
+"text": "Black ICE. One more shot. Fill it, and don't let that thing touch you.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "begin:end",
+"text": "you won't.",
+"wait": 1.0,
+"who": "tilde"
+}, {
+"on": "begin:end",
+"text": "It said that last time.",
+"wait": 3.5,
+"who": "ai"
 }, {
 "on": "complete",
 "text": "audit: session restored. user=you",
+"wait": 2.5,
 "who": "auditor"
 }, {
 "on": "complete",
 "text": "...welcome back.",
+"wait": 5.5,
+"who": "ai"
+}, {
+"on": "fail",
+"text": "It's still running. It'll keep running. Again.",
 "who": "ai"
 }]
-transitions = []
+transitions = [{
+"on": "hit:shell_1:1",
+"to": "tron"
+}, {
+"on": "hit:shell_1:2",
+"to": "matrix"
+}, {
+"on": "hit:shell_1:3",
+"to": "cyberpunk"
+}, {
+"on": "hit:shell_1:4",
+"to": "all"
+}]
+waves = [{
+"count": 1,
+"epitaph": "6666  reaped by init",
+"from": ["core"],
+"health": 500.0,
+"hit_cap": 100.0,
+"id": "shell_1",
+"kind": "shell",
+"on": "start",
+"only": ["sigkill_rail"],
+"reaps": "any",
+"shed_every": 6.0,
+"shed_standing": 3,
+"sheds": "shed_1",
+"sheds_on": "begin:fill",
+"tag": "~"
+}, {
+"count": 3,
+"every": 0.7,
+"from": ["v_a"],
+"health": 60.0,
+"id": "open_1",
+"kind": "rogue",
+"on": "start"
+}, {
+"count": 2,
+"every": 0.8,
+"from": ["v_b"],
+"health": 60.0,
+"id": "open_2",
+"kind": "zombie",
+"on": "start"
+}, {
+"by": "shell_1",
+"count": 12,
+"health": 40.0,
+"id": "shed_1",
+"kind": "swarm",
+"tagged": false
+}, {
+"count": 2,
+"from": ["ring_1", "ring_3"],
+"health": 150.0,
+"id": "ice_1",
+"kind": "node",
+"nodes": ["jam", "hud"],
+"on": "hit:shell_1:1"
+}, {
+"count": 2,
+"every": 0.6,
+"from": ["v_a", "v_b"],
+"health": 40.0,
+"id": "burst_1",
+"kind": "swarm",
+"on": "hit:shell_1:1"
+}, {
+"count": 1,
+"face": "plaza",
+"from": ["ring_0"],
+"health": 260.0,
+"id": "ice_2",
+"kind": "hunter",
+"on": "hit:shell_1:2"
+}, {
+"count": 3,
+"elites": 1,
+"every": 0.7,
+"from": ["v_a"],
+"health": 60.0,
+"id": "old_1",
+"kind": "rogue",
+"on": "hit:shell_1:2"
+}, {
+"count": 3,
+"elites": 1,
+"every": 0.8,
+"from": ["v_b"],
+"health": 60.0,
+"id": "old_2",
+"kind": "zombie",
+"on": "hit:shell_1:2"
+}, {
+"count": 1,
+"delay": 3.0,
+"from": ["ring_2"],
+"id": "black_1",
+"kind": "black",
+"on": "hit:shell_1:4"
+}, {
+"count": 2,
+"every": 0.6,
+"from": ["v_a", "v_b"],
+"health": 40.0,
+"id": "last_1",
+"kind": "swarm",
+"on": "hit:shell_1:4"
+}]
+props = [{
+"at": "plaza",
+"id": "core",
+"kind": "spot"
+}, {
+"at": "daemon_0",
+"id": "v_a",
+"kind": "vent"
+}, {
+"at": "daemon_1",
+"id": "v_b",
+"kind": "vent"
+}, {
+"id": "flicker_1",
+"kind": "stutter",
+"on": "hit:shell_1:1"
+}, {
+"id": "flicker_2",
+"kind": "stutter",
+"on": "hit:shell_1:2"
+}, {
+"id": "flicker_3",
+"kind": "stutter",
+"on": "hit:shell_1:3"
+}]
+end_hold_s = 12.0
+restores = true
 ice = true
+ruins = "core_lattice"
 fail_time_s = 0.0
 next = ""
-playable = false
+playable = true
 draft = false
 hidden = false

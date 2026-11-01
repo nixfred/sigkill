@@ -1,5 +1,5 @@
 extends SceneTree
-## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37, m2 or m3):
+## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37, m2, m3, m4, m5, m6 or m7):
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -398,6 +398,8 @@ const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores"
 const M4_SHEET := ["m4-opening", "m4-hall", "m4-nodes", "m4-freeze", "m4-records", "m4-end"]
 const M5_SHEET := ["m5-opening", "m5-watchdog", "m5-cron", "m5-wipe", "m5-door", "m5-oldest"]
 const M6_SHEET := ["m6-opening", "m6-sighup", "m6-devnull", "m6-black", "m6-shell", "m6-core"]
+## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
+const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
 const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
@@ -554,6 +556,11 @@ func _run() -> void:
 		return
 	if _set == "m6":
 		await _m6()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m7":
+		await _m7()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -3858,6 +3865,236 @@ func _m6() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M6_SHEET.size():
 		_save_grid("m6-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## m7: mission 7 (kill -9), the finale, built, as a player plays it, started from the Missions screen with missions 1 to 6
+## done (the arena reloads into the core): its card; the opening, the shell's true body risen over the core as the pack
+## comes (m7-opening); SIGTERM sent at it and trapped, the readout under the crosshair and `~`'s trap line (m7-term); the
+## runaways it sheds, shot with the meter filling (m7-fill); the rail landing on its heart, the cage blown apart and the
+## world tearing to Tron (m7-rail); the Tron phase with the ICE nodes (m7-tron); the Matrix phase with the hunter and its
+## old scripts (m7-matrix); the cyberpunk phase (m7-ruins); the last phase, the world recombined with Black ICE on the
+## floor (m7-all; the GPU's time a frame over its busiest stretch printed, at 1920x1080; the same at 960x540, m7-960);
+## "you won't." in the terminal (m7-wont); the kill: the cage derezzing, the kill feed, every daemon dropping (m7-kill);
+## the Auditor's "session restored" and your AI's "welcome back" (m7-restored); the exit 0 card with Credits first
+## (m7-exit0); the hand-off to the credits (m7-credits); the bare prompt after it (m7-prompt); the Missions screen with
+## all seven done (m7-missions); and the sheet of six (m7-sequence). The player is shielded through it (the shield off
+## the HUD for each still); the hits that matter are the test's direct ones but the first rail shot, which is real.
+func _m7() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	MissionProgress.current().record(MissionBook.at(2), 171.0, 3)
+	MissionProgress.current().record(MissionBook.at(3), 131.0, 2)
+	MissionProgress.current().record(MissionBook.at(4), 182.0, 1)
+	MissionProgress.current().record(MissionBook.at(5), 205.0, 2)
+	MissionProgress.current().record(MissionBook.at(6), 149.0, 3)
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(6)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "kill_9":
+		printerr("capture: mission 7 did not start in its district")
+		return
+	print("capture: mission %s in the district %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var ice := IceDirector.of(_main)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	var start := world.point("start")
+	var plaza := world.point("plaza")
+	UnlockToast.hold(40.0)  # no mod toast over the finale's beats
+	_c37_view(Vector3(start.x, 0.0, start.z - 2.0), plaza + Vector3(0, 7.0, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m7-card", runner)
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	await _m5_until(runner, func(): return stage.boss != null and is_instance_valid(stage.boss), 10.0, false)
+	var boss: Node3D = stage.boss
+	# The opening: the lattice risen over the core, the pack coming across the floor.
+	await _m5_until(runner, func(): return boss.global_position.y > plaza.y + 4.0 and stage.standing().size() >= 4, 12.0, false)
+	await _m2_quiet()
+	_c37_view(Vector3(plaza.x + 2.0, 0.0, plaza.z + 22.0), boss.threat_point())
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	_m3_aim(boss.threat_point())
+	print("capture: m7-opening, boss y %.1f, %d standing at %.1f s, register %s" % [boss.global_position.y, stage.standing().size(), runner.clock, world.register])
+	await _c37_save(sheet, "m7-opening", runner)
+	# The core reached; SIGTERM sent at it and trapped.
+	_player.global_position = plaza
+	_player.velocity = Vector3.ZERO
+	await _m5_until(runner, func(): return runner.index >= 1, 8.0, false)
+	await _m5_until(runner, func(): return _main.get_node("Hud").guide().story_waiting() == 0 if _main.get_node("Hud").guide().has_method("story_waiting") else true, 2.0, false)
+	_c37_view(Vector3(plaza.x + 6.5, 0.0, plaza.z + 3.0), boss.threat_point())
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	await _m7_fire("sigterm", boss.threat_point(), 3)
+	await _m5_until(runner, func(): return mh.refused_text().contains("trapped"), 3.0, false)
+	await _frames(int(0.3 * Engine.physics_ticks_per_second))
+	_m3_aim(boss.threat_point())
+	print("capture: m7-term, readout \"%s\", index %d, health %.0f" % [mh.refused_text(), runner.index, boss.health()])
+	await _c37_save(sheet, "m7-term", runner)
+	# Fill: the runaways shed off the cage, shot as they come, the meter filling.
+	await _m5_until(runner, func(): return runner.index >= 2, 8.0, false)
+	await _m5_until(runner, func(): return stage.sheds_made.filter(func(c): return is_instance_valid(c) and c.is_alive()).size() >= 2, 20.0, false)
+	await _m2_quiet()
+	var shed: Array = stage.sheds_made.filter(func(c): return is_instance_valid(c) and c.is_alive())
+	if not shed.is_empty():
+		var child: Node3D = shed[0]
+		_c37_view(Vector3(plaza.x + 8.0, 0.0, plaza.z - 2.0), child.threat_point())
+		await _frames(int(0.5 * Engine.physics_ticks_per_second))
+		await _m7_fire("pipe_chain", child.threat_point(), 2)
+		await _frames(int(0.15 * Engine.physics_ticks_per_second))
+		_m3_aim(child.threat_point() if child.is_alive() else boss.threat_point())
+	print("capture: m7-fill, shed %d, meter %.2f" % [stage.sheds_made.size(), _player.inventory.meter_share()])
+	await _c37_save({}, "m7-fill", runner)
+	await _m5_until(runner, func(): return runner.index >= 3, 40.0, true)
+	runner.life.shield(100000.0)
+	# The rail: a real shot with the meter full, landing on its heart; the cage blown apart, the world tearing to Tron.
+	_player.inventory.add_meter(10.0)
+	_c37_view(Vector3(plaza.x + 7.5, 0.0, plaza.z + 2.5), boss.threat_point())
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	var health0: float = boss.health()
+	await _m7_fire("sigkill_rail", boss.threat_point(), 40)
+	await _m5_until(runner, func(): return boss.health() < health0, 3.0, false)
+	await _frames(int(0.22 * Engine.physics_ticks_per_second))
+	_m3_aim(boss.threat_point())
+	var art = boss.art_node()
+	print("capture: m7-rail, health %.0f of %.0f, blown %.2f, register %s, tear %.2f" % [boss.health(), health0, art.blown() if art != null and art.has_method("blown") else -1.0, world.register, world.tear])
+	await _c37_save(sheet, "m7-rail", runner)
+	# Tron: the world torn to the clean grid, the ICE nodes dispatched.
+	await _m5_until(runner, func(): return world.register == "tron" and not world.shifting() and ice.nodes.size() >= 2, 8.0, false)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	var node: Node3D = ice.nodes[0] if not ice.nodes.is_empty() else null
+	if node != null:
+		var toward := (node.global_position - plaza) * Vector3(1, 0, 1)
+		var stand := node.global_position - toward.normalized() * 7.0
+		_c37_view(Vector3(stand.x, 0.0, stand.z), node.aim_point())
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	print("capture: m7-tron, register %s, nodes %d" % [world.register, ice.nodes.size()])
+	await _c37_save({}, "m7-tron", runner)
+	# The second hit (direct): Matrix, the hunter and its old scripts.
+	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
+	await _m5_until(runner, func(): return world.register == "matrix" and not world.shifting() and ice.hunter != null and is_instance_valid(ice.hunter) and stage.wave_state("old_1") != "waiting", 8.0, false)
+	await _frames(int(2.0 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	if ice.hunter != null and is_instance_valid(ice.hunter):
+		var toward := (ice.hunter.global_position - plaza) * Vector3(1, 0, 1)
+		var stand := ice.hunter.global_position - toward.normalized() * 8.0
+		_c37_view(Vector3(stand.x, 0.0, stand.z), ice.hunter.aim_point())
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	print("capture: m7-matrix, register %s, standing %d" % [world.register, stage.standing().size()])
+	await _c37_save(sheet, "m7-matrix", runner)
+	# The third hit (direct): the cyberpunk ruins.
+	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
+	await _m5_until(runner, func(): return world.register == "cyberpunk" and not world.shifting(), 8.0, false)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	_c37_view(Vector3(plaza.x - 9.0, 0.0, plaza.z + 4.0), boss.threat_point())
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	print("capture: m7-ruins, register %s" % world.register)
+	await _c37_save({}, "m7-ruins", runner)
+	# The last phase: the world recombined, Black ICE on the floor; the busiest fight's GPU time.
+	await _m5_until(runner, func(): return runner.index >= 4 and world.register == "all" and not world.shifting(), 8.0, false)
+	await _m5_until(runner, func(): return ice.black != null and is_instance_valid(ice.black) and ice.black.phase == BlackIce.Phase.OUT, 16.0, false)
+	await _m2_quiet()
+	var black: BlackIce = ice.black
+	if black != null:
+		var toward := (black.global_position - plaza) * Vector3(1, 0, 1)
+		var stand := black.global_position + toward.normalized() * 7.0
+		_c37_view(Vector3(stand.x, 0.0, stand.z), boss.threat_point())
+		await _frames(int(0.6 * Engine.physics_ticks_per_second))
+		_m3_aim(black.aim_point().lerp(boss.threat_point(), 0.45))
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m7 the last phase at %dx%d, %d standing, Black ICE %s: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), str(black != null and black.present_now()), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("the last phase")
+	print("capture: m7-all, register %s, standing %d, black %s" % [world.register, stage.standing().size(), str(black != null)])
+	await _c37_save(sheet, "m7-all", runner)
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m7-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	# The fourth hit (direct): the last moment, `~`'s "you won't." in the terminal.
+	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
+	await _m5_until(runner, func(): return runner.index >= 5, 6.0, false)
+	await _m5_until(runner, func(): return _m7_feed_has(mh, "you won't"), 6.0, false)
+	await _frames(int(1.1 * Engine.physics_ticks_per_second))
+	_c37_view(Vector3(plaza.x + 8.0, 0.0, plaza.z + 3.0), boss.threat_point())
+	await _frames(int(0.3 * Engine.physics_ticks_per_second))
+	_m3_aim(boss.threat_point())
+	print("capture: m7-wont, health %.0f, index %d" % [boss.health(), runner.index])
+	await _c37_save(sheet, "m7-wont", runner)
+	# The kill: the fifth hit, the cage derezzing, the feed, every daemon dropping.
+	boss.hit(1000.0, boss.threat_point(), Vector3.FORWARD, "sigkill_rail")
+	await _frames(int(0.55 * Engine.physics_ticks_per_second))
+	print("capture: m7-kill, alive %s, reaped %d, state %s" % [str(boss.is_alive()), stage.reaped_count, MissionRunner.State.keys()[runner.state]])
+	await _c37_save(sheet, "m7-kill", runner)
+	await _m5_until(runner, func(): return _m7_feed_has(mh, "welcome back") or _main.get_node("Hud").guide().story_waiting() == 0 and runner.clock > 0.0 and _m7_feed_has(mh, "session restored"), 12.0, false)
+	await _frames(int(3.5 * Engine.physics_ticks_per_second))
+	print("capture: m7-restored, feed %s" % str(mh.shown_text()))
+	await _c37_save({}, "m7-restored", runner)
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save({}, "m7-exit0", runner)
+	var credits: CreditsHandoff = mh.credits_screen()
+	end.choose("next")
+	await _frames(int(3.6 * Engine.physics_ticks_per_second))
+	await _save("m7-credits")
+	credits.skip()
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _save("m7-prompt")
+	old = _main
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(6)
+	await _frames(70)
+	await _save("m7-missions")
+	var stills: Array[Image] = []
+	for name in M7_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M7_SHEET.size():
+		_save_grid("m7-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Weapon `weapon` drawn and fired at `at` for `frames` frames (m7: the rail's charge needs the hold); true once it fired.
+func _m7_fire(weapon: String, at: Vector3, frames: int) -> bool:
+	var slot := int(_player.inventory.slot_of(weapon))
+	_player.select_slot(slot)
+	var waited := 0
+	while waited < 120 and (_player.inventory.is_swapping() or _player.inventory.current != slot):
+		await _frames(1)
+		waited += 1
+	if _player.inventory.current != slot:
+		return false
+	for i in frames:
+		_m3_aim(at)
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+	_player.drive_input(Vector2.ZERO)
+	_unfire()
+	return true
+
+
+## True when the mission HUD's terminal shows `part` (m7).
+func _m7_feed_has(mh: MissionHud, part: String) -> bool:
+	for line in mh.shown_text():
+		if line.to_lower().contains(part):
+			return true
+	return false
 
 
 ## Weapon `weapon` drawn and thrown at `at` (m6): the swap waited out, then one press; true once it was thrown.

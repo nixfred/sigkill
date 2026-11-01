@@ -85,16 +85,29 @@ extends Resource
 ## unlocks is allowed from the start, as before. A line may add "wait": seconds after its trigger before it is said (your
 ## AI going quiet a moment).
 ##
+## Mission 7's machinery (M7, the finale). The "shell" type is the shell's true body (scripts/daemons/shell_core.gd): one
+## wave of one, hanging over the point it stands at; its "only" names the weapons whose hits land on it (the rest are
+## refused: SIGTERM trapped, SIGHUP ignored, nothing else reaches it), its "hit_cap" makes each landing hit a known share;
+## "sheds" names a wave of runaways it forks off itself ("by" the shell's id on that wave), one every "shed_every" seconds
+## from its "sheds_on" trigger (or from the start) while fewer than "shed_standing" of them stand; "reaps" "any" makes it
+## the parent of every daemon in the mission: its death drops them all at once (init adopts the orphans) and stands the
+## mission's ICE down. An objective of kind "hit" counts the shots of one "weapon" that met its waves ("of"), landed or
+## refused ("count"; "word" the panel's verb). The trigger "hit:<wave>:<n>" fires as the nth landing hit meets that wave.
+##
 ## Fiction only: nothing here reads, names or touches anything on the player's machine (STORY.md, pick 8).
 
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
-const KINDS := ["kill", "reach", "log", "survive", "root", "hup"]
+const KINDS := ["kill", "reach", "log", "survive", "root", "hup", "hit"]
+## A hit objective's count at most (M7); a shell sheds a child every so many seconds, within this; the panel's verb.
+const HIT_COUNT_LAST := 99
+const SHED_EVERY := Vector2(1.0, 60.0)
+const WORD_LAST := 16
 ## A scheduled job's (M5) name on the crontab, at most this long; its countdown, seconds; a root door's span (wide, tall).
 const JOB_NAME_LAST := 24
 const JOB_EVERY := Vector2(3.0, 300.0)
 const DOOR_SPAN := Vector2(3.4, 3.6)
-const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "any"]
+const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "shell", "wall", "node", "hunter", "any"]
 ## A mission's own ICE (M4): wave kinds that are pieces of ICE, placed through the ICE director (white ICE walls, white ICE
 ## nodes, hunter ICE); a node wave names each node's kind; a wall's span (wide, tall) when the data gives none.
 const ICE_KINDS := ["wall", "node", "hunter", "black"]
@@ -119,7 +132,7 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## The abilities a mission may hand over (C37), by id, with the words the menus show.
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
-const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "black"]
+const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "shell", "wall", "node", "hunter", "black"]
 const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter", "job", "door", "shell"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
@@ -217,7 +230,7 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 			out.append("%s: objective %s picks up log \"%s\", which is not in its logs" % [id, o.get("id"), o.get("log")])
 	var wave_ids := wave_ids()
 	out.append_array(_prop_problems())
-	out.append_array(_wave_problems(objective_ids, log_ids))
+	out.append_array(_wave_problems(objective_ids, log_ids, weapon_ids))
 	for entry in logs:
 		# A log that stands only from a trigger (M4): the records, once they are decrypted.
 		if entry is Dictionary and str(entry.get("on", "")) != "" and not trigger_ok(str(entry["on"]), objective_ids, log_ids, wave_ids):
@@ -326,6 +339,20 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 				out.append("%s: objective %s needs a count of 1 to %d to hang up" % [id, oid, HUP_COUNT_LAST])
 			if not (loadout.has("sighup") or _handed_before(oid, "sighup")):
 				out.append("%s: objective %s hangs up without SIGHUP in hand by then" % [id, oid])
+		"hit":
+			# A shot that met (M7): so many of one weapon's shots on its waves, landed or refused.
+			var weapon := str(o.get("weapon", ""))
+			if not weapon_ids.has(weapon):
+				out.append("%s: objective %s counts hits of \"%s\", which is no weapon" % [id, oid, weapon])
+			elif not _handed_before(oid, weapon):
+				out.append("%s: objective %s counts hits of %s, never in hand by then" % [id, oid, weapon])
+			if not (o.get("count") is int) or o["count"] < 1 or o["count"] > HIT_COUNT_LAST:
+				out.append("%s: objective %s needs a count of 1 to %d hits" % [id, oid, HIT_COUNT_LAST])
+			if not (o.get("of", []) is Array) or (o.get("of", []) as Array).is_empty():
+				out.append("%s: objective %s needs \"of\": the waves whose daemons its hits meet" % [id, oid])
+			var word = o.get("word", "")
+			if not (word is String) or word.length() > WORD_LAST:
+				out.append("%s: objective %s word: text of up to %d characters" % [id, oid, WORD_LAST])
 		_:
 			out.append("%s: objective %s kind \"%s\"" % [id, oid, o.get("kind")])
 	var unlocks = o.get("unlocks", [])
@@ -384,6 +411,10 @@ static func trigger_ok(trigger: String, objective_ids: PackedStringArray, log_id
 			return wave_ids.has(parts[1])
 		"cache":
 			return parts[1].is_valid_int() and CACHE_MARKS.has(int(parts[1]))
+		"hit":
+			# The nth landing hit on a wave (M7): "hit:<wave>:<n>".
+			var rest := parts[1].split(":", false, 1)
+			return rest.size() == 2 and wave_ids.has(rest[0]) and rest[1].is_valid_int() and int(rest[1]) >= 1 and int(rest[1]) <= HIT_COUNT_LAST
 	return false
 
 
@@ -452,10 +483,21 @@ func door_props() -> Array:
 	return props.filter(func(p): return p is Dictionary and p.get("kind") == "door")
 
 
-## Its parent wave (M2), or {}: the one whose daemon reaps the rest.
+## Its parent wave (M2), or {}: the one whose daemon reaps the rest; (M7) the shell's wave, the parent of everything.
 func parent_wave() -> Dictionary:
 	for w in waves:
 		if w is Dictionary and w.get("kind") == "parent":
+			return w
+	for w in waves:
+		if w is Dictionary and w.get("kind") == "shell":
+			return w
+	return {}
+
+
+## Its shell's wave (M7), or {}.
+func shell_wave() -> Dictionary:
+	for w in waves:
+		if w is Dictionary and w.get("kind") == "shell":
 			return w
 	return {}
 
@@ -677,7 +719,7 @@ func _wave_of(wave_id: String) -> Dictionary:
 	return {}
 
 
-func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray) -> PackedStringArray:
+func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray, weapon_ids: PackedStringArray = PackedStringArray()) -> PackedStringArray:
 	# The waves a scheduled job runs (M5): started by the job, so they carry no trigger of their own.
 	var job_waves := PackedStringArray()
 	for jp in job_props():
@@ -704,12 +746,49 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 			out.append("%s: wave %s elites (0 to its count)" % [id, wid])
 		var by := str(w.get("by", ""))
 		if by != "":
+			# Forked by a loop (M3), or shed by the shell (M7): never triggered, never climbing out of anything.
 			var loop := prop_of(by)
-			if loop.get("kind") != "loop" or str(loop.get("forks", "")) != wid:
-				out.append("%s: wave %s forked by \"%s\", which is not a loop forking it" % [id, wid, by])
+			var shell := _wave_of(by)
+			var shed: bool = shell.get("kind") == "shell" and str(shell.get("sheds", "")) == wid
+			if not shed and (loop.get("kind") != "loop" or str(loop.get("forks", "")) != wid):
+				out.append("%s: wave %s forked by \"%s\", which is not a loop forking it or a shell shedding it" % [id, wid, by])
+			if shed and w.get("kind") != "swarm":
+				out.append("%s: wave %s is shed by the shell: a wave of runaways (swarm)" % [id, wid])
 			for key in ["on", "after", "from", "dormant", "wakes", "sealed"]:
 				if w.has(key):
 					out.append("%s: wave %s is forked by a loop: no \"%s\"" % [id, wid, key])
+		if w.get("kind") == "shell":
+			# The shell's true body (M7): one, standing at a spot, the weapons that reach it named, what it sheds and reaps.
+			if count != 1:
+				out.append("%s: wave %s: a shell wave is one shell" % [id, wid])
+			var only = w.get("only", [])
+			if not (only is Array) or only.is_empty():
+				out.append("%s: wave %s needs \"only\": the weapons whose hits land on it" % [id, wid])
+			else:
+				for weapon in only:
+					if not weapon_ids.has(str(weapon)):
+						out.append("%s: wave %s is reached only by \"%s\", which is no weapon" % [id, wid, weapon])
+			if str(w.get("sheds", "")) != "":
+				var child := _wave_of(str(w["sheds"]))
+				if child.get("kind") != "swarm" or str(child.get("by", "")) != wid:
+					out.append("%s: wave %s sheds \"%s\", which is not a wave of runaways shed by it (\"by\": \"%s\")" % [id, wid, w["sheds"], wid])
+				var every = w.get("shed_every", SHED_EVERY.x)
+				if not (every is float or every is int) or every < SHED_EVERY.x or every > SHED_EVERY.y:
+					out.append("%s: wave %s shed_every (%.0f to %.0f seconds)" % [id, wid, SHED_EVERY.x, SHED_EVERY.y])
+				var standing = w.get("shed_standing", 1)
+				if not (standing is int) or standing < 1 or standing > WAVE_LAST:
+					out.append("%s: wave %s shed_standing (1 to %d)" % [id, wid, WAVE_LAST])
+				var on_shed := str(w.get("sheds_on", ""))
+				if on_shed != "" and not trigger_ok(on_shed, objective_ids, log_ids, ids):
+					out.append("%s: wave %s sheds on \"%s\"" % [id, wid, on_shed])
+			else:
+				for key in ["shed_every", "shed_standing", "sheds_on"]:
+					if w.has(key):
+						out.append("%s: wave %s has %s but sheds nothing" % [id, wid, key])
+		else:
+			for key in ["only", "sheds", "shed_every", "shed_standing", "sheds_on"]:
+				if w.has(key):
+					out.append("%s: wave %s has %s, but only a shell does" % [id, wid, key])
 		var from = w.get("from", [])
 		var ice_wave: bool = ICE_KINDS.has(w.get("kind"))
 		if ice_wave:
@@ -801,19 +880,23 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 				out.append("%s: wave %s: a parent wave is one parent" % [id, wid])
 			if not ["zombie", "rogue", "swarm"].has(w.get("reaps", "")):
 				out.append("%s: parent wave %s reaps a daemon type (zombie, rogue or swarm)" % [id, wid])
+		elif w.get("kind") == "shell":
+			parents += 1
+			if w.has("reaps") and not ["zombie", "rogue", "swarm", "any"].has(w.get("reaps", "")):
+				out.append("%s: shell wave %s reaps a daemon type (zombie, rogue, swarm or any)" % [id, wid])
 		elif w.has("reaps"):
-			out.append("%s: wave %s reaps, but only a parent does" % [id, wid])
+			out.append("%s: wave %s reaps, but only a parent or the shell does" % [id, wid])
 		for key in ["tag", "epitaph"]:
 			var text = w.get(key, "")
 			if not (text is String) or text.length() > TAG_LAST:
 				out.append("%s: wave %s %s: text of up to %d characters" % [id, wid, key, TAG_LAST])
-		if w.has("epitaph") and w.get("kind") != "parent":
-			out.append("%s: wave %s has an epitaph, but only a parent does" % [id, wid])
+		if w.has("epitaph") and w.get("kind") != "parent" and w.get("kind") != "shell":
+			out.append("%s: wave %s has an epitaph, but only a parent or the shell does" % [id, wid])
 		var cap = w.get("hit_cap", 0.0)
 		if not (cap is float or cap is int) or cap < 0.0 or cap > 1000.0:
 			out.append("%s: wave %s hit_cap (0 to 1000)" % [id, wid])
 	if parents > 1:
-		out.append("%s: %d parent waves (one at most)" % [id, parents])
+		out.append("%s: %d parent or shell waves (one at most)" % [id, parents])
 	for o in objectives:
 		if not (o is Dictionary) or not o.has("of"):
 			continue
@@ -828,7 +911,7 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 			for w in waves:
 				if w is Dictionary and w.get("id") == str(wid) and w.get("count") is int:
 					bring += int(w["count"])
-		if o.get("count") is int and int(o["count"]) > bring:
+		if o.get("count") is int and int(o["count"]) > bring and o.get("kind") != "hit":
 			out.append("%s: objective %s wants %d, its waves bring %d" % [id, o.get("id"), o["count"], bring])
 	# Every kill objective can be done with the daemons its waves bring (a mission with waves has no others).
 	if not waves.is_empty():

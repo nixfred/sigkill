@@ -44,12 +44,26 @@ const ICE_CYAN := Color(0.55, 0.95, 1.0)
 const ACID := Color(0.8, 1.0, 0.2)
 const ULTRA := Color(0.45, 0.4, 1.0)
 const WHITE_BLUE := Color(0.8, 0.9, 1.0)
+## "core" (M7) is the finale's: the machine's heart round a red-hot core, everything the colour of heat: pale gold and
+## straw on the strips and screens, amber signs, white-hot beacons, a dark ember glow from the void, and the water under
+## the floor a sea of heat that glows of itself ("water_glow", the one key the drowned city's water has not).
+const PALE_GOLD := Color(1.0, 0.9, 0.7)
+const STRAW := Color(1.0, 0.95, 0.6)
+const GOLD := Color(1.0, 0.85, 0.55)
+const WHITE_HOT := Color(1.0, 0.97, 0.9)
+const DARK_EMBER := Color(0.6, 0.12, 0.02)
 const PALETTES := {
 	"abyss": {
 		"slots": [ICE_CYAN, ULTRA, ICE_CYAN, ACID, WHITE_BLUE, ICE_CYAN, HOT_WHITE, ULTRA],
 		"env": {"fog": Color(0.015, 0.04, 0.12), "fog_density": 0.95, "fog_end": 300.0, "horizon": Color(0.02, 0.05, 0.16), "abyss": Color(0.0, 0.006, 0.02), "glow": ICE_CYAN, "points": ACID, "glow_energy": 0.35, "ambient": ULTRA, "ambient_energy": 0.07, "sun": Color(0.45, 0.6, 1.0), "sun_energy": 0.3, "rain": 1.0, "motes": 0.1, "glyphs": 0.0},
 		"edge": ULTRA, "vein": ICE_CYAN, "sheen": ULTRA, "grid": ULTRA, "crack": ICE_CYAN, "puddle": ICE_CYAN, "puddle_b": ULTRA,
-		"haze": Color(0.08, 0.18, 0.5), "water": Color(0.004, 0.012, 0.045), "water_rim": ULTRA,
+		"haze": Color(0.08, 0.18, 0.5), "water": Color(0.004, 0.012, 0.045), "water_rim": ULTRA, "water_glow": Color(0.0, 0.0, 0.0),
+	},
+	"core": {
+		"slots": [PALE_GOLD, NEON_AMBER, STRAW, GOLD, WHITE_HOT, PALE_GOLD, HOT_WHITE, DARK_EMBER],
+		"env": {"fog": Color(0.14, 0.035, 0.012), "fog_density": 0.9, "fog_end": 360.0, "horizon": Color(0.2, 0.05, 0.012), "abyss": Color(0.22, 0.03, 0.0), "glow": NEON_AMBER, "points": HOT_WHITE, "glow_energy": 0.5, "ambient": Color(1.0, 0.5, 0.2), "ambient_energy": 0.08, "sun": Color(1.0, 0.62, 0.3), "sun_energy": 0.35, "rain": 0.5, "motes": 0.4, "glyphs": 0.0},
+		"edge": NEON_AMBER, "vein": PALE_GOLD, "sheen": NEON_AMBER, "grid": GOLD, "crack": STRAW, "puddle": NEON_AMBER, "puddle_b": PALE_GOLD,
+		"haze": Color(0.5, 0.18, 0.06), "water": Color(0.5, 0.04, 0.01), "water_rim": NEON_AMBER, "water_glow": Color(0.42, 0.05, 0.01),
 	},
 }
 ## The colours the ruins must keep their distance from.

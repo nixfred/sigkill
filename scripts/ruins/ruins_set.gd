@@ -102,6 +102,10 @@ extends Resource
 ## Its breach's pocket is the core's (M6): no remnant tower or sign below, a red heat far under the deck instead, dark
 ## until a mission lights it (the drop into the core). Needs a breach; remnant may be "".
 @export var breach_core := false
+## Its clearing (M7), in cells round the plaza (0: none): the plaza and every cell within that many of it kept open floor,
+## no ruin, hole or cover of the dice, so a fight round something hanging over the plaza has room and sight lines; the
+## points "ring_0" to "ring_3" stand at its four edges. The finale's arena round the core.
+@export var clearing := 0
 
 
 ## What is wrong with it; empty when it is good.
@@ -226,6 +230,12 @@ func problems() -> PackedStringArray:
 		out.append("%s: a shell with a room, a vault or a board (one screen a district)" % id)
 	if shell != "" and shell_lines.strip_edges() == "":
 		out.append("%s: a shell with no lines on its screen" % id)
+	if clearing < 0 or clearing > RuinsLayout.CLEARING_MOST:
+		out.append("%s: clearing %d (0 to %d cells round the plaza)" % [id, clearing, RuinsLayout.CLEARING_MOST])
+	if clearing > 0 and (cells.x < clearing * 2 + 5 or cells.y < clearing * 2 + 7):
+		out.append("%s: a clearing of %d needs cells at least %d wide and %d long" % [id, clearing, clearing * 2 + 5, clearing * 2 + 7])
+	if clearing > 0 and (vault != "" or field != "" or room != ""):
+		out.append("%s: a clearing with a vault, a field or a room (one plan round the plaza)" % id)
 	if shell != "":
 		for line in shell_lines.split("|", false):
 			if not RuinsLayout.legible_up_to(line.strip_edges(), RuinsLayout.VAULT_LINE_LAST):

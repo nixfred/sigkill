@@ -54,6 +54,10 @@ signal completed(result: Dictionary)
 signal ended
 ## One of its own daemons climbed out of a vent (C37): scripts/main.gd counts its kills as the arena's.
 signal daemon_spawned(dummy: Node3D)
+## A shot refused by one of its daemons (M7: the shell's true body takes only kill -9), for the HUD to say what became of
+## it; the finale done and its credits wanted (the end card's Credits: the hand-off to the roll, C44's).
+signal refused(weapon: String)
+signal credits_wanted
 
 enum State { IDLE, INTRO, RUNNING, FAILED, COMPLETE }
 
@@ -78,6 +82,9 @@ const TIMED_OUT := "the timeslice ran out"
 const CACHE_FULL := "the cache filled: out of memory"
 ## What follows a reload, for main.gd.
 const AFTER_MISSIONS := "missions"
+## The finale's (M7, STORY.md's ending): the kill feed's line as the shell goes down, and the Auditor's on the orphans.
+const FEED_KILL := "SIGKILL sent by you to ~"
+const ADOPTED := "audit: %d orphans adopted by init."
 
 ## The mission to begin as the arena next loads ("" none), and its try; what to open after a reload without one.
 static var _pending := ""
@@ -315,7 +322,7 @@ static func _triggers_of(d: MissionDef) -> PackedStringArray:
 		if on != "" and not out.has(on):
 			out.append(on)
 	for w in d.waves:
-		for key in ["wakes", "sealed", "withdraws"]:
+		for key in ["wakes", "sealed", "withdraws", "sheds_on"]:
 			var on := str(w.get(key, ""))
 			if on != "" and not out.has(on):
 				out.append(on)
@@ -399,6 +406,10 @@ func _make_stage(d: MissionDef) -> void:
 	stage.job_removed.connect(func(id: String) -> void: line_said.emit("auditor", "audit: crontab: %s removed." % _job_name(id)))
 	stage.hung_up.connect(_on_hung_up)
 	stage.shell_hung_up.connect(_on_shell_hung_up)
+	stage.struck.connect(_on_struck)
+	stage.hit_counted.connect(func(id: String, n: int) -> void: _fire("hit:%s:%d" % [id, n]))
+	stage.reaped.connect(_on_reaped)
+	stage.shell_down.connect(func() -> void: line_said.emit("feed", FEED_KILL))
 	line_said.connect(func(who: String, text: String) -> void:
 		if who == "tilde" and stage != null and is_instance_valid(stage):
 			stage.type_line(text))  # M6: `~`'s lines type themselves on the shell's screen too
@@ -418,6 +429,30 @@ func _on_hung_up(dummy: Node3D) -> void:
 	progressed.emit(index)
 	if progress >= need():
 		_objective_done()
+
+
+## A shot met one of its daemons (M7): a refused one said for the HUD; the hit beat counts its weapon's, landed or not.
+func _on_struck(dummy: Node3D, source: String, landed: bool) -> void:
+	if not landed:
+		refused.emit(source)
+	if state != State.RUNNING:
+		return
+	var o := objective()
+	if o.get("kind") != "hit" or str(o.get("weapon", "")) != source:
+		return
+	var of: Array = o.get("of", [])
+	if not of.is_empty() and not of.has(str(dummy.get_meta(&"wave", ""))):
+		return
+	progress = minf(progress + 1.0, need())
+	progressed.emit(index)
+	if progress >= need():
+		_objective_done()
+
+
+## Its parent went down and init reaped its children (M2); the shell's (M7): the Auditor logs the adoption.
+func _on_reaped(count: int) -> void:
+	if def != null and def.parent_wave().get("kind") == "shell":
+		line_said.emit("auditor", ADOPTED % count)
 
 
 ## A SIGHUP reached the shell (M6): the hangup beat on it is done (it does not even flicker).
@@ -536,6 +571,8 @@ func need() -> float:
 			return float(o["seconds"])
 		"hup":
 			return 1.0 if o.has("prop") else float(o.get("count", 1))
+		"hit":
+			return float(o.get("count", 1))
 	return 1.0
 
 
@@ -884,13 +921,21 @@ func retry() -> void:
 	_reload("$ " + def.title)
 
 
-## The mission after this one, from its first try.
+## The mission after this one, from its first try; after the finale (M7), the credits instead.
 func next_mission() -> void:
+	if def != null and def.next == "" and is_finale(def):
+		credits_wanted.emit()
+		return
 	var after := MissionBook.of(def.next) if def != null and def.next != "" else null
 	if after == null or not after.playable:
 		return
 	queue(after.id, 1)
 	_reload("$ " + after.title)
+
+
+## True for the campaign's last mission (M7).
+static func is_finale(d: MissionDef) -> bool:
+	return d != null and d.order > 0 and d.order == MissionBook.campaign().size()
 
 
 ## Back to the Missions screen, over a fresh arena.

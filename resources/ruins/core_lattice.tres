@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "core_lattice"
+title = "the core"
+seed = 9137
+register = "all"
+cells = Vector2i(15, 19)
+blocks = 9
+holes = 8
+cover = 14
+towers = 44
+giants = 34
+cables = 22
+signs = 20
+folders = PackedStringArray("proc", "run", "init.d", "sched", "irq", "cgroup", "kthreads", "timers", "slab", "swap", "oom", "uptime", "cpu0", "cpu1")
+words = PackedStringArray("RUNNING", "LOAD 99", "CORE", "TIMESLICE", "PREEMPT", "KTHREADD", "CPU 100", "HOT", "SCHED FIFO", "IRQ 0", "INIT", "ADOPT", "NICE -20", "UPTIME")
+water = 3.0
+palette = "core"
+clearing = 2

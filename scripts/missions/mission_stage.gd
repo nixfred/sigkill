@@ -58,6 +58,13 @@ signal job_removed(id: String)
 ## the shell (`~`'s terminal: it does not even flicker).
 signal hung_up(dummy: Node3D)
 signal shell_hung_up
+## Mission 7's (M7): a shot met one of its daemons (`source` the weapon, `landed` false when refused: the shell's true
+## body takes only what its wave's "only" names); the nth landing hit on wave `id`; the shell shed `child` off itself;
+## the shell went down (its death reaps every daemon and stands the ICE down: the ending).
+signal struck(dummy: Node3D, source: String, landed: bool)
+signal hit_counted(id: String, n: int)
+signal shed(core: Node3D, child: Node3D)
+signal shell_down
 ## Its loop (M3): a pass made (the field rewritten, its cores forking); a core forked `child`; the cache past a mark (per
 ## cent) and full; the loop broken (its last core down).
 signal passed(turn: int)
@@ -74,8 +81,9 @@ const ART := {
 	"swarm": preload("res://scripts/daemons/runaway_swarm.gd"),
 	"parent": preload("res://scripts/daemons/parent_process.gd"),
 	"core": preload("res://scripts/daemons/loop_core.gd"),
+	"shell": preload("res://scripts/daemons/shell_core.gd"),
 }
-const TAGS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "parent": "<parent>", "core": "while true"}
+const TAGS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "parent": "<parent>", "core": "while true", "shell": "~"}
 ## Seconds a daemon takes to climb out of its vent, and to stand up at a spot or in a queue (M2).
 const CLIMB_S := 1.1
 const STAND_S := 0.4
@@ -156,6 +164,13 @@ var _shell_typed := 0.0
 var _shell_row := 0
 var _shell_hup_done := false
 var _bursts_seen := {}
+## The shell's true body (M7): its dummy once it stands, its wave's data, the wait to its next shed, the children it shed,
+## and the landing hits on each wave so far.
+var boss: Node3D = null
+var _boss_wave := {}
+var _shed_left := 0.0
+var sheds_made: Array = []
+var _hits := {}
 
 
 ## Builds `d`'s set pieces here: its vents and its walls (its waves wait for their triggers).
@@ -376,11 +391,12 @@ func _lay_pickups() -> void:
 		_pickups_due.erase(p)
 
 
-## Its parent's children standing now (M2): every daemon of the type it reaps, its own waves' or not.
+## Its parent's children standing now (M2): every daemon of the type it reaps, its own waves' or not; (M7) every daemon
+## but the ICE when it reaps "any".
 func children() -> Array:
 	if _reaps == "":
 		return []
-	return standing().filter(func(d): return d != parent and MissionRunner.kind_of(d) == _reaps)
+	return standing().filter(func(d): return d != parent and not (d is IcePiece) and (_reaps == "any" or MissionRunner.kind_of(d) == _reaps))
 
 
 ## Its parent's threads (M2), or null.
@@ -404,6 +420,7 @@ func _start_if_waiting(id: String) -> void:
 func _physics_process(delta: float) -> void:
 	_step_timed(delta)
 	_step_loop(delta)
+	_step_sheds(delta)
 	_lay_pickups()
 	_step_jobs(delta)
 	_step_doors()
@@ -426,8 +443,8 @@ func _physics_process(delta: float) -> void:
 					if (before["state"] == "out" or before["state"] == "cleared") and _alive(before) <= int(w.get("left", 0)):
 						_start(id)
 			"running":
-				if stopped or (_reaps != "" and reaped_count >= 0 and w["kind"] == _reaps):
-					continue  # stopped, or its parent gone and its kind reaped: no more of them (M2)
+				if stopped or (_reaps != "" and reaped_count >= 0 and (w["kind"] == _reaps or (_reaps == "any" and not MissionDef.ICE_KINDS.has(w["kind"])))):
+					continue  # stopped, or its parent gone and its kind reaped: no more of them (M2; M7 every kind)
 				wave["wait"] -= delta
 				if wave["wait"] <= 0.0:
 					_climb_out(id)
@@ -515,7 +532,9 @@ func _climb_out(id: String, off: Vector3 = Vector3.INF) -> Node3D:
 	dummy.set_meta(&"wave", id)
 	dummy.sealed = str(w.get("sealed", "")) != "" and not _fired.has(str(w.get("sealed", "")))
 	dummy.hit_cap = float(w.get("hit_cap", 0.0))
+	dummy.only_from = PackedStringArray(w.get("only", []))  # M7: the shell takes only kill -9
 	dummy.tag_hidden = not wave["awake"] or w.get("tagged", true) == false  # a sleeper unlabelled until it wakes; a crowd never
+	dummy.struck.connect(_on_struck)
 	targets.add_child(dummy)
 	var at: Vector3
 	var face := Vector3.INF
@@ -550,6 +569,15 @@ func _climb_out(id: String, off: Vector3 = Vector3.INF) -> Node3D:
 		vent.burst()
 	if kind == "parent":
 		_take_parent(dummy)
+	if kind == "shell":
+		# The shell's true body (M7): the parent of everything when its wave reaps, shedding on its own clock.
+		boss = dummy
+		_boss_wave = w
+		_shed_left = float(w.get("shed_every", MissionDef.SHED_EVERY.x))
+		if str(w.get("reaps", "")) != "":
+			_take_parent(dummy)
+		else:
+			dummy.downed.connect(func(_d: Node3D) -> void: shell_down.emit())
 	if kind == "core" and not _loop.is_empty() and str(_loop.get("cores", "")) == id:
 		_core_forks[dummy] = 0
 		dummy.downed.connect(_on_core_down)
@@ -596,7 +624,7 @@ func _place_ice(id: String, i: int, w: Dictionary, wave: Dictionary) -> Node3D:
 
 ## Whole and out of its vent: it hunts at once, unless its wave sleeps (M2) or it is a parent.
 func _on_out(dummy: Node3D) -> void:
-	if reaped_count >= 0 and dummy != parent and MissionRunner.kind_of(dummy) == _reaps:
+	if reaped_count >= 0 and dummy != parent and (_reaps == "any" or MissionRunner.kind_of(dummy) == _reaps):
 		dummy.reap()  # still climbing out as its parent went down (M2): reaped as it stands
 		return
 	var wave: Dictionary = _waves.get(str(dummy.get_meta(&"wave", "")), {})
@@ -617,17 +645,30 @@ func _take_parent(dummy: Node3D) -> void:
 	add_child(_threads)
 
 
-## The parent down (M2): every child still standing drops at once, reaped (no kill credited), and no more come.
+## The parent down (M2): every child still standing drops at once, reaped (no kill credited), and no more come. The shell
+## down (M7, STORY.md's ending): the same for every daemon in the mission (init adopts the orphans), Black ICE withdrawn
+## and every other piece of the mission's ICE stood down.
 func _on_parent_down(dummy: Node3D) -> void:
 	var count := 0
 	for d in children():
 		if d.is_alive() and d.reap():
 			count += 1
 	reaped_count = count
+	if dummy == boss:
+		for piece in made:
+			if not is_instance_valid(piece) or not (piece is IcePiece):
+				continue
+			if piece is BlackIce:
+				if (piece as BlackIce).present_now():
+					(piece as BlackIce).withdraw_now()
+			elif piece.is_alive():
+				(piece as IcePiece).stand_down()
 	var epitaph := str(def.parent_wave().get("epitaph", ""))
 	if epitaph != "":
 		_epitaph(dummy, epitaph)
 	reaped.emit(count)
+	if dummy == boss:
+		shell_down.emit()
 
 
 ## The parent's owner field over where it stood (M2), in its own amber, rising and fading over EPITAPH_S.
@@ -915,6 +956,59 @@ func _floor(at: Vector3) -> Vector3:
 	return at - Vector3(0, RuinsLayout.STAND_Y, 0) if absf(at.y - RuinsLayout.STAND_Y) < 0.05 else at
 
 
+# --- The shell's true body (M7). ---
+
+## The shell sheds (M7): from its "sheds_on" trigger (or its standing), every shed_every seconds of the mission's clock,
+## one runaway of its sheds wave comes off the cage (within the wave's count and shed_standing of them standing).
+func _step_sheds(delta: float) -> void:
+	if boss == null or not is_instance_valid(boss) or not boss.is_alive() or stopped or held or _boss_wave.is_empty():
+		return
+	var sheds_id := str(_boss_wave.get("sheds", ""))
+	if sheds_id == "" or not _waves.has(sheds_id):
+		return
+	var on_shed := str(_boss_wave.get("sheds_on", ""))
+	if on_shed != "" and not _fired.has(on_shed):
+		return
+	_shed_left -= delta
+	if _shed_left > 0.0:
+		return
+	_shed_left = float(_boss_wave.get("shed_every", MissionDef.SHED_EVERY.x))
+	var wave: Dictionary = _waves[sheds_id]
+	if int(wave["next"]) >= int(wave["def"]["count"]):
+		return
+	var standing_now := sheds_made.filter(func(c): return is_instance_valid(c) and (c.is_alive() or c.climbing())).size()
+	if standing_now >= int(_boss_wave.get("shed_standing", 1)):
+		return
+	var art = boss.art_node()
+	var off: Vector3 = art.hub() if art != null and art.has_method("hub") else boss.global_position
+	var child := _climb_out(sheds_id, _floor(Vector3(off.x, boss.global_position.y, off.z)))
+	if child == null:
+		return
+	child.set_meta(&"core", boss)
+	sheds_made.append(child)
+	wave["state"] = "out"
+	if art != null and art.has_method("fork_flash"):
+		art.fork_flash()
+	shed.emit(boss, child)
+
+
+## A shot met one of its daemons (M7): said; a landing one counted on its wave.
+func _on_struck(dummy: Node3D, source: String, landed: bool) -> void:
+	struck.emit(dummy, source, landed)
+	if not landed:
+		return
+	var wid := str(dummy.get_meta(&"wave", ""))
+	if wid == "":
+		return
+	_hits[wid] = int(_hits.get(wid, 0)) + 1
+	hit_counted.emit(wid, int(_hits[wid]))
+
+
+## The landing hits on wave `id` so far (M7).
+func hits_on(id: String) -> int:
+	return int(_hits.get(id, 0))
+
+
 # --- The shell and the hangups (M6). ---
 
 ## `~`'s line `text` typed on the shell's screen, row by row, after whatever is typing.
@@ -990,6 +1084,8 @@ func _on_hup(what: Node, _at: Vector3) -> void:
 
 
 func _on_burst(at: Vector3) -> void:
+	if boss != null and is_instance_valid(boss) and boss.is_alive() and at.distance_to(boss.threat_point()) <= SHELL_HUP_M:
+		struck.emit(boss, "sighup", false)  # M7: a hangup at the shell's true body, ignored (nohup)
 	if _shell_hup_done or world == null or not is_instance_valid(world) or not world.has_shell():
 		return
 	var screen: Dictionary = world.shell_screen()

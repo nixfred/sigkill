@@ -934,6 +934,7 @@ func _show_water() -> void:
 	var pal: Dictionary = RuinsRegister.PALETTES.get(ruins.palette, {})
 	_water_mat.set_shader_parameter("deep_color", pal.get("water", Color(0.008, 0.012, 0.03)))
 	_water_mat.set_shader_parameter("rim_color", pal.get("water_rim", RuinsRegister.RAIN_INDIGO))
+	_water_mat.set_shader_parameter("glow_color", pal.get("water_glow", Color(0.0, 0.0, 0.0)))  # M7: a sea of heat
 	_water.material_override = _water_mat
 	add_child(_water)
 	_push_water()

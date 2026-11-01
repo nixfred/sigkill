@@ -210,7 +210,7 @@ func _process(_delta: float) -> void:
 	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
 		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing() and not _mission.end_screen().is_up()
+	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing() and not _mission.end_screen().is_up() and not _mission.credits_screen().is_up()
 
 
 func set_targets(remaining: int, total: int) -> void:

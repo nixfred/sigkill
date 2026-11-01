@@ -10,6 +10,8 @@ render_mode cull_back, depth_draw_opaque;
 
 uniform vec4 deep_color : source_color = vec4(0.004, 0.012, 0.045, 1.0);
 uniform vec4 rim_color : source_color = vec4(0.45, 0.4, 1.0, 1.0);
+// Its own light (M7, the core's sea of heat): black for water that only holds the lamps.
+uniform vec4 glow_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 const int MAX_LAMPS = 16;
 // xyz a lamp's place (world), w its energy; its colour.
 uniform vec4 lamps[MAX_LAMPS];
@@ -63,5 +65,5 @@ void fragment() {
 	ROUGHNESS = 0.06;
 	METALLIC = 0.3;
 	SPECULAR = 0.9;
-	EMISSION = glow * arena_light;
+	EMISSION = (glow + glow_color.rgb * (0.7 + 0.3 * ripple + 0.25 * ring)) * arena_light;
 }

@@ -70,6 +70,12 @@ const BLACK_FLEE_M := 7.0
 const STOP_GAP_S := 16.0
 const SHELL_M := 6.0
 const WALL_NEAR_M := 4.0
+## Mission 7 (M7): where a first-timer stands to fight the shell's body (off the plaza's middle, in sight of it), how
+## long the rail's fire is held for its charge, and the wait between two tries at it.
+const BOSS_STAND_M := 9.0
+const RAIL_HOLD_S := 0.6
+const RAIL_GAP_S := 2.0
+const DODGE_M := 9.0
 
 var _rng := RandomNumberGenerator.new()
 var _main: Node = null
@@ -108,6 +114,9 @@ var _sink_at := -100.0
 var _stop_at := -100.0
 var _mines := 0
 var _last_move := Vector2.ZERO
+var _rail_held := 0.0
+var _rail_at := -100.0
+var _rails := 0
 
 
 func _initialize() -> void:
@@ -171,6 +180,8 @@ func _run() -> void:
 	var done := _runner.state == MissionRunner.State.COMPLETE
 	if _runner.stage != null and (_runner.stage.loop_running or _runner.stage.loop_broken_now):
 		print("pace: the loop made %d passes and forked %d; the cache %.0f%% full when it broke" % [_runner.stage.passes, _runner.stage.forks_made.size(), _runner.stage.cache * 100.0])
+	if _rails > 0:
+		print("pace: %d rail shots at the shell's body" % _rails)
 	print("pace: %s after %.1f game seconds (%.2f minutes) from the first card; its clear %.1f s of its clock (try %d), %d deaths, %d kills in the clear, %d of %d logs; %.0f damage taken in all, its health down to %.0f at worst" % ["DONE" if done else "GAVE UP", _clock - started, (_clock - started) / 60.0, _runner.clock, _runner.attempt, _deaths, _runner.kills, _runner.logs_found.size(), _runner.def.logs.size(), _hurt, _lowest])
 	if is_instance_valid(_main):
 		_main.free()
@@ -263,9 +274,14 @@ func _step() -> void:
 			_last_move = step
 			_player.drive_input(step, false, false, false)
 			return
+	var bossing := _boss_step(o, dt)
+	var dodge := _dodge_step()
 	if not throwing.is_empty():
 		move = throwing[0]
 		fire = throwing[1]
+	elif not bossing.is_empty():
+		move = bossing[0]
+		fire = bossing[1]
 	elif threat != null:
 		if threat != _target:
 			_target = threat
@@ -350,8 +366,32 @@ func _step() -> void:
 			var goal := _goal()
 			if goal.is_finite():
 				move = _walk_to(goal, dt)
+	if dodge != Vector2.ZERO:
+		move = dodge  # a bolt coming (M7): a first-timer who saw it sidesteps, whatever else it was doing
 	_last_move = move
 	_player.drive_input(move, false, false, fire)
+
+
+## A sidestep out of a bolt's way (M7, the shell's volleys; a zombie's too): the nearest live bolt within DODGE_M flying
+## at the player, stepped across its line to the seed's side; ZERO with none coming.
+func _dodge_step() -> Vector2:
+	var director := DaemonDirector.of(_main)
+	if director == null:
+		return Vector2.ZERO
+	var me: Vector3 = _player.global_position + Vector3.UP * 0.9
+	for bolt in director.bolts():
+		if not bolt.live:
+			continue
+		var to := me - bolt.global_position
+		if to.length() > DODGE_M or bolt.velocity.length() < 0.1:
+			continue
+		var way := bolt.velocity.normalized()
+		if way.dot(to.normalized()) < 0.9:
+			continue
+		var across := Vector3(-way.z, 0.0, way.x) * float(_seed_side())
+		var basis := _player.global_transform.basis
+		return Vector2(across.dot(basis.x), across.dot(basis.z)).normalized()
+	return Vector2.ZERO
 
 
 ## Black ICE hunting now (M6), or null: the ICE director's, present.
@@ -425,6 +465,53 @@ func _throw_step(o: Dictionary, dt: float) -> Array:
 			print("pace: /dev/null into %d of the crowd, %.1f m off, at %.1f s of its clock" % [n, gap, _runner.clock])
 		return out
 	return []
+
+
+## Mission 7 (M7): the beats at the shell's body. SIGTERM sent at it on the beat that asks for it (one shot); on a rail
+## beat, or the kill, the rail drawn and fired at its heart once the meter is full (its charge held RAIL_HOLD_S), else
+## the fight goes on round it (the sheds and the ICE shot as any threat, filling the meter). [move, fire] while it is
+## doing one of those, else [].
+func _boss_step(o: Dictionary, dt: float) -> Array:
+	if _runner.stage == null or _runner.stage.boss == null or not is_instance_valid(_runner.stage.boss) or not _runner.stage.boss.is_alive():
+		return []
+	var boss: Node3D = _runner.stage.boss
+	var kind := str(o.get("kind", ""))
+	var weapon := str(o.get("weapon", ""))
+	var at: Vector3 = boss.threat_point()
+	if kind == "hit" and weapon == "sigterm":
+		if not _clear(_player.eye_position(), at):
+			return []
+		var slot := int(_player.inventory.slot_of("sigterm"))
+		if _player.inventory.current != slot:
+			_player.select_slot(slot)
+			return [Vector2.ZERO, false]
+		if _player.inventory.is_swapping() or _turn_to(at, dt) > 0.12:
+			return [Vector2.ZERO, false]
+		print("pace: SIGTERM sent at the shell at %.1f s of its clock" % _runner.clock)
+		return [Vector2.ZERO, true]
+	if not ((kind == "hit" and weapon == "sigkill_rail") or (kind == "kill" and o.get("daemon") == "shell")):
+		return []
+	if not _player.inventory.meter_ready() or _clock - _rail_at < RAIL_GAP_S:
+		return []
+	if not _clear(_player.eye_position(), at):
+		return []
+	var slot := int(_player.inventory.slot_of("sigkill_rail"))
+	if _player.inventory.current != slot:
+		_player.select_slot(slot)
+		return [Vector2.ZERO, false]
+	if _player.inventory.is_swapping():
+		return [Vector2.ZERO, false]
+	_aim_off *= 0.5  # the one shot that matters: the hand steadies
+	if _turn_to(at, dt) > 0.06 and _rail_held <= 0.0:
+		return [Vector2.ZERO, false]
+	_rail_held += dt
+	if _rail_held >= RAIL_HOLD_S:
+		_rail_held = 0.0
+		_rail_at = _clock
+		_rails += 1
+		print("pace: kill -9 at the shell's heart at %.1f s of its clock (rail %d, health %.0f)" % [_runner.clock, _rails, boss.health()])
+		return [Vector2.ZERO, false]
+	return [Vector2.ZERO, true]
 
 
 ## Weapon `weapon` drawn and thrown at `at`, no two throws closer than `gap_s` (the last throw's time kept in _hup_at for
@@ -538,6 +625,8 @@ func _threat() -> Node3D:
 			continue  # a sealed one (M2) takes nothing: a first-timer stops wasting shots on it
 		if d is BlackIce:
 			continue  # never shot (M6): weapons only flash it; the hint says run
+		if _runner.stage != null and d == _runner.stage.boss:
+			continue  # the shell's body (M7): only the rail reaches it, and _boss_step() aims that
 		var at: Vector3 = _point_of(d)
 		var dist := eye.distance_to(at)
 		if d is IceBarrier:
@@ -573,6 +662,14 @@ func _goal() -> Vector3:
 		for spot in breakers.pickups_out():
 			if breakers.pickups_out()[spot] == Breakers.Kind.BRUTE and breakers.pickups[spot] != null and is_instance_valid(breakers.pickups[spot]):
 				return breakers.pickups[spot].global_position
+	if _runner.stage != null and _runner.stage.boss != null and is_instance_valid(_runner.stage.boss) and (o.get("kind") == "hit" or (o.get("kind") == "kill" and o.get("daemon") == "shell")):
+		# The shell's body (M7): a first-timer stands off the plaza's middle, in sight of it, and lets it come round.
+		var boss: Node3D = _runner.stage.boss
+		var plaza: Vector3 = _world.point("plaza")
+		var away := Vector3(_player.global_position.x - plaza.x, 0.0, _player.global_position.z - plaza.z)
+		if away.length() < 0.5:
+			away = Vector3(1, 0, 0)
+		return Vector3(plaza.x, _player.global_position.y, plaza.z) + away.normalized() * BOSS_STAND_M
 	match o.get("kind"):
 		"reach":
 			if o.get("id") == "drop" or o.get("at") == "below":

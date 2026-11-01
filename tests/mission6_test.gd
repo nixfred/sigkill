@@ -157,7 +157,7 @@ func _data_checks() -> void:
 			others.append(MissionBook.at(i).id)
 	_check("not a reskin: no earlier mission stands in its district", others.is_empty())
 	var seven := MissionBook.at(7)
-	_check("mission 7 stays a skeleton, named next", seven != null and not seven.playable and m6.next == "kill_9")
+	_check("mission 7 is named next (built for real since M7)", seven != null and seven.playable and m6.next == "kill_9")
 	# The validator refuses bad mission 6 data by name.
 	var bad := m6.duplicate(true) as MissionDef
 	bad.waves = bad.waves.duplicate(true)

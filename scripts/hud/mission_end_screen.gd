@@ -24,6 +24,8 @@ const EDGE := 8.0
 const RETRY := "Retry"
 const NEXT := "Next: %s  %s"
 const NEXT_LATER := "%s  %s: in production"
+## The finale's first choice (M7): the credits (the hand-off to the roll).
+const CREDITS := "Credits  >"
 const MISSIONS := "Missions"
 const FREE_PLAY := "Free play"
 const COMPLETE := "COMPLETE"
@@ -130,10 +132,14 @@ func show_complete() -> void:
 	_note.text = DRAFT_NOTE if def.draft else ""
 	_note.visible = def.draft
 	var after := MissionBook.of(def.next) if def.next != "" else null
-	_first.visible = after != null
+	var finale := after == null and MissionRunner.is_finale(def)
+	_first.visible = after != null or finale
 	if after != null:
 		_first.text = (NEXT % [after.number(), after.title]) if after.playable else (NEXT_LATER % [after.number(), after.title])
 		_first.disabled = not after.playable
+	elif finale:
+		_first.text = CREDITS  # M7: the campaign done, the credits begin
+		_first.disabled = false
 	_second.text = MISSIONS
 	_third.text = FREE_PLAY
 	_open()

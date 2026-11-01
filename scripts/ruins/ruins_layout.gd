@@ -123,6 +123,8 @@ const CLIFF_T := 0.5
 const RAIL_T := 0.2
 const RAIL_H := 0.9
 const SHELL_SCREEN := Vector2(6.4, 3.8)
+## The most cells a clearing reaches round the plaza (M7).
+const CLEARING_MOST := 4
 const VAULT_SCREEN := Vector2(11.0, 6.4)
 const VAULT_LINE_LAST := 40
 const VAULT_POST := Vector3(0.6, 3.4, 0.6)
@@ -274,6 +276,11 @@ func step_row(b: int) -> int:
 	return size.y - 1 - b * rows
 
 
+## True for a cell of the plaza's clearing (M7): open floor, nothing of the dice on it.
+func in_clearing(c: Vector2i) -> bool:
+	return ruins != null and ruins.clearing > 0 and absi(c.x - plaza_cell.x) <= ruins.clearing and absi(c.y - plaza_cell.y) <= ruins.clearing
+
+
 ## True for a cell of a ramp (M6): walked on, never built on, no point stands there.
 func on_ramp(c: Vector2i) -> bool:
 	for r in ramps:
@@ -378,8 +385,8 @@ func _reserved(c: Vector2i) -> bool:
 		return true  # the sealed room and the cells round it (M5)
 	if not field.is_empty() and (field["rect"] as Rect2i).grow(1).has_point(c):
 		return true  # the field and its ring (M3): never a ruin or a hole
-	if absi(c.x - plaza_cell.x) <= 1 and absi(c.y - plaza_cell.y) <= 1:
-		return true
+	if absi(c.x - plaza_cell.x) <= maxi(1, ruins.clearing) and absi(c.y - plaza_cell.y) <= maxi(1, ruins.clearing):
+		return true  # the plaza, and (M7) its clearing: open floor round whatever hangs over it
 	for keep in [start_cell, exit_cell]:
 		if absi(c.x - keep.x) <= 1 and absi(c.y - keep.y) <= 1:
 			return true
@@ -846,6 +853,14 @@ func _points() -> void:
 				var c := Vector2i(x, z) + front
 				if not taken.has(c):
 					taken.append(c)
+	if ruins.clearing > 0:
+		# The clearing (M7): a point at each of its four edges, a cell in from the edge, for what a mission stands there.
+		for i in 4:
+			var side: Vector2i = SIDES[i]
+			var c := plaza_cell + side * ruins.clearing
+			points["ring_%d" % i] = center(c) + Vector3(0, STAND_Y, 0)
+			if not taken.has(c):
+				taken.append(c)
 	for i in ramps.size():
 		# The ramps (M6): the head of each on the band above, its landing on the band below; its cells never a point's.
 		var r: Dictionary = ramps[i]
@@ -1118,7 +1133,7 @@ func point_names() -> PackedStringArray:
 # --- Cover. ---
 
 func _cover() -> void:
-	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell and not _reserved_field(c) and not on_ramp(c))
+	var open := floor_cells().filter(func(c): return c != start_cell and c != exit_cell and not _reserved_field(c) and not on_ramp(c) and not in_clearing(c))
 	for t in ruins.cover * 3:
 		if cover.size() >= ruins.cover or open.is_empty():
 			break
