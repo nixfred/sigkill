@@ -4110,21 +4110,21 @@ func _c43() -> void:
 	var a: Node3D = _c43_add(RogueArtC43, "rogue.d", at)
 	await _frames(2)
 	var fam: Array = []
-	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(-3.2, 0.0, 2.6)))
-	fam.append(_c43_add(ZombieArtC43, "<defunct>", at + Vector3(3.4, 0.0, 2.2)))
+	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(-3.4, 0.0, 1.0)))
+	fam.append(_c43_add(ZombieArtC43, "<defunct>", at + Vector3(3.0, 0.0, 2.4)))
 	await _frames(2)
-	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-5.5, 1.0, 5.5)))
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(3.5, 1.2, -3.0)))
 	await _frames(2)
-	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-8.0, 1.2, 8.0)))
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(6.5, 1.6, -5.0)))
 	await _frames(2)
-	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-10.0, 1.0, 11.0)))
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(9.5, 1.3, -7.0)))
 	await _frames(2)
-	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(5.5, 0.0, 6.0)))
+	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(-1.0, 0.0, -4.0)))
 	await _frames(int(1.5 * Engine.physics_ticks_per_second))
-	_c37_view(_main.to_global(Vector3(-9.0, 0.0, 13.0)) - Vector3(0.0, _main.global_position.y, 0.0), at + Vector3(-3.0, 4.6, 4.0))
+	_c37_view(_main.to_global(Vector3(-4.0, 0.0, 7.5)) - Vector3(0.0, _main.global_position.y, 0.0), at + Vector3(1.5, 2.6, -1.5))
 	await _frames(int(3.0 * Engine.physics_ticks_per_second))
 	a.hit(100000.0, a.global_position + Vector3.UP, Vector3.FORWARD, "")
-	await _frames(int((AuditVisor.FUSE_S * 1.35) * Engine.physics_ticks_per_second))
+	await _frames(int((AuditVisor.FUSE_S * 1.55) * Engine.physics_ticks_per_second))
 	print("capture: c43-sever, %d severs, %d reaped so far, %d columns live" % [visor.severs, visor.reaped_by_sever, visor.collapse().live()])
 	await _c35_save(sheet, "c43-sever")
 	await _frames(int(3.5 * Engine.physics_ticks_per_second))
@@ -4188,7 +4188,7 @@ func _c43() -> void:
 	var mid1 := Vector3.ZERO
 	for d in runner.stage.standing():
 		mid1 += d.global_position / float(runner.stage.standing().size())
-	_c37_view(plaza + Vector3(0.0, 0, 10.0), mid1 + Vector3(0, 3.0, 0))
+	_c37_view(plaza + Vector3(0.0, 0, 10.0), mid1 + Vector3(0, 2.2, 0))
 	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	await _m2_quiet()
 	print("capture: c43-tron, %d standing, %d lines" % [runner.stage.standing().size(), AuditVisor.of(_main).lines().drawn_lines])
@@ -4204,8 +4204,8 @@ func _c43() -> void:
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	var first: Node3D = stage.wave_daemons("rain_a")[0]
-	var view_at := start + (first.global_position - start) * 0.25 + Vector3(-3.0, -RuinsLayout.STAND_Y, 0.0)
-	_c37_view(view_at, first.global_position.lerp(nest, 0.3) + Vector3(0, 3.4, 0))
+	var view_at := start + (first.global_position - start) * 0.6 + Vector3(-2.5, -RuinsLayout.STAND_Y, 0.0)
+	_c37_view(view_at, first.global_position.lerp(nest, 0.3) + Vector3(0, 3.0, 0))
 	await _frames(int(1.2 * Engine.physics_ticks_per_second))
 	await _m2_quiet()
 	print("capture: c43-cyberpunk, %d of the parent's children, %d lines" % [stage.children().size(), AuditVisor.of(_main).lines().drawn_lines])
@@ -4219,7 +4219,7 @@ func _c43() -> void:
 		kids_at += k.global_position / float(maxi(stage.children().size(), 1))
 	var along := Vector3(kids_at.x - nest.x, 0.0, kids_at.z - nest.z).normalized()
 	var side := Vector3(along.z, 0.0, -along.x)
-	var stand := nest + along * 10.0 + side * 6.0
+	var stand := nest + along * 15.0 + side * 7.0
 	_c37_view(Vector3(stand.x, nest.y, stand.z), nest.lerp(kids_at, 0.35) + Vector3(0, 3.0, 0))
 	await _frames(int(3.0 * Engine.physics_ticks_per_second))
 	var parent: Node3D = stage.parent

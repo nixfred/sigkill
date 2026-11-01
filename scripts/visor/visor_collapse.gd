@@ -20,7 +20,7 @@ const STAGGER_S := 0.07
 const HOLD_S := 0.55
 const LIFE_S := 2.4
 ## How tall a column stands at its height, metres: the middle tallest.
-const TALL_M := Vector2(0.35, 1.5)
+const TALL_M := Vector2(0.5, 2.2)
 
 var _mesh: MultiMeshInstance3D
 var _mat: ShaderMaterial

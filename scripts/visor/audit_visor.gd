@@ -37,7 +37,7 @@ const CREDIT := "visor design: @QuantaCortex"
 ## The visor's colour in each register: amber over Tron's teal, ice white over the rain's violet, hot pink over the
 ## Matrix's green.
 const HUE_TRON := Color(1.0, 0.52, 0.12)
-const HUE_CYBER := Color(0.55, 0.95, 1.0)
+const HUE_CYBER := Color(0.35, 0.9, 1.0)
 const HUE_MATRIX := Color(1.0, 0.34, 0.74)
 ## Heights over the arena's middle (init's and the hidden parent's) and over a wave's first spawn (its job's), metres;
 ## how far apart two jobs stand at least.
@@ -377,7 +377,7 @@ func _mission_cascade(id: int) -> void:
 			reaped += 1
 		for g in tree.children_of(c):
 			queue.append([g, hop + 1])
-	if reaped > 0:
+	if reaped > 0 and on:  # off, a mission's reap is the mission's alone: nothing of the visor's is drawn
 		mission_reaps_drawn += reaped
 		var n: ProcTree.ProcNode = tree.node(id)
 		_collapse.burst(n.get_meta(&"floor", n.at), 1.5, n.pid)
@@ -412,8 +412,9 @@ func _step_fuses() -> void:
 		var cn: ProcTree.ProcNode = tree.node(f["node"])
 		if cn == null:
 			continue
-		_collapse.burst(_floor_of(cn), 1.0, cn.pid)
-		_spark(cn.at)
+		if on or f["act"]:  # a sever already running ends as it began; a mission's reap shows only with the visor on
+			_collapse.burst(_floor_of(cn), 1.0, cn.pid)
+			_spark(cn.at)
 		if f["act"] and cn.body != null and is_instance_valid(cn.body) and cn.body.is_alive():
 			cn.set_meta(&"cascading", true)
 			if cn.body.reap():

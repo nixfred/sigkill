@@ -1,4 +1,4 @@
-# SIGKILL PRD (v1.4, 2026-11-01)
+# SIGKILL PRD (v1.5, 2026-11-01)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -144,10 +144,21 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
 - **One voice** (STORY.md, pick 2): every line in the game is "your AI's". An answer that came live from the player's own AI carries a small "live" mark, so no line is ever misattributed.
 
 ### 5.5 Your machine is the world (later milestone)
-1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. Live process enemies come before the Audit Trail visor (C43), which needs them. Its features other than C43 have no chunk numbers yet; the producer numbers them when they come up.
+1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. The Audit Trail visor (C43) is built (2026-11-01; the producer's two-layer decision below); live process enemies stay a later chunk. Its features other than C43 have no chunk numbers yet; the producer numbers them when they come up.
 - Filesystem maps: rooms from the player's real folder tree (names and sizes only), node_modules is the endless maze.
 - Live process enemies: real running processes become enemies (browser tabs swarm, pegged CPU core is a boss). Cosmetic only.
 - Audit Trail visor (community prompt by Albert / @QuantaCortex, 2026-10-26, accepted by Fred): a visor mode that draws glowing lineage lines from each enemy back to its parent process, up the real process tree. Severing a spawn chain (killing a parent) collapses or reshapes that part of the arena and despawns its children. Reads only PID, parent PID, process name and CPU/memory numbers. Never command-line arguments, open files, environment or paths, so no private file names can show. Severing is cosmetic in-game; nothing real is signaled. Its HUD carries the tag "visor design: @QuantaCortex".
+  - **Two layers (producer decision, 2026-11-01, the C43 brief):** live process enemies were to come first, but no process reader existed, so the visor ships in two layers and the full live-process-enemies feature (tab swarms, a pegged-core boss) stays a later chunk.
+    - **The default (demo) layer:** every daemon, zombie, runaway and boss in the arenas and missions carries a simulated PID, PPID, name and CPU/memory from the game's own data, in a believable spawn tree. It works fully with zero reads of the player's machine; the tests and captures use only it.
+    - **The opt-in real layer:** a read-only process reader behind the same opt-in as the opener's real-data reader (off by default). It reads only PID, parent PID, the short process name and CPU/memory numbers, from `/proc/<pid>/stat` and `/proc/<pid>/status` only; never `cmdline`, `environ`, `fd`, `cwd`, `exe`, `maps`, or any path or file content. With it on, a sample of real processes is mapped onto the arena's daemons, labels and lineage only. Nothing real is ever signaled, stopped or touched; severing is cosmetic.
+  - **As built (C43):**
+    - **The key:** I turns it on and off (rebindable as "audit visor"), in the arena and every mission. Off is the default, and an arena keeps the last choice.
+    - **The tree:** init, PID 1, at the top; under it the process that holds the session, its PID redacted (STORY.md's own rule: only root may read it), its name never shown; under that every daemon. In the free arena rogue.d are daemons, a zombie is the unreaped child of the nearest rogue.d, and a runaway is forked by the nearest older runaway (a fork bomb's chain) or else by a rogue.d. In a mission a daemon the mission itself gives a parent (mission 2's, mission 3's cores, the finale's threat) hangs from it, and every other one from its wave's job, a `sh`. A tag's own PID is kept (mission 2's 4087). A zombie shows Z with no CPU and no memory, a runaway pegs a core, a sleeper is S, a frozen daemon T. Lineage is fixed at fork; an orphan is adopted by init.
+    - **The look:** a glowing line from each process to its parent, arcing up the tree, light running along it toward the root in packets, faster and whiter the hotter the child; a fork's line grows in from its parent. Its colour follows the register: amber over Tron's teal, ice cyan in the rain, hot pink in the Matrix. Init is a double ring, the hidden parent a black plate with a redaction bar, a job a ring.
+    - **The tags:** the header ("AUDIT TRAIL", how many processes, whose data) and the credit at the top's middle; one tag in full at the crosshair (PID, name, state; parent's PID, CPU, memory), a few nearest as one line, the rest only their PIDs, never over each other or the header. The daemons' own name tags give way while it is on.
+    - **Severing:** with the visor on, alone, in the free arena, a parent's death burns its lines down like fuses, one hop at a time (0.42 s each). Each child the fuse reaches is reaped (no kill credited), and the floor's columns thrust up and sink back where it stood. A protected daemon (sealed or rooted) holds, adopted by init with everything under it. In a mission every daemon is protected from the visor's own sever, since one would take daemons a kill objective counts; a mission's severs are its own reaps (mission 2's parent, mission 3's cores and loop, the finale's), drawn as the same chain reaction. In a match it draws and never severs.
+    - **The real layer:** reads a slice of the table a frame (at most 1.5 ms, 1024 processes, a scan every 2 s), kernel threads left out, CPU from two scans at the kernel's 100 ticks a second. It lays real labels over the same tree, labels only: the shape never changes, so real data never changes what a sever takes, and every parent's PID shown is true. A node the machine cannot fit keeps its demo label, and the hidden parent stays redacted. The first-launch card and the "opener data" switch say the answer now covers the visor too.
+    - **The gate's step 63:** the visor's own test, then missions 1 to 7's tests run again with the visor on from the start (`--visor`).
 - Theme-shift levels using Omarchy themes; palette-only enemies.
 - Keybind gunplay mapped to real Omarchy shortcuts (opt-in, no conflicts).
 - Ramblr voice commands (read Ramblr's existing output, never open the mic).
@@ -309,7 +320,7 @@ Safety for the opener (on top of section 6):
   - "you're in now.", with the 3 s in which typing is ignored.
   - The terminal moves into a viewport of its own, pixel for pixel, and shrinks away to one lit screen on a monolith in a city of folders.
   - The fall through the directory tree begins at 0:50 and lands by 1:10. The node_modules pit is walled in the 10 PRINT maze.
-  - Nothing new is read. The hot process at the bottom is the demo's "node" for every source, because no reader reads processes yet. The real name comes with the read-only process reader that M5's process enemies and C43 need, under the same opt-in.
+  - Nothing new is read. The hot process at the bottom is the demo's "node" for every source. C43's read-only process reader now exists, under the same opt-in; wiring it to the opener is a later chunk's.
 - **C41, 1:10 to 1:35** (scripts/opener/opener_link.gd, link_beat.gd, pit_beat.gd, copy_art.gd):
   - **"Linking your agent..."** types itself as the guide HUD comes alive (the "your AI" badge, its signal bars, the panel) and lines of signal climb out of the pit.
   - **The call.** The player's real AI is asked once, through the session's guide link (5.4: the agent's own CLI with tools off, never omarchy-agent, only with the player's yes, the session's pace and cap). The call starts at 0:50, as the fall begins.
@@ -347,7 +358,7 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
 - Features born from a community prompt carry a small in-game tag, e.g. the Audit Trail visor HUD shows "visor design: @QuantaCortex".
 - Credits never include anyone who didn't contribute publicly, and nobody's handle goes in without their own public reply.
 - **Credited so far:**
-  - Albert, @QuantaCortex: the Audit Trail visor, C43, the first.
+  - Albert, @QuantaCortex: the Audit Trail visor, built in C43 (its HUD says "visor design: @QuantaCortex"), the first.
   - Tim Provencio, @TimProvencio: ICE and ICEbreakers, built in I1 to I3, the second.
   - Carlos Granier, @cgranier, the third.
   - Jeremy, @ocdjeremy, the fourth.
@@ -434,7 +445,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 61 steps as of mission 6 (M6).
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 63 steps as of the Audit Trail visor (C43).
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -456,12 +467,13 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
 Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What is left goes in the order a new player sees it:
 1. The opener: done (C38 to C42, with D1).
 2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), M7 (done: mission 7, `kill -9`, the finale).
-3. M5's world features. The producer numbers them when they come up, and live process enemies come before C43, which needs them.
-4. C43, the Audit Trail visor, then C44, the credits.
-5. 1.0.
+3. C43, the Audit Trail visor: done (its demo layer first, and its opt-in real layer; the producer's decision in 5.5).
+4. C44, the credits: next.
+5. M5's world features, live process enemies among them. The producer numbers them when they come up.
+6. 1.0.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-11-01, after mission 5): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-11-01, after C43): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -557,8 +569,8 @@ Statuses are taken from `git log` (2026-11-01, after mission 5): **done**, **in 
 | Chunk | What | Status | Commits |
 |---|---|---|---|
 | M5 world features | Filesystem maps, live process enemies, theme-shift levels, keybind gunplay, Ramblr voice commands, packet tracer arena, Hyprland split-screen co-op. | planned; not yet numbered | |
-| C43 | Audit Trail visor (after process enemies exist): lineage lines, read-only PID/PPID/name/CPU/mem only, chain-sever arena reaction, credit tag. | planned | |
-| C44 | CREDITS.md + in-game top-style credits roll (demo data for captures). CREDITS.md itself is in the repo since C6c; the roll is C44's. | planned | |
+| C43 | Audit Trail visor: lineage lines, a simulated spawn tree (the demo layer) and an opt-in read-only reader of PID/PPID/name/CPU/mem from stat and status only (the real layer), chain-sever arena reaction, credit tag. Live process enemies stay a later chunk (producer, 2026-11-01). | done | `f6d5f8d` |
+| C44 | CREDITS.md + in-game top-style credits roll (demo data for captures). CREDITS.md itself is in the repo since C6c; the roll is C44's. | next | |
 
 **M6 Story campaign** (5.6, 5.7). The opener chunks are built after C10 boot and C7 derezz exist.
 

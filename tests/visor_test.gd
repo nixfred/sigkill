@@ -137,7 +137,7 @@ func _tree_checks() -> void:
 	var t := ProcTree.new(4087)
 	var init: ProcTree.ProcNode = t.node(t.root)
 	var hidden: ProcTree.ProcNode = t.node(t.hidden)
-	_check("the tree: init is PID 1 at its root; under it the process that holds the session, its PID redacted (STORY.md: only root may read it), never `~` or a number", init.pid == 1 and init.name == "init" and t.ppid_text(t.root) == "0" and hidden.parent == t.root and hidden.pid_text() == "[REDACTED]" and t.ppid_text(t.hidden) == "1" and not hidden.name.contains("~"))
+	_check("the tree: init is PID 1 at its root; under it the process that holds the session, its PID redacted (STORY.md: only root may read it), its name never shown", init.pid == 1 and init.name == "init" and t.ppid_text(t.root) == "0" and hidden.parent == t.root and hidden.pid_text() == "[REDACTED]" and t.ppid_text(t.hidden) == "1" and not hidden.name.contains("~"))
 	var a := t.add_daemon(null, "rogue.d", "rogue", t.hidden)
 	var b := t.add_daemon(null, "zombie", "zombie", a)
 	var c := t.add_daemon(null, "runaway", "swarm", a)
@@ -386,10 +386,11 @@ func _arena_checks() -> void:
 	_action("audit_visor")
 	await _frames(3)
 	var kids_of_a: Array = tree.children_of(_node_of(visor, a)).map(func(id): return tree.node(id).body)
+	var columns_before := visor.collapse().made
 	a.hit(100000.0, a.global_position + Vector3.UP, Vector3.FORWARD, "sigkill_rail")
 	await _frames(fuse * 3)
 	var all_up := kids_of_a.all(func(k): return k != null and is_instance_valid(k) and k.is_alive() and tree.node(_node_of(visor, k)).parent == tree.root)
-	_check("off, a parent's death severs nothing: its children (%d) stand, adopted by init" % kids_of_a.size(), not visor.on and kids_of_a.size() >= 3 and all_up and visor.reaped_by_sever == 5)
+	_check("off, a parent's death severs nothing and draws nothing (no columns): its children (%d) stand, adopted by init" % kids_of_a.size(), not visor.on and kids_of_a.size() >= 3 and all_up and visor.reaped_by_sever == 5 and visor.collapse().made == columns_before)
 	await _drop(main)
 
 

@@ -8,7 +8,7 @@ render_mode cull_back, shadows_disabled;
 #include "res://shaders/ruins_common.gdshaderinc"
 
 uniform vec3 hue_tron : source_color = vec3(1.0, 0.5, 0.1);
-uniform vec3 hue_cyber : source_color = vec3(0.55, 0.95, 1.0);
+uniform vec3 hue_cyber : source_color = vec3(0.35, 0.9, 1.0);
 uniform vec3 hue_matrix : source_color = vec3(1.0, 0.32, 0.72);
 
 varying vec3 v_local;

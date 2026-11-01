@@ -14,7 +14,7 @@ render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabl
 #include "res://shaders/ruins_common.gdshaderinc"
 
 uniform vec3 hue_tron : source_color = vec3(1.0, 0.5, 0.1);
-uniform vec3 hue_cyber : source_color = vec3(0.55, 0.95, 1.0);
+uniform vec3 hue_cyber : source_color = vec3(0.35, 0.9, 1.0);
 uniform vec3 hue_matrix : source_color = vec3(1.0, 0.32, 0.72);
 uniform float energy = 3.0;
 // Metres between the packets running toward the root.
@@ -55,7 +55,11 @@ void vertex() {
 	across = length(across) > 0.0001 ? normalize(across) : vec3(1.0, 0.0, 0.0);
 	// A touch wider far off, so a line never thins to nothing on the screen; never wider than a sliver of the view up
 	// close, so a line passing the camera never smears across it.
-	float half_w = min(c1.y * (1.0 + clamp(length(to_cam) / 40.0, 0.0, 1.5)), length(to_cam) * 0.0045);
+	float half_w = min(c1.y * (1.0 + clamp(length(to_cam) / 40.0, 0.0, 1.5)), length(to_cam) * 0.006);
+	// A burning fuse flares: twice as wide while it runs, easing back as its embers die.
+	if (burn > 0.0) {
+		half_w *= 1.0 + clamp(2.0 - burn, 0.0, 1.0);
+	}
 	p += across * side * half_w;
 	v_world = p;
 	v_t = t;
