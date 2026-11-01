@@ -94,9 +94,9 @@ const ELITE_ROGUE_LUNGE := 2.6
 const ELITE_FLANK_M := 3.2
 const ELITE_FLANK_S := 2.4
 const ELITE_ZOMBIE_CHARGE_SPEED := 7.5
-const ELITE_ZOMBIE_CHARGE_S := 1.1
+const ELITE_ZOMBIE_CHARGE_S := 0.95
 const ELITE_ZOMBIE_RAM_M := 1.7
-const ELITE_ZOMBIE_RAM_SCALE := 1.6
+const ELITE_ZOMBIE_RAM_SCALE := 1.3
 const ELITE_SWARM_BURST := 2
 const ELITE_SWARM_TELL := 0.6
 ## The kinds rooted where they stand, never moving, looking, striking or roused (M2's parent, M3's loop core).

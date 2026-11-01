@@ -254,7 +254,7 @@ waves = [{
 "count": 1,
 "elites": 1,
 "from": ["v_mid"],
-"health": 220.0,
+"health": 260.0,
 "id": "wiper_1",
 "kind": "zombie",
 "on": "begin:wipe",

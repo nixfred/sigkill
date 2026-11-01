@@ -388,10 +388,12 @@ func _run_checks() -> void:
 	var jobs_done := await _play_until(main, func(): return runner.index >= 1)
 	runner.life.shield(100000.0)
 	_check("acceptance (sudo): three kills in one life earn a sudo charge, the first beat done (%d kills, %d charges)" % [runner.kills, player.sudo.charges()], jobs_done and runner.kills == 3 and player.sudo.charges() == 1 and not player.sudo.is_root() and _began.has("root"))
+	await _frames(30)
+	var not_yet: bool = runner.index == 1  # the root beat waits for Z: it is not done on its own
 	_action("sudo_overcharge")
 	var rooted := await _until(func(): return player.sudo.is_root())
 	var root_done := await _until(func(): return runner.index >= 2)
-	_check("acceptance (root): Z makes the player root# (the password line, then root for %.0f s) and the objective is done; the Auditor allows it on the proof of three kills" % player.sudo.tuning_in_use().root_s, rooted and root_done and player.sudo.charges() == 0 and _fired_has("action=sudo result=ALLOWED (proof: 3 kills)"))
+	_check("acceptance (root): Z makes the player root# (the password line, then root for %.0f s) and the objective is done; the Auditor allows it on the proof of three kills" % player.sudo.tuning_in_use().root_s, not_yet and rooted and root_done and player.sudo.charges() == 0 and _fired_has("action=sudo result=ALLOWED (proof: 3 kills)"))
 	# The watchdog: an elite rogue.d out of the plaza's vent; the player stood 4.5 m before it in the open.
 	var watchdog: Node3D = null
 	await _play_until(main, func(): return stage.wave_daemons("watchdog_1").size() > 0, MOST_FRAMES, false)

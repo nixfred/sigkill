@@ -52,6 +52,12 @@ const SIDE_LOG_M := 12.0
 ## Mission 4's (M4): how close a brute is run from a wall (I2: full strength within 2.25 m), and how near a deny rule's
 ## wall that is not this beat's must be to be in the way (the aisle sealed: the only way through).
 const BRUTE_M := 1.6
+## Mission 5's (M5): how near a job's vent a mine is placed and how long before another, the band rm -rf is fired from
+## (nearer, it removes you too; farther, a first-timer closes in), and how near the root door Z is pressed.
+const MINE_M := 3.0
+const MINE_GAP_S := 6.0
+const RM_BAND := Vector2(7.0, 15.0)
+const DOOR_M := 4.0
 const WALL_NEAR_M := 4.0
 
 var _rng := RandomNumberGenerator.new()
@@ -84,6 +90,9 @@ const BEAM_HOLD_S := 2.6
 const BEAM_REST_S := 2.0
 var _beam_held := 0.0
 var _beam_rest := 0.0
+## The clock when the last mine was placed (M5), and how many were.
+var _mine_at := -100.0
+var _mines := 0
 var _last_move := Vector2.ZERO
 
 
@@ -206,6 +215,15 @@ func _step() -> void:
 	var threat := _threat()
 	var move := Vector2.ZERO
 	var fire := false
+	var o := _runner.objective()
+	# Mission 5 (M5): Z for root as the beat that teaches it says, and at the root door with a charge held.
+	var sudo = _player.get("sudo")
+	if sudo != null and sudo.state != null and sudo.charges() >= 1 and not sudo.is_root() and _player.ability_ok("sudo") and _pause <= 0.0:
+		var door_at: Vector3 = _world.point("room_door")
+		var at_door: bool = o.get("kind") == "reach" and door_at.is_finite() and Vector2(door_at.x - _player.global_position.x, door_at.z - _player.global_position.z).length() < DOOR_M
+		if o.get("kind") == "root" or at_door:
+			sudo.press()
+			print("pace: Z (sudo) at %.1f s of its clock, for %s" % [_runner.clock, "root" if o.get("kind") == "root" else "the door"])
 	if threat != null:
 		if threat != _target:
 			_target = threat
@@ -262,13 +280,29 @@ func _step() -> void:
 			else:
 				_beam_held = 0.0
 			var gap: float = threat.global_position.distance_to(_player.global_position)
-			if threat is HunterIce and _player.inventory.current == int(_player.inventory.slot_of("chmod_000")) and gap > _chmod_reach - 1.0:
+			var charging: bool = MissionRunner.kind_of(threat) == "zombie" and threat.has_method("art_node") and threat.art_node() != null and threat.art_node().elite and threat.brain != null and (threat.brain.state_name() == "tell" or threat.brain.state_name() == "strike") and gap < 9.0
+			if charging:
+				# A zombie elite charging (M5): a first-timer who saw it come once sidesteps, as a player would.
+				move = Vector2(1.0 if _seed_side() > 0 else -1.0, 0.0)
+			elif _player.inventory.current == int(_player.inventory.slot_of("rm_rf_cannon")):
+				# rm -rf drawn (M5): fired from its band only; nearer it removes you too, as the hint says.
+				if gap < RM_BAND.x:
+					move = Vector2(0, 1)
+					fire = false
+				elif gap > RM_BAND.y:
+					move = Vector2(0, -1)
+					fire = false
+			elif threat is HunterIce and _player.inventory.current == int(_player.inventory.slot_of("chmod_000")) and gap > _chmod_reach - 1.0:
 				move = Vector2(0, -1)  # chmod 000 drawn and the hunter out of its reach (M4): close in, the beam held
 			elif not (threat is IceBarrier) and gap < BACK_M:
 				move = Vector2(0, 1)  # back up, or it opens you
 	else:
 		_target = null
-		if _pause > 0.0:
+		var mining := _mine_step(o, dt)
+		if not mining.is_empty():
+			move = mining[0]
+			fire = mining[1]
+		elif _pause > 0.0:
 			_pause -= dt
 		else:
 			var goal := _goal()
@@ -278,6 +312,52 @@ func _step() -> void:
 	_player.drive_input(move, false, false, fire)
 
 
+## Mission 5 (M5): on the beat that hands cron over, a first-timer who read the hint walks to the job's vent and places a
+## mine on it before the job runs (one every MINE_GAP_S), then stands back for the goal as usual. [move, fire] while it
+## is doing that, else [].
+func _mine_step(o: Dictionary, dt: float) -> Array:
+	if not o.get("arms", []).has("cron_mines") or not _runner.carried.has("cron_mines") or _clock - _mine_at < MINE_GAP_S:
+		return []
+	var vent := _job_vent(o)
+	if not vent.is_finite():
+		return []
+	var flat := Vector2(vent.x - _player.global_position.x, vent.z - _player.global_position.z)
+	if flat.length() > MINE_M + 0.6:
+		return [_walk_to(Vector3(vent.x, _player.global_position.y, vent.z), dt), false]
+	var slot := int(_player.inventory.slot_of("cron_mines"))
+	if _player.inventory.current != slot:
+		_player.select_slot(slot)
+		return [Vector2.ZERO, false]
+	if _player.inventory.is_swapping():
+		return [Vector2.ZERO, false]
+	if _turn_to(vent, dt) > 0.25:
+		return [Vector2.ZERO, false]
+	_mine_at = _clock
+	_mines += 1
+	print("pace: a mine on the job's vent at %.1f s of its clock (%d)" % [_runner.clock, _mines])
+	return [Vector2.ZERO, true]
+
+
+## Which way it sidesteps (M5): its seed's, the same all run.
+func _seed_side() -> int:
+	return 1 if int(_rng.seed) % 2 == 0 else -1
+
+
+## The vent the beat's job climbs out of (M5): the first vent of the first wave the objective counts.
+func _job_vent(o: Dictionary) -> Vector3:
+	var of: Array = o.get("of", [])
+	if of.is_empty() or _runner.stage == null:
+		return Vector3.INF
+	for w in _runner.def.waves:
+		if str(w.get("id", "")) == str(of[0]):
+			var from: Array = w.get("from", [])
+			if not from.is_empty():
+				var vent = _runner.stage.vent(str(from[0]))
+				if vent != null:
+					return vent.global_position
+	return Vector3.INF
+
+
 ## The weapon a first-timer who read the hints draws for `threat` (M3): pipe | against a runaway once it is in hand, (M4)
 ## chmod 000 against a hunter not yet frozen once it is in hand, the cannon against anything else; one a node's field has
 ## jammed (M4) swapped for the next carried, as the HUD says to.
@@ -285,7 +365,11 @@ func _arm_for(threat: Node3D) -> void:
 	if _player.inventory.is_reloading():
 		return  # a reload finished before any swap (M4): a swap would throw it away
 	var want := "terminal_cannon"
-	if MissionRunner.kind_of(threat) == "swarm" and _runner.carried.has("pipe_chain"):
+	var o := _runner.objective()
+	var gap: float = threat.global_position.distance_to(_player.global_position)
+	if o.get("arms", []).has("rm_rf_cannon") and _runner.carried.has("rm_rf_cannon") and o.get("of", []).has(str(threat.get_meta(&"wave", ""))) and gap >= RM_BAND.x:
+		want = "rm_rf_cannon"  # the beat that teaches rm -rf (M5): on what it counts, from the band; nearer, the cannon
+	elif MissionRunner.kind_of(threat) == "swarm" and _runner.carried.has("pipe_chain"):
 		want = "pipe_chain"
 	elif threat is HunterIce and _runner.carried.has("chmod_000") and not (threat as HunterIce).chmod_frozen():
 		want = "chmod_000"

@@ -396,6 +396,7 @@ const M2_SHEET := ["m2-opening", "m2-queue", "m2-crowd", "m2-guard", "m2-reap", 
 const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores", "m3-finish"]
 ## m4's sheet: mission 4 as a player meets it, three a row.
 const M4_SHEET := ["m4-opening", "m4-hall", "m4-nodes", "m4-freeze", "m4-records", "m4-end"]
+const M5_SHEET := ["m5-opening", "m5-watchdog", "m5-cron", "m5-wipe", "m5-door", "m5-oldest"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
 const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
@@ -542,6 +543,11 @@ func _run() -> void:
 		return
 	if _set == "m4":
 		await _m4()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m5":
+		await _m5()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -3420,6 +3426,253 @@ func _m4() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M4_SHEET.size():
 		_save_grid("m4-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 5's stills (m5, M5): started from the Missions screen with missions 1 to 4 done (the arena reloads into the
+## sudoers' ladder): its card; the opening, the first job's zombies climbing out of their vent in the clean grid with the
+## crontab counting on the panel (m5-opening); root# after three kills and Z (m5-root); the watchdog, an elite rogue.d
+## rearing for its pounce (m5-watchdog); a mine on the fork job's vent as its rogues climb out (m5-cron); the crontab
+## board with its author read, your AI's doubt line (m5-author); the set piece, the wipe job counting down in red on the
+## panel and the board, its zombie elite charging and an rm -rf blast on it, in the rain (m5-wipe), the busiest fight's
+## GPU time printed with the first queued zombies out, and the same at 960 wide; the runaway elite's two rings before the
+## shut root door (m5-elites); the door sinking for root# (m5-door); the oldest log open in the reader inside the room and
+## your AI's line on it (m5-oldest); the exit 0 card; the Missions screen with 1 to 5 done; the six-frame sheet. Demo data
+## only; the player shielded but for the frames a tell or a charge needs.
+func _m5() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	MissionProgress.current().record(MissionBook.at(2), 171.0, 3)
+	MissionProgress.current().record(MissionBook.at(3), 131.0, 2)
+	MissionProgress.current().record(MissionBook.at(4), 182.0, 1)
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(4)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "sudo_bang":
+		printerr("capture: mission 5 did not start in its district")
+		return
+	print("capture: mission %s in the district %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var start := world.point("start")
+	var plaza := world.point("plaza")
+	var vent1 := world.point("spawn_2")
+	var vent_mid := world.point("spawn_1")
+	var vent_left := world.point("spawn_4")
+	var door_at := world.point("room_door")
+	_c37_view(Vector3(start.x + 0.4, 0.0, start.z - 1.0), plaza + Vector3(0, 1.4, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m5-card", runner)
+	# The opening: the first job's countdown on the crontab, and its zombies climbing out of the vent, in the clean grid.
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	await _m2_quiet()
+	_c37_view(Vector3(vent1.x - 4.5, 0.0, vent1.z + 7.0), vent1 + Vector3(0, 1.1, 0))
+	await _m5_until(runner, func(): return stage.wave_state("reap_1") != "waiting", 0.0, false)
+	await _frames(int(0.9 * Engine.physics_ticks_per_second))
+	print("capture: m5-opening, the first job ran at %.1f s, %d standing" % [runner.clock, stage.standing().size()])
+	await _c37_save(sheet, "m5-opening", runner)
+	# Root: three kills, Z, the password line, root# with the weapon's glow.
+	await _m5_until(runner, func(): return runner.index >= 1, 0.0)
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	_player.select_slot(int(_player.inventory.slot_of("terminal_cannon")))
+	_c37_view(Vector3(plaza.x + 1.0, 0.0, plaza.z + 9.0), door_at + Vector3(0, 1.6, 0))
+	_player.sudo.press()
+	await _frames(int(1.7 * Engine.physics_ticks_per_second))
+	print("capture: m5-root, root %s, %.1f s left, charges %d" % [str(_player.sudo.is_root()), _player.sudo.root_left(), _player.sudo.charges()])
+	await _c37_save(sheet, "m5-root", runner)
+	await _m5_until(runner, func(): return runner.index >= 2, 0.0)
+	# The watchdog: the elite rogue.d out of the plaza's vent, rearing for its pounce at the player 4.5 m off, in the
+	# first of the rain. The shield off for the tell (a daemon never tells on a protected player), back for the still.
+	while stage.wave_daemons("watchdog_1").is_empty():
+		await _frames(1)
+	var watchdog: Node3D = stage.wave_daemons("watchdog_1")[0]
+	_c37_view(Vector3(vent_mid.x + 0.3, 0.0, vent_mid.z + 4.8), vent_mid + Vector3(0, 1.3, 0))
+	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	var waited := 0
+	while waited < 900 and watchdog.brain.tells < 1 and (watchdog.climbing() or watchdog.is_alive()):
+		_m3_aim(watchdog.aim_point() if watchdog.is_alive() else vent_mid + Vector3(0, 1.3, 0))
+		await _frames(1)
+		waited += 1
+	await _frames(int(0.3 * Engine.physics_ticks_per_second))
+	_m3_aim(watchdog.aim_point())
+	print("capture: m5-watchdog after %d frames, elite %s, tells %d, state %s, %.1f m" % [waited, str(watchdog.art_node().elite), watchdog.brain.tells, watchdog.brain.state_name(), watchdog.global_position.distance_to(_player.global_position)])
+	await _c37_save(sheet, "m5-watchdog", runner)
+	await _m5_until(runner, func(): return runner.index >= 3, 0.0)
+	# cron: a mine placed on the fork job's vent as the hint says, and its rogues climbing out onto it.
+	await _m2_quiet()
+	var cron_slot := int(_player.inventory.slot_of("cron_mines"))
+	_player.select_slot(cron_slot)
+	_c37_view(Vector3(vent_left.x + 3.2, 0.0, vent_left.z + 2.6), vent_left + Vector3(0, 0.6, 0))
+	waited = 0
+	while waited < 120 and (_player.inventory.is_swapping() or _player.inventory.current != cron_slot):
+		await _frames(1)
+		waited += 1
+	for i in 3:
+		_m3_aim(vent_left)
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+	_player.drive_input(Vector2.ZERO)
+	await _frames(10)
+	var mines := get_tree().get_nodes_in_group(&"cron_mine").size()
+	await _m5_until(runner, func(): return stage.wave_state("fork_1") != "waiting", 0.0, false)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	_m3_aim(vent_left + Vector3(0, 0.8, 0))
+	print("capture: m5-cron, %d mines, the fork job ran at %.1f s, %d standing" % [mines, runner.clock, stage.standing().size()])
+	await _c37_save(sheet, "m5-cron", runner)
+	await _m5_until(runner, func(): return runner.index >= 4, 0.0)
+	# The crontab's author: the board, the log read in front of it, your AI's doubt line.
+	var author = runner.pickup("author")
+	if author != null:
+		_player.global_position = author.global_position
+	await _m5_until(runner, func(): return runner.logs_found.has("author"), 0.0, false)
+	var screen: Dictionary = world.board_screen()
+	var out: Vector3 = screen["out"]
+	var at: Vector3 = screen["at"]
+	_c37_view(at + out * 5.5 + Vector3(out.z, 0, -out.x) * 1.6, at - out * 0.2 + Vector3(0, 2.4, 0))
+	await _frames(int(2.6 * Engine.physics_ticks_per_second))
+	print("capture: m5-author, the reader open %s" % str(_main.get_node("Hud").mission_hud().showing_log()))
+	await _c37_save(sheet, "m5-author", runner)
+	await _m5_until(runner, func(): return runner.index >= 5, 0.0, false)
+	# The set piece: the wipe job counting down in red, its zombie elite charging, an rm -rf blast on it, in the rain.
+	while stage.wave_daemons("wiper_1").is_empty():
+		await _frames(1)
+	var wiper: Node3D = stage.wave_daemons("wiper_1")[0]
+	await _m2_quiet()
+	var rm_slot := int(_player.inventory.slot_of("rm_rf_cannon"))
+	_player.select_slot(rm_slot)
+	_c37_view(Vector3(plaza.x + 7.0, 0.0, plaza.z + 5.0), vent_mid + Vector3(0, 1.4, 0))
+	waited = 0
+	while waited < 600 and (wiper.climbing() or not wiper.is_alive()):
+		await _frames(1)
+		waited += 1
+	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
+	waited = 0
+	while waited < 600 and wiper.is_alive() and not (wiper.brain.state_name() == "strike" and wiper.brain.charges >= 1):
+		_m3_aim(wiper.aim_point())
+		await _frames(1)
+		waited += 1
+	runner.life.shield(100000.0)
+	# rm -rf wound up and let go at it; the blast ring is the frame.
+	var rings_before := get_tree().get_nodes_in_group(&"rm_ring").size()
+	for i in int(1.0 * Engine.physics_ticks_per_second):
+		_m3_aim(wiper.aim_point())
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+	_player.drive_input(Vector2.ZERO)
+	waited = 0
+	while waited < 240 and get_tree().get_nodes_in_group(&"rm_ring").size() <= rings_before:
+		_m3_aim(wiper.aim_point())
+		await _frames(1)
+		waited += 1
+	await _frames(4)
+	var row := {}
+	for r in runner.jobs():
+		if r["id"] == "wipe":
+			row = r
+	print("capture: m5-wipe after %d frames, the wiper charges %d, rings %d, the job at %.0f s, standing %d, mix %s" % [waited, wiper.brain.charges, get_tree().get_nodes_in_group(&"rm_ring").size(), float(row.get("left", -1.0)), stage.standing().size(), str(world.mix)])
+	await _c37_save(sheet, "m5-wipe", runner)
+	# The busiest fight: the first queued zombies out beside the runner, the mines and the board; its GPU time, at 960 too.
+	await _m5_until(runner, func(): return stage.wave_state("queue_1") != "waiting", 0.0, false)
+	await _frames(int(2.0 * Engine.physics_ticks_per_second))
+	_c37_view(Vector3(plaza.x + 5.0, 0.0, plaza.z + 9.0), vent_mid + Vector3(0, 1.2, -2.0))
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m5 the wipe at %dx%d, %d standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("wipe")
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m5-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	await _m5_until(runner, func(): return runner.index >= 6, 0.0)
+	# The last elite: the runaway's two rings before the shut root door.
+	while stage.wave_daemons("guard_1").is_empty():
+		await _frames(1)
+	var swarm: Node3D = stage.wave_daemons("guard_1")[0]
+	_c37_view(Vector3(door_at.x + 2.5, 0.0, door_at.z + 11.0), door_at + Vector3(0, 1.8, -1.0))
+	waited = 0
+	while waited < 600 and (swarm.climbing() or not swarm.is_alive()):
+		await _frames(1)
+		waited += 1
+	await _frames(int(2.2 * Engine.physics_ticks_per_second))
+	_m3_aim(swarm.aim_point())
+	print("capture: m5-elites, the swarm elite %s at %.1f m, door open %.2f" % [str(swarm.art_node().elite), swarm.global_position.distance_to(_player.global_position), (stage.doors()[0] as RootDoor).open_share()])
+	await _c37_save(sheet, "m5-elites", runner)
+	await _m5_until(runner, func(): return runner.index >= 7, 0.0)
+	# The root door: Z before it, the panel sinking for root#.
+	var door: RootDoor = stage.doors()[0]
+	await _m2_quiet()
+	_c37_view(Vector3(door_at.x + 0.6, 0.0, door_at.z + 4.2), door_at + Vector3(0, 1.7, 0))
+	if _player.sudo.charges() < 1:
+		print("capture: m5-door, no sudo charge held (%d)" % _player.sudo.charges())
+	_player.sudo.press()
+	waited = 0
+	while waited < 300 and door.open_share() < 0.45:
+		await _frames(1)
+		waited += 1
+	print("capture: m5-door after %d frames, open %.2f, root %s" % [waited, door.open_share(), str(_player.sudo.is_root())])
+	await _c37_save(sheet, "m5-door", runner)
+	_player.global_position = world.point("room")
+	await _m5_until(runner, func(): return runner.index >= 8, 0.0, false)
+	# The oldest log: read inside the room, the reader open, your AI's line on it.
+	var oldest = runner.pickup("oldest")
+	if oldest != null:
+		_player.global_position = oldest.global_position
+	await _m5_until(runner, func(): return runner.logs_found.has("oldest"), 0.0, false)
+	var room := world.point("room")
+	_c37_view(Vector3(room.x - 1.2, 0.0, room.z + 1.6), room + Vector3(1.0, 2.0, -3.4))
+	await _frames(int(6.6 * Engine.physics_ticks_per_second))
+	print("capture: m5-oldest, the reader open %s, state %s" % [str(_main.get_node("Hud").mission_hud().showing_log()), MissionRunner.State.keys()[runner.state]])
+	await _c37_save(sheet, "m5-oldest", runner)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "m5-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(4)
+	await _frames(70)
+	await _save("m5-missions")
+	var stills: Array[Image] = []
+	for name in M5_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M5_SHEET.size():
+		_save_grid("m5-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 5 played on until `condition` (m5), at most `most` seconds (0: a minute): with `shoot`, the daemons the
+## objective running counts shot down as a sure shot would.
+func _m5_until(runner: MissionRunner, condition: Callable, most: float, shoot: bool = true) -> void:
+	var frames := 0
+	var limit := int((most if most > 0.0 else 60.0) * Engine.physics_ticks_per_second)
+	while frames < limit and not condition.call():
+		if shoot and runner.stage != null:
+			var of: Array = runner.objective().get("of", [])
+			for d in runner.stage.standing():
+				if d.is_alive() and of.has(str(d.get_meta(&"wave", ""))):
+					d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await process_frame
+		frames += 1
 
 
 ## Mission 4 played on until `condition` (m4), at most `most` seconds (0: a minute): the pieces the objective running
