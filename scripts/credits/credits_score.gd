@@ -18,20 +18,21 @@ extends OpenerScore
 
 const CREDIT_PARTS := ["roll", "wait", "kill"]
 const CREDIT_LOUDNESS := {"roll": 0.085, "wait": 0.08, "kill": 0.13}
-## The roll's length in bars: the prompt waits from its end.
-const ROLL_BARS := 28
+## The roll's length in bars: the prompt waits from its end. Two bars a cast row (W2: nine rows, so 30; the credits
+## test holds THANKS_BAR to CAST_BAR + CAST_EVERY a row, so a new contributor cannot land under the threads).
+const ROLL_BARS := 30
 ## The bars the roll's beats land on (scripts/credits/credits_roll.gd keeps its clock by them).
 const TITLE_BAR := 2
 const CAST_BAR := 4
 const CAST_EVERY := 2
-const THANKS_BAR := 20
-const QUIET_BAR := 24
-const LAST_BAR := 26
+const THANKS_BAR := 22
+const QUIET_BAR := 26
+const LAST_BAR := 28
 ## The kill: the slam this many beats after the shot, the riff two bars, the chord ringing out to its end.
 const KILL_SLAM_BEATS := 8.0
 const KILL_S := 9.6
 ## The bell each cast row lands on, rising.
-const ROW_BELLS := [64, 67, 71, 74, 76, 79, 83, 88]
+const ROW_BELLS := [64, 67, 71, 74, 76, 79, 83, 88, 91]
 ## The threads' bells, a beat each.
 const THREAD_BELLS := [76, 79, 81, 83, 86, 88, 91, 93]
 
@@ -174,7 +175,7 @@ func _roll() -> void:
 				_snare(at + BEAT_S * 3.0, 0.35)
 		if bar >= CAST_BAR and bar < THANKS_BAR and (bar - CAST_BAR) % CAST_EVERY == 0:
 			var row := (bar - CAST_BAR) / CAST_EVERY
-			_bell(at, ROW_BELLS[row], 0.3)
+			_bell(at, ROW_BELLS[mini(row, ROW_BELLS.size() - 1)], 0.3)
 			_crash(at, 0.12)
 		if bar == THANKS_BAR - 1:
 			_riser(at, BAR_S, 0.28)

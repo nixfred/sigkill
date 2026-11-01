@@ -39,6 +39,8 @@ const BEAT_S := OpenerScore.BEAT_S
 const STEP_S := OpenerScore.STEP_S
 ## The clock, in seconds from the start, on the score's bars.
 const FADE_S := 0.4
+## The smallest a card's command is drawn, design pixels (W2): a longer command wraps instead of shrinking past it.
+const CARD_COMMAND_LEAST := 17.0
 const TYPE_AT := 0.4
 const TITLE_AT := CreditsScore.TITLE_BAR * BAR_S
 const CAST_AT := CreditsScore.CAST_BAR * BAR_S
@@ -278,7 +280,7 @@ func shown_rows() -> PackedStringArray:
 		return out
 	for i in _rows.size():
 		if _arrived(i):
-			out.append(CreditsCast.row_text(_rows[i]))
+			out.append(CreditsCast.table_text(_rows[i]))
 	return out
 
 
@@ -330,6 +332,24 @@ func shown_text() -> PackedStringArray:
 		if _press < 0.0:
 			out.append(KILL_HINT % _fire_label)
 	out.append(SKIP_HINT)
+	return out
+
+
+## A card's command as its lines (W2, C44's leftover): wrapped between words, at most `per_line` characters a line where
+## the words allow (a word longer than a line stands alone); the lines joined by single spaces are the command again.
+static func card_command_lines(cmd: String, per_line: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	var line := ""
+	for word in cmd.split(" ", false):
+		if line == "":
+			line = word
+		elif line.length() + 1 + word.length() <= per_line:
+			line += " " + word
+		else:
+			out.append(line)
+			line = word
+	if line != "":
+		out.append(line)
 	return out
 
 
@@ -771,7 +791,7 @@ func _draw_row(i: int, at: Vector2, cw: float, fs: int, lh: float, a: float, sel
 	var fields: Array = (_rows[i] as Array).duplicate()
 	if cast and age < CLIMB_S:
 		fields[2] = CreditsCast.cpu_text(float(CreditsCast.CAST[i][2]) * ease(clampf(age / CLIMB_S, 0.0, 1.0), 0.4))
-	var text := CreditsCast.row_text(fields)
+	var text := CreditsCast.table_text(fields)
 	# Its bar: lit as it lands, held while its card is up (top's selected row).
 	var flash := exp(-maxf(age, 0.0) * 3.0) if age >= 0.0 else 0.0
 	var bar := maxf(0.4 * flash, 0.16 if selected else 0.0)
@@ -964,12 +984,23 @@ func _draw_hero(view: Vector2, k: float, geo: Dictionary) -> void:
 			_text(Vector2(x, y + size * 0.42 + hp), second, hp, Color(hi, a * handle_a))
 			var under := y + size * 0.42 + hp + 22.0 * k
 			_canvas.draw_rect(Rect2(x, under, wide * ease(handle_a, 0.3), 2.0 * k), Color(accent, 0.7 * a))
+			# The command whole (W2, C44's leftover): smaller to fit, but never under CARD_COMMAND_LEAST; past that, wrapped
+			# between words onto more lines, typed across them in order.
 			var cmd := "$ " + str(c[3])
-			var cp := roundi(minf(24.0 * k, wide / maxf(cmd.length() * 0.61, 1.0))) + 1
-			_text(Vector2(x, under + 18.0 * k + cp), _typed(cmd, age - 0.8, 34.0), cp, Color(Palette.MINT, 0.95 * a))
+			var cp := roundi(clampf(wide / maxf(cmd.length() * 0.61, 1.0), CARD_COMMAND_LEAST * k, 24.0 * k)) + 1
+			var cmd_lines := card_command_lines(cmd, maxi(floori(wide / (cp * 0.61)), 12))
+			var typed_n := _typed(cmd, age - 0.8, 34.0).length()
+			var used := 0
+			for j in cmd_lines.size():
+				var piece: String = cmd_lines[j]
+				var show := clampi(typed_n - used, 0, piece.length())
+				used += piece.length() + 1
+				if show > 0:
+					_text(Vector2(x, under + 18.0 * k + cp + j * cp * 1.3), piece.left(show), cp, Color(Palette.MINT, 0.95 * a))
+			var extra := float(cmd_lines.size() - 1) * cp * 1.3
 			if second != str(c[5]):
 				var line_a := clampf((age - 1.4) / 0.3, 0.0, 1.0)
-				_canvas.draw_multiline_string(_font, Vector2(x, under + 30.0 * k + cp * 2.2), str(c[5]), HORIZONTAL_ALIGNMENT_LEFT, wide, roundi(22.0 * k) + 1, 3, Color(0.92, 0.97, 1.0, 0.78 * a * line_a))
+				_canvas.draw_multiline_string(_font, Vector2(x, under + 30.0 * k + cp * 2.2 + extra), str(c[5]), HORIZONTAL_ALIGNMENT_LEFT, wide, roundi(22.0 * k) + 1, 3, Color(0.92, 0.97, 1.0, 0.78 * a * line_a))
 			_link(geo, int(h["index"]), Vector2(card.position.x, y - size * 0.3), accent, hi, a)
 		"thanks":
 			var y := card.position.y + card.size.y * 0.2

@@ -24,6 +24,8 @@ const Link = preload("res://scripts/guide/guide_link.gd")
 const Controls = preload("res://scripts/controls.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
+## Every community contributor, in the order they were credited (PRD 5.8; W2 adds the sixth, Tim Sonner).
+const CONTRIBUTORS := ["@QuantaCortex", "@TimProvencio", "@cgranier", "@ocdjeremy", "@MindGamesLabs", "@timsonner"]
 const LAST_ROW := "6666 ~ thanks for running me"
 const CREDITS_CODE := ["res://scripts/credits/credits_roll.gd", "res://scripts/credits/credits_cast.gd", "res://scripts/credits/credits_score.gd", "res://scripts/hud/credits_handoff.gd"]
 const NEVER := ["OS.execute", "create_process", "OS.kill", "shell_open", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "WebSocket", "FileAccess", "get_file_as_string", "DirAccess", "OS.get_environment", "get_user_data_dir", "get_system_dir", "get_executable_path", "OpenerData", "RealData", "OS.get_name", "get_unique_id"]
@@ -139,7 +141,24 @@ func _cast_checks() -> void:
 	var handles := PackedStringArray()
 	for p in people:
 		handles.append(p[1])
-	_check("every community contributor in CREDITS.md's table is a row of the roll, name and handle as CREDITS.md gives them (%d: %s)" % [people.size(), ", ".join(handles)], people.size() >= 5 and missing.is_empty(), ", ".join(missing))
+	_check("every community contributor in CREDITS.md's table is a row of the roll, name and handle as CREDITS.md gives them (%d: %s)" % [people.size(), ", ".join(handles)], people.size() >= CONTRIBUTORS.size() and missing.is_empty(), ", ".join(missing))
+	# The community contributors as rows, in the order they were credited (W2 adds the sixth, Tim Sonner), all before 6666.
+	var order := PackedStringArray()
+	for i in range(3, CreditsCast.CAST.size()):
+		order.append(str(CreditsCast.CAST[i][1]))
+	var sixth := CreditsCast.CAST[CreditsCast.CAST.size() - 1] as Array
+	_check("the community contributors are rows in the order they were credited (%s), the sixth \"Tim Sonner (@timsonner)\" after MindGameLabs and before the last row" % ", ".join(order), order == PackedStringArray(CONTRIBUTORS) and str(sixth[4]) == "Tim Sonner" and str(sixth[1]) == "@timsonner", ", ".join(order))
+	_check("the score keeps two bars a cast row before the threads (THANKS_BAR %d = CAST_BAR %d + CAST_EVERY %d x %d rows), a bell for every row" % [CreditsScore.THANKS_BAR, CreditsScore.CAST_BAR, CreditsScore.CAST_EVERY, CreditsCast.CAST.size()], CreditsScore.THANKS_BAR == CreditsScore.CAST_BAR + CreditsScore.CAST_EVERY * CreditsCast.CAST.size() and CreditsScore.ROW_BELLS.size() >= CreditsCast.CAST.size() and CreditsScore.LAST_BAR > CreditsScore.QUIET_BAR and CreditsScore.ROLL_BARS > CreditsScore.LAST_BAR)
+	# Long commands (W2, C44's leftover): the table cuts one at its window, marked "+", and the hero card shows it whole.
+	var fits := true
+	var whole := true
+	for c in CreditsCast.CAST + [[0, "@long", 1.0, "make --a-very-long-contributor-command --that --never --fits --in --one --line --of --any --card", "Long", "line", "tron"]]:
+		var cut := CreditsCast.table_text([str(c[0]), c[1], "1.0", c[3]])
+		fits = fits and cut.length() <= CreditsCast.row_text(["", "", "", ""]).length() + CreditsCast.COMMAND_ROOM
+		for per in [12, 24, 40]:
+			var lines := CreditsRoll.card_command_lines("$ " + str(c[3]), per)
+			whole = whole and " ".join(lines) == "$ " + str(c[3]) and Array(lines).all(func(l): return l.length() <= per or not l.contains(" "))
+	_check("a long COMMAND is cut at the table's window (\"+\", as top marks a cut field) and shown whole on its card, wrapped between words", fits and whole and CreditsCast.table_command("x".repeat(60)).ends_with("+") and CreditsCast.table_command("x".repeat(60)).length() == CreditsCast.COMMAND_ROOM)
 	var thanked := _md_thanked(md)
 	var names := CreditsCast.thanks_names()
 	var unthanked := PackedStringArray()
@@ -290,7 +309,7 @@ func _ending_checks() -> void:
 	var full: PackedStringArray = orders.back()
 	var in_order := full.size() == roll.rows().size()
 	for i in full.size():
-		in_order = in_order and full[i] == CreditsCast.row_text(roll.rows()[i])
+		in_order = in_order and full[i] == CreditsCast.table_text(roll.rows()[i])
 	var grew := true
 	for i in range(1, orders.size()):
 		var a: PackedStringArray = orders[i - 1]

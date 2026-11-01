@@ -13,6 +13,7 @@ PID   USER            %CPU  COMMAND
 1339  @cgranier       50.1  man sigkill; oom-killer --boss; uptime --score
 1340  @ocdjeremy      44.6  htop --visor; zoom --stepped; hitbox --real
 1341  @MindGamesLabs  38.2  sudo grenade --tries=3
+1342  @timsonner      31.9  fsmode --rooms; filehunt --beacon
 ```
 
 ## Community-built
@@ -26,6 +27,7 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 | Carlos Granier / [@cgranier](https://x.com/cgranier) | Five ideas: a `man sigkill` training level (each weapon unlocks after you read its man page in the world; EXAMPLES is a 20-second drill, `--help` replays it), the OOM killer boss that hunts the biggest in-game memory user, self-wiping `/tmp` and shootable-counter `/proc` arenas (invented spaces, not real folders), uptime as the solo score with a kernel-panic stats screen, and music driven by the in-game load average | status: planned, post-1.0 |
 | Jeremy / [@ocdjeremy](https://x.com/ocdjeremy) | An htop-style visor overlay of in-game daemons, ICE and players only (never real processes), stepped zoom on scoped weapons with hold or toggle, real hitboxes (head and centre mass hardest, limbs least), each weapon balanced on its own strengths, and VR as a stretch | status: planned, post-1.0 |
 | MindGameLabs / [@MindGamesLabs](https://x.com/MindGamesLabs) | A sudo grenade that will not throw until you type a password (an in-game one shown on screen, never yours; nothing typed is kept, sent or checked), three wrong tries and it goes off in your hand; separate from the Z sudo overcharge | status: planned, post-1.0 |
+| Tim Sonner / [@timsonner](https://x.com/timsonner) | File mode: walk your folders as rooms and hunt files as monsters built from the existing daemon art; a file hunt (name the file you want and it carries a beacon through the maze); and a root mode, which becomes an opt-in, default-off sandbox that wrecks an in-memory decoy copy of the folder tree (names and sizes only), never real files. Killing a file monster is cosmetic and the real file is never touched; a kill shows the file's path on screen and in an end-of-run found list you open yourself, and nothing is ever opened for you | status: planned, post-1.0 |
 
 ## Names the skins borrow
 

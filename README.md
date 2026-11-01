@@ -2466,7 +2466,7 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 
 **The second community feature.** Tim Provencio ([@TimProvencio](https://x.com/TimProvencio)) pitched ICE, William Gibson's intrusion countermeasure electronics, as a new enemy class: the system defending itself against you, the intruder. White ICE walls off corridors, jams weapons and corrupts the HUD; hunter ICE tracks you and adapts to the weapon you use most; Black ICE is rare and frightening, never just a bigger health bar. Against it you carry ICEbreakers, one-use programs beside your weapons (brute, exploit, cloak, decoy), and your AI picks which to load from the round's numbers. ✅ I1 built: white ICE (walls that seal a doorway and a corridor, a jam field and a HUD-corruption field) and hunter ICE (it hunts by sight and adapts to your most-used weapon), its HUD tagged "ICE design: @TimProvencio"; see [Built: ICE](#built-ice-white-and-hunter-i1). ✅ I2 built: the four ICEbreakers, pickups and your AI's pick; see [Built: ICEbreakers](#built-icebreakers-i2). Mission 4 (M4) teaches them in the campaign, white ICE and the hunter its enemies. ✅ I3 built: Black ICE, rare and unkillable by weapons, its arrival killing the lights, the hum and your AI's link, its touch a flatline; see [Built: Black ICE](#built-black-ice-i3).
 
-**Three more, for after 1.0.** These came in after the 1.0 lock (2026-10-29), so they are post-1.0 ideas unless Fred pulls one in. Every one is fully simulated, and none of them reads or touches anything real on your machine.
+**Four more, for after 1.0.** These came in after the 1.0 lock (2026-10-29), so they are post-1.0 ideas unless Fred pulls one in. Every one is fully simulated, and none of them reads or touches anything real on your machine.
 
 - **The third: Carlos Granier ([@cgranier](https://x.com/cgranier)).** ⬜ Planned, post-1.0.
   - `man sigkill`, a training level where each weapon unlocks once you read its man page in the world. Its EXAMPLES section is a 20-second drill, and `--help` replays the drill.
@@ -2483,6 +2483,12 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
 - **The fifth: MindGameLabs ([@MindGamesLabs](https://x.com/MindGamesLabs)).** ⬜ Planned, post-1.0.
   - A sudo grenade that will not throw until you type a password, and goes off in your hand after three wrong tries.
   - The password is an in-game one shown on screen, never yours. Nothing you type is kept, sent or checked against your system.
+- **The sixth: Tim Sonner ([@timsonner](https://x.com/timsonner)).** ⬜ Planned, post-1.0.
+  - A file mode: walk your folders as rooms and hunt files as monsters built from the daemons' art.
+  - A file hunt: name the file you want, and it carries a beacon through the maze.
+  - A root mode, as an opt-in sandbox that is off by default. It wrecks an in-memory decoy copy of the folder tree (names and sizes only), never your real files.
+  - Killing a file monster is cosmetic: the real file is never touched. A kill shows the file's path on screen and in a found list at the end of the run, for you to open yourself; the game never opens anything for you.
+  - The filesystem maps built in W2 are the PRD's own feature, not this idea; none of this is in W2.
 
 **Names the skins borrow.** Two light skins (C33) take their names and colours from open terminal themes, Dracula and Catppuccin, with thanks; others only nod by name to old machines and tools (green phosphor, CGA, the Commodore 64, the VT220). A skin is two colours and a line of text: nothing of theirs is bundled. See [`CREDITS.md`](CREDITS.md).
 

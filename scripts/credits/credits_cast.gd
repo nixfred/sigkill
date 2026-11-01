@@ -21,6 +21,7 @@ const CAST := [
 	[1339, "@cgranier", 50.1, "man sigkill; oom-killer --boss; uptime --score", "Carlos Granier", "five ideas for after 1.0: the man page level, the OOM killer, uptime", "cyberpunk"],
 	[1340, "@ocdjeremy", 44.6, "htop --visor; zoom --stepped; hitbox --real", "Jeremy", "for after 1.0: an htop visor, stepped zoom, real hitboxes", "tron"],
 	[1341, "@MindGamesLabs", 38.2, "sudo grenade --tries=3", "MindGameLabs", "for after 1.0: the sudo grenade, three tries", "matrix"],
+	[1342, "@timsonner", 31.9, "fsmode --rooms; filehunt --beacon", "Tim Sonner", "for after 1.0: folders as rooms, files to hunt", "cyberpunk"],
 ]
 ## [pid, command]: root's threads, every one idle.
 const THANKS := [
@@ -45,6 +46,9 @@ const TOP := "top"
 const PID_W := 5
 const USER_W := 14
 const CPU_W := 5
+## How many characters of COMMAND the table's window holds (W2, C44's leftover): a longer one is cut there and marked
+## with a "+", as top marks a field cut to its column; the hero card shows it whole.
+const COMMAND_ROOM := 44
 
 
 ## Every row in the order it arrives: the cast, the threads, the last. Each [pid, user, cpu text, command].
@@ -61,6 +65,18 @@ static func rows() -> Array:
 ## Row `fields` as the table draws it: its columns padded to their widths.
 static func row_text(fields: Array) -> String:
 	return "%s  %s  %s  %s" % [str(fields[0]).lpad(PID_W), str(fields[1]).rpad(USER_W), str(fields[2]).lpad(CPU_W), str(fields[3])]
+
+
+## Row `fields` as the table's window draws it: row_text() with COMMAND cut to COMMAND_ROOM (W2).
+static func table_text(fields: Array) -> String:
+	var cut := fields.duplicate()
+	cut[3] = table_command(str(fields[3]))
+	return row_text(cut)
+
+
+## A COMMAND as the table's window holds it: whole when it fits COMMAND_ROOM, else cut and marked "+" (W2).
+static func table_command(cmd: String) -> String:
+	return cmd if cmd.length() <= COMMAND_ROOM else cmd.left(COMMAND_ROOM - 1) + "+"
 
 
 ## Row `fields` as words: its columns that have anything in them, one space between ("6666 ~ thanks for running me").
