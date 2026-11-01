@@ -24,6 +24,10 @@ uniform float flash = 0.0;
 uniform float seam = 0.0;
 uniform float fade = 1.0;
 uniform float border = 0.035;
+// The text's row height in metres (0: from the window's size, so a sky-high window's text is as legible as a small one's).
+uniform float glyph = 0.0;
+// How lit the window's body is (its own background in the accent).
+uniform float body_light = 0.06;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7)) + seed * 17.13) * 43758.5453);
@@ -36,12 +40,12 @@ void fragment() {
 	// A soft halo just inside the border, so a window reads at a distance.
 	float inner = min(min(m.x, size.x - m.x), min(m.y, size.y - m.y));
 	float halo = (1.0 - smoothstep(b, b + 0.12, inner)) * 0.35;
-	vec3 col = vec3(0.01, 0.015, 0.02);
+	vec3 col = vec3(0.01, 0.015, 0.02) + accent.rgb * body_light;
 	float a = body_alpha;
-	vec2 pad = vec2(0.12, 0.1);
+	vec2 pad = vec2(max(0.12, size.x * 0.04), max(0.1, size.y * 0.05));
 	vec2 c = m - pad;
-	float row_h = 0.11;
-	float cell_w = 0.06;
+	float row_h = glyph > 0.0 ? glyph : max(0.13, size.y / 22.0);
+	float cell_w = row_h * 0.56;
 	float row = floor(c.y / row_h);
 	float rows = floor((size.y - pad.y * 2.0) / row_h);
 	float in_row = fract(c.y / row_h);

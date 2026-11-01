@@ -416,6 +416,7 @@ const W1_GPU_FRAMES := 120
 ## w2's sheet.
 const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
 ## w3's sheet: the six themes, then the shift's three moments.
+const W4_SHEET := ["w4-drill", "w4-cannon", "w4-burst", "w4-close", "w4-split", "w4-float", "w4-full", "w4-workspace", "w4-visor"]
 const W3_SHEET := ["w3-night", "w3-ember", "w3-frost", "w3-forest", "w3-mocha", "w3-latte", "w3-lurk", "w3-shift", "w3-reveal"]
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
@@ -595,6 +596,11 @@ func _run() -> void:
 		return
 	if _set == "w3":
 		await _w3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w4":
+		await _w4()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4719,6 +4725,221 @@ func _w3() -> void:
 	await _w3_measure("frost, through a shift (the tear and the lurkers printing in)")
 	ThemeShift.fight_s = ThemeShift.FIGHT_S
 	ThemeShift.ambush_s = ThemeShift.AMBUSH_S
+
+
+## Keybind gunplay (W4, the w4 set): its district and desktop, each drill's shortcut caught mid-effect (the terminal blasting
+## open and bursting, a window folding shut, a split, a float and its tile, full screen, a workspace's slide), the cards,
+## Omarchy's keybindings list, the visor's windows, the HUD at 960 wide, the results card; the GPU's time a frame in the
+## mode. Demo data only: the built-in table, never the real layer.
+func _w4() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)
+	KeybindGunplay.drill_s = 600.0
+	KeybindGunplay.wave_s = 600.0
+	KeybindGunplay.queue()
+	var old := _main
+	MissionRunner.reload_after_mount(self, "$ keys --drill")
+	await _c35_reloaded(old)
+	var mode := KeybindGunplay.of(_main)
+	var waited := 0
+	while waited < 900 and (mode == null or not mode.running):
+		await _frames(1)
+		waited += 1
+		mode = KeybindGunplay.of(_main)
+	if mode == null or not mode.running or KeybindGunplay.layer != "demo":
+		printerr("capture: w4 the mode did not begin on the demo layer")
+		return
+	await _frames(int(1.4 * Engine.physics_ticks_per_second))
+	# Drill 1: its daemons asleep ahead, its banner, the desktop's windows in the sky behind them.
+	var target: Node3D = mode.enemies[1]["body"]
+	_w4_face(mode, target.global_position, 12.0, 6.5)
+	mode._phase_t = 0.5
+	await _frames(20)
+	await _c35_save(sheet, "w4-drill")
+	await _w4_measure("drill 1, the visor off")
+	# The terminal: fired, caught opening as it flies, then bursting on them.
+	_w4_face(mode, target.global_position, 12.0, 1.2)
+	await _frames(2)
+	mode.set_chord(true)
+	mode.press(KEY_ENTER)
+	await _frames(9)
+	await _c35_save(sheet, "w4-cannon")
+	waited = 0
+	var blast: Node = null
+	for n in mode.get_children():
+		if n is KeyFx.TerminalBlast:
+			blast = n
+	while waited < 120 and blast != null and is_instance_valid(blast) and float(blast.get("burst_t")) < 0.07:
+		await _frames(1)
+		waited += 1
+	await _c35_save(sheet, "w4-burst")
+	mode.set_chord(false)
+	await _frames(16)
+	await _c35_save({}, "w4-card")
+	print("capture: w4 terminal: %s" % str(KeybindGunplay.stats["terminal"]))
+	# Close: a window round the daemon under the crosshair, caught folding shut.
+	if not await _w4_drill(mode, 1):
+		return
+	target = mode.enemies[0]["body"]
+	_w4_face(mode, target.global_position, 6.5, 1.2)
+	await _frames(3)
+	mode.press(KEY_W)
+	await _frames(int(0.25 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-close")
+	print("capture: w4 close: the body at %.2f of its height" % (target.get_node("Body") as Node3D).scale.y if is_instance_valid(target) else "capture: w4 close: gone")
+	# Split: the seam, then the two panes parting.
+	if not await _w4_drill(mode, 2):
+		return
+	target = mode.enemies[0]["body"]
+	_w4_face(mode, target.global_position, 6.5, 1.2)
+	await _frames(3)
+	mode.press(KEY_J)
+	await _frames(int(0.36 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-split")
+	# Float: lifted in its window, then tiled into the floor.
+	if not await _w4_drill(mode, 3):
+		return
+	target = mode.enemies[0]["body"]
+	_w4_face(mode, target.global_position, 7.0, 1.0)
+	await _frames(3)
+	mode.press(KEY_T)
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	var at_float: Vector3 = _player.global_position
+	_c37_view(Vector3(at_float.x, 0.0, at_float.z), target.global_position + Vector3(0.0, 2.4, 0.0) if is_instance_valid(target) else at_float)
+	await _frames(int(0.55 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-float")
+	await _frames(int(0.78 * Engine.physics_ticks_per_second))
+	await _c35_save({}, "w4-tile")
+	# Full screen: every daemon on the screen, the border thrown to its edges.
+	if not await _w4_drill(mode, 4):
+		return
+	var mid := Vector3.ZERO
+	for e in mode.enemies:
+		mid += (e["body"] as Node3D).global_position
+	mid /= maxf(mode.enemies.size(), 1.0)
+	_w4_face(mode, mid, 11.0, 1.0)
+	await _frames(3)
+	mode.press(KEY_F)
+	await _frames(int(0.27 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-full")
+	print("capture: w4 full screen: %d daemons on the screen" % int(KeybindGunplay.stats["fullscreen"]["hits"]))
+	# A workspace: the slide caught mid-way.
+	if not await _w4_drill(mode, 5):
+		return
+	await _frames(20)
+	mode.press(KEY_TAB)
+	await _frames(int(0.14 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-workspace")
+	# The waves: the visor's windows, Omarchy's keybindings list, the HUD at 960 wide.
+	waited = 0
+	while waited < 900 and mode.phase != "wave":
+		await _frames(1)
+		waited += 1
+	await _frames(int(1.4 * Engine.physics_ticks_per_second))
+	var near: Node3D = null
+	for e in mode.enemies:
+		var body = e["body"]
+		if is_instance_valid(body) and body.is_alive() and (near == null or body.global_position.distance_to(_player.global_position) < near.global_position.distance_to(_player.global_position)):
+			near = body
+	if near != null:
+		_w4_face(mode, near.global_position, 9.0, 1.4)
+	mode.visor.set_on(true)
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w4-visor")
+	print("capture: w4 visor: %d strokes, %d windows marked" % [mode._lines.drawn_lines, mode._marks.size()])
+	await _w4_measure("a wave, the visor on")
+	mode.visor.set_on(false)
+	await _frames(4)
+	await _w4_measure("a wave, the visor off")
+	mode.press(KEY_K)
+	await _frames(20)
+	await _c35_save({}, "w4-list")
+	mode.press(KEY_K)
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	mode.set_chord(true)
+	mode.press(KEY_F)
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _c35_save({}, "w4-960")
+	mode.set_chord(false)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	# The GPU's time a frame through the busiest shortcut: a terminal blasting open and bursting.
+	mode.cooling["terminal"] = 0.0
+	mode.press(KEY_ENTER)
+	await _w4_measure("a terminal blasting open and bursting")
+	# The results card.
+	waited = 0
+	while waited < 900 and mode.phase != "results":
+		KeybindGunplay.wave_s = 0.0  # each wave ends at once
+		await _frames(1)
+		waited += 1
+	await _frames(20)
+	await _c35_save({}, "w4-results")
+	print("capture: w4 results: %s" % " / ".join(mode._hud.result_lines()))
+	var stills: Array[Image] = []
+	for name in W4_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W4_SHEET.size():
+		_save_grid("w4-sequence", stills, 3)
+	KeybindGunplay.drill_s = KeybindGunplay.DRILL_S
+	KeybindGunplay.wave_s = KeybindGunplay.WAVE_S
+
+
+## Waits for drill `n` to stand (the one before learned, or skipped on the capture's word), its daemons out of the floor.
+func _w4_drill(mode: KeybindGunplay, n: int) -> bool:
+	var waited := 0
+	while waited < 900 and not (mode.phase == "drill" and mode.drill == n):
+		if mode.phase == "drill" and mode.drill < n and waited > 240:
+			mode._phase_t = KeybindGunplay.drill_s  # not learned in time: skipped, so the stills go on
+		await _frames(1)
+		waited += 1
+	if not (mode.phase == "drill" and mode.drill == n):
+		printerr("capture: w4 drill %d never came" % (n + 1))
+		return false
+	await _frames(int(1.3 * Engine.physics_ticks_per_second))
+	return true
+
+
+## The camera `dist` metres from `at` on open floor with a clear line to it, looking at it `lift` metres up (W3's way).
+func _w4_face(mode: KeybindGunplay, at: Vector3, dist: float, lift: float) -> void:
+	var w := mode.world
+	var plaza := w.point("plaza")
+	var base := atan2(plaza.x - at.x, plaza.z - at.z)
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	for d in [dist, dist * 0.75, dist * 1.3]:
+		for k in 16:
+			var a := base + TAU * float((k + 1) / 2) / 16.0 * (1.0 if k % 2 == 0 else -1.0)
+			var spot: Vector3 = at + Vector3(sin(a), 0.0, cos(a)) * float(d)
+			var c := w.layout.cell_at(w.to_local(spot))
+			if w.layout.cell(c) != RuinsLayout.Cell.FLOOR:
+				continue
+			var eye := Vector3(spot.x, w.floor_y_at(spot) + 1.7, spot.z)
+			var q := PhysicsRayQueryParameters3D.create(eye, at + Vector3(0.0, 1.0, 0.0))
+			q.exclude = [_player.get_rid()]
+			var hit: Dictionary = space.intersect_ray(q)
+			if hit.is_empty() or (hit["collider"] is Node and (hit["collider"] as Node).has_meta(&"keys")) or (hit["position"] as Vector3).distance_to(at) < 1.6:
+				_c37_view(Vector3(spot.x, 0.0, spot.z), at + Vector3(0.0, lift, 0.0))
+				return
+	_c37_view(Vector3(at.x, 0.0, at.z + dist), at + Vector3(0.0, lift, 0.0))
+
+
+## The GPU's time a frame and the engine's steps in keybind gunplay, over W1_GPU_FRAMES frames.
+func _w4_measure(label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	print("capture: w4 frame time, %s, at %dx%d: the GPU %.2f ms a frame; the engine's process step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, W1_GPU_FRAMES])
 
 
 ## The theme shift standing at level `level` (its own theme's district), the arena reloaded into it; its roster in.

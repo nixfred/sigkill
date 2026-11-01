@@ -83,8 +83,12 @@ class TerminalBlast extends Node3D:
 	func start(from: Vector3, way: Vector3, who: Node3D) -> void:
 		dir = way.normalized()
 		shooter = who
-		window = KeyWindow.make(Vector2(2.7, 1.75), KeyWindow.Style.TERMINAL, KeyFx.color_of("terminal"), "terminal", 3.0)
+		window = KeyWindow.make(Vector2(3.4, 2.2), KeyWindow.Style.TERMINAL, KeyFx.color_of("terminal"), "terminal", 3.0)
 		window.set_param("typed", 0.0)
+		window.set_param("glow", 3.4)
+		window.set_param("border", 0.06)
+		window.set_param("body_light", 0.12)
+		window.set_param("glyph", 0.2)
 		add_child(window)
 		global_position = from + dir * 1.3
 		window.scale = Vector3.ONE * 0.12
@@ -170,7 +174,8 @@ class TerminalBlast extends Node3D:
 		g.scale = window.scale
 		g.face(eye)
 		g.set_param("body_alpha", 0.0)
-		g.set_param("glow", 1.4)
+		g.set_param("glow", 2.2)
+		g.set_param("border", 0.05)
 		ghosts.append([g, 0.0])
 
 	func _burst(point: Vector3) -> void:
@@ -200,15 +205,22 @@ class TerminalBlast extends Node3D:
 
 # --- Close window: the daemon folded shut. ---
 
+## A window drawn round the daemon, then folded shut as a page is: its top and bottom halves hinged on a lit crease across
+## its middle, swinging in until they meet edge on, the daemon squashed flat inside; then the crease drawn in to nothing.
 class CloseFold extends Node3D:
 	const DRAW_S := 0.16
-	const FOLD_Y_S := 0.26
+	const FOLD_Y_S := 0.3
 	const FOLD_X_S := 0.14
-	const OUT_S := 0.2
+	const OUT_S := 0.22
 	var target: Node3D = null
-	var frame: KeyWindow
+	var halves: Array = []
+	var pivots: Array = []
+	var crease: KeyWindow
+	var title: Label3D
 	var body: Node3D
 	var rest := Vector3.ONE
+	var size := Vector2.ONE
+	var mid := Vector3.ZERO
 	var t := 0.0
 	var closed := false
 	var kills := 0
@@ -219,11 +231,41 @@ class CloseFold extends Node3D:
 		body = dummy.get_node_or_null("Body") as Node3D
 		rest = body.scale if body != null else Vector3.ONE
 		var f := KeyFx.frame_of(dummy)
-		frame = KeyWindow.make(f[0], KeyWindow.Style.FRAME, KeyFx.color_of("close"), "%s   [x] close" % str(dummy.get("tag_text")), 5.0)
-		frame.set_param("body_alpha", 0.18)
-		frame.top_level = true
-		add_child(frame)
-		frame.global_position = f[1]
+		size = f[0]
+		mid = f[1]
+		for side in [1.0, -1.0]:
+			var pivot := Node3D.new()
+			pivot.top_level = true
+			add_child(pivot)
+			var half := KeyWindow.make(Vector2(size.x, size.y * 0.5), KeyWindow.Style.FRAME, KeyFx.color_of("close"), "", 5.0 + side)
+			half.set_param("body_alpha", 0.3)
+			half.set_param("body_light", 0.1)
+			half.set_param("glow", 3.0)
+			half.set_param("border", 0.05)
+			half.position = Vector3(0.0, side * size.y * 0.25, 0.0)
+			pivot.add_child(half)
+			pivots.append(pivot)
+			halves.append(half)
+		crease = KeyWindow.make(Vector2(size.x + 0.3, 0.07), KeyWindow.Style.FRAME, Color(1.0, 1.0, 1.0), "", 6.0)
+		crease.set_param("glow", 4.0)
+		crease.set_param("body_alpha", 1.0)
+		crease.set_param("body_light", 1.6)
+		crease.top_level = true
+		add_child(crease)
+		title = Label3D.new()
+		title.font = Palette.mono_font()
+		title.text = "%s   [x] close" % str(dummy.get("tag_text"))
+		title.font_size = 44
+		title.pixel_size = 0.009
+		title.outline_size = 10
+		title.outline_modulate = Color(0, 0, 0, 0.85)
+		title.modulate = Color(1.0, 0.35, 0.4) * 1.4
+		title.shaded = false
+		title.no_depth_test = true
+		title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		title.top_level = true
+		add_child(title)
+		_place(KeyFx._eye(self), 0.0, 1.0, 1.35)
 
 	func _physics_process(_delta: float) -> void:
 		if not closed and _alive():
@@ -232,42 +274,61 @@ class CloseFold extends Node3D:
 	func _alive() -> bool:
 		return target != null and is_instance_valid(target) and target.is_alive()
 
+	## The frame at the daemon facing `eye`: each half swung `fold` of the way shut (0 open, 1 edge on), `wide` of its width,
+	## `grow` of its size (the draw-in).
+	func _place(eye: Vector3, fold: float, wide: float, grow: float) -> void:
+		var to := eye - mid
+		to.y = 0.0
+		var facing := Basis.looking_at(-to.normalized(), Vector3.UP) if to.length_squared() > 0.0001 else Basis.IDENTITY
+		for i in pivots.size():
+			var side := 1.0 if i == 0 else -1.0
+			var p: Node3D = pivots[i]
+			p.global_basis = facing * Basis(Vector3.RIGHT, side * fold * PI * 0.5) * Basis.from_scale(Vector3(wide * grow, grow, 1.0))
+			p.global_position = mid
+		crease.global_basis = facing * Basis.from_scale(Vector3(wide * grow, 1.0, 1.0))
+		crease.global_position = mid + facing.z * 0.02
+		title.global_position = mid + Vector3.UP * (size.y * 0.5 * (1.0 - fold) * grow + 0.35)
+
 	func _process(delta: float) -> void:
 		t += delta
 		var eye := KeyFx._eye(self)
 		if _alive() and not closed:
-			frame.global_position = KeyFx.frame_of(target)[1]
-		frame.face(eye)
-		var y := 1.0
-		var x := 1.0
+			mid = KeyFx.frame_of(target)[1]
+		var fold := 0.0
+		var wide := 1.0
+		var grow := 1.0
+		var fade := 1.0
 		if t < DRAW_S:
-			frame.scale = Vector3.ONE * lerpf(1.35, 1.0, KeyFx.ease_out(t / DRAW_S))
-			frame.set_param("fade", clampf(t / DRAW_S, 0.0, 1.0))
+			grow = lerpf(1.35, 1.0, KeyFx.ease_out(t / DRAW_S))
+			fade = clampf(t / DRAW_S, 0.0, 1.0)
 		elif t < DRAW_S + FOLD_Y_S:
-			y = lerpf(1.0, 0.035, KeyFx.ease_out((t - DRAW_S) / FOLD_Y_S))
+			fold = KeyFx.ease_out((t - DRAW_S) / FOLD_Y_S) * 0.97
 		elif t < DRAW_S + FOLD_Y_S + FOLD_X_S:
-			y = 0.035
-			x = lerpf(1.0, 0.02, KeyFx.ease_out((t - DRAW_S - FOLD_Y_S) / FOLD_X_S))
+			fold = 0.97
+			wide = lerpf(1.0, 0.02, KeyFx.ease_out((t - DRAW_S - FOLD_Y_S) / FOLD_X_S))
 		else:
-			y = 0.035
-			x = 0.02
+			fold = 0.97
+			wide = 0.02
 			if not closed:
 				_close()
 			var u := (t - DRAW_S - FOLD_Y_S - FOLD_X_S) / OUT_S
-			frame.set_param("fade", clampf(1.0 - u, 0.0, 1.0))
+			fade = clampf(1.0 - u, 0.0, 1.0)
 			if u >= 1.0:
 				queue_free()
 				return
-		if not closed:
-			if t >= DRAW_S:
-				frame.scale = Vector3(x, y, 1.0)
-			frame.set_param("glow", 2.4 + (1.0 - y) * 3.0)
-			if body != null and is_instance_valid(body) and _alive():
-				body.scale = Vector3(rest.x * x, rest.y * y, rest.z * x)
+		_place(eye, fold, wide, grow)
+		for h in halves:
+			(h as KeyWindow).set_param("fade", fade)
+			(h as KeyWindow).set_param("glow", 3.0 + fold * 2.5)
+		crease.set_param("fade", fade * clampf(fold * 3.0, 0.0, 1.0) if not closed else fade)
+		title.modulate.a = fade * (1.0 - fold * 0.7)
+		if not closed and body != null and is_instance_valid(body) and _alive():
+			var squash := 1.0 - fold * 0.96
+			body.scale = Vector3(rest.x * wide, rest.y * squash, rest.z * wide)
 
 	func _close() -> void:
 		closed = true
-		frame.set_param("flash", 1.0)
+		crease.set_param("flash", 1.0)
 		if _alive():
 			var at: Vector3 = target.threat_point()
 			if target.hit(999.0, at, Vector3.ZERO, KeyFx.SOURCE_PREFIX + "close") and not target.is_alive():

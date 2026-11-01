@@ -19,7 +19,7 @@ const TITLE := "KEYBIND GUNPLAY"
 const DEMO := "built-in shortcuts"
 const REAL := "your binds"
 const CARD_IN_S := 0.14
-const BANNER_S := 2.2
+const BANNER_S := 1.6
 ## The strip's weapons, in order, and what each is called under its cap.
 const STRIP := ["terminal", "close", "split", "float", "fullscreen", "workspace", "keys"]
 const SHORT := {"terminal": "terminal", "close": "close", "split": "split", "float": "float", "fullscreen": "full", "workspace": "workspace", "keys": "keys"}
@@ -135,7 +135,7 @@ func _draw_view() -> void:
 	_draw_workspace(v, compact)
 	if mode.list_open:
 		_draw_list(v, compact)
-	if not mode.card.is_empty():
+	if not mode.card.is_empty() and not mode.list_open:
 		_draw_card(v, compact)
 
 
@@ -298,7 +298,7 @@ func _draw_card(v: Control, compact: bool) -> void:
 	y += 14.0
 	_chord(v, Vector2(x, y), str(c["combo"]), cap, true, accent, alpha)
 	y += cap * 1.75 + big + 10.0
-	var typed := clampi(int(meaning.length() * clampf((t - 0.05) / 0.25, 0.0, 1.0)) + 1, 0, meaning.length())
+	var typed := clampi(int(meaning.length() * clampf(t / 0.12, 0.0, 1.0)) + 1, 0, meaning.length())
 	v.draw_string(_font, Vector2(x, y), meaning.left(typed), HORIZONTAL_ALIGNMENT_LEFT, w - 36, big, Color(Palette.FLASH, alpha))
 	y += 26.0 if not compact else 20.0
 	var here := "here: " + str(c["here"])
@@ -324,7 +324,7 @@ func _draw_banner(v: Control, compact: bool) -> void:
 	var big := 26 if compact else 40
 	var head := ("LEARNED  " if done else "DRILL %d/%d  " % [mode.drill + 1, KeyBook.DRILLS.size()]) + str(KeyBook.WEAPONS[id]["meaning"])
 	var hw := _font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
-	var at := Vector2((v.size.x - hw) * 0.5, v.size.y * 0.3)
+	var at := Vector2((v.size.x - hw) * 0.5, v.size.y * 0.17)
 	var accent := Palette.LIME if done else KeyFx.color_of(id)
 	v.draw_rect(Rect2(at.x - 24, at.y - big - 14, hw + 48, big + 96), Color(Palette.VOID, 0.62 * alpha))
 	v.draw_rect(Rect2(at.x - 24, at.y - big - 14, hw + 48, 3), Color(accent, alpha))
@@ -354,13 +354,18 @@ func _draw_full(v: Control) -> void:
 	var half := Vector2(lerpf(60.0, v.size.x * 0.5 - 6.0, e), lerpf(36.0, v.size.y * 0.5 - 6.0, e))
 	var fade := clampf(1.0 - (t - KeybindGunplay.FULL_HIT_S) / 0.7, 0.0, 1.0)
 	var r := Rect2(mid - half, half * 2.0)
-	v.draw_rect(r, Color(accent, 0.95 * fade), false, 6.0)
-	v.draw_rect(r.grow(-10), Color(accent, 0.45 * fade), false, 2.0)
+	# Ghost frames trailing the border out, as a window's open animation leaves them.
+	for k in [3, 2, 1]:
+		var g := 1.0 - pow(1.0 - clampf(u - 0.12 * k, 0.0, 1.0), 3.0)
+		var gh := Vector2(lerpf(60.0, v.size.x * 0.5 - 6.0, g), lerpf(36.0, v.size.y * 0.5 - 6.0, g))
+		v.draw_rect(Rect2(mid - gh, gh * 2.0), Color(accent, 0.28 * fade / k), false, 3.0)
+	v.draw_rect(r, Color(accent.lerp(Color.WHITE, 0.3), fade), false, 10.0)
+	v.draw_rect(r.grow(-16), Color(accent, 0.5 * fade), false, 2.0)
 	if t >= KeybindGunplay.FULL_HIT_S:
 		var flash := clampf(1.0 - (t - KeybindGunplay.FULL_HIT_S) / 0.16, 0.0, 1.0)
 		v.draw_rect(Rect2(Vector2.ZERO, v.size), Color(accent.lerp(Color.WHITE, 0.6), 0.28 * flash))
 	var label := "FULL SCREEN"
-	v.draw_string(_font, r.position + Vector2(14, 30), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(accent, fade))
+	v.draw_string(_font, r.position + Vector2(24, 44), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(accent.lerp(Color.WHITE, 0.3), fade))
 
 
 ## The workspace's number, big, as it slides in (and its seam's colour).
@@ -371,7 +376,7 @@ func _draw_workspace(v: Control, compact: bool) -> void:
 	var text := "workspace %d" % (mode.workspace + 1)
 	var big := 34 if compact else 52
 	var tw := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
-	v.draw_string(_font, Vector2((v.size.x - tw) * 0.5, v.size.y * 0.18), text, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(Palette.LIME, alpha))
+	v.draw_string(_font, Vector2((v.size.x - tw) * 0.5, v.size.y * 0.42), text, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(Palette.LIME, alpha))
 
 
 ## Omarchy's keybindings list (SUPER + K): the table, two columns, the weapons in their colours.
@@ -401,14 +406,18 @@ func _draw_list(v: Control, compact: bool) -> void:
 		var p := at + Vector2(12 + col * col_w, 44 + row * lh + size)
 		var id := str(e["weapon"])
 		var colour := KeyFx.color_of(id) if id != "" else Color(Palette.MINT, 0.6)
-		v.draw_string(_font, p, "%-16s %s" % [str(e["combo"]).replace("SUPER + ", "SUPER+"), str(e["meaning"])], HORIZONTAL_ALIGNMENT_LEFT, col_w - 10, size, colour)
+		v.draw_string(_font, p, "%-12s %s" % ["SUPER+" + KeyBook.cap_of(KeyBook.key_token(str(e["combo"]))), str(e["meaning"])], HORIZONTAL_ALIGNMENT_LEFT, col_w - 10, size, colour)
 	if shown < rows.size():
 		v.draw_string(_font, at + Vector2(12, h - 6), "+%d more" % (rows.size() - shown), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Palette.MINT, 0.6))
 
 
 ## The list's order: the weapons first, then by chord.
 static func _list_key(e: Dictionary) -> String:
-	return ("0" if str(e["weapon"]) != "" else "1") + str(e["combo"])
+	var w := str(e["weapon"])
+	var rank := KeyBook.DRILLS.find(w)
+	if rank < 0:
+		rank = 6 if w == "keys" else (7 if w == "goto" else 8)
+	return "%d%s" % [rank, str(e["combo"])]
 
 
 func _draw_results(v: Control, compact: bool) -> void:

@@ -392,6 +392,13 @@ func _arena_checks() -> void:
 			marks += 1
 			mark_text = (m as Label3D).text
 	_check("acceptance: and under the visor (I) each concealed one is marked through walls as selected hidden text is: a box round it (%d strokes) and \"%s\"" % [mode._lines.drawn_lines, mark_text.replace("\n", " / ")], marks == lurkers.size() and mode._lines.drawn_lines == 8 * lurkers.size() and mark_text.contains("Gruvbox Material"))
+	var through: bool = mode._lines.through_walls and mode._lines._line_mat.shader.code.contains("depth_test_disabled")
+	_check("its box reads through walls as its label does: the visor lines it is drawn with have their depth test off (W4's fold-in of W3's known issue)", through)
+	var kinds_ok := not own.is_empty()
+	for e in own:
+		var id: int = mode.visor._by_body.get(e["body"].get_instance_id(), -1)
+		kinds_ok = kinds_ok and id >= 0 and mode.visor.tree.node(id).daemon_kind == "conceal"
+	_check("a shown palette-only daemon is its own kind in the visor's tree (conceal), never forked into a runaway's chain (W4's fold-in)", kinds_ok)
 	mode.visor.set_on(false)
 	await _frames(2)
 	var none_shown := true
@@ -485,6 +492,7 @@ func _results_checks() -> void:
 	main = await _after_reload(old_id)
 	var mode := ThemeShift.of(main)
 	_check("the last theme, Catppuccin Latte: the light theme's district, its frame turned to paper", mode.theme == "latte" and mode.look_of("latte").light and mode.world.ruins.id == ThemeBook.set_id("latte"))
+	_check("under a light theme the arena's glow is turned down (%.2f of %.2f), so a light's bloom never reads as a dark ink haze (W4's fold-in)" % [mode.glow(), Palette.GLOW_INTENSITY], absf(mode.glow() - Palette.GLOW_INTENSITY * ThemeShift.LIGHT_GLOW) < 0.001)
 	var lurk_keys := {}
 	for e in mode.enemies:
 		if bool(e["phased"]):

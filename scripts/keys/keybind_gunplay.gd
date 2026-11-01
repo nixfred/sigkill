@@ -232,14 +232,14 @@ static func district() -> RuinsSet:
 	s.seed = 8404
 	s.register = "tron"
 	s.cells = Vector2i(12, 14)
-	s.blocks = 7
+	s.blocks = 5
 	s.holes = 0
-	s.cover = 12
-	s.towers = 38
-	s.giants = 24
+	s.cover = 10
+	s.towers = 10
+	s.giants = 4
 	s.cables = 0
-	s.signs = 10
-	s.tall = 1.4
+	s.signs = 4
+	s.tall = 0.75
 	s.pristine = true
 	s.clearing = 2
 	s.words = PackedStringArray(["SUPER", "TILING", "FLOATING", "WORKSPACE", "FULL SCREEN", "RETURN"])
@@ -630,31 +630,32 @@ func _build_desktop() -> void:
 	var reach := 0.0
 	for w in workspace_at:
 		reach = maxf(reach, Vector2(w.x - mid.x, w.z - mid.z).length())
-	var r := reach + 46.0
+	var r := reach + 34.0
 	var styles := [KeyWindow.Style.TERMINAL, KeyWindow.Style.MONITOR, KeyWindow.Style.EDITOR]
 	var titles := [["terminal", "top", "editor"], ["editor", "terminal", "files"], ["monitor", "terminal", "notes"], ["terminal", "editor", "top"]]
 	var accents := [Palette.TEAL, Palette.MINT, Color(0.78, 0.84, 1.0), Palette.TEAL]
 	for side in 4:
 		var a := PI * 0.5 * side + 0.35
-		var centre := mid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * 24.0
+		var centre := mid + Vector3(sin(a), 0.0, cos(a)) * r + Vector3.UP * 30.0
 		var face_in := (mid - centre)
 		face_in.y = 0.0
 		var basis := Basis.looking_at(-face_in.normalized(), Vector3.UP)
 		# Tiled as a tiling desktop lays out three windows: one tall on the left, two stacked on the right.
-		var gap := 1.2
-		var tiles := [[Vector2(-9.0, 0.0), Vector2(17.0, 24.0)], [Vector2(9.0 + gap * 0.5, 6.3), Vector2(17.0, 11.4)], [Vector2(9.0 + gap * 0.5, -6.3), Vector2(17.0, 11.4)]]
+		var gap := 1.6
+		var tiles := [[Vector2(-13.0, 0.0), Vector2(25.0, 34.0)], [Vector2(13.0 + gap * 0.5, 8.9), Vector2(25.0, 16.2)], [Vector2(13.0 + gap * 0.5, -8.9), Vector2(25.0, 16.2)]]
 		for i in tiles.size():
 			var t: Array = tiles[i]
 			var w := KeyWindow.make(t[1], styles[(side + i) % styles.size()], accents[side].lerp(Color.WHITE, 0.1 * i), titles[side][i], float(side * 7 + i))
-			w.set_param("glow", 1.9)
-			w.set_param("border", 0.18)
-			w.set_param("body_alpha", 0.82)
+			w.set_param("glow", 2.6)
+			w.set_param("border", 0.3)
+			w.set_param("body_alpha", 0.88)
+			w.set_param("body_light", 0.05)
 			w.top_level = true
 			_desktop.add_child(w)
 			w.global_basis = basis
 			w.global_position = centre + basis.x * (t[0] as Vector2).x + Vector3.UP * (t[0] as Vector2).y
 			if w.label != null:
-				w.label.pixel_size = 0.05
+				w.label.pixel_size = 0.07
 				w.label.position = Vector3(-(t[1] as Vector2).x * 0.5, (t[1] as Vector2).y * 0.5 + 0.4, 0.0)
 	for i in workspace_at.size():
 		var pad := KeyWindow.make(Vector2(3.2, 3.2), KeyWindow.Style.FRAME, Palette.LIME, "", 30.0 + i)
