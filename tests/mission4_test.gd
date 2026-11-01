@@ -428,7 +428,9 @@ func _run_checks() -> void:
 		hunter.hit(1000.0, hunter.global_position + Vector3.UP, Vector3.FORWARD, "sigkill_rail")
 		await process_frame
 	await _frames(int(Engine.physics_ticks_per_second * (ice.tuning.hunter_respawn_s * 0.2 + 2.0)))
-	_check("the hunter broken: the beat done, the third rule engaged, and no hunter comes back on its own (finite: %d made)" % ice.hunters_made, runner.index >= 4 and (ice.hunter == null or not is_instance_valid(ice.hunter) or ice.hunter.broken) and ice.hunters_made == hunters_before and _fired_has("deny rule 3 of 3 engaged"))
+	ice.hunter_wait = 0.0  # the arena's whole wait (hunter_respawn_s) over, as if it had all passed: still none
+	await _frames(3)
+	_check("the hunter broken: the beat done, the third rule engaged, and no hunter comes back on its own, the arena's wait over (finite: %d made)" % ice.hunters_made, runner.index >= 4 and (ice.hunter == null or not is_instance_valid(ice.hunter) or ice.hunter.broken) and ice.hunters_made == hunters_before and _fired_has("deny rule 3 of 3 engaged"))
 	# The last rule and the deck: the second brute pickup, the vault door broken, the deck reached; the hold: its second hunter and nodes come.
 	player.global_position = world.point("pickup_2") + Vector3(0, RuinsLayout.STAND_Y, 0)
 	await _until(func(): return breakers.mine.count(Breakers.kind_of("brute")) >= 1)
