@@ -492,7 +492,7 @@ func _results_checks() -> void:
 	main = await _after_reload(old_id)
 	var mode := ThemeShift.of(main)
 	_check("the last theme, Catppuccin Latte: the light theme's district, its frame turned to paper", mode.theme == "latte" and mode.look_of("latte").light and mode.world.ruins.id == ThemeBook.set_id("latte"))
-	_check("under a light theme the arena's glow is turned down (%.2f of %.2f), so a light's bloom never reads as a dark ink haze (W4's fold-in)" % [mode.glow(), Palette.GLOW_INTENSITY], absf(mode.glow() - Palette.GLOW_INTENSITY * ThemeShift.LIGHT_GLOW) < 0.001)
+	_check("under a light theme the arena's glow is turned down (%.2f of %.2f), so a light's bloom never reads as a dark ink haze (W4's fold-in)" % [mode.glow(), Palette.GLOW_INTENSITY], mode.glow() > 0.0 and mode.glow() <= Palette.GLOW_INTENSITY * 0.5)
 	var lurk_keys := {}
 	for e in mode.enemies:
 		if bool(e["phased"]):

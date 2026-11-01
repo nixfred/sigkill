@@ -163,9 +163,9 @@ func _table_checks() -> void:
 		cards_ok = cards_ok and ok
 	_check("acceptance: every card's text matches the built-in table: its chord, Omarchy's own meaning, what it does here (or that it only teaches), how it is played", cards_ok, ", ".join(bad))
 	var never_ok := true
-	for combo in ["SUPER + ESCAPE", "SUPER + grave", "SUPER + PRINT", "SUPER + SHIFT + W", "W", "SUPER + mouse:272"]:
+	for combo in ["SUPER + ESCAPE", "SUPER + grave", "SUPER + PRINT", "SUPER + SHIFT + W", "W", "CTRL + W", "ALT + W", "SUPER + mouse:272"]:
 		never_ok = never_ok and not KeyBook.playable(KeyBook.normal(combo))
-	_check("never a chord: Super with Esc (the menu's), with the stand-in, with Print (the desktop's), with Shift, with the mouse, or a key alone", never_ok)
+	_check("never a chord: Super with Esc (the menu's), with the stand-in, with Print (the desktop's), with Shift, with the mouse, a key alone, or a Ctrl or Alt chord", never_ok)
 
 
 ## Every key the game itself uses: every input action's keys, the fixed keys (but the stand-in's own entry), and the keys
@@ -375,8 +375,17 @@ func _chord_checks() -> void:
 	var yaw: float = player.rotation.y
 	player.rotation.y = yaw + PI  # facing away from the drill's daemons: nothing under the crosshair
 	await _frames(2)
+	player.select_slot(1)
+	await _frames(25)
+	player.select_slot(0)
+	await _frames(25)
 	_key(KeyBook.STANDIN, true)
 	await _frames(2)
+	_key(KEY_Q, true)
+	await _frames(3)
+	_key(KEY_Q, false)
+	await _frames(25)
+	_check("and the game's own key events stay out of it: Q with the stand-in held is SUPER + Q (Close window), never the last-weapon swap", player.inventory.current == 0 and str(mode.card.get("combo", "")) == "SUPER + Q")
 	var moved_to: Vector3 = player.global_position
 	_key(KEY_SPACE, true)
 	_key(KEY_W, true)

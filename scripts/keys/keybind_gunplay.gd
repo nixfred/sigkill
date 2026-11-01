@@ -168,6 +168,7 @@ static func queue() -> void:
 
 static func clear() -> void:
 	queued = false
+	holding = false
 	stats = {}
 	seen = {}
 	table = {}
@@ -250,6 +251,11 @@ static func district() -> RuinsSet:
 func _ready() -> void:
 	name = NODE_NAME
 	add_to_group(GROUP)
+
+
+func _exit_tree() -> void:
+	if chord:
+		holding = false  # freed mid-chord (a reload): the next arena's Tab is the top table's again
 
 
 func real_allowed() -> bool:
@@ -368,6 +374,8 @@ func _input(ev: InputEvent) -> void:
 	var k := ev as InputEventKey
 	var code := int(k.physical_keycode) if k.physical_keycode != KEY_NONE else int(k.keycode)
 	if code == KeyBook.STANDIN:
+		if not chord and not _can_act():
+			return  # the menu or the ask box has the keys: a ` typed there is theirs
 		get_viewport().set_input_as_handled()
 		if not k.echo:
 			set_chord(k.pressed)

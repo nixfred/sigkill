@@ -29,10 +29,12 @@ var _view: Control
 var _slide: ColorRect
 var _slide_mat: ShaderMaterial
 var _font: Font
+## Frames the slide is drawn settled (doing nothing) as the HUD comes up, so its shader is ready before the first slide.
+var _warm := 3
 
 
 func _ready() -> void:
-	layer = 6
+	layer = 0  # under the HUD's own layer, so the Esc menu is over it (as the theme shift's)
 	_font = Palette.mono_font()
 	_slide_mat = ShaderMaterial.new()
 	_slide_mat.shader = SlideShader
@@ -56,6 +58,10 @@ func _process(_delta: float) -> void:
 		_slide.visible = true
 		var u := clampf(mode.slide_t / KeybindGunplay.SLIDE_S, 0.0, 1.0)
 		_slide_mat.set_shader_parameter("slide", 1.0 - pow(1.0 - u, 3.0))
+	elif _warm > 0:
+		_warm -= 1
+		_slide.visible = true
+		_slide_mat.set_shader_parameter("slide", 1.0)
 	else:
 		_slide.visible = false
 	_view.queue_redraw()
