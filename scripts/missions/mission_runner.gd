@@ -561,6 +561,8 @@ func _physics_process(delta: float) -> void:
 		end_here()
 		return
 	if state == State.INTRO:
+		if stage != null and is_instance_valid(stage):
+			stage.held = true  # its clocks wait for play (M5: a job scheduled on "start" counts from the first objective)
 		intro_left -= delta
 		if intro_left <= 0.0:
 			state = State.RUNNING

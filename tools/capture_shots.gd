@@ -3341,7 +3341,7 @@ func _m4() -> void:
 	await _frames(int(1.5 * Engine.physics_ticks_per_second))
 	# From just inside the vault door, the second hunter 7 m ahead at its post and the nodes beyond it either side.
 	var deck := world.point("vault_door")
-	_c37_view(Vector3(deck.x + 3.0, 0.0, deck.z - 1.5), world.point("hunter_post_2") + Vector3(0, 1.6, -1.0))
+	_c37_view(Vector3(deck.x + 1.2, 0.0, deck.z - 1.5), world.point("hunter_post_2") + Vector3(0, 1.6, -1.0))  # off the posts' line (M5: an M4 leftover)
 	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
 	print("capture: m4 the hold at %dx%d, %d of mission 4's ICE standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
