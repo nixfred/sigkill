@@ -609,6 +609,15 @@ func _menu_checks() -> void:
 	var leave_ok: bool = b2 != null and b2.text == "Leave process hunt"
 	menu2.close()
 	_check("acceptance: the Esc menu reaches it: \"Process hunt\" in the free arena, \"Leave process hunt\" while it runs", plain_ok and leave_ok)
+	# Ended where it stands (a match starting does this): its enemies gone, the arena's own four daemons back.
+	var h := ProcHunt.of(hunted)
+	h.end()
+	await _frames(4)
+	var back := 0
+	for t in hunted.get_tree().get_nodes_in_group("targets"):
+		if not t.has_meta(&"proc") and t.is_inside_tree() and t.visible:
+			back += 1
+	_check("ended where it stands (a match starting mid-hunt), its enemies go and the arena's own four daemons come back, not queued any more", not h.running and h.enemies().is_empty() and back == 4 and not ProcHunt.queued, "%d back" % back)
 	ProcHunt.clear()
 
 

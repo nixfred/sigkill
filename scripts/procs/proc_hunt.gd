@@ -81,6 +81,8 @@ static var queued := false
 static var _flag_taken := false
 
 signal began
+## It ended where it stood (a match starting).
+signal ended
 ## An enemy forked in (the arena counts it as its own: a kill toward sudo, the top table).
 signal spawned(dummy: Node3D)
 ## A line for its HUD: "fork", "exit", "kill", "reaped", "pegged".
@@ -194,6 +196,44 @@ func real_allowed() -> bool:
 	return AuditVisor.real_gate_for(link)
 
 
+## Ends the hunt where it stands (a match starting): its enemies gone, its table dropped, the arena's own daemons back,
+## ICE and the rounds as they were; not queued any more.
+func end() -> void:
+	if not running:
+		return
+	running = false
+	queued = false
+	for key in _enemies.keys():
+		var body = _enemies[key]["body"]
+		if is_instance_valid(body) and not body.is_queued_for_deletion():
+			body.queue_free()
+	_enemies.clear()
+	_queue.clear()
+	_cooldown.clear()
+	_flocks.clear()
+	_drop_table()
+	for entry in _parked:
+		var dummy: Node3D = entry[0]
+		if not is_instance_valid(dummy) or not is_instance_valid(entry[1]):
+			continue
+		dummy.reparent(entry[1])
+		dummy.collision_layer = entry[2]
+		dummy.visible = true
+		dummy.process_mode = Node.PROCESS_MODE_INHERIT
+		dummy.add_to_group("targets")
+	_parked.clear()
+	if ice != null and is_instance_valid(ice) and "stand_down" in ice:
+		ice.stand_down = false
+	if rounds != null and is_instance_valid(rounds) and rounds.has_method("hold"):
+		rounds.hold(false)
+	if director != null and is_instance_valid(director):
+		director.forget_brains()
+	if _hud != null and is_instance_valid(_hud):
+		_hud.queue_free()
+	_hud = null
+	ended.emit()
+
+
 func _make_table(real: bool) -> void:
 	_drop_table()
 	if real:
@@ -220,6 +260,9 @@ func _online() -> bool:
 
 func _physics_process(delta: float) -> void:
 	if not running:
+		return
+	if _online():
+		end()  # a match started mid-hunt: the match's rules, the arena's own daemons back
 		return
 	_clock += delta
 	if not _spots_ready:
@@ -453,6 +496,7 @@ func _exit(key: String, why: String) -> void:
 	if is_instance_valid(body) and not body.is_queued_for_deletion():
 		_exiting[body.get_instance_id()] = why
 		if not body.reap():
+			_exiting.erase(body.get_instance_id())
 			body.queue_free()  # still climbing out: gone before it was whole
 	if why == "exit":
 		exits += 1
@@ -479,7 +523,7 @@ func _on_downed(body: Node3D) -> void:
 		_note("reaped", "~ reaped %d %s  (simulated)" % [spec["pid"], spec["comm"]])
 	else:
 		kills += 1
-		_note("kill", "x kill -9 %d %s  (simulated: nothing real is signaled)" % [spec["pid"], spec["comm"]])
+		_note("kill", "x kill -9 %d %s  (simulated)" % [spec["pid"], spec["comm"]])
 	if spec["role"] == "nest" and _flocks.has(key):
 		(_flocks[key] as SwarmFlock).nest = null
 
@@ -643,7 +687,7 @@ func _park_arena_daemons() -> void:
 	for dummy in get_tree().get_nodes_in_group("targets"):
 		if host != null and host.is_ancestor_of(dummy) and not dummy.has_meta(&"proc"):
 			dummy.remove_from_group("targets")
-			_parked.append(dummy)
+			_parked.append([dummy, dummy.get_parent(), dummy.collision_layer])
 			dummy.process_mode = Node.PROCESS_MODE_DISABLED
 			dummy.visible = false
 			dummy.collision_layer = 0
