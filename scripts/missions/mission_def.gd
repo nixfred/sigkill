@@ -90,7 +90,12 @@ extends Resource
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
 const KINDS := ["kill", "reach", "log", "survive"]
-const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "any"]
+const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "any"]
+## A mission's own ICE (M4): wave kinds that are pieces of ICE, placed through the ICE director (white ICE walls, white ICE
+## nodes, hunter ICE); a node wave names each node's kind; a wall's span (wide, tall) when the data gives none.
+const ICE_KINDS := ["wall", "node", "hunter"]
+const NODE_KINDS := ["jam", "hud"]
+const ICE_SPAN := Vector2(3.4, 3.6)
 ## Who says a line: your AI (the guide panel), the Auditor (the audit log), or `~` (its own terminal, from mission 3 on).
 const WHO := ["ai", "auditor", "tilde"]
 ## A reach objective's radius when its data names none, in metres.
@@ -105,8 +110,8 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## The abilities a mission may hand over (C37), by id, with the words the menus show.
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
-const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core"]
-const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt"]
+const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter"]
+const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
 ## A dormant wave wakes as the player comes this near one of its daemons, metres (M2).
@@ -204,6 +209,10 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 	var wave_ids := wave_ids()
 	out.append_array(_prop_problems())
 	out.append_array(_wave_problems(objective_ids, log_ids))
+	for entry in logs:
+		# A log that stands only from a trigger (M4): the records, once they are decrypted.
+		if entry is Dictionary and str(entry.get("on", "")) != "" and not trigger_ok(str(entry["on"]), objective_ids, log_ids, wave_ids):
+			out.append("%s: log %s stands on trigger \"%s\"" % [id, entry.get("id"), entry["on"]])
 	for a in abilities:
 		if not ABILITIES.has(a):
 			out.append("%s: ability \"%s\" (one of %s)" % [id, a, ", ".join(ABILITIES.keys())])
@@ -215,7 +224,11 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 			out.append("%s: line trigger \"%s\"" % [id, line.get("on")])
 		if not WHO.has(line.get("who")):
 			out.append("%s: line by \"%s\" (ai, auditor or tilde)" % [id, line.get("who")])
-		if not (line.get("text") is String) or line["text"].strip_edges() == "" or line["text"].length() > TEXT_LAST:
+		# A pick line (M4): your AI's own pick of which ICEbreaker to load, from the moment's numbers, after its text.
+		var pick = line.get("pick", false)
+		if not (pick is bool) or (pick and (line.get("who") != "ai" or not abilities.has("breakers"))):
+			out.append("%s: a line's pick: true only for your AI's, in a mission that hands the ICEbreakers over" % id)
+		if not (line.get("text") is String) or (line["text"].strip_edges() == "" and pick != true) or line["text"].length() > TEXT_LAST:
 			out.append("%s: a line needs 1 to %d characters" % [id, TEXT_LAST])
 		var wait = line.get("wait", 0.0)
 		if not (wait is float or wait is int) or wait < 0.0 or wait > WAIT_LAST:
@@ -241,8 +254,10 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 	if ruins != "":
 		if RuinsBook.of(ruins) == null:
 			out.append("%s: ruins \"%s\" is not a set" % [id, ruins])
-		if ice:
-			out.append("%s: ICE in ruins (its walls and nodes stand where the arena's level is: not yet)" % id)
+		if ice and ice_waves().is_empty():
+			out.append("%s: ICE in ruins needs its own ICE waves (M4: the arena's pieces stand where the arena's level is)" % id)
+	elif not ice_waves().is_empty():
+		out.append("%s: ICE waves stand in ruins (their points)" % id)
 	return out
 
 
@@ -373,6 +388,21 @@ func abilities_at_start() -> PackedStringArray:
 	return out
 
 
+## Its waves of ICE (M4): walls, nodes and hunters.
+func ice_waves() -> Array:
+	var out: Array = []
+	for w in waves:
+		if w is Dictionary and ICE_KINDS.has(w.get("kind")):
+			out.append(w)
+	return out
+
+
+## True when its ruins have a records vault (M4).
+func _has_vault() -> bool:
+	var s := RuinsBook.of(ruins) if ruins != "" else null
+	return s != null and s.vault != ""
+
+
 ## Its parent wave (M2), or {}: the one whose daemon reaps the rest.
 func parent_wave() -> Dictionary:
 	for w in waves:
@@ -464,6 +494,29 @@ func _prop_problems() -> PackedStringArray:
 						out.append("%s: hush %s seconds (0.2 to 5)" % [id, p["id"]])
 				elif not _has_field():
 					out.append("%s: prompt %s, but its ruins have no field" % [id, p["id"]])
+			"pickup":
+				# An ICEbreaker pickup of the mission's (M4): where, which, and the trigger it is laid on.
+				if not _place_ok(p.get("at")):
+					out.append("%s: pickup %s needs \"at\", a Vector3 or a point of its ruins" % [id, p["id"]])
+				if not Breakers.NAMES.has(str(p.get("breaker", ""))):
+					out.append("%s: pickup %s breaker \"%s\" (%s)" % [id, p["id"], p.get("breaker"), ", ".join(Breakers.NAMES)])
+				if not trigger_ok(str(p.get("on", "")), _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: pickup %s trigger \"%s\"" % [id, p["id"], p.get("on")])
+				if not abilities.has("breakers"):
+					out.append("%s: pickup %s in a mission that hands no ICEbreakers over" % [id, p["id"]])
+			"vault":
+				# The records screen lit (M4) on a trigger.
+				if not _has_vault():
+					out.append("%s: vault %s, but its ruins have no records vault" % [id, p["id"]])
+				if not trigger_ok(str(p.get("lights", "")), _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: vault %s lights trigger \"%s\"" % [id, p["id"], p.get("lights")])
+			"stutter":
+				# The sector's lights stuttering once (M4), `after` seconds past a trigger.
+				if not trigger_ok(str(p.get("on", "")), _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: stutter %s trigger \"%s\"" % [id, p["id"], p.get("on")])
+				var after = p.get("after", 0.0)
+				if not (after is float or after is int) or after < 0.0 or after > WAIT_LAST:
+					out.append("%s: stutter %s after (0 to %.0f seconds)" % [id, p["id"], WAIT_LAST])
 			"breach":
 				var s := RuinsBook.of(ruins) if ruins != "" else null
 				if s == null or s.breach == "":
@@ -547,7 +600,40 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 				if w.has(key):
 					out.append("%s: wave %s is forked by a loop: no \"%s\"" % [id, wid, key])
 		var from = w.get("from", [])
-		if by != "":
+		var ice_wave: bool = ICE_KINDS.has(w.get("kind"))
+		if ice_wave:
+			# A piece of the mission's own ICE (M4): at its points, never climbing out, never asleep, sealed or forked.
+			if not ice:
+				out.append("%s: wave %s is ICE, but the mission has none (ice)" % [id, wid])
+			for key in ["dormant", "wakes", "sealed", "by", "elites", "reaps", "epitaph", "tagged", "tag"]:
+				if w.has(key):
+					out.append("%s: wave %s is ICE: no \"%s\"" % [id, wid, key])
+			if not (from is Array) or from.is_empty():
+				out.append("%s: wave %s needs \"from\": the points its pieces stand at" % [id, wid])
+			else:
+				for v in from:
+					if not _place_ok(v):
+						out.append("%s: wave %s stands at \"%s\", which is neither a Vector3 nor a point of its ruins" % [id, wid, v])
+			if w.get("kind") == "hunter" and count != 1:
+				out.append("%s: wave %s: a hunter wave is one hunter" % [id, wid])
+			if w.get("kind") == "node":
+				var kinds = w.get("nodes", [])
+				if not (kinds is Array) or (count is int and kinds.size() != count):
+					out.append("%s: wave %s needs \"nodes\": a kind (jam or hud) for each of its %s" % [id, wid, str(count)])
+				else:
+					for k in kinds:
+						if not NODE_KINDS.has(str(k)):
+							out.append("%s: wave %s node kind \"%s\" (jam or hud)" % [id, wid, k])
+			elif w.has("nodes"):
+				out.append("%s: wave %s has node kinds, but is not a node wave" % [id, wid])
+			if w.get("kind") == "wall":
+				var span = w.get("span", ICE_SPAN)
+				var yaw = w.get("yaw", 0.0)
+				if not (span is Vector2) or span.x < 1.0 or span.x > 12.0 or span.y < 1.5 or span.y > 8.0 or not (yaw is float or yaw is int):
+					out.append("%s: wave %s span (1 to 12 wide, 1.5 to 8 tall) and yaw (degrees)" % [id, wid])
+			if w.has("face") and not _place_ok(w.get("face")):
+				out.append("%s: wave %s faces \"%s\", which is neither a Vector3 nor a point of its ruins" % [id, wid, w.get("face")])
+		elif by != "":
 			pass  # forked by its loop at a core's hub: nothing to climb out of
 		elif not (from is Array) or from.is_empty():
 			out.append("%s: wave %s needs \"from\": the vents it climbs out of" % [id, wid])

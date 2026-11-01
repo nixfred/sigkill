@@ -57,6 +57,7 @@ signal daemon_spawned(dummy: Node3D)
 
 enum State { IDLE, INTRO, RUNNING, FAILED, COMPLETE }
 
+const BreakerPick = preload("res://scripts/ice/breaker_pick.gd")
 const GROUP := "mission_runner"
 const NODE_NAME := "MissionRunner"
 ## Seconds of the mission's card before its first objective.
@@ -272,6 +273,14 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 		rounds.hold(true)
 	if ice != null and is_instance_valid(ice):
 		ice.stand_down = not d.ice
+		ice.set_staged(d.ice and d.ruins != "")  # its own ICE (M4), the arena's stood aside
+	if breakers != null and is_instance_valid(breakers) and breakers.has_method("set_staged"):
+		# Its own pickups' spots (M4), in its props' order (the stage lays them by that index).
+		var spots: Array = []
+		for p in d.props:
+			if p is Dictionary and p.get("kind") == "pickup":
+				spots.append(place(p["at"]))
+		breakers.set_staged(d.ice and d.ruins != "", spots)
 	carried = d.loadout.duplicate()
 	_carry()
 	_gate(true)
@@ -289,11 +298,8 @@ func begin(d: MissionDef, try: int = 1, force: bool = false) -> bool:
 	if world != null and is_instance_valid(world):
 		world.set_register(d.register, 0.0)
 	for entry in d.logs:
-		var pickup := MissionLogPickup.new()
-		pickup.entry = entry
-		add_child(pickup)
-		pickup.global_position = place(entry["at"])
-		_pickups[entry["id"]] = pickup
+		if str(entry.get("on", "")) == "":
+			_place_log(entry)  # one standing from a trigger (M4) waits for it
 	if not d.waves.is_empty() or not d.props.is_empty():
 		_make_stage(d)
 	began.emit(d)
@@ -411,7 +417,29 @@ func passes() -> int:
 func _on_spawned(dummy: Node3D) -> void:
 	if dummy.has_signal("downed") and not dummy.downed.is_connected(_on_downed):
 		dummy.downed.connect(_on_downed)
+	elif dummy.has_signal("broke") and not dummy.broke.is_connected(_on_downed):
+		dummy.broke.connect(_on_downed)  # a piece of its own ICE (M4) counts as it breaks
 	daemon_spawned.emit(dummy)
+
+
+## Log `entry` standing in the arena, to be picked up.
+func _place_log(entry: Dictionary) -> void:
+	if _pickups.has(entry["id"]):
+		return
+	var pickup := MissionLogPickup.new()
+	pickup.entry = entry
+	add_child(pickup)
+	pickup.global_position = place(entry["at"])
+	_pickups[entry["id"]] = pickup
+
+
+## Your AI's pick of which ICEbreaker to load now (M4): SIGKILL's own scripted pick from the moment's numbers (the
+## standing ICE, the hunter, what is carried), never the player's AI; "" with no breakers' director.
+func pick_text() -> String:
+	if breakers == null or not is_instance_valid(breakers):
+		return ""
+	var pick := BreakerPick.scripted(BreakerPick.numbers(breakers))
+	return str(pick[1]) if pick.size() > 1 else ""
 
 
 ## The weapons' and abilities' gate (C37): on, the mission's allowed abilities only and the ICEbreakers locked unless
@@ -422,6 +450,8 @@ func _gate(on: bool) -> void:
 		player.set_abilities(allowed, on)
 	if breakers != null and is_instance_valid(breakers):
 		breakers.set("locked", on and not allowed.has("breakers"))
+		if breakers.has_method("refresh"):
+			breakers.refresh()  # carried this frame (M4): the beat's pickup and your AI's pick find them
 
 
 ## True when the arena stands in ruins `id`.
@@ -664,8 +694,15 @@ func _on_downed(dummy: Node3D) -> void:
 		_objective_done()
 
 
-## A daemon's type as the objectives name it: "rogue", "zombie", "swarm" or (M2) "parent" (its art's).
+## A daemon's type as the objectives name it: "rogue", "zombie", "swarm" or (M2) "parent" (its art's); (M4) a piece of
+## ICE's: "wall", "node" or "hunter".
 static func kind_of(dummy: Node) -> String:
+	if dummy is IceBarrier:
+		return "wall"
+	if dummy is IceNode:
+		return "node"
+	if dummy is HunterIce:
+		return "hunter"
 	var art = dummy.art_node() if dummy.has_method("art_node") else null
 	return String(art.ai_kind) if art != null else "rogue"
 
@@ -713,13 +750,20 @@ func _fire(trigger: String) -> void:
 	if def == null or _fired.has(trigger):
 		return
 	_fired[trigger] = true
+	for entry in def.logs:
+		if str(entry.get("on", "")) == trigger:
+			_place_log(entry)  # standing from now (M4)
+	if stage != null and is_instance_valid(stage):
+		stage.fire(trigger)  # its pieces first (M4): a pick line on the trigger that brings the hunter sees it
 	for line in def.lines:
 		if line.get("on") == trigger:
 			var wait := float(line.get("wait", 0.0))
+			var pick: bool = line.get("pick", false)
+			var text := str(line["text"])
 			if wait > 0.0:
-				_waiting.append([wait, str(line["who"]), str(line["text"])])
+				_waiting.append([wait, str(line["who"]), text, pick])  # a waited pick (M4) is picked when it is said
 			else:
-				line_said.emit(str(line["who"]), str(line["text"]))
+				line_said.emit(str(line["who"]), _picked(text, pick))
 	for shift in def.transitions:
 		if shift.get("on") == trigger and shift.get("to") != register:
 			var from := register
@@ -727,8 +771,6 @@ func _fire(trigger: String) -> void:
 			if world != null and is_instance_valid(world):
 				world.set_register(register)
 			register_shifted.emit(from, register)
-	if stage != null and is_instance_valid(stage):
-		stage.fire(trigger)
 
 
 ## Lines whose wait is over said (M3), whatever the mission's state: a wait is the beat's, and outlasts it.
@@ -742,7 +784,12 @@ func _step_waiting(delta: float) -> void:
 			due.append(line)
 	for line in due:
 		_waiting.erase(line)
-		line_said.emit(line[1], line[2])
+		line_said.emit(line[1], _picked(line[2], line.size() > 3 and line[3]))
+
+
+## `text` with your AI's pick after it when `pick` (M4), from this moment's numbers.
+func _picked(text: String, pick: bool) -> String:
+	return (text + " " + pick_text()).strip_edges() if pick else text
 
 
 func _carry() -> void:
@@ -814,6 +861,9 @@ func end_here() -> void:
 		rounds.hold(false)
 	if ice != null and is_instance_valid(ice):
 		ice.stand_down = false
+		ice.set_staged(false)
+	if breakers != null and is_instance_valid(breakers) and breakers.has_method("set_staged"):
+		breakers.set_staged(false)
 	ended.emit()
 
 

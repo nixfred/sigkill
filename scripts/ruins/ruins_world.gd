@@ -111,6 +111,16 @@ var _shop_dark_t := -1.0
 var _shop_power := 0.0
 ## The cache field (M3), or null; and how long the weather holds still (the rain stopping for a second).
 var _field: CacheField = null
+## The records screen (M4): its light's and its redaction mark's own materials, its lamp, how far its lighting has gone
+## (-1 not yet, then seconds) and how lit it is now; the lamps' last light level (ArenaArt.light_level), so they follow it.
+const VAULT_S := 1.7
+const VAULT_LAMP := 7.0
+var _vault_light: ShaderMaterial = null
+var _vault_mark: StandardMaterial3D = null
+var _vault_lamp: OmniLight3D = null
+var _vault_t := -1.0
+var _vault_power := 0.0
+var _lamp_level := 1.0
 var _hush_left := 0.0
 
 static var _kept := {}
@@ -212,7 +222,11 @@ func _process(delta: float) -> void:
 	_step_sparks(delta)
 	_step_remnant(delta)
 	_step_shop(delta)
+	_step_vault(delta)
 	_step_hush(delta)
+	if ArenaArt.light_level != _lamp_level:
+		_lamp_level = ArenaArt.light_level
+		_push_lamps()  # the lamps follow the arena's light level (M4: the end beat's stutter; I3's darkness)
 	_feed_rain()
 
 
@@ -258,7 +272,7 @@ func _push_lamps() -> void:
 		var light: OmniLight3D = lamp["light"]
 		var col := _slot_colour(lamp["slot"], s)
 		light.light_color = col
-		light.light_energy = lamp["energy"] * (1.0 - 0.75 * s.x * float(lamp["slot"] == RuinsPieces.Slot.SIGN_A or lamp["slot"] == RuinsPieces.Slot.SIGN_B))
+		light.light_energy = lamp["energy"] * (1.0 - 0.75 * s.x * float(lamp["slot"] == RuinsPieces.Slot.SIGN_A or lamp["slot"] == RuinsPieces.Slot.SIGN_B)) * ArenaArt.light_level
 
 
 func _slot_colour(slot: int, s: Vector3) -> Color:
@@ -324,7 +338,7 @@ func _build() -> Dictionary:
 					rims |= 1 << side
 					near_void += 1
 			var r: RandomNumberGenerator = dice.call("slab", z * 64 + x)
-			var damage := clampf(r.randf_range(0.05, 0.45) + near_void * 0.22, 0.0, 1.0)
+			var damage := clampf(r.randf_range(0.05, 0.45) + near_void * 0.22, 0.0, 1.0) if not ruins.pristine else 0.0
 			var at: Array = near_kit.call(layout.center(c))
 			if c == layout.breach_cell:
 				RuinsPieces.shaft(at[0], at[1], layout.center(c), RuinsLayout.BREACH_OPENING, 3.6, r)  # its hatch is breach()'s (C37)
@@ -358,6 +372,8 @@ func _build() -> Dictionary:
 				RuinsPieces.fallen(at[0], at[1], lo, hi, dice.call("fallen", i))
 			"shop":
 				_build_shop(dice.call("shop", i), out)
+			"stack":
+				RuinsPieces.stack(at[0], at[1], lo, hi, layout.folder_name(bl["seed"]), RuinsLayout.VAULT_STACK_H, dice.call("stack", i))
 	for i in layout.cover.size():
 		var p: Dictionary = layout.cover[i]
 		var at: Array = near_kit.call(p["at"])
@@ -398,6 +414,7 @@ func _build() -> Dictionary:
 		var lamp := RuinsPieces.sign(at[0], at[1], t, s, dice.call("sign", i))
 		out["signs"].append([lamp, RuinsPieces.Slot.SIGN_A if s["slot"] == 0 else RuinsPieces.Slot.SIGN_B])
 	_build_breach(near_kit, dice, out)
+	_build_vault(dice, out)
 	# Commit: per chunk, a solid mesh (bodies and the floor, throwing shadows unless far) and a light mesh.
 	var mats := materials()
 	var meshes := []
@@ -427,6 +444,9 @@ func _build() -> Dictionary:
 	if out.has("shop"):
 		triangles += int(out["shop"]["triangles"])  # the storefront's own mesh (M2)
 		surfaces += 2
+	if out.has("vault"):
+		triangles += int(out["vault"]["triangles"])  # the records screen's and console's own mesh (M4)
+		surfaces += 3
 	var haze := _haze_mesh()
 	surfaces += 2 * DRIFT_TURN.size()
 	triangles += 2 * int(haze.get_meta(&"cards", 0))
@@ -463,6 +483,28 @@ func _build_shop(rng: RandomNumberGenerator, out: Dictionary) -> void:
 	kit.commit(b["light"], mesh)
 	mesh.surface_set_material(1, mats["light"])
 	out["shop"] = {"mesh": mesh, "lamp": lamp, "triangles": (kit.count(b["body"]) + kit.count(b["light"])) / 3}
+
+
+## The vault's pieces (M4), when the plan has one: the records screen past the exit row's parapet and the console on the
+## deck, a mesh of their own (out["vault"]: its body, its light and its redaction mark, the light and the mark given
+## materials of their own as it is shown, dark until a mission lights them) with its lamp's place.
+func _build_vault(dice: Callable, out: Dictionary) -> void:
+	if layout.vault.is_empty():
+		return
+	var kit := ShapeKit.new()
+	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true), "mark": kit.bucket(Vector3.ZERO, false, false)}
+	var rng: RandomNumberGenerator = dice.call("vault", 0)
+	var lamp := RuinsPieces.records_screen(kit, b, layout.vault["screen"], ruins.vault_lines, rng)
+	var console: Dictionary = layout.vault["console"]
+	RuinsPieces.cover(kit, b, {"kind": "console", "at": console["at"], "yaw": float(console["yaw"]), "size": Vector3(1.7, 1.2, 1.0), "seed": 0}, rng)
+	var mesh := ArrayMesh.new()
+	var mats := materials()
+	kit.commit(b["body"], mesh)
+	mesh.surface_set_material(0, mats["body"])
+	kit.commit(b["light"], mesh)
+	mesh.surface_set_material(1, mats["light"])
+	kit.commit(b["mark"], mesh)
+	out["vault"] = {"mesh": mesh, "lamp": lamp, "triangles": (kit.count(b["body"]) + kit.count(b["light"]) + kit.count(b["mark"])) / 3}
 
 
 ## The breach's pieces (C37), when the plan has one: the gangway out from the gate; the pocket's deck (its slabs on the
@@ -635,6 +677,7 @@ func _show() -> void:
 		_spark_at(tips[(i * 5) % tips.size()])
 	_show_breach()
 	_show_shop()
+	_show_vault()
 	if not layout.field.is_empty():
 		_field = CacheField.new()
 		_field.layout = layout
@@ -661,6 +704,37 @@ func _show_shop() -> void:
 	_lamps.append({"light": _shop_lamp, "slot": RuinsPieces.Slot.SIGN_B, "energy": SHOP_LAMP, "shop": true})
 	_shop_t = 0.0
 	_step_shop(0.0)
+
+
+## The records screen and the console (M4), the screen dark: its light at power 0 and its redaction mark unlit until a
+## mission lights it (light_vault()).
+func _show_vault() -> void:
+	if not _built.has("vault"):
+		return
+	var node := MeshInstance3D.new()
+	node.name = "Vault"
+	node.mesh = _built["vault"]["mesh"]
+	_vault_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
+	_vault_light.set_shader_parameter("power", 0.0)
+	node.set_surface_override_material(1, _vault_light)
+	_vault_mark = StandardMaterial3D.new()
+	_vault_mark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_vault_mark.albedo_color = Color(0.03, 0.0, 0.0)
+	_vault_mark.emission_enabled = true
+	_vault_mark.emission = Palette.HOSTILE_RED
+	_vault_mark.emission_energy_multiplier = 0.0
+	_vault_mark.disable_fog = true
+	node.set_surface_override_material(2, _vault_mark)
+	add_child(node)
+	_vault_lamp = OmniLight3D.new()
+	_vault_lamp.name = "VaultLamp"
+	_vault_lamp.position = _built["vault"]["lamp"]
+	_vault_lamp.omni_range = 16.0
+	_vault_lamp.omni_attenuation = 1.2
+	_vault_lamp.shadow_enabled = false
+	_vault_lamp.light_energy = 0.0
+	add_child(_vault_lamp)
+	_lamps.append({"light": _vault_lamp, "slot": RuinsPieces.Slot.SCREEN, "energy": 0.0, "vault": true})
 
 
 ## The breach's hatch over its shaft, and the remnant's sign, dark (C37).
@@ -724,6 +798,57 @@ func remnant_power() -> float:
 ## Where the remnant's sign is (the place in front of its face, world space), or Vector3.INF without one.
 func remnant_at() -> Vector3:
 	return _remnant_lamp.global_position if _remnant_lamp != null else Vector3.INF
+
+
+# --- The vault (M4). ---
+
+## The records screen lights (STORY.md mission 4: the records read), over VAULT_S, catching as the remnant's sign does;
+## nothing in a district without one, or once it is lit. True when it began now.
+func light_vault() -> bool:
+	if _vault_light == null or _vault_t >= 0.0:
+		return false
+	_vault_t = 0.0
+	return true
+
+
+## How lit the records screen is, 0 to 1 (0 without one).
+func vault_power() -> float:
+	return _vault_power
+
+
+## Where the records screen's light falls (in front of it, world space), or Vector3.INF without one.
+func vault_at() -> Vector3:
+	return _vault_lamp.global_position if _vault_lamp != null else Vector3.INF
+
+
+## True for a district with a records screen.
+func has_vault() -> bool:
+	return _vault_light != null
+
+
+func _step_vault(delta: float) -> void:
+	if _vault_t < 0.0 or _vault_light == null:
+		return
+	_vault_t += delta
+	var k := clampf(_vault_t / VAULT_S, 0.0, 1.0)
+	# A screen waking: dark, lines of it flashing in and dropping out, then steady, a rare flicker after.
+	var tick := int(floor(_vault_t * 26.0))
+	var dice := fposmod(sin(float(tick) * 12.9898 + 7.0) * 43758.5453, 1.0)
+	var on := 0.0
+	if k < 1.0:
+		on = 1.0 if dice < k * k * 1.3 else 0.05
+		if k > 0.5 and k < 0.58:
+			on = 0.05
+	else:
+		on = 0.4 if dice < 0.01 else 1.0
+	_vault_power = on
+	_vault_light.set_shader_parameter("power", on)
+	if _vault_mark != null:
+		_vault_mark.emission_energy_multiplier = 2.6 * on
+	for lamp in _lamps:
+		if lamp.get("vault", false):
+			lamp["energy"] = VAULT_LAMP * on
+	_push_lamps()
 
 
 # --- The walkers' way (M2). ---

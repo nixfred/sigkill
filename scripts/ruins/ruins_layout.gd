@@ -43,6 +43,21 @@ extends RefCounted
 ##                to core_3 (four cells round the middle, a cell in from each corner) its points, every cell of it taken
 ##                from the other points. field_pattern() says which walls stand written, which are mid-rewrite and which
 ##                are gone on each pass of a rewrite: seeded, every cell always reachable from outside it.
+## A set with a vault (M4) is planned as a guarded hall instead of ruins (no dice in its floor: the same hall every time):
+##   the outline  the whole rectangle, no corner cut
+##   the route    a straight aisle down the middle column from the start to the exit; the plaza the hunter's bay
+##   the stacks   blocks of kind "stack" (VAULT_STACK_H tall in `boxes`): on each of three gate rows every cell but the
+##                aisle's, so the way through is one cell wide (where a mission's ICE seals it), and the outer columns of
+##                every bay and of the deck, so the hall is lined with records
+##   the deck     the VAULT_DECK rows before the exit row: the vault, the records console (`vault.console`) at its far end
+##                and the records screen (`vault.screen`) past the parapet of the exit row, facing back down the hall
+##   the posts    guard posts (cover of kind "post") in pairs either side of the aisle on every bay and deck row
+##   the points   gate_1, gate_2 and vault_door (the aisle cell of each gate row, from the start), post_1 to post_4 (the
+##                side cells of the first bay's first row and of the deck's middle), hunter_post and hunter_post_2 (the
+##                aisle in the hunter's bay and on the deck), pickup_1 to pickup_4 (the aisle before the second gate, the
+##                aisle before the vault door, either side of the hunter's post), vault (the deck's middle) and records
+##                (in front of the console); every cell of the gates, the deck's ends and the posts' rows kept from the
+##                other points
 ##
 ## Fiction only: the folder names and sign words are the set's demo text.
 
@@ -73,6 +88,20 @@ const NAME_LAST := 20
 const NEVER_SHOWN := ["6666", "~", "nohup", "tilde", "pid"]
 ## How many of each point the plan names.
 const POINTS := {"log": 4, "daemon": 6, "breaker": 6, "spawn": 5}
+## The vault (M4): a hall's rows from the exit end: the exit row, VAULT_DECK rows of deck, the vault door's gate row,
+## VAULT_BAY_B rows (the hunter's bay), a gate row, VAULT_BAY_A rows (the first bay), a gate row, and VAULT_START rows
+## before the start; how wide it must be (an odd number: the aisle is the middle column); how tall its stacks stand; its
+## screen's size (across, tall); the most characters a line of its screen may run to; a guard post's box.
+const VAULT_DECK := 7
+const VAULT_BAY_B := 4
+const VAULT_BAY_A := 3
+const VAULT_START := 2
+const VAULT_WIDE_LEAST := 7
+const VAULT_STACK_H := 16.0
+const VAULT_SCREEN := Vector2(11.0, 6.4)
+const VAULT_LINE_LAST := 40
+const VAULT_POST := Vector3(0.6, 3.4, 0.6)
+const VAULT_POST_OFF := 3.0
 ## Cover: [kind, collision size (x across its length, y tall, z deep)], picked by the dice.
 const COVER := [["toppled", Vector3(3.2, 1.25, 1.0)], ["terminal", Vector3(1.1, 1.35, 0.8)], ["drives", Vector3(1.6, 1.0, 1.2)], ["rubble", Vector3(2.2, 0.95, 1.4)], ["shard", Vector3(1.2, 1.9, 1.0)]]
 ## How far out the towers and the giants stand, metres from the edge or the middle, and their heights over the floor.
@@ -118,6 +147,10 @@ var shop := {}
 ## yaw (0: along x, PI/2: along z), length, a: Vector2i, b: Vector2i (the cells either side; (-1, -1) outside it)}],
 ## posts: [Vector3] (the floor under each)}; {} for none.
 var field := {}
+## The vault (M4): {deck: Rect2i, gates: [Vector2i] (the aisle cell of each gate row, from the start), screen: {at: Vector3
+## (its middle on the floor line past the exit row's parapet), out: Vector3 (the way it faces: back down the hall), size:
+## Vector2}, console: {at: Vector3 (the floor under its middle), yaw}}; {} for none.
+var vault := {}
 var gate := {}
 var pocket := {}
 var gangway := {}
@@ -139,12 +172,14 @@ func _init(from: RuinsSet) -> void:
 	_rng.seed = ruins.seed
 	_outline()
 	_route()
+	_vault()
 	_ruins()
 	_shop()
 	_edges()
 	_points()
 	_floor_boxes()
 	_field_lattice()
+	_vault_posts()
 	_cover()
 	_breach()
 	_scenery()
@@ -194,6 +229,8 @@ const SIDES := [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)
 func _outline() -> void:
 	cells.resize(size.x * size.y)
 	cells.fill(Cell.FLOOR)
+	if ruins.vault != "":
+		return  # a hall (M4): the whole rectangle
 	for corner in [Vector2i(0, 0), Vector2i(size.x - 1, 0), Vector2i(0, size.y - 1), Vector2i(size.x - 1, size.y - 1)]:
 		var cut := _rng.randi_range(1, 3)
 		for x in size.x:
@@ -208,6 +245,14 @@ func _outline() -> void:
 
 func _route() -> void:
 	start_cell = Vector2i(size.x / 2, size.y - 1)
+	if ruins.vault != "":
+		# A hall (M4): the aisle straight down the middle column, the plaza the hunter's bay.
+		exit_cell = Vector2i(size.x / 2, 0)
+		route = []
+		for z in range(size.y - 1, -1, -1):
+			route.append(Vector2i(size.x / 2, z))
+		plaza_cell = Vector2i(size.x / 2, 1 + VAULT_DECK + 1 + VAULT_BAY_B / 2)
+		return
 	exit_cell = Vector2i(clampi(size.x / 2 + _rng.randi_range(-2, 2), 1, size.x - 2), 0)
 	for c in [start_cell, exit_cell, start_cell + Vector2i(0, -1), exit_cell + Vector2i(0, 1)]:
 		_put(c, Cell.FLOOR)
@@ -234,6 +279,8 @@ func _route() -> void:
 func _reserved(c: Vector2i) -> bool:
 	if route.has(c):
 		return true
+	if not vault.is_empty():
+		return true  # the hall is the vault's plan (M4): no ruin or hole of the dice
 	if not field.is_empty() and (field["rect"] as Rect2i).grow(1).has_point(c):
 		return true  # the field and its ring (M3): never a ruin or a hole
 	if absi(c.x - plaza_cell.x) <= 1 and absi(c.y - plaza_cell.y) <= 1:
@@ -242,6 +289,102 @@ func _reserved(c: Vector2i) -> bool:
 		if absi(c.x - keep.x) <= 1 and absi(c.y - keep.y) <= 1:
 			return true
 	return false
+
+
+## The rows a hall needs (M4): the exit row, the deck, three gate rows, the two bays and the start's rows.
+static func vault_rows_least() -> int:
+	return 1 + VAULT_DECK + 1 + VAULT_BAY_B + 1 + VAULT_BAY_A + 1 + VAULT_START
+
+
+## The hall (M4, a set with a vault): the stacks' blocks, the gates, the deck, the screen and the console; nothing else of
+## the plan changes for a set without one.
+func _vault() -> void:
+	if ruins.vault == "":
+		return
+	var mid := size.x / 2
+	var door := 1 + VAULT_DECK
+	var gate2 := door + 1 + VAULT_BAY_B
+	var gate1 := gate2 + 1 + VAULT_BAY_A
+	var gates: Array[Vector2i] = [Vector2i(mid, gate1), Vector2i(mid, gate2), Vector2i(mid, door)]
+	var deck := Rect2i(1, 1, size.x - 2, VAULT_DECK)
+	vault = {"deck": deck, "gates": gates, "screen": {}, "console": {}}
+	var stacks: Array[Rect2i] = []
+	for g in gates:
+		stacks.append(Rect2i(0, g.y, mid, 1))
+		stacks.append(Rect2i(mid + 1, g.y, size.x - mid - 1, 1))
+	for rows in [[door + 1, VAULT_BAY_B], [gate2 + 1, VAULT_BAY_A], [1, VAULT_DECK]]:
+		stacks.append(Rect2i(0, rows[0], 1, rows[1]))
+		stacks.append(Rect2i(size.x - 1, rows[0], 1, rows[1]))
+	for i in stacks.size():
+		var rect: Rect2i = stacks[i]
+		for x in range(rect.position.x, rect.end.x):
+			for z in range(rect.position.y, rect.end.y):
+				_put(Vector2i(x, z), Cell.BLOCK)
+		blocks.append({"rect": rect, "kind": "stack", "seed": hash("%d:stack:%d" % [ruins.seed, i])})
+	var end := center(Vector2i(mid, 0)) + Vector3(0, 0, -(CELL_M * 0.5 + PARAPET_T + 0.5))
+	vault["screen"] = {"at": end, "out": Vector3.BACK, "size": VAULT_SCREEN}
+	vault["console"] = {"at": center(Vector2i(mid, 1)) + Vector3(0, 0, -1.2), "yaw": 0.0}
+
+
+## The hall's guard posts (M4): cover of kind "post" in pairs either side of the aisle on every row of the bays and the
+## deck, kept off the points, their boxes in `boxes` with the rest of the cover's.
+func _vault_posts() -> void:
+	if vault.is_empty():
+		return
+	var mid := size.x / 2
+	var gates: Array = vault["gates"]
+	var deck: Rect2i = vault["deck"]
+	for z in range(1, size.y - 1):
+		var gate_row := false
+		for g in gates:
+			gate_row = gate_row or (g as Vector2i).y == z
+		if gate_row or z == deck.position.y:
+			continue
+		# A pair or none: a lone post would break the colonnade's order.
+		var clear := true
+		for side in [-1.0, 1.0]:
+			var at := center(Vector2i(mid, z)) + Vector3(side * VAULT_POST_OFF, 0, 0)
+			for name in points:
+				var q: Vector3 = points[name]
+				if Vector2(q.x - at.x, q.z - at.z).length() < VAULT_POST.x * 0.5 + 1.4:
+					clear = false
+		if not clear:
+			continue
+		for side in [-1.0, 1.0]:
+			var at := center(Vector2i(mid, z)) + Vector3(side * VAULT_POST_OFF, 0, 0)
+			cover.append({"kind": "post", "at": at, "yaw": 0.0, "size": VAULT_POST, "seed": hash("%d:post:%d:%d" % [ruins.seed, z, int(side)])})
+
+
+## The vault's points (M4): see the header.
+func _vault_points(taken: Array[Vector2i]) -> void:
+	var mid := size.x / 2
+	var gates: Array = vault["gates"]
+	var deck: Rect2i = vault["deck"]
+	var g1: Vector2i = gates[0]
+	var g2: Vector2i = gates[1]
+	var door: Vector2i = gates[2]
+	points["gate_1"] = center(g1)
+	points["gate_2"] = center(g2)
+	points["vault_door"] = center(door)
+	points["post_1"] = center(Vector2i(1, g1.y - 1))
+	points["post_2"] = center(Vector2i(size.x - 2, g1.y - 1))
+	points["post_3"] = center(Vector2i(1, deck.position.y + deck.size.y / 2))
+	points["post_4"] = center(Vector2i(size.x - 2, deck.position.y + deck.size.y / 2))
+	points["hunter_post"] = center(Vector2i(mid, g2.y - VAULT_BAY_B / 2 - 1))
+	points["hunter_post_2"] = center(Vector2i(mid, deck.position.y + deck.size.y - 2))
+	points["pickup_1"] = center(Vector2i(mid, g2.y + 1))
+	points["pickup_2"] = center(Vector2i(mid, door.y + 1))
+	points["pickup_3"] = center(Vector2i(mid - 1, g2.y - 2))
+	points["pickup_4"] = center(Vector2i(mid + 1, g2.y - 2))
+	points["vault"] = center(Vector2i(mid, deck.position.y + deck.size.y / 2 + 1)) + Vector3(0, STAND_Y, 0)
+	points["records"] = center(Vector2i(mid, deck.position.y)) + Vector3(0, STAND_Y, 0.9)
+	for name in ["gate_1", "gate_2", "vault_door", "post_1", "post_2", "post_3", "post_4", "hunter_post", "hunter_post_2", "pickup_1", "pickup_2", "pickup_3", "pickup_4", "vault", "records"]:
+		var c := cell_at(points[name])
+		if not taken.has(c):
+			taken.append(c)
+	for c in [Vector2i(mid, deck.position.y + 1), Vector2i(mid, 0), Vector2i(mid - 1, 0), Vector2i(mid + 1, 0)]:
+		if not taken.has(c):
+			taken.append(c)
 
 
 func _ruins() -> void:
@@ -376,6 +519,8 @@ func _edges() -> void:
 	for b in blocks:
 		var r: Rect2i = b["rect"]
 		var tall := BLOCK_H if b["kind"] != "fallen" else 4.2
+		if b["kind"] == "stack":
+			tall = VAULT_STACK_H  # a record stack (M4) stands twice a ruin's height
 		var lo := center(r.position) - Vector3(CELL_M, 0, CELL_M) * 0.5
 		var hi := center(r.end - Vector2i.ONE) + Vector3(CELL_M, 0, CELL_M) * 0.5
 		var sz := Vector3(hi.x - lo.x - BLOCK_INSET * 2.0, tall, hi.z - lo.z - BLOCK_INSET * 2.0)
@@ -424,6 +569,8 @@ func _points() -> void:
 		_shop_points(taken)
 	if not field.is_empty():
 		_field_points(taken)
+	if not vault.is_empty():
+		_vault_points(taken)
 	# Logs: tucked against a ruin or an edge, away from each other.
 	var nooks: Array[Vector2i] = []
 	for c in open:
@@ -930,6 +1077,14 @@ func _scenery() -> void:
 		giants.append({"at": Vector3(sin(a) * d, 0, cos(a) * d), "tall": _rng.randf_range(GIANT_TALL.x, GIANT_TALL.y) * clampf(d / 140.0, 0.6, 1.4), "foot": 260.0, "width": _rng.randf_range(9.0, 26.0), "depth": _rng.randf_range(7.0, 16.0), "yaw": _rng.randf_range(0.0, TAU), "lean": Vector2(_rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0)), "seed": _rng.randi(), "inside": false, "broken": _rng.randf() < 0.35})
 	_cables()
 	_signs()
+	if ruins.pristine:
+		# A healthy sector (M4): every tower straight and whole, every giant unbroken, every sign's letters lit.
+		for t in towers + giants:
+			t["lean"] = Vector2.ZERO
+			t["pristine"] = true
+			t["broken"] = false
+		for sg in signs:
+			sg["pristine"] = true
 
 
 ## True when nothing within `radius` of `at` (on x and z) is floor, a block or a hole.

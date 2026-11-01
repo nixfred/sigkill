@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "records_vault"
+title = "the records vault"
+seed = 418207
+register = "tron"
+cells = Vector2i(7, 20)
+blocks = 0
+holes = 0
+cover = 0
+towers = 30
+giants = 22
+cables = 0
+signs = 12
+folders = PackedStringArray("ACL", "SESSIONS", "AUDIT.DB", "POLICY", "OWNERS", "GROUPS", "SHADOW", "LOGINS", "KEYS", "QUOTA", "LEASES", "INDEX")
+words = PackedStringArray("ACCESS CONTROL", "RECORDS", "ROOT ONLY", "VERIFIED", "AUDIT", "POLICY", "DENY", "SESSION", "NO ENTRY", "READ ONLY")
+pristine = true
+vault = "exit"
+vault_lines = "OWNER ROGUE.D  = USER|OWNER ZOMBIE   = USER|OWNER RUNAWAY  = USER|SESSION USER   = HELD BY ########"

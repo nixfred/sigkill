@@ -74,7 +74,7 @@ const ABILITY_ACTIONS := {"code_rain_vision": "code_rain_vision", "sigstop": "si
 ## The cache meter (M3): its words, and the share past which it reads hot.
 const CACHE_WORDS := "cache"
 const CACHE_HOT := 0.75
-const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "any": "daemons"}
+const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "any": "daemons"}
 
 ## The runner whose mission this shows, the guide panel your AI's lines go to, and the player (for the metres).
 var runner: MissionRunner = null

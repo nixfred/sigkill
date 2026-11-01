@@ -39,6 +39,13 @@ extends Node3D
 ## host's word on it. Its darkness (the lights, the hum) and its cut of the guide's link are read here by
 ## scripts/ice/blackout.gd and the HUD. Its numbers: resources/black_ice.tres (BlackIceTuning).
 ##
+## A mission's own ICE (M4, scripts/missions/mission_stage.gd): staged, this director builds no piece of its own (no
+## arena wall, node or hunter, no hunter coming back, no Black ICE) and takes the mission's instead, each put where
+## the mission says (stage_wall(), stage_node(), stage_hunter()), and judges them as it judges its own: every hit and
+## its cap, the hunter's adaptation, the nodes' fields on the player, chmod 000's frost, the breakers' brute and
+## exploit. On while staged whatever the ICE setting says (the mission's ICE is its story, not the arena's difficulty),
+## never in a match (missions never run in one). The pieces go when the staging ends (set_staged(false)).
+##
 ## Everything is simulated: ICE reads nothing real and touches nothing real.
 
 const Dummy = preload("res://scripts/target_dummy.gd")
@@ -115,6 +122,8 @@ var mode: Mode = Mode.OFF
 var round_number := 1
 ## A mission without ICE runs (C35, scripts/missions/mission_runner.gd): alone, nothing of ICE stands while it is set.
 var stand_down := false
+## (M4) A mission's own ICE stands in place of the arena's: see the header.
+var staged := false
 
 var walls: Array[IceBarrier] = []
 var nodes: Array[IceNode] = []
@@ -207,6 +216,8 @@ func field_material() -> ShaderMaterial:
 func ice_on() -> bool:
 	if _online() and not session.is_hosting():
 		return session.host_practice != true and session.host_ice == true
+	if staged:
+		return true
 	if stand_down:
 		return false
 	var s := GameSettings.current()
@@ -262,6 +273,9 @@ func _forget() -> void:
 
 
 func _build_round() -> void:
+	if staged:
+		black_plan = -1.0
+		return  # the mission's pieces stand (M4): none of the arena's, no Black ICE
 	_clear_pieces()
 	black_plan = -1.0
 	if mode == Mode.OFF:
@@ -332,6 +346,84 @@ func _spawn_hunter(seed: int) -> void:
 	h.tint_to(adapt_color())
 	hunter = h
 	hunters_made += 1
+
+
+# --- A mission's own ICE (M4). ---
+
+## Staged or not: on, every piece standing goes (the arena's, or the last mission's) and none of the arena's is built
+## until it ends; off, the arena's pieces are built again if ICE is on.
+func set_staged(on: bool) -> void:
+	if staged == on:
+		return
+	_clear_pieces()
+	staged = on
+	if not on and mode == Mode.RUN:
+		_build_round()
+
+
+## A white ICE wall of the mission's at `at` (world space, its foot), turned `yaw`, `span` wide and tall, from `seed`;
+## `health` 0 for the tuning's. Null unless staged.
+func stage_wall(piece: String, at: Vector3, yaw: float, span: Vector2, seed: int, health: float = 0.0) -> IceBarrier:
+	if not staged:
+		return null
+	var w := IceBarrier.new()
+	w.name = piece
+	w.piece_name = piece
+	w.span = span
+	w.spawn_seed = seed
+	w.max_health = health if health > 0.0 else tuning.barrier_health
+	w.director = self
+	w.add_to_group(PIECES)
+	add_child(w)
+	w.global_position = at
+	w.rotation.y = yaw
+	walls.append(w)
+	return w
+
+
+## A white ICE node of the mission's, `kind` IceNode.JAM or IceNode.HUD, at `at`. Null unless staged.
+func stage_node(piece: String, kind: String, at: Vector3, seed: int, health: float = 0.0) -> IceNode:
+	if not staged:
+		return null
+	var n := IceNode.new()
+	n.name = piece
+	n.piece_name = piece
+	n.kind = kind if [IceNode.JAM, IceNode.HUD].has(kind) else IceNode.JAM
+	n.spawn_seed = seed
+	n.tuning = tuning
+	n.max_health = health if health > 0.0 else tuning.node_health
+	n.director = self
+	n.add_to_group(PIECES)
+	add_child(n)
+	n.global_position = at
+	nodes.append(n)
+	return n
+
+
+## A hunter of the mission's at `at`, facing `face`, from `seed`: one at a time (a standing one goes), never coming back
+## on its own. Null unless staged.
+func stage_hunter(piece: String, at: Vector3, face: Vector3, seed: int, health: float = 0.0) -> HunterIce:
+	if not staged:
+		return null
+	if hunter != null and is_instance_valid(hunter):
+		_drop_hunter()
+	var h := HunterIce.new()
+	h.name = piece
+	h.piece_name = piece
+	h.spawn_seed = seed
+	h.tuning = tuning
+	h.max_health = health if health > 0.0 else tuning.hunter_health
+	h.director = self
+	h.add_to_group(PIECES)
+	add_child(h)
+	h.global_position = at
+	var way := face - at
+	h.rotation.y = atan2(-way.x, -way.z)
+	h.broke.connect(_on_hunter_broke)
+	h.tint_to(adapt_color())
+	hunter = h
+	hunters_made += 1
+	return h
 
 
 func _drop_hunter() -> void:
@@ -405,17 +497,18 @@ func _physics_process(delta: float) -> void:
 		if piece != null and is_instance_valid(piece) and not piece.broken:
 			piece.tick_frost(delta)  # chmod 000's freeze meters (C29)
 	if mode == Mode.RUN:
-		_step_black(delta)
+		if not staged:
+			_step_black(delta)
 		for n in nodes:
 			n.step(delta, daemons, self)
 		if hunter != null and is_instance_valid(hunter):
 			hunter.brain.step(delta, daemons)
-			if hunter.broken:
+			if hunter.broken and not staged:
 				hunter_wait -= delta
 				if hunter_wait <= 0.0:
 					_spawn_hunter(_seed_for("hunter"))
-		elif round_number >= tuning.hunter_from_round:
-			_spawn_hunter(_seed_for("hunter"))
+		elif round_number >= tuning.hunter_from_round and not staged:
+			_spawn_hunter(_seed_for("hunter"))  # a mission's hunters are finite (M4): none of the director's own
 		return
 	for n in nodes:
 		n.follow(delta)

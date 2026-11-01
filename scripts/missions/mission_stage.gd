@@ -40,6 +40,13 @@ signal wave_began(id: String)
 signal wave_cleared(id: String)
 ## A dormant wave woke (M2).
 signal woke(id: String)
+## Mission 4's (M4): a wave of kind "wall", "node" or "hunter" is the mission's own ICE, each piece placed through the ICE
+## director (scripts/ice/ice_director.gd, staged by the runner) at its point as its wave runs, judged by the director as
+## its own and counted by the runner as a kill when it breaks; finite: none comes back. Its "pickup" props lay the
+## ICEbreakers' pickups (scripts/ice/breaker_director.gd, its spots the mission's) on their triggers; its "vault" prop
+## lights the district's records screen (RuinsWorld.light_vault()) on its trigger; its "stutter" prop makes the sector's
+## lights stutter once (Blackout.stutter()) `after` seconds past its trigger.
+##
 ## Its parent went down and init reaped `count` of its children still standing (M2).
 signal reaped(count: int)
 ## Its loop (M3): a pass made (the field rewritten, its cores forking); a core forked `child`; the cache past a mark (per
@@ -114,6 +121,10 @@ var _full := false
 var _core_forks := {}
 ## Its timed beats (M3): [seconds left, Callable], run even once it is stopped.
 var _timed: Array = []
+## Its pickups (M4): each prop's spot at the breakers' director (its index), and those due to be laid (their triggers
+## fired) and not yet laid.
+var _pickup_spot := {}
+var _pickups_due: Array = []
 
 
 ## Builds `d`'s set pieces here: its vents and its walls (its waves wait for their triggers).
@@ -140,6 +151,8 @@ func build(d: MissionDef) -> void:
 					to.y = 0.0
 					way = to.normalized() if to.length() > 0.1 else way
 				_queues[p["id"]] = {"at": head, "way": way, "gap": float(p.get("gap", 1.3))}
+			"pickup":
+				_pickup_spot[p["id"]] = _pickup_spot.size()
 			"ice_wall":
 				var wall := IceBarrier.new()
 				wall.name = "Ice_" + str(p["id"])
@@ -176,10 +189,15 @@ func fire(trigger: String) -> void:
 	if not _loop.is_empty() and str(_loop.get("runs", "")) == trigger:
 		_run_loop()
 	for p in def.props:
-		if ["hush", "prompt"].has(p.get("kind")) and str(p.get("on", "")) == trigger:
+		if ["hush", "prompt", "stutter"].has(p.get("kind")) and str(p.get("on", "")) == trigger:
 			_timed.append([float(p.get("after", 0.0)), _beat.bind(p)])
+		if p.get("kind") == "pickup" and str(p.get("on", "")) == trigger:
+			_pickups_due.append(p)
+			_lay_pickups()
 		if world == null or not is_instance_valid(world):
 			continue
+		if p.get("kind") == "vault" and str(p.get("lights", "")) == trigger:
+			world.light_vault()
 		if p.get("kind") == "shop" and str(p.get("dark", "")) == trigger:
 			world.shop_dark()
 		if p.get("kind") != "breach":
@@ -220,9 +238,35 @@ func wave_daemons(id: String) -> Array:
 	return _waves[id]["alive"].filter(func(d): return is_instance_valid(d)) if _waves.has(id) else []
 
 
-## Its daemons standing now (out of their vents or climbing out).
+## Its daemons standing now (out of their vents or climbing out), and (M4) its pieces of ICE standing.
 func standing() -> Array:
-	return made.filter(func(d): return is_instance_valid(d) and not d.is_queued_for_deletion() and (d.is_alive() or d.climbing()))
+	return made.filter(func(d): return is_instance_valid(d) and not d.is_queued_for_deletion() and (d.is_alive() or (d.has_method("climbing") and d.climbing())))
+
+
+## Its pieces of ICE made so far (M4), broken ones too while they last.
+func pieces() -> Array:
+	return made.filter(func(d): return is_instance_valid(d) and d is IcePiece)
+
+
+## Its pickups laid so far (M4), by prop id, and those still due.
+func pickups_due() -> int:
+	return _pickups_due.size()
+
+
+## The pickups due laid, those the breakers' director can take now (M4: deciding, the breakers handed over).
+func _lay_pickups() -> void:
+	if _pickups_due.is_empty():
+		return
+	var breakers := BreakerDirector.of(self)
+	if breakers == null:
+		return
+	var laid: Array = []
+	for p in _pickups_due:
+		var spot: int = _pickup_spot.get(p["id"], -1)
+		if spot >= 0 and breakers.lay_pickup_at(spot, Breakers.kind_of(str(p["breaker"]))) != null:
+			laid.append(p)
+	for p in laid:
+		_pickups_due.erase(p)
 
 
 ## Its parent's children standing now (M2): every daemon of the type it reaps, its own waves' or not.
@@ -247,6 +291,7 @@ func _start(id: String) -> void:
 func _physics_process(delta: float) -> void:
 	_step_timed(delta)
 	_step_loop(delta)
+	_lay_pickups()
 	for id in _order:
 		var wave: Dictionary = _waves[id]
 		var w: Dictionary = wave["def"]
@@ -277,7 +322,7 @@ func _physics_process(delta: float) -> void:
 func _alive(wave: Dictionary) -> int:
 	var n := 0
 	for d in wave["alive"]:
-		if is_instance_valid(d) and not d.is_queued_for_deletion() and (d.is_alive() or d.climbing()):
+		if is_instance_valid(d) and not d.is_queued_for_deletion() and (d.is_alive() or (d.has_method("climbing") and d.climbing())):
 			n += 1
 	return n
 
@@ -329,6 +374,8 @@ func _climb_out(id: String, off: Vector3 = Vector3.INF) -> Node3D:
 	var w: Dictionary = wave["def"]
 	var i: int = wave["next"]
 	wave["next"] = i + 1
+	if MissionDef.ICE_KINDS.has(w["kind"]):
+		return _place_ice(id, i, w, wave)
 	var from: Array = w.get("from", [])
 	var where := str(from[i % from.size()]) if not from.is_empty() else ""
 	var vent: RuinsVent = _vents.get(where)
@@ -388,6 +435,38 @@ func _climb_out(id: String, off: Vector3 = Vector3.INF) -> Node3D:
 		director.forget_brains()
 	spawned.emit(dummy)
 	return dummy
+
+
+## A piece of the mission's own ICE (M4): wave `id`'s `i`th, placed through the ICE director (staged by the runner) at
+## its point, from the mission's seed; the piece, or null (no director staged, or no point).
+func _place_ice(id: String, i: int, w: Dictionary, wave: Dictionary) -> Node3D:
+	var ice := IceDirector.of(self)
+	var from: Array = w.get("from", [])
+	if ice == null or not ice.staged or from.is_empty():
+		return null
+	var at := _floor(place.call(from[i % from.size()]))
+	var kind: String = w["kind"]
+	var seed := _seed(id, i, false)
+	var piece_name := "Mission_%s_%02d" % [id, i]
+	var health := float(w.get("health", 0.0))
+	var piece: Node3D = null
+	match kind:
+		"wall":
+			var span: Vector2 = w.get("span", MissionDef.ICE_SPAN)
+			piece = ice.stage_wall(piece_name, at, deg_to_rad(float(w.get("yaw", 0.0))), span, seed, health)
+		"node":
+			var kinds: Array = w.get("nodes", [])
+			piece = ice.stage_node(piece_name, str(kinds[i % kinds.size()]) if not kinds.is_empty() else IceNode.JAM, at, seed, health)
+		"hunter":
+			var face: Vector3 = _floor(place.call(w["face"])) if w.has("face") else (player.global_position if player != null and is_instance_valid(player) else at + Vector3.BACK)
+			piece = ice.stage_hunter(piece_name, at, face, seed, health)
+	if piece == null:
+		return null
+	piece.set_meta(&"wave", id)
+	wave["alive"].append(piece)
+	made.append(piece)
+	spawned.emit(piece)
+	return piece
 
 
 ## Whole and out of its vent: it hunts at once, unless its wave sleeps (M2) or it is a parent.
@@ -583,6 +662,10 @@ func _beat(p: Dictionary) -> void:
 			var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
 			if f != null and cam != null:
 				f.prompt(cam.global_position, -cam.global_transform.basis.z)
+		"stutter":
+			var blackout := Blackout.of(self)
+			if blackout != null:
+				blackout.stutter()
 
 
 func _step_timed(delta: float) -> void:

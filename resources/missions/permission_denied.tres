@@ -9,50 +9,283 @@ order = 4
 title = "permission denied"
 register = "tron"
 goal = "Break into the machine's own records and learn who owns the daemons."
-loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000")
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain")
 grants = PackedStringArray("chmod_000")
 abilities = PackedStringArray("breakers")
 objectives = [{
-"at": Vector3(0, 0.95, -14),
-"id": "sector",
-"kind": "reach",
-"label": "records",
-"radius": 2.5,
-"text": "Get into the records sector"
+"count": 1,
+"daemon": "wall",
+"hint": "Y loads a breaker, U runs it: brute, up close",
+"id": "rule1",
+"kind": "kill",
+"of": ["wall_1"],
+"text": "Break the first deny rule",
+"unlocks": ["breakers"]
 }, {
+"count": 2,
+"daemon": "node",
+"hint": "their domes jam your hand and scramble the HUD",
+"id": "enforce",
+"kind": "kill",
+"of": ["nodes_1"],
+"text": "Break the enforcement nodes"
+}, {
+"count": 1,
+"daemon": "wall",
+"hint": "brute's on the floor ahead; the cannon works",
+"id": "rule2",
+"kind": "kill",
+"of": ["wall_2"],
+"text": "Break the second deny rule"
+}, {
+"arms": ["chmod_000"],
+"count": 1,
+"daemon": "hunter",
+"hint": "Shift+1 chmod 000: freeze it, then hit it hard",
+"id": "hunter",
+"kind": "kill",
+"of": ["hunter_1"],
+"text": "Profile the hunter before it profiles you"
+}, {
+"at": "vault",
+"hint": "the last rule seals the door: brute it",
+"id": "vault",
+"kind": "reach",
+"label": "the records",
+"radius": 3.5,
+"text": "Get into the records"
+}, {
+"hint": "the hunter learns: switch weapons",
 "id": "hold",
 "kind": "survive",
-"seconds": 60.0,
-"text": "Hold out while the records load"
+"seconds": 40.0,
+"text": "Hold the vault while the records decrypt"
 }, {
+"hint": "at the console, under the screen",
 "id": "owner",
 "kind": "log",
 "log": "owner",
 "text": "Read the daemons' owner record"
 }]
 logs = [{
-"at": Vector3(4, 0.95, -16),
+"at": "records",
 "id": "owner",
 "name": "owners.db",
+"on": "done:hold",
 "text": "owner(rogue.d)  = user\nowner(zombie)   = user\nowner(runaway)  = user\nsession(user)   = held by pid [REDACTED: root only]"
+}, {
+"at": "log_1",
+"id": "policy",
+"name": "deny.rules",
+"text": "deny /var/records to any session not verified\nverified sessions: 1\nverified by: pid [REDACTED: root only]"
+}, {
+"at": "log_2",
+"id": "logins",
+"name": "audit.log",
+"text": "login: user ok\nlogin: user ok\nlogin: user ok (concurrent)\nconcurrent sessions: 2. policy: keep the older."
 }]
 lines = [{
-"on": "begin:sector",
+"on": "start",
+"text": "audit: user=? action=enter path=/var/records result=DENIED reason=\"no session\"",
+"who": "auditor"
+}, {
+"on": "start",
+"text": "Clean sector. Everything's lit, everything's locked. It's never had an intruder. It has one now.",
+"who": "ai"
+}, {
+"on": "begin:rule1",
+"pick": true,
+"text": "Four programs, one use each. Y loads, U runs.",
+"who": "ai"
+}, {
+"on": "begin:rule1",
+"text": "audit: deny rule 1 of 3 engaged. path=/var/records sealed.",
+"wait": 2.5,
+"who": "auditor"
+}, {
+"on": "done:rule1",
+"text": "audit: deny rule 1 breached by an unverified session. enforcement engaged.",
+"who": "auditor"
+}, {
+"on": "begin:enforce",
+"pick": true,
+"text": "Nodes: one jams, one scrambles.",
+"who": "ai"
+}, {
+"on": "done:enforce",
+"text": "audit: enforcement nodes lost. deny rule 2 of 3 engaged.",
+"who": "auditor"
+}, {
+"on": "begin:rule2",
 "text": "audit: user=? flagged as intruder. session for this user is held by another process.",
+"wait": 1.5,
+"who": "auditor"
+}, {
+"on": "begin:rule2",
+"text": "Held by another process. Something else holds your login, and it isn't us. Brute's on the floor ahead.",
+"wait": 4.0,
+"who": "ai"
+}, {
+"on": "begin:hunter",
+"text": "audit: hunter dispatched. signature logging on.",
+"who": "auditor"
+}, {
+"on": "begin:hunter",
+"text": "Hunter. It learns the weapon you lean on. chmod 000 freezes it: then everything, fast.",
+"wait": 1.2,
+"who": "ai"
+}, {
+"on": "begin:hunter",
+"pick": true,
+"text": "",
+"wait": 5.0,
+"who": "ai"
+}, {
+"on": "done:hunter",
+"text": "audit: hunter lost. deny rule 3 of 3 engaged. path=/var/records/owners.db root only.",
+"who": "auditor"
+}, {
+"on": "begin:vault",
+"text": "Last rule. The records are right behind it.",
+"wait": 2.0,
+"who": "ai"
+}, {
+"on": "begin:hold",
+"text": "audit: records accessed by an unverified session. second hunter dispatched. enforcement engaged.",
+"who": "auditor"
+}, {
+"on": "begin:hold",
+"text": "It's decrypting. Forty seconds. They'll throw what they have left: hold the deck.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "done:hold",
+"text": "Decrypted. It's on the console. Read it.",
+"who": "ai"
+}, {
+"on": "log:owner",
+"text": "audit: read path=/var/records/owners.db by user=? result=ALLOWED (cached credentials). pid: redacted, root only.",
 "who": "auditor"
 }, {
 "on": "log:owner",
 "text": "It's got your session. To the machine, it's the user. We're the break-in.",
+"wait": 2.8,
 "who": "ai"
 }, {
 "on": "complete",
 "text": "audit: intruder confirmed. escalating.",
+"wait": 4.0,
 "who": "auditor"
+}, {
+"on": "complete",
+"text": "The lights. Did you see the lights? ...Escalating. I know what comes after escalating. Move.",
+"wait": 5.8,
+"who": "ai"
+}, {
+"on": "fail",
+"text": "Denied. It's a records vault; it has all night. Again.",
+"who": "ai"
 }]
 transitions = []
+waves = [{
+"count": 1,
+"from": ["gate_1"],
+"health": 600.0,
+"id": "wall_1",
+"kind": "wall",
+"on": "start",
+"span": Vector2(3.4, 3.6)
+}, {
+"count": 2,
+"every": 0.1,
+"from": ["post_1", "post_2"],
+"health": 150.0,
+"id": "nodes_1",
+"kind": "node",
+"nodes": ["jam", "hud"],
+"on": "start"
+}, {
+"count": 1,
+"from": ["gate_2"],
+"health": 600.0,
+"id": "wall_2",
+"kind": "wall",
+"on": "start",
+"span": Vector2(3.4, 3.6)
+}, {
+"count": 1,
+"face": "gate_2",
+"from": ["hunter_post"],
+"health": 300.0,
+"id": "hunter_1",
+"kind": "hunter",
+"on": "begin:hunter"
+}, {
+"count": 1,
+"from": ["vault_door"],
+"health": 600.0,
+"id": "wall_3",
+"kind": "wall",
+"on": "start",
+"span": Vector2(3.4, 3.6)
+}, {
+"count": 1,
+"face": "vault_door",
+"from": ["hunter_post_2"],
+"health": 300.0,
+"id": "hunter_2",
+"kind": "hunter",
+"on": "begin:hold"
+}, {
+"count": 2,
+"every": 0.1,
+"from": ["post_3", "post_4"],
+"health": 150.0,
+"id": "nodes_2",
+"kind": "node",
+"nodes": ["jam", "hud"],
+"on": "begin:hold"
+}]
+props = [{
+"at": "pickup_1",
+"breaker": "brute",
+"id": "brute_a",
+"kind": "pickup",
+"on": "begin:rule1"
+}, {
+"at": "pickup_2",
+"breaker": "brute",
+"id": "brute_b",
+"kind": "pickup",
+"on": "begin:rule1"
+}, {
+"at": "pickup_3",
+"breaker": "exploit",
+"id": "exploit_a",
+"kind": "pickup",
+"on": "begin:hunter"
+}, {
+"at": "pickup_4",
+"breaker": "decoy",
+"id": "decoy_a",
+"kind": "pickup",
+"on": "begin:hunter"
+}, {
+"id": "records",
+"kind": "vault",
+"lights": "log:owner"
+}, {
+"after": 4.4,
+"id": "escalation",
+"kind": "stutter",
+"on": "complete"
+}]
+end_hold_s = 8.0
+restores = true
 ice = true
+ruins = "records_vault"
 fail_time_s = 0.0
 next = "sudo_bang"
-playable = false
+playable = true
 draft = false
 hidden = false

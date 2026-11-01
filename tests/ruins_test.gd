@@ -143,7 +143,7 @@ func _plan_checks() -> void:
 		for cable in a.cables:
 			low = minf(low, a.cable_low(cable))
 		_check("%s: no cable hangs lower over the floor than %.1f m (lowest %.1f)" % [s.id, RuinsLayout.CABLE_LOW_M, low], low >= RuinsLayout.CABLE_LOW_M)
-		_check("%s: ruins on the floor (%d blocks, %d holes into the void, %d cover), towers round it (%d), giants far out (%d), cables (%d), signs (%d)" % [s.id, a.blocks.size(), a.holes.size(), a.cover.size(), a.towers.size(), a.giants.size(), a.cables.size(), a.signs.size()], a.blocks.size() >= 3 and a.holes.size() >= 1 and a.cover.size() >= 6 and a.towers.size() >= 12 and a.giants.size() >= 8 and a.signs.size() >= 4)
+		_check("%s: ruins on the floor (%d blocks, %d holes into the void, %d cover), towers round it (%d), giants far out (%d), cables (%d), signs (%d)" % [s.id, a.blocks.size(), a.holes.size(), a.cover.size(), a.towers.size(), a.giants.size(), a.cables.size(), a.signs.size()], a.blocks.size() >= 3 and (a.holes.size() >= 1 or s.pristine) and a.cover.size() >= 6 and a.towers.size() >= 12 and a.giants.size() >= 8 and a.signs.size() >= 4)  # a pristine set (M4) has no hole: nothing of it is broken
 
 
 # --- The builds. ---

@@ -295,9 +295,10 @@ func _credit_kill(dummy: Node3D) -> void:
 			Progress.judged_feat(self, "shatters")
 
 
-## A mission's own daemon climbed out (C37): watched as the scene's own, and on the top table.
+## A mission's own daemon climbed out (C37): watched as the scene's own, and on the top table. A piece of its own ICE
+## (M4) is the ICE director's to judge (its feats land there): only the table.
 func _on_mission_daemon(dummy: Node3D) -> void:
-	if not dummy.is_connected("downed", _on_mission_downed):
+	if dummy.has_signal("downed") and not dummy.is_connected("downed", _on_mission_downed):
 		dummy.connect("downed", _on_mission_downed)
 	_hud.set_round_targets(get_tree().get_nodes_in_group("targets"))
 

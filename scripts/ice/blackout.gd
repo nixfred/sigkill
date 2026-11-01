@@ -10,6 +10,10 @@ extends Node
 ## the environment's ambient light, sky and fog light) and the hum drops out with it. Black ICE's own
 ## light is not the arena's and stays; so do the daemons', ICE's, the weapons' and the HUD.
 ##
+## A stutter (M4, docs/STORY.md mission 4's end beat: "the sector's lights stutter, once"): stutter() drops the lights
+## to Black ICE's low for a blink, lets them back, and drops them once more, shorter, the hum down with them; then
+## everything as it was. Black ICE itself is not here: it is coming, not yet.
+##
 ## Nothing here is made per frame, and nothing is touched while the level is unchanged: at level 1 every
 ## light is exactly as A4 set it. Visual and audio only; fiction only.
 
@@ -27,6 +31,11 @@ var ice: Node = null
 ## The arena's light level now (1 normal) and how far the hum is down (0 full, 1 silent).
 var level := 1.0
 var hum_down := 0.0
+
+## A stutter's beats (M4): dark, lit, dark, seconds each, and how far into them it is (-1 none).
+const STUTTER := [0.13, 0.09, 0.07]
+var _stutter_t := -1.0
+var _stutters := 0
 
 var _hum: AudioStreamPlayer
 var _env: Environment
@@ -80,9 +89,24 @@ func _find_lights() -> void:
 			light.set_meta(BASE, light.light_energy)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var dark: float = ice.black_darkness() if ice != null and is_instance_valid(ice) else 0.0
 	var low: float = ice.black_tuning.lights_low if ice != null and is_instance_valid(ice) and ice.black_tuning != null else 0.1
+	if _stutter_t >= 0.0:
+		_stutter_t += delta
+		var t := _stutter_t
+		var out := false
+		var done := true
+		for i in STUTTER.size():
+			if t < STUTTER[i]:
+				out = i % 2 == 0
+				done = false
+				break
+			t -= STUTTER[i]
+		if done:
+			_stutter_t = -1.0
+		elif out:
+			dark = 1.0
 	_apply(lerpf(1.0, low, clampf(dark, 0.0, 1.0)))
 	hum_down = clampf(dark, 0.0, 1.0)
 	_hum.volume_db = HUM_DB + Sfx.volume_db(1.0 - hum_down) if hum_down < 0.999 else Sfx.SILENT_DB
@@ -110,3 +134,29 @@ func _apply(next: float) -> void:
 ## True while the hum plays (it stops for nothing: Black ICE only turns it down).
 func humming() -> bool:
 	return _hum != null and _hum.playing
+
+
+## The lights stutter, once (M4): see the header. Nothing while one runs.
+func stutter() -> void:
+	if _stutter_t >= 0.0:
+		return
+	_stutter_t = 0.0
+	_stutters += 1
+
+
+## True while a stutter runs.
+func stuttering() -> bool:
+	return _stutter_t >= 0.0
+
+
+## How many stutters it has run (the tests').
+func stutters() -> int:
+	return _stutters
+
+
+## The arena's blackout beside `node`'s scene, or null.
+static func of(node: Node) -> Blackout:
+	var tree := node.get_tree() if node != null and node.is_inside_tree() else null
+	if tree == null or tree.current_scene == null:
+		return null
+	return tree.current_scene.get_node_or_null(NODE_NAME) as Blackout

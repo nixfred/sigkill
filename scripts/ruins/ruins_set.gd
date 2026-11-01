@@ -53,6 +53,18 @@ extends Resource
 @export var field := ""
 @export var field_cells := 5
 @export var field_code := ""
+## A healthy sector (M4): nothing broken, slipped, spilled, cracked or dying. Every slab whole, every rack tower straight with
+## every light alive, every parapet a clean rail, no cable, no cover of the broken kinds (cover, holes and cables must be 0):
+## the kit's pieces built at their cleanest, so a guarded sector reads as a different place from the ruins.
+@export var pristine := false
+## Its records vault (M4), "exit" or "" for none: the sector planned as a guarded hall (scripts/ruins/ruins_layout.gd): the
+## route a straight aisle down the middle through three gates (rows of record stacks either side of a one-cell way, where a
+## mission seals the way with ICE), bays between them lined with stacks and guard posts, and at the exit end the vault: a
+## clean deck lined with stacks, the records console at its far end and the records screen on the end wall, dark until a
+## mission lights it. vault_lines are what the screen shows then (lines in the sign font, a "|" between two; a run of "#" in
+## a line is drawn as a redaction bar, never letters). Needs cells at least 7 wide (an odd number: the aisle) and 20 long.
+@export var vault := ""
+@export var vault_lines := ""
 
 
 ## What is wrong with it; empty when it is good.
@@ -91,6 +103,25 @@ func problems() -> PackedStringArray:
 		out.append("%s: a field with no code on its walls" % id)
 	if field != "" and shop != "":
 		out.append("%s: a field and a shop (one set piece a district)" % id)
+	if vault != "" and vault != "exit":
+		out.append("%s: vault \"%s\" (only at the exit end)" % [id, vault])
+	if vault != "" and (shop != "" or field != "" or breach != ""):
+		out.append("%s: a vault with a shop, a field or a breach (one set piece a district)" % id)
+	if vault != "" and (cells.x < RuinsLayout.VAULT_WIDE_LEAST or cells.x % 2 == 0 or cells.y < RuinsLayout.vault_rows_least()):
+		out.append("%s: a vault needs cells at least %d wide (an odd number) and %d long" % [id, RuinsLayout.VAULT_WIDE_LEAST, RuinsLayout.vault_rows_least()])
+	if vault != "" and vault_lines.strip_edges() == "":
+		out.append("%s: a vault with no lines on its screen" % id)
+	if vault != "" and not pristine:
+		out.append("%s: a vault in a sector that is not pristine (STORY.md: clean, healthy, guarded)" % id)
+	if pristine and (holes != 0 or cover != 0 or cables != 0):
+		out.append("%s: pristine, but with holes, cover or cables (%d, %d, %d: all must be 0)" % [id, holes, cover, cables])
+	for line in vault_lines.split("|", false):
+		var bare := line.replace("#", "")
+		if line.length() > RuinsLayout.VAULT_LINE_LAST or (bare.strip_edges() != "" and not RuinsLayout.legible(bare.strip_edges().substr(0, RuinsLayout.NAME_LAST))):
+			out.append("%s: vault line \"%s\" is longer than %d or has letters the sign font has not" % [id, line, RuinsLayout.VAULT_LINE_LAST])
+		for word in RuinsLayout.NEVER_SHOWN:
+			if line.to_lower().contains(word):
+				out.append("%s: \"%s\" gives the story away (\"%s\")" % [id, line, word])
 	for line in field_code.split("|", false):
 		if line.length() > RuinsLayout.NAME_LAST:
 			out.append("%s: field code \"%s\" is longer than %d" % [id, line, RuinsLayout.NAME_LAST])

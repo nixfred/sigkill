@@ -33,6 +33,13 @@ extends RefCounted
 ## dark mass set back over a shopfront of two pillars and a fascia, its name lit along the fascia, a torn awning, its
 ## window a pane of dark glass with the terminal's last screen frozen on it and an OPEN sign in its corner, its door a
 ## roller shutter half down with light leaking out under it onto the street, a few dead windows up its front.
+## And a vault's (M4, a pristine set with a vault): the record stack (a clean slab of black glass twice a ruin's height,
+## rows of white record strips up both faces, every one alive, a frame of cyan up its edges, its name plate at eye level
+## and a beacon on top), the guard post (a slim pillar with a cyan ring and a white beacon, its light on the floor), the
+## records console (a clean pedestal terminal, its screen steady) and the records screen (a pane of dark glass in a frame
+## past the exit row's parapet, the records in the sign font, a run of "#" a solid redaction bar in the "mark" bucket; the
+## world gives it a material of its own, dark until a mission lights it). A pristine set's towers, giants, parapets and
+## signs are built whole: nothing slipped, spilled, broken, bent or dying.
 ## Fiction only: the names are the set's demo text.
 
 const SignFont = preload("res://scripts/arena/arena_font.gd")
@@ -87,8 +94,9 @@ static func rack_tower(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomN
 	var top: float = t["tall"]
 	var foot: float = -float(t["foot"])
 	var both: bool = t.get("inside", false)
+	var pristine: bool = t.get("pristine", false)
 	var mh := clampf(w * 0.92, 1.9, 3.6) * rng.randf_range(0.9, 1.12)
-	var health_base := rng.randf_range(0.6, 1.0)
+	var health_base := 1.0 if pristine else rng.randf_range(0.6, 1.0)
 	var from := maxf(foot, -DETAIL_DEPTH)
 	if from > foot + 0.5:
 		kit.pose = base
@@ -97,7 +105,7 @@ static func rack_tower(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomN
 		for k in int((from - foot) / 9.0):
 			paint_light(kit, rng.randf(), _health(rng, health_base * 0.7), Slot.LED, 2.0)
 			light_quad(kit, b["light"], Vector3(rng.randf_range(-w, w) * 0.35, from - 4.0 - k * 9.0, -d * 0.47 - 0.01), Vector2(0.12, 0.06), Vector3.FORWARD)
-	var broken := top > 6.0 and rng.randf() < 0.45
+	var broken := top > 6.0 and rng.randf() < 0.45 and not pristine
 	# Neon up a front corner of some (a dead megacorp's trim, still lit): from where to where, which colour.
 	var neon := []
 	if top > 8.0 and rng.randf() < (0.4 if not both else 0.28):
@@ -109,19 +117,19 @@ static func rack_tower(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomN
 	while y < top - 0.25:
 		var h := minf(mh, top - y)
 		var last := y + h >= top - 0.25
-		if rng.randf() < (0.07 if y < top * 0.6 else 0.2):
+		if rng.randf() < (0.07 if y < top * 0.6 else 0.2) and not pristine:
 			slip += Vector3(rng.randf_range(-0.24, 0.24), 0, rng.randf_range(-0.14, 0.14))
-		var turn := Basis.from_euler(Vector3(deg_to_rad(rng.randf_range(-1.2, 1.2)), deg_to_rad(rng.randf_range(-2.5, 2.5)), deg_to_rad(rng.randf_range(-1.2, 1.2))))
+		var turn := Basis.from_euler(Vector3(deg_to_rad(rng.randf_range(-1.2, 1.2)), deg_to_rad(rng.randf_range(-2.5, 2.5)), deg_to_rad(rng.randf_range(-1.2, 1.2)))) if not pristine else Basis.IDENTITY
 		kit.pose = base * Transform3D(turn, Vector3(slip.x, y, slip.z))
-		var damage := rng.randf()
-		_rack_module(kit, b, w, d, h, rng, health_base, both, last and broken, damage)
+		var damage := rng.randf() if not pristine else 0.0
+		_rack_module(kit, b, w, d, h, rng, health_base, both, last and broken, damage, pristine)
 		if not neon.is_empty():
 			var lo := maxf(y, neon[1])
 			var hi := minf(y + h, neon[2])
 			if hi > lo + 0.1:
 				paint_light(kit, neon[4], 1.0, neon[3], 2.4)
 				kit.box(b["light"], Vector3(neon[0] * (w * 0.5 + 0.03), (lo + hi) * 0.5 - y, -d * 0.5 - 0.03), Vector3(0.09, hi - lo, 0.06))
-		if damage > 0.82 and spill_left > 0 and y > -4.0:
+		if damage > 0.82 and spill_left > 0 and y > -4.0 and not pristine:
 			spill_left -= 1
 			_spill(kit, b, Vector3(rng.randf_range(-w, w) * 0.3, 0.05, -d * 0.5 - 0.05), rng.randf_range(1.5, minf(5.0, maxf(y + 0.5, 1.5))), rng)
 		y += h
@@ -151,8 +159,8 @@ static func rack_tower(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomN
 
 ## One rack module, `h` tall from the pose's origin: posts, plates, panels, blades and their LEDs. `jagged`: the
 ## break at a tower's top, its posts snapped off and no plate over it.
-static func _rack_module(kit: ShapeKit, b: Dictionary, w: float, d: float, h: float, rng: RandomNumberGenerator, health_base: float, both: bool, jagged: bool, damage: float) -> void:
-	var grime := rng.randf_range(0.1, 0.6)
+static func _rack_module(kit: ShapeKit, b: Dictionary, w: float, d: float, h: float, rng: RandomNumberGenerator, health_base: float, both: bool, jagged: bool, damage: float, pristine: bool = false) -> void:
+	var grime := rng.randf_range(0.1, 0.6) if not pristine else 0.0
 	paint_body(kit, grime, 1.0)
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
@@ -161,16 +169,16 @@ static func _rack_module(kit: ShapeKit, b: Dictionary, w: float, d: float, h: fl
 	kit.box(b["body"], Vector3(0, 0.05, 0), Vector3(w, 0.1, d))
 	paint_body(kit, grime + 0.2, 0.35)
 	for sx in [-1.0, 1.0]:
-		if rng.randf() < 0.65 - damage * 0.3:
+		if pristine or rng.randf() < 0.65 - damage * 0.3:
 			kit.box(b["body"], Vector3(sx * (w * 0.5 - 0.03), h * 0.5, 0), Vector3(0.05, h - 0.14, d - 0.2))
 	if jagged:
 		return
 	var blades := clampi(int(h / 0.42), 2, 7)
 	var pitch := (h - 0.16) / float(blades)
 	for i in blades:
-		if rng.randf() < 0.1 + damage * 0.28:
+		if not pristine and rng.randf() < 0.1 + damage * 0.28:
 			continue
-		var out := rng.randf_range(0.12, 0.6) if rng.randf() < 0.1 else 0.0
+		var out := rng.randf_range(0.12, 0.6) if rng.randf() < 0.1 and not pristine else 0.0
 		var by := 0.12 + pitch * (i + 0.5)
 		paint_body(kit, grime, 0.55)
 		kit.box(b["body"], Vector3(0, by, -out), Vector3(w - 0.3, pitch * 0.82, d - 0.24))
@@ -178,14 +186,14 @@ static func _rack_module(kit: ShapeKit, b: Dictionary, w: float, d: float, h: fl
 		for faces in ([-1.0, 1.0] if both else [-1.0]):
 			var fz: float = faces * ((d - 0.24) * 0.5 + (out if faces < 0.0 else 0.0)) + faces * 0.004
 			for k in leds:
-				if rng.randf() < 0.18:
+				if not pristine and rng.randf() < 0.18:
 					continue
 				var lx := -(w - 0.6) * 0.5 + (w - 0.6) * (k + 0.5) / leds
-				paint_light(kit, rng.randf(), _health(rng, health_base - damage * 0.25), Slot.LED, rng.randf_range(2.2, 4.6))
+				paint_light(kit, rng.randf(), 1.0 if pristine else _health(rng, health_base - damage * 0.25), Slot.LED, rng.randf_range(2.2, 4.6))
 				light_quad(kit, b["light"], Vector3(lx, by + pitch * rng.randf_range(-0.18, 0.18), fz), Vector2(0.07, 0.035), Vector3(0, 0, faces))
-	if rng.randf() < 0.45:
+	if rng.randf() < 0.45 or pristine:
 		var sx := -1.0 if rng.randf() < 0.5 else 1.0
-		paint_light(kit, rng.randf(), _health(rng, health_base), Slot.STRIP, 1.8)
+		paint_light(kit, rng.randf(), 1.0 if pristine else _health(rng, health_base), Slot.STRIP, 1.8)
 		kit.box(b["light"], Vector3(sx * (w * 0.5 - 0.15), h * 0.5, -d * 0.5 - 0.01), Vector3(0.035, h * 0.86, 0.012))
 
 
@@ -237,7 +245,7 @@ static func giant(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomNumber
 	kit.pose = base
 	paint_body(kit, 0.9, 0.4)
 	kit.box(b["body"], Vector3(0, (-float(t["foot"]) + y) * 0.5, 0), Vector3(w, float(t["foot"]) + y, d))
-	var health_base := rng.randf_range(0.55, 0.95)
+	var health_base := 1.0 if t.get("pristine", false) else rng.randf_range(0.55, 0.95)
 	# Neon up its edges: [side, from, to, slot], drawn module by module so it keeps to each setback.
 	var neon := []
 	for k in rng.randi_range(0, 2):
@@ -263,10 +271,10 @@ static func giant(kit: ShapeKit, b: Dictionary, t: Dictionary, rng: RandomNumber
 					var seg := rng.randf_range(1.2, 5.0)
 					var gap := rng.randf_range(0.3, 2.4)
 					var len := minf(seg, span * 0.5 - 0.6 - x)
-					if len > 0.4 and rng.randf() < 0.75:
+					if len > 0.4 and (rng.randf() < 0.75 or t.get("pristine", false)):
 						var mid := x + len * 0.5
 						var at := Vector3(mid, ry, out.z * depth) if face < 2 else Vector3(out.x * depth, ry, mid)
-						paint_light(kit, rng.randf(), _health(rng, health_base), Slot.STRIP, rng.randf_range(1.6, 3.4))
+						paint_light(kit, rng.randf(), 1.0 if t.get("pristine", false) else _health(rng, health_base), Slot.STRIP, rng.randf_range(1.6, 3.4))
 						light_quad(kit, b["light"], at, Vector2(len, 0.5), out)
 					x += seg + gap
 		for n in neon:
@@ -349,13 +357,13 @@ static func monolith(kit: ShapeKit, b: Dictionary, lo: Vector3, hi: Vector3, nam
 
 ## `text` in the sign font, its middle at `at` on a face looking along `out` (FORWARD or BACK), at most `fit` wide with
 ## pixels at most `px`: half legible, a share of its letters stuttering or gone.
-static func _name_on(kit: ShapeKit, b: Dictionary, text: String, at: Vector3, fit: float, px: float, slot: int, out: Vector3, rng: RandomNumberGenerator) -> void:
+static func _name_on(kit: ShapeKit, b: Dictionary, text: String, at: Vector3, fit: float, px: float, slot: int, out: Vector3, rng: RandomNumberGenerator, steady: bool = false) -> void:
 	var pw := minf(px, fit / maxf(float(SignFont.width(text)), 1.0))
 	var tw := SignFont.width(text) * pw
 	var letters := []
 	for i in text.length():
 		var roll := rng.randf()
-		letters.append(0.0 if roll < 0.14 else (rng.randf_range(0.3, 0.7) if roll < 0.32 else 1.0))
+		letters.append(1.0 if steady else (0.0 if roll < 0.14 else (rng.randf_range(0.3, 0.7) if roll < 0.32 else 1.0)))
 	# A face looking down -z is read from -z, where +x is on the reader's left: its text runs toward -x.
 	var flip := 1.0 if out.z > 0.0 else -1.0
 	for run in SignFont.runs(text):
@@ -461,6 +469,44 @@ static func cover(kit: ShapeKit, b: Dictionary, p: Dictionary, rng: RandomNumber
 				_tube(kit, b["body"], from, to, 0.02, 4)
 				paint_light(kit, rng.randf(), 0.55, Slot.HOT, 2.0)
 				kit.box(b["light"], to, Vector3.ONE * 0.035)
+		"post":
+			# A guard post (M4): a slim clean pillar on a plinth, a ring of cyan near its top, a white beacon on it, its
+			# light on the floor round it.
+			kit.pose = base
+			paint_body(kit, 0.0, 1.0, Mat.METAL)
+			kit.box(b["body"], Vector3(0, sz.y * 0.5, 0), Vector3(sz.x, sz.y, sz.z))
+			kit.frustum(b["body"], Vector3.ZERO, Vector2(sz.x * 1.9, sz.z * 1.9), Vector2(sz.x * 1.15, sz.z * 1.15), 0.16)
+			paint_light(kit, 0.0, 1.0, Slot.STRIP, 1.8)
+			kit.box(b["light"], Vector3(0, sz.y * 0.78, 0), Vector3(sz.x + 0.05, 0.05, sz.z + 0.05))
+			for face in 4:
+				var out: Vector3 = [Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT][face]
+				paint_light(kit, 0.25, 1.0, Slot.STRIP, 1.2)
+				light_quad(kit, b["light"], out * (sz.x * 0.5 + 0.006) + Vector3(0, sz.y * 0.42, 0), Vector2(0.04, sz.y * 0.6), out)
+			paint_light(kit, 0.35, 1.0, Slot.BEACON, 4.5)
+			kit.box(b["light"], Vector3(0, sz.y + 0.2, 0), Vector3(0.28, 0.28, 0.28))
+			paint_light(kit, 0.35, 1.0, Slot.BEACON, 0.6)
+			light_quad(kit, b["light"], Vector3(0, 0.012, 0), Vector2(sz.x * 3.2, sz.z * 3.2), Vector3.UP)
+		"console":
+			# The records console (M4): a clean pedestal terminal, its screen slanted toward the reader, steady lines on it.
+			kit.pose = base
+			paint_body(kit, 0.0, 1.0)
+			kit.box(b["body"], Vector3(0, 0.55, 0.05), Vector3(sz.x * 0.6, 1.1, sz.z * 0.6))
+			kit.frustum(b["body"], Vector3(0, 0.0, 0.05), Vector2(sz.x, sz.z), Vector2(sz.x * 0.62, sz.z * 0.62), 0.14)
+			kit.box(b["body"], Vector3(0, 1.12, -0.1), Vector3(sz.x * 0.9, 0.06, 0.4), Vector3(12, 0, 0))
+			kit.pose = base * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-22.0)), Vector3(0, 1.32, 0.1))
+			paint_body(kit, 0.0, 1.0)
+			kit.box(b["body"], Vector3(0, 0, 0.05), Vector3(sz.x, 0.66, 0.1))
+			paint_body(kit, 0.0, 0.0, Mat.GLASS)
+			kit.box(b["body"], Vector3(0, 0, -0.005), Vector3(sz.x * 0.9, 0.56, 0.01))
+			var lines := 7
+			for l in lines:
+				var len := (0.35 + 0.55 * fposmod(float(l) * 0.618, 1.0)) * sz.x * 0.8
+				paint_light(kit, float(l) * 0.07, 1.0, Slot.SCREEN, 2.4)
+				light_quad(kit, b["light"], Vector3(-sz.x * 0.4 + len * 0.5, 0.22 - l * 0.068, -0.012), Vector2(len, 0.024), Vector3.FORWARD)
+			paint_light(kit, 0.9, 1.0, Slot.BEACON, 4.0)
+			light_quad(kit, b["light"], Vector3(-sz.x * 0.4 + 0.02, 0.22 - lines * 0.068, -0.012), Vector2(0.035, 0.045), Vector3.FORWARD)
+			paint_light(kit, 0.0, 1.0, Slot.STRIP, 1.8)
+			kit.box(b["light"], Vector3(0, -0.36, -0.03), Vector3(sz.x * 0.96, 0.03, 0.02))
 		"shard":
 			kit.pose = base
 			paint_body(kit, 0.2, 0.9, Mat.STONE)
@@ -478,18 +524,28 @@ static func cover(kit: ShapeKit, b: Dictionary, p: Dictionary, rng: RandomNumber
 static func edge(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, rng: RandomNumberGenerator) -> void:
 	var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 	var out := Vector3(side.x, 0, side.y)
-	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng)
+	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng, layout.ruins.pristine)
 
 
 ## A parapet (or an overlook) a cell long, its middle on the floor's edge at `line`, facing `out` (C37: anywhere, the
-## pocket's own; edge() puts one on a plan's edge).
-static func edge_at(kit: ShapeKit, b: Dictionary, line: Vector3, out: Vector3, over_hole: bool, overlook: bool, rng: RandomNumberGenerator) -> void:
+## pocket's own; edge() puts one on a plan's edge). `pristine` (M4): one clean wall the cell long, a steady strip along its
+## foot and a rail of light along its top, nothing hanging off it.
+static func edge_at(kit: ShapeKit, b: Dictionary, line: Vector3, out: Vector3, over_hole: bool, overlook: bool, rng: RandomNumberGenerator, pristine: bool = false) -> void:
 	var e := {"hole": over_hole, "overlook": overlook}
 	var along := Vector3(out.z, 0, -out.x)  # right-handed with up and out: never a mirror, so faces keep their winding
 	var base := Transform3D(Basis(along, Vector3.UP, out), line)
 	var half := RuinsLayout.CELL_M * 0.5 + 0.1
 	var t := RuinsLayout.PARAPET_T
 	kit.pose = base
+	if pristine:
+		paint_body(kit, 0.0, 1.0)
+		kit.box(b["body"], Vector3(0, RuinsLayout.PARAPET_H * 0.5, t * 0.5), Vector3(half * 2.0, RuinsLayout.PARAPET_H, t * 0.9))
+		kit.box(b["body"], Vector3(0, RuinsLayout.PARAPET_H + 0.04, t * 0.5), Vector3(half * 2.0, 0.08, t * 1.1))
+		paint_light(kit, 0.0, 1.0, Slot.STRIP, 1.6)
+		kit.box(b["light"], Vector3(0, 0.12, -t * 0.45 - 0.01), Vector3(half * 2.0, 0.03, 0.012))
+		paint_light(kit, 0.5, 1.0, Slot.BEACON, 1.2)
+		kit.box(b["light"], Vector3(0, RuinsLayout.PARAPET_H - 0.05, -t * 0.45 - 0.01), Vector3(half * 2.0, 0.025, 0.012))
+		return
 	if e["overlook"]:
 		paint_body(kit, 0.4, 0.9)
 		kit.box(b["body"], Vector3(0, 0.09, t * 0.5), Vector3(half * 2.0, 0.18, t * 0.7))
@@ -720,16 +776,17 @@ static func sign(kit: ShapeKit, b: Dictionary, t: Dictionary, s: Dictionary, rng
 	else:
 		px = minf(px, 14.0 / maxf(float(SignFont.width(text)), 1.0))
 		size = Vector2(SignFont.width(text) * px + px * 3.0, (SignFont.ROWS + 3) * px)
-	var health := 1.0 if rng.randf() < 0.75 else rng.randf_range(0.4, 0.8)
+	var pristine: bool = s.get("pristine", false)
+	var health := 1.0 if pristine or rng.randf() < 0.75 else rng.randf_range(0.4, 0.8)
 	kit.pose = base
-	paint_body(kit, 0.5, 0.5)
+	paint_body(kit, 0.0 if pristine else 0.5, 1.0 if pristine else 0.5)
 	kit.box(b["body"], Vector3.ZERO, Vector3(size.x, size.y, 0.18))
 	for sx in [-1.0, 1.0]:
 		kit.box(b["body"], Vector3(sx * size.x * 0.35, 0, stand * 0.5), Vector3(0.12, 0.12, stand))
 	paint_light(kit, rng.randf(), health, slot, 2.2)
 	for edge in [[Vector3(0, size.y * 0.5, -0.1), Vector3(size.x, 0.05, 0.05)], [Vector3(0, -size.y * 0.5, -0.1), Vector3(size.x, 0.05, 0.05)], [Vector3(size.x * 0.5, 0, -0.1), Vector3(0.05, size.y, 0.05)], [Vector3(-size.x * 0.5, 0, -0.1), Vector3(0.05, size.y, 0.05)]]:
 		kit.box(b["light"], edge[0], edge[1])
-	var dead_letter := rng.randi_range(0, text.length() - 1) if rng.randf() < 0.4 else -1
+	var dead_letter := rng.randi_range(0, text.length() - 1) if rng.randf() < 0.4 and not pristine else -1
 	# The board looks down -z, read from -z, where +x is on the reader's left: its letters run toward -x.
 	var flip := -1.0
 	if upright:
@@ -749,6 +806,104 @@ static func sign(kit: ShapeKit, b: Dictionary, t: Dictionary, s: Dictionary, rng
 			var x: float = (-tw * 0.5 + (float(run[0]) + float(run[2]) * 0.5) * px) * flip
 			kit.box(b["light"], Vector3(x, (SignFont.ROWS * 0.5 - float(run[1]) - 0.5) * px, -0.1), Vector3(float(run[2]) * px, px * 0.88, 0.03))
 	return base * Vector3(0, 0, -2.5)
+
+
+## A record stack (M4): a clean slab of black glass standing between `lo` and `hi` (a block's floor corners), `tall`
+## metres, rows of white record strips up both long faces, every one alive and steady, a frame of cyan light up its
+## edges and along its cap, its name plate at eye level on both faces, and a white beacon on top.
+static func stack(kit: ShapeKit, b: Dictionary, lo: Vector3, hi: Vector3, name: String, tall: float, rng: RandomNumberGenerator) -> void:
+	var across_x := (hi.x - lo.x) >= (hi.z - lo.z)
+	var span := maxf(hi.x - lo.x, hi.z - lo.z) - 0.2
+	var thick := minf(hi.x - lo.x, hi.z - lo.z) - 0.2
+	var mid := (lo + hi) * 0.5
+	kit.pose = Transform3D(Basis(Vector3.UP, 0.0 if across_x else PI * 0.5), mid)
+	paint_body(kit, 0.0, 1.0, Mat.GLASS)
+	kit.box(b["body"], Vector3(0, tall * 0.5, 0), Vector3(span, tall, thick))
+	paint_body(kit, 0.0, 1.0, Mat.METAL)
+	kit.box(b["body"], Vector3(0, 0.15, 0), Vector3(span + 0.3, 0.3, thick + 0.3))
+	kit.box(b["body"], Vector3(0, tall + 0.12, 0), Vector3(span + 0.3, 0.24, thick + 0.3))
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			kit.box(b["body"], Vector3(sx * (span * 0.5 + 0.04), tall * 0.5, sz * (thick * 0.5 + 0.04)), Vector3(0.1, tall, 0.1))
+	# The record strips: a row every 0.55 m up each long face, split into drawers, a status LED at each drawer's end.
+	var rows := int((tall - 1.4) / 0.55)
+	var drawers := maxi(int(span / 1.4), 1)
+	var w := (span - 0.5) / drawers - 0.14
+	for face in [-1.0, 1.0]:
+		var z: float = face * (thick * 0.5 + 0.012)
+		for r in rows:
+			var y := 0.95 + r * 0.55
+			for k in drawers:
+				var x := -span * 0.5 + 0.25 + (span - 0.5) * (k + 0.5) / drawers
+				paint_light(kit, float(r) * 0.03 + float(k) * 0.17, 1.0, Slot.BEACON, 2.0)
+				light_quad(kit, b["light"], Vector3(x, y, z), Vector2(w, 0.065), Vector3(0, 0, face))
+				paint_light(kit, rng.randf(), 1.0, Slot.LED, 3.2)
+				light_quad(kit, b["light"], Vector3(x + w * 0.5 + 0.04, y, z), Vector2(0.04, 0.04), Vector3(0, 0, face))
+	# The frame of cyan up its edges and along its cap; the name plate on both faces; the beacon.
+	paint_light(kit, 0.0, 1.0, Slot.STRIP, 1.6)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			kit.box(b["light"], Vector3(sx * (span * 0.5 + 0.04), tall * 0.5, sz * (thick * 0.5 + 0.04)), Vector3(0.05, tall - 0.3, 0.05))
+	for face in [-1.0, 1.0]:
+		kit.box(b["light"], Vector3(0, tall - 0.02, face * (thick * 0.5 + 0.03)), Vector3(span, 0.035, 0.03))
+		_name_on(kit, b, name.to_upper(), Vector3(0, 2.55, face * (thick * 0.5 + 0.014)), minf(span - 0.8, 5.0), 0.16, Slot.SIGN_A, Vector3(0, 0, face), rng, true)
+	paint_light(kit, 0.2, 1.0, Slot.HOT, 4.0)
+	kit.box(b["light"], Vector3(0, tall + 0.42, 0), Vector3(0.32, 0.32, 0.32))
+
+
+## The records screen (M4): `s` the plan's screen (RuinsLayout.vault["screen"]: at, out, size), a pane of dark glass in a
+## clean frame, and on it `lines` (a "|" between two) in the sign font, left aligned from its top; a run of "#" in a line
+## is drawn as a solid bar into `b["mark"]` (the redaction: the world paints that bucket red), never as letters. Built into
+## its own kit (the world gives its light and its mark materials of their own, dark until a mission lights them). Returns
+## where its light falls (in front of it, at a lamp's height).
+static func records_screen(kit: ShapeKit, b: Dictionary, s: Dictionary, lines: String, rng: RandomNumberGenerator) -> Vector3:
+	var size: Vector2 = s["size"]
+	var foot := 1.1
+	# Its own frame: -z toward the reader (the pose looks along `out`, so -z is `out`), +x on the reader's left.
+	kit.pose = Transform3D(Basis.looking_at(s["out"], Vector3.UP), s["at"])
+	paint_body(kit, 0.0, 1.0, Mat.METAL)
+	for sx in [-1.0, 1.0]:
+		kit.box(b["body"], Vector3(sx * (size.x * 0.5 + 0.35), (foot + size.y + 0.6) * 0.5, 0.1), Vector3(0.5, foot + size.y + 0.6, 0.5))
+	kit.box(b["body"], Vector3(0, foot + size.y + 0.42, 0.1), Vector3(size.x + 1.2, 0.36, 0.5))
+	kit.box(b["body"], Vector3(0, foot * 0.5, 0.1), Vector3(size.x + 1.2, foot, 0.5))
+	paint_body(kit, 0.0, 0.2, Mat.GLASS)
+	kit.box(b["body"], Vector3(0, foot + size.y * 0.5, -0.1), Vector3(size.x, size.y, 0.08))
+	paint_light(kit, 0.0, 1.0, Slot.STRIP, 1.8)
+	for edge in [[Vector3(0, foot + size.y + 0.03, -0.14), Vector3(size.x + 0.1, 0.04, 0.03)], [Vector3(0, foot - 0.03, -0.14), Vector3(size.x + 0.1, 0.04, 0.03)]]:
+		kit.box(b["light"], edge[0], edge[1])
+	for sx in [-1.0, 1.0]:
+		kit.box(b["light"], Vector3(sx * (size.x * 0.5 + 0.03), foot + size.y * 0.5, -0.14), Vector3(0.04, size.y + 0.1, 0.03))
+	paint_light(kit, 0.4, 1.0, Slot.BEACON, 3.0)
+	kit.box(b["light"], Vector3(0, foot + size.y + 0.72, -0.2), Vector3(0.34, 0.2, 0.2))
+	# The lines: a pixel sized so the longest fits with a margin, from the top down, each read as the storefront's are.
+	var rows := lines.split("|", false)
+	var longest := 1
+	for line in rows:
+		longest = maxi(longest, SignFont.width(line.strip_edges().to_upper()))
+	var px := minf(0.19, (size.x - 1.4) / float(longest))
+	var left := size.x * 0.5 - 0.7
+	for i in rows.size():
+		var line: String = rows[i].strip_edges().to_upper()
+		var y := foot + size.y - 0.9 - float(i) * SignFont.LINE * px * 1.35
+		var x := left
+		var k := 0
+		while k < line.length():
+			if line[k] == "#":
+				var run := 0
+				while k + run < line.length() and line[k + run] == "#":
+					run += 1
+				var bw := float(run * SignFont.ADVANCE - 1) * px
+				kit.paint = Color(1, 1, 1, 1)
+				kit.box(b["mark"], Vector3(x - bw * 0.5, y, -0.16), Vector3(bw, SignFont.ROWS * px, 0.03))
+				x -= float(run * SignFont.ADVANCE) * px
+				k += run
+				continue
+			var ch: String = line[k]
+			if ch != " ":
+				_letters(kit, b, ch, Vector3(x - SignFont.COLS * 0.5 * px, y, -0.15), px, Slot.SCREEN, 2.6, -1)
+			x -= float(SignFont.ADVANCE) * px
+			k += 1
+	return kit.pose * Vector3(0, foot + 1.8, -2.4)
 
 
 ## The storefront (M2): a closed terminal as a dead shop, `s` the plan's shop (scripts/ruins/ruins_layout.gd), built into

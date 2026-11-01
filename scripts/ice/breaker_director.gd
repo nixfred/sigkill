@@ -25,6 +25,12 @@ extends Node3D
 ## pickups, U and Y do nothing). The ICE setting does not turn them off: with ICE off they still work on
 ## the daemons (exploit's seams, cloak, the decoy's pull, the brute's charge).
 ##
+## A mission's own (M4, scripts/missions/mission_stage.gd): staged, the breakers are on whatever practice says (the
+## mission's ICE is its story), the pickups stand where the mission puts them (set_staged() with its spots, then
+## lay_pickup_at()) and none of this director's own are laid; the counts are a round's fresh ones the moment a mission
+## hands the breakers over (refresh(): the gate lifted, the mode decided now, not next step). The arena's spots come back
+## when the staging ends.
+##
 ## Everything is simulated: a breaker reads nothing real and touches nothing real.
 
 const Kinds = preload("res://scripts/ice/breakers.gd")
@@ -70,6 +76,8 @@ var spots: Array = SPOTS
 ## A mission that has not handed the ICEbreakers over (C37, scripts/missions/mission_runner.gd): none carried, no
 ## pickups laid, the keys doing nothing here, as in practice.
 var locked := false
+## (M4) A mission's own: see the header.
+var staged := false
 ## A BreakerTuning; null for resources/breakers.tres. Set before the node enters the tree.
 var tuning: BreakerTuning
 ## The daemons' director (who the intruders are, where, alive, sight), ICE's director, the local player,
@@ -181,6 +189,8 @@ func _ready() -> void:
 func breakers_on() -> bool:
 	if locked:
 		return false
+	if staged:
+		return true
 	if _online() and not session.is_hosting():
 		return session.host_practice != true
 	return GameSettings.current().value("gameplay", "practice") != true
@@ -627,8 +637,8 @@ func _step_pickups(delta: float) -> void:
 	_pickup_wait -= delta
 	if _pickup_wait <= 0.0:
 		_pickup_wait += tuning.pickup_every_s
-		if live < tuning.pickups_live:
-			_lay_pickup()
+		if live < tuning.pickups_live and not staged:
+			_lay_pickup()  # a mission lays its own (M4)
 	# Whoever walks over one takes it, unless that kind is at their cap.
 	for spot in spots.size():
 		var p: BreakerPickup = pickups[spot]
@@ -702,7 +712,29 @@ func pickups_out() -> Dictionary:
 	return out
 
 
-## A test or a still's: a pickup of `kind` at spot `spot` now (deciding).
+## A mission's own (M4): staged or not; its spots (world space) in place of the arena's while it is, the arena's back
+## after.
+func set_staged(on: bool, world_spots: Array = []) -> void:
+	staged = on
+	for spot in spots.size():
+		_drop_pickup(spot, false)
+	spots = SPOTS.duplicate()
+	if on:
+		spots = []
+		for p in world_spots:
+			spots.append(_to_arena(p))
+	pickups.clear()
+	pickups.resize(spots.size())
+	_mode_now()
+
+
+## Its mode decided now (M4: a mission lifting the gate wants the breakers carried this frame, so the beat's pickup
+## and your AI's pick find them).
+func refresh() -> void:
+	_mode_now()
+
+
+## A test or a still's, or a mission's (M4): a pickup of `kind` at spot `spot` now (deciding).
 func lay_pickup_at(spot: int, kind: int) -> BreakerPickup:
 	if mode != Mode.RUN or spot < 0 or spot >= spots.size() or not Kinds.valid(kind):
 		return null
