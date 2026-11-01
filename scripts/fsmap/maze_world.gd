@@ -199,8 +199,9 @@ func _build_beacon() -> void:
 	_beacon_label.name = "WayOutLabel"
 	_beacon_label.text = "cd ..\nTHE WAY OUT"
 	_beacon_label.font = Palette.mono_font()
-	_beacon_label.font_size = 96
-	_beacon_label.pixel_size = 0.03
+	_beacon_label.font_size = 64
+	_beacon_label.pixel_size = 0.0007
+	_beacon_label.fixed_size = true  # the same size on screen from anywhere: a way out, not a wall of text
 	_beacon_label.outline_size = 16
 	_beacon_label.outline_modulate = Color(0, 0, 0, 0.9)
 	_beacon_label.modulate = Color(0.85, 1.0, 1.0) * 1.8

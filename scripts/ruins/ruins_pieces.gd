@@ -826,16 +826,26 @@ static func door_island(kit: ShapeKit, b: Dictionary, d: Dictionary, rng: Random
 	var thick := lerpf(0.7, 1.6, share)
 	kit.prism(b["body"], Vector3(0, -thick * 0.5, 0), r, thick, 8, Vector3(-90.0, 0, 0), r * 0.92, 22.5)
 	kit.prism(b["body"], Vector3(0, -thick - r * 0.9, 0), r * 0.8, r * 1.8, 8, Vector3(-90.0, 0, 0), 0.25, 22.5)
-	paint_light(kit, rng.randf(), 1.0, slot, 3.0)
-	kit.tube(b["light"], Vector3(0, 0.02, 0), r - 0.18, r - 0.06, 0.04, 8, Vector3(90.0, 0, 0), 22.5)
+	paint_light(kit, rng.randf(), 1.0, slot, 4.2)
+	kit.tube(b["light"], Vector3(0, 0.03, 0), r - 0.3, r - 0.06, 0.06, 8, Vector3(90.0, 0, 0), 22.5)
 	kit.tube(b["light"], Vector3(0, -thick - 0.05, 0), r * 0.84, r * 0.9, 0.06, 8, Vector3(90.0, 0, 0), 22.5)
+	# Its top a lit grid, the floor of the room beyond seen from this one.
+	paint_light(kit, rng.randf(), 1.0, slot, 2.2)
+	var step := lerpf(1.2, 2.2, share)
+	var lines := int(r * 2.0 / step)
+	for k in range(1, lines):
+		var off := -r + k * step
+		var half := sqrt(maxf(r * r * 0.82 - off * off, 0.0))
+		if half > 0.3:
+			kit.box(b["light"], Vector3(off, 0.025, 0), Vector3(0.04, 0.02, half * 2.0))
+			kit.box(b["light"], Vector3(0, 0.025, off), Vector3(half * 2.0, 0.02, 0.04))
 	var towers := 2 + int(share * 9.0)
 	for k in towers:
 		var a := TAU * (float(k) + rng.randf_range(0.0, 0.6)) / towers
 		var rr := rng.randf_range(0.25, 0.7) * r
 		var at := Vector3(cos(a) * rr, 0, sin(a) * rr)
 		var w := rng.randf_range(0.4, 0.9) * lerpf(0.7, 2.2, share)
-		var h := rng.randf_range(0.5, 1.0) * lerpf(1.6, 16.0, share)
+		var h := rng.randf_range(0.5, 1.0) * lerpf(1.6, 24.0, share)
 		paint_body(kit, rng.randf_range(0.2, 0.6), 0.9)
 		kit.frustum(b["body"], at, Vector2(w, w * 0.8), Vector2(w * 0.7, w * 0.55), h)
 		for j in int(2 + h / 2.5):

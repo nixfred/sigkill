@@ -47,8 +47,14 @@ const SETTLE_S := 0.8
 const BACK_IN_M := 3.4
 ## A door's name over its lintel, and its numbers under the name.
 const NAME_FONT := 120
-const NAME_PIXEL := 0.012
+const NAME_PIXEL := 0.0095
 const INFO_FONT := 56
+## A door's beam of light into the sky (W2's art pass: a door reads from across the biggest room), as tall as its folder
+## is big, and its lamp on the floor; a subfolder's door in DOOR_COLOR, the way up in BACK_COLOR.
+const BEAM_TALL := Vector2(18.0, 120.0)
+const BEAM_R := 0.32
+const DOOR_COLOR := Color(0.35, 0.95, 1.0)
+const BACK_COLOR := Color(1.0, 0.69, 0.0)
 const EVENTS_KEPT := 5
 const TAGS := {"rogue": "rogue.d", "zombie": "zombie", "runaway": "runaway"}
 
@@ -106,11 +112,17 @@ var _gate_wait := 0.0
 var _settle := SETTLE_S
 
 
+## The map of the arena `node` is (its own child), else any standing one not on its way out (an arena reloading has two
+## for a frame or two).
 static func of(node: Node) -> FolderMap:
 	if node == null or not node.is_inside_tree():
 		return null
+	var mine := node.get_node_or_null(NODE_NAME) as FolderMap
+	if mine != null:
+		return mine
 	for m in node.get_tree().get_nodes_in_group(GROUP):
-		return m as FolderMap
+		if not m.is_queued_for_deletion():
+			return m as FolderMap
 	return null
 
 
@@ -176,11 +188,12 @@ static func ensure_source(real: bool) -> void:
 	var want := "real" if real else "demo"
 	if source != null and layer == want:
 		return
+	if source != null or layer != want:
+		path = PackedStringArray()  # the other layer's tree: back home (a first tree keeps where it was asked to stand)
+		level = 0
+		came_from = ""
 	_drop_source()
 	layer = want
-	path = PackedStringArray()
-	level = 0
-	came_from = ""
 	if real:
 		source = FolderReader.new(home_root if home_root != "" else OS.get_environment("HOME"))
 	else:
@@ -289,16 +302,20 @@ func _door_label(entry: Dictionary) -> void:
 	var d: Dictionary = entry["d"]
 	var out: Vector3 = d["out"]
 	var tall := RuinsPieces.door_tall(d)
-	var at: Vector3 = world.global_transform * ((d["at"] as Vector3) + Vector3(0, tall + 1.6, 0) - out * 0.2)
+	var lintel := lerpf(0.5, 1.0, float(d["share"])) if int(d["index"]) >= 0 else 0.5
+	var at: Vector3 = world.global_transform * ((d["at"] as Vector3) + Vector3(0, tall + lintel * 0.5, 0) - out * 0.75)
+	var back := int(d["index"]) < 0
+	var colour := BACK_COLOR if back else DOOR_COLOR
+	_door_beam(entry, d, tall, colour)
 	var big := Label3D.new()
 	big.name = "Door_%s" % str(entry["name"]).validate_node_name()
-	big.text = str(entry["name"])
+	big.text = str(entry["name"]) + ("" if back else "/")
 	big.font = Palette.mono_font()
 	big.font_size = NAME_FONT
-	big.pixel_size = NAME_PIXEL * lerpf(0.8, 1.6, float(d["share"])) if int(d["index"]) >= 0 else NAME_PIXEL
+	big.pixel_size = NAME_PIXEL * lerpf(0.75, 1.35, float(d["share"])) if not back else NAME_PIXEL
 	big.outline_size = 18
 	big.outline_modulate = Color(0, 0, 0, 0.85)
-	big.modulate = Color(Palette.ICE_HI if int(d["index"]) < 0 else Palette.MINT, 1.0) * 1.6
+	big.modulate = colour.lerp(Color.WHITE, 0.35) * 1.7
 	big.shaded = false
 	big.double_sided = false
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -313,15 +330,50 @@ func _door_label(entry: Dictionary) -> void:
 	info.pixel_size = NAME_PIXEL * 0.9
 	info.outline_size = 10
 	info.outline_modulate = Color(0, 0, 0, 0.85)
-	info.modulate = Color(Palette.TEAL, 1.0) * 1.4
+	info.modulate = colour * 1.3
 	info.shaded = false
 	info.double_sided = false
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info.visibility_range_end = 40.0
 	add_child(info)
-	info.global_transform = Transform3D(Basis.looking_at(out, Vector3.UP), at - Vector3(0, big.pixel_size * NAME_FONT * 0.8, 0))
+	info.global_transform = Transform3D(Basis.looking_at(out, Vector3.UP), at - Vector3(0, lintel * 0.5 + 0.55, 0))
 	entry["label"] = big
 	entry["info"] = info
+
+
+## A door's beam (from its lintel into the sky, as tall as its folder is big; additive, pulsing a little in _process())
+## and its lamp on the floor just inside it.
+func _door_beam(entry: Dictionary, d: Dictionary, tall: float, colour: Color) -> void:
+	var share: float = d["share"] if int(d["index"]) >= 0 else 0.2
+	var height := lerpf(BEAM_TALL.x, BEAM_TALL.y, share)
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = BEAM_R * 0.35
+	mesh.bottom_radius = BEAM_R * lerpf(0.8, 1.6, share)
+	mesh.height = height
+	mesh.radial_segments = 10
+	mesh.rings = 1
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(colour, 0.32) * 1.5
+	var beam := MeshInstance3D.new()
+	beam.name = "Beam_%s" % str(entry["name"]).validate_node_name()
+	beam.mesh = mesh
+	beam.material_override = mat
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(beam)
+	beam.global_position = world.global_transform * ((d["at"] as Vector3) + Vector3(0, tall + 1.4 + height * 0.5, 0))
+	var lamp := OmniLight3D.new()
+	lamp.name = "Lamp_%s" % str(entry["name"]).validate_node_name()
+	lamp.light_color = colour
+	lamp.light_energy = lerpf(2.5, 6.0, share)
+	lamp.omni_range = lerpf(6.0, 14.0, share)
+	lamp.shadow_enabled = false
+	add_child(lamp)
+	lamp.global_position = world.global_transform * ((d["at"] as Vector3) - (d["out"] as Vector3) * 1.2 + Vector3(0, 2.2, 0))
+	entry["beam"] = beam
 
 
 ## A door's numbers: "61 GB   212 files   4 dirs" (">=" when a cap cut its reading), "up" or "out" for the back door.
@@ -523,6 +575,10 @@ func _near_cell(p: Vector3, c: Vector2i) -> bool:
 func _process(_delta: float) -> void:
 	if not running or _lines == null:
 		return
+	for e in doors:
+		if e.has("beam"):
+			var k := 1.0 + 0.1 * sin(_clock * 2.6 + float(e["index"]) * 1.7)
+			(e["beam"] as Node3D).scale = Vector3(k, 1.0, k)
 	var on := visor != null and is_instance_valid(visor) and bool(visor.get("on"))
 	if not on or world == null:
 		_lines.draw([], [])

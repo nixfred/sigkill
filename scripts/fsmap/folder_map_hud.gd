@@ -96,6 +96,25 @@ func breadcrumb_text() -> String:
 	return "  >  ".join(parts)
 
 
+## The breadcrumb as it fits `room` pixels at `size`: whole; else the sizes dropped but the last; else the oldest folders
+## dropped behind a "...". "" while the visor is off.
+func fit_breadcrumb(room: float, size: int) -> String:
+	var whole := breadcrumb_text()
+	if whole == "" or _font.get_string_size(whole, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x <= room:
+		return whole
+	var parts := PackedStringArray()
+	var crumbs := map.breadcrumb()
+	for i in crumbs.size():
+		parts.append(str(crumbs[i][0]) if i < crumbs.size() - 1 else "%s %s" % [crumbs[i][0], FolderTree.human_size(int(crumbs[i][1]))])
+	if map.maze != null:
+		parts.append("depth %d" % FolderMap.level)
+	var text := "  >  ".join(parts)
+	while parts.size() > 2 and _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > room:
+		parts.remove_at(0)
+		text = "...  >  " + "  >  ".join(parts)
+	return text
+
+
 func _draw_view() -> void:
 	if map == null or not map.running:
 		return
@@ -138,12 +157,13 @@ func _draw_view() -> void:
 		y += LINE
 		var age: float = map.clock() - float(e["t"])
 		v.draw_string(_font, Vector2(x, y), str(e["text"]), HORIZONTAL_ALIGNMENT_LEFT, PANEL_W - 24, 12, Color(Palette.MINT, clampf(1.2 - age / 12.0, 0.4, 1.0)))
-	# The visor's breadcrumb, across the top under the visor's own header.
-	var crumb := breadcrumb_text()
+	# The visor's breadcrumb, across the top under the visor's own header (in a small window, at the bottom over the key
+	# hints, clear of the panel; shortened to fit: the sizes dropped but the last, then the oldest folders).
+	var size := 18 if not compact else 13
+	var crumb := fit_breadcrumb(v.size.x - 48.0, size)
 	if crumb != "":
-		var size := 18 if not compact else 14
 		var w := _font.get_string_size(crumb, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		var at := Vector2(maxf((v.size.x - w) * 0.5, 12.0), 92.0)
+		var at := Vector2(maxf((v.size.x - w) * 0.5, 12.0), 92.0 if not compact else v.size.y - 64.0)
 		v.draw_rect(Rect2(at.x - 12, at.y - size - 4, minf(w + 24, v.size.x - 2.0 * at.x + 24.0), size + 12), Color(Palette.VOID, 0.7))
 		v.draw_rect(Rect2(at.x - 12, at.y + 7, minf(w + 24, v.size.x - 2.0 * at.x + 24.0), 2), Color(Palette.HOSTILE_AMBER, 0.85))
 		v.draw_string(_font, at, crumb, HORIZONTAL_ALIGNMENT_LEFT, v.size.x - at.x - 12.0, size, Palette.HOSTILE_AMBER.lerp(Color.WHITE, 0.25))

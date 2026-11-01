@@ -413,6 +413,8 @@ const C44_GPU_FRAMES := 120
 ## w1's sheet, and its frames a measure.
 const W1_SHEET := ["w1-pegged", "w1-gather", "w1-swarm", "w1-boss-tell", "w1-boss", "w1-visor"]
 const W1_GPU_FRAMES := 120
+## w2's sheet.
+const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
@@ -581,6 +583,11 @@ func _run() -> void:
 		return
 	if _set == "c44":
 		await _c44()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w2":
+		await _w2()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4518,6 +4525,160 @@ func _w1_measure(hunt: ProcHunt, label: String) -> void:
 		if hunt.enemies()[key]["body"].is_alive():
 			standing += 1
 	print("capture: w1 frame time, %s, at %dx%d, %d enemies standing: the GPU %.2f ms a frame; the engine's process step %.2f ms, its physics step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, standing, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, phys / W1_GPU_FRAMES, W1_GPU_FRAMES])
+
+
+## w2: filesystem maps (W2), the folder map on its demo home (never the real layer: a demo run), walked as a player
+## would, each room loaded as a door loads it: Videos, the biggest folder, from just inside its back door looking down the
+## room at its biggest door (w2-big); its doors from the middle, a huge folder's portal and island beside a tiny one's
+## (w2-doors); through the tiny one, subtitles, a small low room off the big one (w2-small); a game's node_modules, the
+## maze, down a corridor of code toward the way out's beacon (w2-maze); three levels down, the maze grown (w2-deeper);
+## the visor in the maze, the way out traced and the breadcrumb across the top (w2-visor); the same at 960x540; and
+## the sheet. The GPU's time a frame printed in the big room and in the maze, the visor off and on.
+func _w2() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)
+	await _w2_go(PackedStringArray(["Videos"]), 0)
+	var map := FolderMap.of(_main)
+	if map == null or map.world == null or map.doors.is_empty():
+		printerr("capture: w2 the map did not stand in Videos")
+		return
+	var w := map.world
+	var start := w.point("start")
+	var big: Dictionary = map.door_named("recordings").get("d", {})
+	var big_at: Vector3 = w.global_transform * (big["at"] as Vector3)
+	var tall := RuinsPieces.door_tall(big)
+	var back_from := start + (big_at - start).normalized() * 0.5  # never back into the back door's portal: it goes up
+	_c37_view(Vector3(back_from.x, 0.0, back_from.z), big_at + Vector3(0.0, tall * 0.55, 0.0))
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w2-big")
+	print("capture: w2 Videos: %s cells, towers x%.2f, %d doors, %d daemons" % [str(w.ruins.cells), w.ruins.tall, map.doors.size(), map.enemies.size()])
+	_c37_render_info("w2 big room")
+	await _w2_measure("the big room, the visor off")
+	# Its biggest door from just inside it: the portal, its name and numbers, the bridge out to its island (the room
+	# beyond, seen from this one).
+	var big_out: Vector3 = big["out"]
+	var side := Vector3(-big_out.z, 0.0, big_out.x)
+	var island: Vector3 = w.global_transform * (big["island"] as Vector3)
+	# Along the edge from the door, on the floor: the portal in profile, the bridge leaving it, the island out past it.
+	var from := big_at - big_out * 2.6
+	for along in [10.0, -10.0, 7.0, -7.0, 4.5, -4.5]:
+		var at: Vector3 = big_at - big_out * 2.6 + side * float(along)
+		if w.layout.cell(w.layout.cell_at(w.to_local(at))) == RuinsLayout.Cell.FLOOR:
+			from = at
+			break
+	_c37_view(Vector3(from.x, 0.0, from.z), island.lerp(big_at, 0.35) + Vector3(0.0, 3.0, 0.0))
+	print("capture: w2 the biggest door: share %.2f, %.1f m tall, its bridge %.1f m, its island %.1f m round" % [float(big["share"]), RuinsPieces.door_tall(big), float(big["bridge"]), float(big["island_r"])])
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w2-doors")
+	# Through the tiny door: a small room off the big one.
+	await _w2_go(PackedStringArray(["Videos", "subtitles"]), 0)
+	map = FolderMap.of(_main)
+	w = map.world
+	var back: Dictionary = map.door_named("..").get("d", {})
+	var back_at: Vector3 = w.global_transform * (back["at"] as Vector3)
+	var far := back_at - (back["out"] as Vector3) * (float(w.layout.size.y) * RuinsLayout.CELL_M - 3.0)
+	_c37_view(Vector3(far.x, 0.0, far.z), back_at + Vector3(0.0, 3.0, 0.0))
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w2-small")
+	print("capture: w2 subtitles: %s cells, towers x%.2f, %d doors, %d daemons" % [str(w.ruins.cells), w.ruins.tall, map.doors.size(), map.enemies.size()])
+	# The maze.
+	await _w2_go(PackedStringArray(["Code", "starfall", "node_modules"]), 1)
+	map = FolderMap.of(_main)
+	if map == null or map.maze == null:
+		printerr("capture: w2 no maze")
+		return
+	w = map.world
+	await _w2_maze_view(map, 0.3)
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w2-maze")
+	print("capture: w2 maze level 1: %d cells, %d walls, %d labels, %d ways down" % [map.maze.cells.size(), map.maze_view.wall_count, map.maze_view.label_count, map.maze_view.ways_down()])
+	_c37_render_info("w2 maze")
+	await _w2_measure("the maze, the visor off")
+	var visor := AuditVisor.of(_main)
+	visor.set_on(true)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	await _w2_maze_view(map, 0.15)
+	await _frames(3)
+	await _c35_save(sheet, "w2-visor")
+	print("capture: w2 visor in the maze: %d lines to the way out, breadcrumb \"%s\"" % [map._lines.drawn_lines, map._hud.breadcrumb_text()])
+	await _w2_measure("the maze, the visor on")
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	await _c35_save({}, "w2-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	visor.set_on(false)
+	await _w2_go(PackedStringArray(["Code", "starfall", "node_modules"]), 3)
+	map = FolderMap.of(_main)
+	await _w2_maze_view(map, 0.45)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w2-deeper")
+	print("capture: w2 maze level 3: %d cells, %d walls" % [map.maze.cells.size(), map.maze_view.wall_count])
+	var stills: Array[Image] = []
+	for name in W2_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W2_SHEET.size():
+		_save_grid("w2-sequence", stills, 3)
+
+
+## The map standing at `path` (maze level `level`), the arena reloaded into it as a door does; its daemons out.
+func _w2_go(path: PackedStringArray, level: int) -> void:
+	FolderMap.queued = true
+	FolderMap.path = path
+	FolderMap.level = level
+	FolderMap.came_from = ""
+	var old := _main
+	MissionRunner.reload_after_mount(self, "$ cd " + FolderTree.path_text(path))
+	await _c35_reloaded(old)
+	var map := FolderMap.of(_main)
+	var waited := 0
+	while waited < 900 and (map == null or not map.running or (map.maze == null and map.doors.is_empty())):
+		await _frames(1)
+		waited += 1
+		map = FolderMap.of(_main)
+	await _frames(int(2.5 * Engine.physics_ticks_per_second))
+
+
+## In the maze: the player a little way along the way out from the start, looking down it, the beacon `lift` of the way
+## up the frame.
+func _w2_maze_view(map: FolderMap, lift: float) -> void:
+	var w := map.world
+	var way := map.maze.path(map.maze.start, map.maze.exit)
+	# The longest straight run of the way out: stand at its near end, look down it, a little up the walls.
+	var best := [0, 0]
+	var i := 0
+	while i < way.size() - 1:
+		var step: Vector2i = way[i + 1] - way[i]
+		var j := i + 1
+		while j < way.size() - 1 and way[j + 1] - way[j] == step:
+			j += 1
+		if j - i > best[1] - best[0]:
+			best = [i, j]
+		i = j
+	var here: Vector3 = w.global_transform * w.layout.center(way[best[0]])
+	var there: Vector3 = w.global_transform * w.layout.center(way[best[1]])
+	var back := (here - there).normalized() * 1.2
+	_c37_view(Vector3(here.x + back.x, 0.0, here.z + back.z), there + Vector3(0.0, 1.6 + lift * 6.0, 0.0))
+
+
+## The GPU's time a frame and the engine's steps in the map, over W1_GPU_FRAMES frames.
+func _w2_measure(label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	var phys := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	print("capture: w2 frame time, %s, at %dx%d: the GPU %.2f ms a frame; the engine's process step %.2f ms, its physics step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, phys / W1_GPU_FRAMES, W1_GPU_FRAMES])
 
 
 ## The arena's life alone (its SoloLife).

@@ -497,7 +497,7 @@ func _arena_checks() -> void:
 	var labels := _labels(map)
 	var allowed := not labels.is_empty()
 	for t in labels:
-		allowed = allowed and (want.has(t) or t == "exit" or t == ".." or t.contains(" files ") or t == "exit the map" or t == "cd .. (up)") and not t.contains("~")
+		allowed = allowed and (want.has(t.trim_suffix("/")) or t == "exit" or t == ".." or t.contains(" files ") or t == "exit the map" or t == "cd .. (up)") and not t.contains("~")
 	_check("labels are folder names only (and their numbers); home is \"home\", never `~`", allowed and FolderTree.path_text(PackedStringArray()) == "home" and not "\n".join(map._hud.lines()).contains("~"), " | ".join(labels))
 	# The visor in the map.
 	map.visor.set_on(true)
