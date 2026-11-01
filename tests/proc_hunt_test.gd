@@ -376,7 +376,9 @@ func _arena_checks() -> void:
 	var credited_deaths: Array = []
 	for key in hunt.enemies():
 		var b = hunt.enemies()[key]["body"]
-		b.downed.connect(func(d): if d.credited: credited_deaths.append(d.tag_text))
+		b.downed.connect(func(d):
+			if d.credited:
+				credited_deaths.append(d.tag_text))
 	var gone_ok := false
 	for i in 14:
 		hunt.advance_table(1)
