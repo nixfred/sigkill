@@ -1,7 +1,7 @@
 // SIGKILL ruins water (M6): the drowned plain under the deepest ruins (RuinsSet.water), one plane as wide as the void.
-// Black water, a slow swell, rain rings, and the district's lamps held in it as streaks of their own colour running
-// toward whoever looks (the brightest WATER_LAMPS lamps, pushed by scripts/ruins/ruins_world.gd with the camera read
-// here), broken up by the ripples; a cold rim where it is seen at a glance. Black ICE dims it with the rest
+// Black water, a slow swell, rain rings, and the district's lamps held in it as streaks of their own colour at each
+// lamp's mirror point, stretched toward whoever looks (the brightest WATER_LAMPS lamps, pushed by scripts/ruins/
+// ruins_world.gd with the camera read here), broken up by the ripples; a cold rim where it is seen at a glance. Black ICE dims it with the rest
 // (arena_light). Nothing here reads anything: a colour, a clock and the lamps.
 shader_type spatial;
 render_mode cull_back, depth_draw_opaque;
@@ -43,18 +43,23 @@ void fragment() {
 			break;
 		}
 		vec2 l = lamps[i].xz;
-		float h = max(lamps[i].y - world_pos.y, 1.0);
+		float h = max(lamps[i].y - world_pos.y, 0.5);
+		float eye = max(CAMERA_POSITION_WORLD.y - world_pos.y, 0.5);
 		vec2 to_cam = cam - l;
 		float far = max(length(to_cam), 0.001);
 		vec2 axis = to_cam / far;
 		vec2 rel = p - l;
 		float along = dot(rel, axis);
 		float perp = dot(rel, vec2(-axis.y, axis.x));
-		// The streak runs from the lamp's foot toward whoever looks, brightest a little out from the foot and gone
-		// before it reaches them; wider as it goes, broken by the ripples.
+		// A reflection's own place (C43, an M6 leftover): the mirror point between the lamp's foot and whoever looks,
+		// h / (h + eye) of the way from the foot (a high lamp's sits nearer the viewer, as on real water), and the
+		// ripples stretch it into a streak along that line, longer the farther it lies; narrow across, broken by the
+		// ripples, gone before it reaches the viewer's feet.
 		float share = along / far;
-		float width = 0.7 + 0.04 * max(along, 0.0);
-		float streak = exp(-perp * perp / (2.0 * width * width)) * smoothstep(0.0, 0.12, share) * pow(clamp(1.0 - share, 0.0, 1.0), 1.6) * exp(-max(along, 0.0) / (h * 1.2 + 6.0));
+		float centre = far * h / (h + eye);
+		float reach = 1.0 + 0.32 * centre;
+		float width = 0.45 + 0.035 * max(along, 0.0);
+		float streak = exp(-perp * perp / (2.0 * width * width)) * exp(-(along - centre) * (along - centre) / (2.0 * reach * reach)) * (1.0 - smoothstep(0.9, 1.0, share)) * smoothstep(-0.02, 0.02, share);
 		streak *= 0.5 + 0.5 * ruins_noise(vec2(along * 0.5, perp * 1.6) + vec2(arena_clock * 0.35, 0.0));
 		glow += lamp_colors[i].rgb * streak * clamp(lamps[i].w / 7.0, 0.2, 1.4) * streak_gain;
 	}

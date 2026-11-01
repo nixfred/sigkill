@@ -809,8 +809,14 @@ static func kind_of(dummy: Node) -> String:
 	return String(art.ai_kind) if art != null else "rogue"
 
 
+## The player down: "derezzed by <what>"; Black ICE's touch is a flatline (I3's word: the life says it is held), so its card
+## reads "flatlined by Black ICE" in the same voice as the rest, never "derezzed by Black ICE" (an M6 leftover, C43).
 func _on_died(cause: String) -> void:
-	if running():
+	if not running():
+		return
+	if life != null and is_instance_valid(life) and life.get("flatlined_now") == true:
+		_fail(FLATLINED % (cause if cause != "" else "Black ICE"))
+	else:
 		_fail(DEREZZED % cause if cause != "" else DEREZZED_PLAIN)
 
 

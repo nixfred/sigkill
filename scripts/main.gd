@@ -20,7 +20,8 @@ extends Node3D
 ## gone, the ruins built in its place, the player, its spawns, the daemons and the ICEbreakers' pickups at their points.
 ## A mission's own daemons (C37) count as the arena's: each one its runner says climbed out (daemon_spawned) is watched
 ## like the scene's own (a kill toward sudo, the kill count, the feats), and the runner holds the ICEbreakers' director
-## to lock it while the mission has not handed them over.
+## to lock it while the mission has not handed them over. The Audit Trail visor (C43, scripts/visor/audit_visor.gd) stands
+## beside them all, on the player's I.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -126,6 +127,15 @@ func _ready() -> void:
 	if ruins != null and MissionRunner.pending() == "":
 		ice.stand_down = true  # ruins with no mission: ICE's walls and nodes stand where the arena's level was
 	_hud.set_mission_runner(runner)
+	# The Audit Trail visor (C43): every daemon's process and lineage, on I.
+	var visor := AuditVisor.new()
+	visor.player = _player
+	visor.runner = runner
+	visor.director = director
+	visor.guide = _hud.guide()
+	add_child(visor)
+	_hud.set_visor(visor)
+	_player.visor_pressed.connect(visor.toggle)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")

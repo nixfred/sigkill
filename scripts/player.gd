@@ -193,6 +193,9 @@ signal slid
 signal menu_requested
 ## A key pressed for a weapon (its id) or an ability (its id) a mission has not handed over (C37): the HUD says so.
 signal locked(what: String)
+## I, the Audit Trail visor's key (C43): the arena's visor turns on or off (scripts/visor/audit_visor.gd). It reads
+## nothing and is never gated by a mission: it only shows.
+signal visor_pressed
 ## Emitted for each target a rail shot of this player derezzes (C17): a dummy here at once,
 ## another player once the host confirms the kill. `headshot` when the rail struck it in the
 ## head zone.
@@ -546,6 +549,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cycle_breaker"):
 		if breakers != null and is_instance_valid(breakers) and _ability_pressed("breakers"):
 			breakers.press_cycle()
+	elif event.is_action_pressed("audit_visor"):
+		visor_pressed.emit()
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed("weapon_%d" % (i + 1)):

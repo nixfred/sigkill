@@ -1,5 +1,6 @@
 extends SceneTree
 ## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37, m2, m3, m4, m5, m6 or m7):
+## (c43 also: the Audit Trail visor; see _c43().)
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -398,6 +399,13 @@ const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores"
 const M4_SHEET := ["m4-opening", "m4-hall", "m4-nodes", "m4-freeze", "m4-records", "m4-end"]
 const M5_SHEET := ["m5-opening", "m5-watchdog", "m5-cron", "m5-wipe", "m5-door", "m5-oldest"]
 const M6_SHEET := ["m6-opening", "m6-sighup", "m6-devnull", "m6-black", "m6-shell", "m6-core"]
+## c43's sheet: the Audit Trail visor in the three registers, a sever mid-chain, a dense fight and a mission's own reap.
+const C43_SHEET := ["c43-tron", "c43-cyberpunk", "c43-matrix", "c43-sever", "c43-dense", "c43-reap"]
+const C43_GPU_FRAMES := 120
+const SwarmArtC43 = preload("res://scripts/daemons/runaway_swarm.gd")
+const ZombieArtC43 = preload("res://scripts/daemons/zombie_process.gd")
+const RogueArtC43 = preload("res://scripts/daemons/rogue_daemon.gd")
+const DummySceneC43 = preload("res://scenes/target_dummy.tscn")
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
@@ -556,6 +564,11 @@ func _run() -> void:
 		return
 	if _set == "m6":
 		await _m6()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c43":
+		await _c43()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4071,6 +4084,224 @@ func _m7() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M7_SHEET.size():
 		_save_grid("m7-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## c43: the Audit Trail visor (C43; its design Albert's, @QuantaCortex), on demo data. In the free arena (Tron): a
+## family round rogue.d severed mid-chain (c43-sever: its lines burning down like fuses, the floor's columns thrust up
+## where its children stood); then a dense fight, four families of daemons hunting the player with the visor on
+## (c43-dense; the GPU's time a frame with the visor on and off printed, at 1920x1080), and the same at 960x540. Then
+## missions 1 to 3 from the Missions screen with the earlier ones marked done by hand: mission 1's plaza fight, its
+## waves hung from their jobs (c43-tron); mission 2's sleepers in the rain, every one hanging from their parent 4087
+## (c43-cyberpunk); mission 2's parent killed, its own reap drawn as the chain reaction (c43-reap: its guard skipped,
+## the parent opened by hand); mission 3's cores forking, each fork's line to its core (c43-matrix); and the sheet.
+## Nothing from mission 7.
+func _c43() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)
+	_c43_life().shield(100000.0)
+	var visor := AuditVisor.of(_main)
+	visor.set_on(true)
+	# The sever: a family round a rogue.d on the open floor, a fork bomb's chain among it. One of the arena's own goes down
+	# first, so the round's first-kill callout is over before the sever.
+	var lair: Node3D = _main.get_node("Arena/Targets/DummyC")
+	lair.hit(100000.0, lair.global_position + Vector3.UP, Vector3.FORWARD, "")
+	var at: Vector3 = _main.to_global(Vector3(4.0, 0.0, -4.0))
+	var a: Node3D = _c43_add(RogueArtC43, "rogue.d", at)
+	await _frames(2)
+	var fam: Array = []
+	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(-3.2, 0.0, 2.6)))
+	fam.append(_c43_add(ZombieArtC43, "<defunct>", at + Vector3(3.4, 0.0, 2.2)))
+	await _frames(2)
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-5.5, 1.0, 5.5)))
+	await _frames(2)
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-8.0, 1.2, 8.0)))
+	await _frames(2)
+	fam.append(_c43_add(SwarmArtC43, "runaway", at + Vector3(-10.0, 1.0, 11.0)))
+	await _frames(2)
+	fam.append(_c43_add(ZombieArtC43, "zombie", at + Vector3(5.5, 0.0, 6.0)))
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	_c37_view(_main.to_global(Vector3(-9.0, 0.0, 13.0)) - Vector3(0.0, _main.global_position.y, 0.0), at + Vector3(-3.0, 4.6, 4.0))
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	a.hit(100000.0, a.global_position + Vector3.UP, Vector3.FORWARD, "")
+	await _frames(int((AuditVisor.FUSE_S * 1.35) * Engine.physics_ticks_per_second))
+	print("capture: c43-sever, %d severs, %d reaped so far, %d columns live" % [visor.severs, visor.reaped_by_sever, visor.collapse().live()])
+	await _c35_save(sheet, "c43-sever")
+	await _frames(int(3.5 * Engine.physics_ticks_per_second))
+	# The dense fight: four families hunting the player, the visor on.
+	GameSettings.current().set_value("gameplay", "practice", false)
+	var anchors := [Vector3(-12.0, 0.0, -10.0), Vector3(12.0, 0.0, -10.0), Vector3(-12.0, 0.0, 8.0), Vector3(12.0, 0.0, 8.0)]
+	for k in anchors.size():
+		var base: Vector3 = _main.to_global(anchors[k])
+		_c43_add(RogueArtC43, "rogue.d", base)
+		await _frames(2)
+		for z in 3:
+			_c43_add(ZombieArtC43, "zombie" if z < 2 else "<defunct>", base + Vector3(cos(z * 2.1) * 2.5, 0.0, sin(z * 2.1) * 2.5))
+		await _frames(2)
+		for r in 3:
+			_c43_add(SwarmArtC43, "runaway", base + Vector3(1.5 + r * 2.2, 1.0, -1.0 - r * 1.6))
+			await _frames(2)
+	_player.respawn_at(_main.to_global(Vector3(0.0, 1.0, 22.0)))
+	_c43_life().shield(100000.0)
+	await _frames(int(4.0 * Engine.physics_ticks_per_second))
+	var standing := get_nodes_in_group("targets").filter(func(t): return t.has_method("is_alive") and t.is_alive()).size()
+	var middle := Vector3.ZERO
+	var counted := 0
+	for t in get_nodes_in_group("targets"):
+		if t.has_method("is_alive") and t.is_alive():
+			middle += t.global_position
+			counted += 1
+	middle /= maxf(counted, 1.0)
+	_c37_view(_player.global_position - Vector3(0, 0.95, 0), middle + Vector3(0, 3.2, 0))
+	await _frames(4)
+	var on_ms: float = await _gpu_ms(C43_GPU_FRAMES)
+	visor.set_on(false)
+	var off_ms: float = await _gpu_ms(C43_GPU_FRAMES)
+	visor.set_on(true)
+	var on_again: float = await _gpu_ms(C43_GPU_FRAMES)
+	print("capture: c43 the dense fight at %dx%d, %d daemons standing, %d lines: the GPU %.2f ms a frame with the visor on, %.2f off, %.2f on again (%d frames each), %.1f fps the engine's" % [root.size.x, root.size.y, standing, visor.lines().drawn_lines, on_ms, off_ms, on_again, C43_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("c43 dense")
+	_c37_view(_player.global_position - Vector3(0, 0.95, 0), middle + Vector3(0, 3.2, 0))
+	await _frames(2)
+	await _c35_save(sheet, "c43-dense")
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _save("c43-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	# Mission 1 (Tron): the plaza fight, its waves hung from their jobs.
+	var runner := await _c43_begin(1)
+	if runner == null:
+		return
+	var world := RuinsWorld.of(_main)
+	var plaza := world.point("plaza")
+	await _c37_until(runner, func(): return runner.index >= 1, 0.0)
+	_player.respawn_at(plaza + Vector3(0.5, 0, 1.5))
+	while runner.index < 2:
+		await _frames(1)
+	while runner.stage.wave_state("pack_a") != "out":
+		await _frames(1)
+	var waited := 0
+	while waited < 360 and not _c37_spread(runner, 6.0, 12.0):
+		await _frames(1)
+		waited += 1
+	var mid1 := Vector3.ZERO
+	for d in runner.stage.standing():
+		mid1 += d.global_position / float(runner.stage.standing().size())
+	_c37_view(plaza + Vector3(0.0, 0, 10.0), mid1 + Vector3(0, 3.0, 0))
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	print("capture: c43-tron, %d standing, %d lines" % [runner.stage.standing().size(), AuditVisor.of(_main).lines().drawn_lines])
+	await _c37_save(sheet, "c43-tron", runner)
+	# Mission 2 (cyberpunk): the sleepers in the rain, every one hanging from their parent.
+	runner = await _c43_begin(2)
+	if runner == null:
+		return
+	world = RuinsWorld.of(_main)
+	var stage := runner.stage
+	var start := world.point("start")
+	var nest: Vector3 = stage.parent.global_position
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	var first: Node3D = stage.wave_daemons("rain_a")[0]
+	var view_at := start + (first.global_position - start) * 0.25 + Vector3(-3.0, -RuinsLayout.STAND_Y, 0.0)
+	_c37_view(view_at, first.global_position.lerp(nest, 0.3) + Vector3(0, 3.4, 0))
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	print("capture: c43-cyberpunk, %d of the parent's children, %d lines" % [stage.children().size(), AuditVisor.of(_main).lines().drawn_lines])
+	await _c37_save(sheet, "c43-cyberpunk", runner)
+	# Mission 2's own reap: its parent opened by hand (the guard's beat skipped for the still) and killed, seen from
+	# between it and its children, off to one side. A sleeper goes down first, so the first-kill callout is over.
+	var sleeper: Node3D = stage.wave_daemons("rain_a")[0]
+	sleeper.hit(1000.0, sleeper.global_position + Vector3.UP, Vector3.FORWARD, "")
+	var kids_at := Vector3.ZERO
+	for k in stage.children():
+		kids_at += k.global_position / float(maxi(stage.children().size(), 1))
+	var along := Vector3(kids_at.x - nest.x, 0.0, kids_at.z - nest.z).normalized()
+	var side := Vector3(along.z, 0.0, -along.x)
+	var stand := nest + along * 10.0 + side * 6.0
+	_c37_view(Vector3(stand.x, nest.y, stand.z), nest.lerp(kids_at, 0.35) + Vector3(0, 3.0, 0))
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	var parent: Node3D = stage.parent
+	parent.sealed = false
+	var hits := 0
+	while parent.is_alive() and hits < 20:
+		parent.hit(1000.0, parent.global_position + Vector3.UP * 2.0, Vector3.FORWARD, "")
+		hits += 1
+		await _frames(2)
+	await _frames(int((AuditVisor.FUSE_S * 0.75) * Engine.physics_ticks_per_second))
+	print("capture: c43-reap, %d reaped by the mission, %d drawn" % [stage.reaped_count, AuditVisor.of(_main).mission_reaps_drawn])
+	await _c37_save(sheet, "c43-reap", runner)
+	# Mission 3 (Matrix): its runaways coming in over the cache, hung from their jobs, the code raining behind.
+	runner = await _c43_begin(3)
+	if runner == null:
+		return
+	world = RuinsWorld.of(_main)
+	stage = runner.stage
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	var start3 := world.point("start")
+	var middle3 := world.point("field")
+	_c37_view(start3 - Vector3(0, RuinsLayout.STAND_Y, 2.0), middle3 + Vector3(1.5, 4.2, 0))
+	world.field().rewrite()
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	print("capture: c43-matrix, %d standing, %d lines" % [stage.standing().size(), AuditVisor.of(_main).lines().drawn_lines])
+	await _c37_save(sheet, "c43-matrix", runner)
+	var stills: Array[Image] = []
+	for name in C43_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == C43_SHEET.size():
+		_save_grid("c43-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## The arena's life alone (its SoloLife).
+func _c43_life() -> SoloLife:
+	for c in _main.get_children():
+		if c is SoloLife:
+			return c
+	return null
+
+
+## A daemon added to the free arena for c43: of `art`, tagged `tag`, at `at` (world space).
+func _c43_add(art: Script, tag: String, at: Vector3) -> Node3D:
+	var dummy = DummySceneC43.instantiate()
+	dummy.tag_text = tag
+	dummy.art = art
+	_main.get_node("Arena/Targets").add_child(dummy)
+	dummy.global_position = at
+	var director := DaemonDirector.of(_main)
+	if director != null:
+		director.forget_brains()
+	return dummy
+
+
+## Mission `n` started from the Missions screen, the earlier ones marked done by hand (demo bests), the player shielded;
+## its runner, or null.
+func _c43_begin(n: int) -> MissionRunner:
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	var bests := [162.0, 171.0, 131.0, 182.0, 205.0, 214.0]
+	for i in range(1, n):
+		MissionProgress.current().record(MissionBook.at(i), bests[i - 1], 2)
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(n - 1)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	if runner == null or runner.def == null or runner.def.order != n:
+		printerr("capture: mission %d did not start" % n)
+		return null
+	print("capture: mission %s in %s, the visor %s" % [runner.def.id, RuinsWorld.of(_main).ruins.id if RuinsWorld.of(_main) != null else "?", "on" if AuditVisor.of(_main) != null and AuditVisor.of(_main).on else "off"])
+	runner.life.shield(100000.0)
+	return runner
 
 
 ## Weapon `weapon` drawn and fired at `at` for `frames` frames (m7: the rail's charge needs the hold); true once it fired.

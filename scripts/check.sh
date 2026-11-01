@@ -6,12 +6,14 @@
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
 # headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence,
-# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall, trailer, opener link, opener end, mission, ruins and mission 1 tests (tests/movement_test.gd,
+# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall, trailer, opener link, opener end, mission, ruins and mission 1 to 7 tests, and (step 63, C43) the audit visor test with the mission tests run again with the visor on (tests/movement_test.gd,
 # tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd) at a fixed frame rate. The AI tests use fakes only: fixture files,
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd) at a fixed frame rate. The
+# visor test reads a fake process table it builds in its own folder under user:// (fake stat and status files beside
+# poisoned ones it must never open; removed at the end), never the machine's own. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
 # Ollama for model loading) on 127.0.0.1. No real agent or model server is ever run or
 # reached. The settings and unlocks tests keep their settings and progress files in a temporary folder; no headless run
@@ -171,6 +173,39 @@ run_godot "mission 4 test" --fixed-fps 60 --script res://tests/mission4_test.gd
 run_godot "mission 5 test" --fixed-fps 60 --script res://tests/mission5_test.gd
 run_godot "mission 6 test" --fixed-fps 60 --script res://tests/mission6_test.gd
 run_godot "mission 7 test" --fixed-fps 60 --script res://tests/mission7_test.gd
+
+# 63. The Audit Trail visor (C43): its own test, then the seven mission tests again with the visor on from the start
+# (--visor, which every arena of the run takes): each mission still completes, its cards fire and the ending plays once
+# with the visor drawing throughout, and each run's visor says it drew (its "audit visor: on" line, most lines > 0).
+# One step: it passes only when all eight runs are clean.
+visor_step() {
+	local label="audit visor test, and missions 1 to 7 again with the visor on"
+	local out rc bad=0 n
+	out=$(nice -n 10 timeout 300 godot --headless --path "$root" --fixed-fps 60 --script res://tests/visor_test.gd 2>&1)
+	rc=$?
+	if [ "$rc" -ne 0 ] || grep -E -q "$ERROR_PATTERN" <<<"$out"; then
+		fail "$label: the visor test: exit $rc or error lines"
+		grep -E "^FAIL|$ERROR_PATTERN" <<<"$out" | head -20 >&2
+		printf '%s\n' "$out" | tail -5 >&2
+		bad=1
+	fi
+	for n in 1 2 3 4 5 6 7; do
+		out=$(nice -n 10 timeout 300 godot --headless --path "$root" --fixed-fps 60 --script "res://tests/mission${n}_test.gd" -- --visor 2>&1)
+		rc=$?
+		if [ "$rc" -ne 0 ] || grep -E -q "$ERROR_PATTERN" <<<"$out"; then
+			fail "$label: mission $n with the visor on: exit $rc or error lines"
+			grep -E "^FAIL|$ERROR_PATTERN" <<<"$out" | head -20 >&2
+			bad=1
+		elif ! grep -E -q '^audit visor: on \(--visor\): most lines [1-9]' <<<"$out"; then
+			fail "$label: mission $n: the visor never drew"
+			bad=1
+		fi
+	done
+	if [ "$bad" -eq 0 ]; then
+		ok "$label: exit 0, no error lines, the visor drew in every run"
+	fi
+}
+visor_step
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

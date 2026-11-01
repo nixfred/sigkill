@@ -25,6 +25,9 @@ extends RefCounted
 ## keys with the bank key held: Shift, which nothing else used (no action, no fixed key, not the settings'
 ## defaults: SIGKILL has no sprint, it runs by default), rebindable as "weapon bank 2" to one key or mouse
 ## button like the rest. Shift+1 draws weapon 10, chmod 000. Never a Ctrl or Alt chord.
+## The Audit Trail visor (C43): I turns it on and off, rebindable as "audit visor". I was the one letter free: P is
+## taken by a rebind test's own move, N is the guide's no while a question is up, and H, J, K and L are the multiplayer
+## panel's.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -44,7 +47,7 @@ const REBINDABLE := [
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
 	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
 	["show_top", "top"], ["run_breaker", "run breaker"], ["cycle_breaker", "next breaker"],
-	["weapon_bank", "weapon bank 2"],
+	["weapon_bank", "weapon bank 2"], ["audit_visor", "audit visor"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -101,6 +104,7 @@ static func ensure() -> void:
 	_key("run_breaker", [KEY_U])
 	_key("cycle_breaker", [KEY_Y])
 	_key("weapon_bank", [KEY_SHIFT])
+	_key("audit_visor", [KEY_I])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

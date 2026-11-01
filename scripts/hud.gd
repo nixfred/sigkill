@@ -28,6 +28,7 @@ const FreezeHud = preload("res://scripts/hud/freeze_hud.gd")
 const PipeHud = preload("res://scripts/hud/pipe_hud.gd")
 const DevNullHud = preload("res://scripts/hud/dev_null_hud.gd")
 const SighupHud = preload("res://scripts/hud/sighup_hud.gd")
+const VisorHud = preload("res://scripts/hud/visor_hud.gd")
 const ColorblindShader = preload("res://shaders/colorblind_safe.gdshader")
 ## Above the HUD and the menu, so the filter recolours all of it.
 const FILTER_LAYER := 100
@@ -54,6 +55,7 @@ var _freeze: FreezeHud
 var _pipe: PipeHud
 var _dev_null: DevNullHud
 var _sighup: SighupHud
+var _visor: VisorHud
 var _toast: UnlockToast
 var _mission: MissionHud
 var _filter: CanvasLayer
@@ -172,6 +174,10 @@ func _ready() -> void:
 	_sighup.name = "SighupHud"
 	_sighup.crosshair = _crosshair
 	root.add_child(_sighup)
+	# The Audit Trail visor (C43): its header, credit and process tags, under the mission's panels.
+	_visor = VisorHud.new()
+	_visor.name = "VisorHud"
+	root.add_child(_visor)
 	# Missions (C35): the objective panel, the mission's terminal, the log reader, the card and the end screens.
 	_mission = MissionHud.new()
 	_mission.name = "MissionHud"
@@ -420,6 +426,15 @@ func note_kill() -> void:
 ## True while the guide HUD's ask box or the multiplayer panel's address box is open.
 func is_typing() -> bool:
 	return _guide.is_typing() or _net.is_typing()
+
+
+## The Audit Trail visor (C43) its HUD draws for.
+func set_visor(visor: AuditVisor) -> void:
+	_visor.visor = visor
+
+
+func visor_hud() -> VisorHud:
+	return _visor
 
 
 func guide() -> GuideHud:
