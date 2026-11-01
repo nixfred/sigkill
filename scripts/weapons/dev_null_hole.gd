@@ -219,6 +219,12 @@ func _player_3d(stream: AudioStream, db: float) -> AudioStreamPlayer3D:
 	return p
 
 
+## Its sounds made now (the arena does this as it loads, so the first throw does not wait on them).
+static func prewarm() -> void:
+	_sound("hum")
+	_sound("boom")
+
+
 ## Its sounds, made once and kept (the I3 note: synthesis at a throw would hitch).
 static func _sound(which: String) -> AudioStream:
 	if not _sounds.has(which):

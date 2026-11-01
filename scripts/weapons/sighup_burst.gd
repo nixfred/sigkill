@@ -178,6 +178,11 @@ func _ready() -> void:
 		fx.follow(_look.device(), light_color)
 
 
+## Its sound made now (the arena does this as it loads, so the first throw does not wait on it).
+static func prewarm() -> void:
+	_sound()
+
+
 ## Its sound, made once and kept (the I3 note: synthesis at a throw would hitch).
 static func _sound() -> AudioStream:
 	if not _sounds.has("hangup"):

@@ -77,6 +77,8 @@ var _lens_mat: ShaderMaterial
 var _disc_mat: ShaderMaterial
 var _debris_mat: ShaderMaterial
 var _floor_mat: ShaderMaterial
+static var _glass: StandardMaterial3D
+static var _nothing: StandardMaterial3D
 var _floor_found := false
 var _floor_y := 0.0
 var _tag: Label3D
@@ -123,14 +125,7 @@ func _build_device() -> void:
 	sphere.radial_segments = 16
 	sphere.rings = 8
 	shell.mesh = sphere
-	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.01, 0.01, 0.012)
-	glass.metallic = 0.6
-	glass.roughness = 0.08
-	glass.rim_enabled = true
-	glass.rim = 0.6
-	glass.rim_tint = 0.0
-	shell.material_override = glass
+	shell.material_override = glass_material()
 	_device.add_child(shell)
 	var pin := MeshInstance3D.new()
 	var dot := SphereMesh.new()
@@ -156,6 +151,29 @@ func _build_device() -> void:
 		(child as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
+## The device's black glass, every throw's: made once (the arena's warm-up draws it as it loads, so its first throw
+## does not wait on its compile; scripts/fx/shader_warmup.gd).
+static func glass_material() -> StandardMaterial3D:
+	if _glass == null:
+		_glass = StandardMaterial3D.new()
+		_glass.albedo_color = Color(0.01, 0.01, 0.012)
+		_glass.metallic = 0.6
+		_glass.roughness = 0.08
+		_glass.rim_enabled = true
+		_glass.rim = 0.6
+		_glass.rim_tint = 0.0
+	return _glass
+
+
+## The event horizon's unlit black, every throw's: made once, like the glass.
+static func nothing_material() -> StandardMaterial3D:
+	if _nothing == null:
+		_nothing = StandardMaterial3D.new()
+		_nothing.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_nothing.albedo_color = Color(0.0, 0.0, 0.0)
+	return _nothing
+
+
 func _build_hole() -> void:
 	_hole = Node3D.new()
 	_hole.name = "Hole"
@@ -168,13 +186,10 @@ func _build_hole() -> void:
 	ball.height = SHADOW_M * 2.0
 	ball.radial_segments = 24
 	ball.rings = 12
-	var nothing := StandardMaterial3D.new()
-	nothing.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	nothing.albedo_color = Color(0.0, 0.0, 0.0)
 	_core = MeshInstance3D.new()
 	_core.name = "Core"
 	_core.mesh = ball
-	_core.material_override = nothing
+	_core.material_override = nothing_material()
 	_hole.add_child(_core)
 	_lens_mat = ShaderMaterial.new()
 	_lens_mat.shader = LensShader

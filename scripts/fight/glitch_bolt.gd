@@ -211,6 +211,13 @@ func _roll(a: int, b: int) -> float:
 	return float(hash(Vector3i(a, b, get_instance_id() & 0xffff)) & 0xffff) / 65535.0
 
 
+## Its two materials, made now if they are not yet (the arena's warm-up draws them as it loads, so a zombie's first bolt
+## does not wait on their compile; scripts/fx/shader_warmup.gd).
+static func materials() -> Array[Material]:
+	_statics()
+	return [_shell_material, _core_material]
+
+
 static func _statics() -> void:
 	if _shell_mesh != null:
 		return
