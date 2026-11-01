@@ -9,65 +9,366 @@ order = 5
 title = "sudo !!"
 register = "tron"
 goal = "Earn root and read the one log only root may read: the oldest one."
-loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000", "cron_mines", "rm_rf_cannon")
+loadout = PackedStringArray("terminal_cannon", "sigterm", "sigkill_rail", "ping_sonar", "fork_bomb", "fork_shotgun", "grep_seeker", "pipe_chain", "chmod_000")
 grants = PackedStringArray("cron_mines", "rm_rf_cannon")
 abilities = PackedStringArray("sudo")
 objectives = [{
 "count": 3,
 "daemon": "any",
-"id": "root",
-"kind": "kill",
-"text": "Earn root: three kills in one life"
-}, {
+"hint": "3 kills in one life: sudo. Z: root# for 8 s",
 "id": "jobs",
-"kind": "survive",
-"seconds": 60.0,
-"text": "Outlast the scheduled jobs"
+"kind": "kill",
+"of": ["reap_1"],
+"text": "Kill the first scheduled job",
+"unlocks": ["sudo"]
 }, {
-"id": "assistant",
+"hint": "Z: [sudo] password for user: your three kills",
+"id": "root",
+"kind": "root",
+"text": "Become root"
+}, {
+"count": 1,
+"daemon": "rogue",
+"hint": "it flanks and pounces: keep it in front",
+"id": "watchdog",
+"kind": "kill",
+"of": ["watchdog_1"],
+"text": "Kill the watchdog running at nice -20"
+}, {
+"arms": ["cron_mines"],
+"count": 4,
+"daemon": "any",
+"hint": "8 cron: mine the vent. It runs on time",
+"id": "cron",
+"kind": "kill",
+"of": ["fork_1", "fork_2"],
+"text": "Mine the next job before it runs"
+}, {
+"hint": "on the crontab board, by the plaza",
+"id": "author",
 "kind": "log",
-"log": "assistant",
-"text": "Read the log signed by an assistant"
+"log": "author",
+"text": "Read who scheduled the jobs"
 }, {
-"at": Vector3(0, 0.95, -14),
-"id": "sealed",
+"arms": ["rm_rf_cannon"],
+"count": 1,
+"daemon": "zombie",
+"hint": "7 rm -rf: everything where it lands. Stand off",
+"id": "wipe",
+"kind": "kill",
+"of": ["wiper_1"],
+"text": "Stop rm -rf before it runs"
+}, {
+"count": 3,
+"daemon": "any",
+"hint": "swarm elite: long dive bursts. Hit it between",
+"id": "elites",
+"kind": "kill",
+"of": ["guard_1", "guard_2"],
+"text": "Clear the door of the last elite"
+}, {
+"at": "room",
+"hint": "Z at the door: root# opens it, for 8 s",
+"id": "door",
 "kind": "reach",
-"label": "sealed room",
-"radius": 2.5,
+"label": "the sealed room",
+"radius": 2.0,
 "text": "Open the room only root may enter"
 }, {
+"hint": "inside, on the floor",
 "id": "oldest",
 "kind": "log",
 "log": "oldest",
 "text": "Read the oldest log"
 }]
 logs = [{
-"at": Vector3(14, 0.95, -6),
-"id": "assistant",
-"name": "author.log",
-"text": "author: assistant\nkeep these running while the user is away."
+"at": "board",
+"id": "author",
+"name": "crontab",
+"text": "# scheduled by: assistant\n# keep these running while the user is away.\nevery 12s   reap.sh\nevery 15s   fork.sh\nat hour 0   rm -rf /var/log"
 }, {
-"at": Vector3(-4, 0.95, -17),
+"at": "room",
 "id": "oldest",
 "name": "the oldest log",
-"text": "started under nohup, years ago.\nstill running.\npid 6666\nauthor: (forged)"
+"on": "begin:door",
+"text": "nohup ./keepalive.sh &\nstarted: years ago\nstatus: still running\npid 6666\nauthor: assistant   # forged"
+}, {
+"at": "log_1",
+"id": "nice",
+"name": "nice.log",
+"text": "renice -20 rogue.d    # watchdog\nrenice -20 zombie     # reaper\nrenice -20 runaway    # keepalive\n# nothing of the user's runs above 0"
+}, {
+"at": "log_2",
+"id": "deny",
+"name": "at.deny",
+"text": "user\n# jobs the user never scheduled are listed below.\n# (none)"
 }]
 lines = [{
-"on": "log:assistant",
-"text": "I don't remember writing it. I don't remember anything from before tonight. That's not the same as not doing it.",
+"on": "start",
+"text": "audit: user=? action=sudo result=DENIED reason=\"not in sudoers\"",
+"who": "auditor"
+}, {
+"on": "start",
+"text": "Clean up here. Too clean. Everything on this floor runs on a schedule, and the schedule isn't yours.",
 "who": "ai"
 }, {
-"on": "complete",
+"on": "begin:jobs",
+"text": "A job's due. Three kills in one life buys sudo. Earn it on whatever climbs out.",
+"wait": 4.5,
+"who": "ai"
+}, {
+"on": "begin:root",
+"text": "sudo ready. Z. Eight seconds of root#, and everything you hold hits like it means it.",
+"who": "ai"
+}, {
+"on": "done:root",
+"text": "audit: user=? action=sudo result=ALLOWED (proof: 3 kills). root# granted for 8 s.",
+"who": "auditor"
+}, {
+"on": "begin:watchdog",
+"text": "audit: cron: rogue.d reniced to -20. watchdog hunting.",
+"who": "auditor"
+}, {
+"on": "begin:watchdog",
+"text": "Rogue elite. Highest priority on the floor. It flanks, and it pounces. Don't give it a side.",
+"wait": 1.2,
+"who": "ai"
+}, {
+"on": "begin:watchdog",
+"text": "And the rain's starting. Down here the grid's thinner every step.",
+"wait": 8.0,
+"who": "ai"
+}, {
+"on": "done:watchdog",
+"text": "audit: watchdog lost. next job in the queue.",
+"who": "auditor"
+}, {
+"on": "begin:cron",
+"text": "The next job's due at that vent. cron's a mine: it goes off on time whether you're there or not. Mine the vent.",
+"who": "ai"
+}, {
+"on": "done:cron",
+"text": "Every job on this floor has the same handwriting. There's a crontab by the plaza. Read who signed it.",
+"who": "ai"
+}, {
+"on": "log:author",
+"text": "I don't remember writing it. I don't remember anything from before tonight. That's not the same as not doing it.",
+"wait": 2.0,
+"who": "ai"
+}, {
+"on": "log:author",
+"text": "If it was me, run the kill -9 anyway. I mean that.",
+"wait": 7.5,
+"who": "ai"
+}, {
+"on": "begin:wipe",
+"text": "audit: cron: rm -rf /var/log scheduled. runs in 90 s. unverified session on the floor.",
+"who": "auditor"
+}, {
+"on": "begin:wipe",
+"text": "Ninety seconds, then it removes every log on this floor. The oldest one with them. The job runs as a process.",
+"wait": 1.0,
+"who": "ai"
+}, {
+"on": "begin:wipe",
+"text": "Kill the process. You hold its payload now: rm -rf. Everything where it lands, you included. Not from up close.",
+"wait": 5.5,
+"who": "ai"
+}, {
+"on": "done:wipe",
+"text": "audit: rm -rf /var/log: process killed before its run.",
+"who": "auditor"
+}, {
+"on": "begin:elites",
+"text": "Runaway elite at the door. Two rings. It dives in bursts; between bursts it's open. Three kills here is your sudo.",
+"who": "ai"
+}, {
+"on": "begin:door",
+"text": "audit: path=/root mode=0700 owner=root. user=? result=DENIED",
+"who": "auditor"
+}, {
+"on": "begin:door",
+"text": "Root-only. Hold your sudo for the door: Z, and through before it closes.",
+"wait": 1.5,
+"who": "ai"
+}, {
+"on": "done:door",
+"text": "audit: root entered path=/root. session: 8 s.",
+"who": "auditor"
+}, {
+"on": "log:oldest",
+"text": "audit: root read path=/root/oldest result=ALLOWED. root session expired.",
+"wait": 1.5,
+"who": "auditor"
+}, {
+"on": "log:oldest",
+"text": "That author field. Forged. It signs with whoever you'd trust least. Me.",
+"wait": 3.0,
+"who": "ai"
+}, {
+"on": "log:oldest",
 "text": "6666 isn't how many there are. It's who.",
+"wait": 6.5,
+"who": "ai"
+}, {
+"on": "fail",
+"text": "Root's gone with the life. Three kills buys it back. Again.",
 "who": "ai"
 }]
 transitions = [{
-"on": "begin:sealed",
+"on": "begin:watchdog",
+"seconds": 75.0,
+"tear": false,
 "to": "matrix"
 }]
+waves = [{
+"count": 3,
+"every": 0.6,
+"from": ["v_start"],
+"health": 60.0,
+"id": "reap_1",
+"kind": "zombie"
+}, {
+"count": 1,
+"elites": 1,
+"from": ["v_mid"],
+"health": 150.0,
+"id": "watchdog_1",
+"kind": "rogue",
+"on": "begin:watchdog"
+}, {
+"count": 2,
+"every": 0.5,
+"from": ["v_left"],
+"health": 60.0,
+"id": "fork_1",
+"kind": "rogue"
+}, {
+"count": 2,
+"every": 0.5,
+"from": ["v_left"],
+"health": 60.0,
+"id": "fork_2",
+"kind": "rogue"
+}, {
+"count": 1,
+"elites": 1,
+"from": ["v_mid"],
+"health": 220.0,
+"id": "wiper_1",
+"kind": "zombie",
+"on": "begin:wipe",
+"tag": "cron.d"
+}, {
+"count": 3,
+"every": 0.5,
+"from": ["v_left", "v_mid"],
+"health": 60.0,
+"id": "queue_1",
+"kind": "zombie",
+"tagged": false
+}, {
+"count": 3,
+"every": 0.5,
+"from": ["v_mid", "v_left"],
+"health": 60.0,
+"id": "queue_2",
+"kind": "zombie",
+"tagged": false
+}, {
+"count": 1,
+"elites": 1,
+"from": ["v_right"],
+"health": 180.0,
+"id": "guard_1",
+"kind": "swarm",
+"on": "begin:elites"
+}, {
+"count": 2,
+"every": 0.8,
+"from": ["v_right"],
+"health": 60.0,
+"id": "guard_2",
+"kind": "rogue",
+"on": "begin:elites"
+}, {
+"count": 3,
+"every": 0.5,
+"from": ["v_right"],
+"health": 60.0,
+"id": "keep_1",
+"kind": "zombie",
+"tagged": false
+}, {
+"count": 3,
+"every": 0.5,
+"from": ["v_right"],
+"health": 60.0,
+"id": "keep_2",
+"kind": "zombie",
+"tagged": false
+}]
+props = [{
+"at": "spawn_2",
+"id": "v_start",
+"kind": "vent"
+}, {
+"at": "spawn_1",
+"id": "v_mid",
+"kind": "vent"
+}, {
+"at": "spawn_4",
+"id": "v_left",
+"kind": "vent"
+}, {
+"at": "spawn_3",
+"id": "v_right",
+"kind": "vent"
+}, {
+"every": 12.0,
+"id": "reap",
+"kind": "job",
+"name": "reap.sh",
+"on": "start",
+"waves": ["reap_1"]
+}, {
+"every": 15.0,
+"id": "fork",
+"kind": "job",
+"name": "fork.sh",
+"on": "begin:cron",
+"waves": ["fork_1", "fork_2"]
+}, {
+"every": 30.0,
+"fails": "rm -rf /var/log ran. the oldest log is gone.",
+"id": "wipe",
+"kind": "job",
+"name": "rm -rf /var/log",
+"on": "begin:wipe",
+"until": "done:wipe",
+"waves": ["queue_1", "queue_2"]
+}, {
+"every": 20.0,
+"id": "keep",
+"kind": "job",
+"name": "keepalive.sh",
+"on": "begin:door",
+"until": "done:door",
+"waves": ["keep_1", "keep_2"]
+}, {
+"at": "room_door",
+"id": "root_door",
+"kind": "door",
+"opens": "root",
+"span": Vector2(4.6, 3.8),
+"yaw": 0.0
+}]
+end_hold_s = 9.0
+restores = true
 ice = false
+ruins = "sudoers"
 fail_time_s = 0.0
 next = "nohup"
-playable = false
+playable = true
 draft = false
 hidden = false

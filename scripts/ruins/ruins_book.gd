@@ -3,7 +3,7 @@ extends RefCounted
 ## The ruins districts (C36): each a RuinsSet in resources/ruins/ (scripts/ruins/ruins_set.gd), read once a run from
 ## this fixed list (never a folder scan). A mission names one by id (MissionDef.ruins); the tests build every one.
 
-const SETS := ["res://resources/ruins/scheduler_breach.tres", "res://resources/ruins/deep_dirs.tres", "res://resources/ruins/cache_district.tres", "res://resources/ruins/tty_row.tres", "res://resources/ruins/cache_lines.tres", "res://resources/ruins/records_vault.tres"]
+const SETS := ["res://resources/ruins/scheduler_breach.tres", "res://resources/ruins/deep_dirs.tres", "res://resources/ruins/cache_district.tres", "res://resources/ruins/tty_row.tres", "res://resources/ruins/cache_lines.tres", "res://resources/ruins/records_vault.tres", "res://resources/ruins/sudoers.tres"]
 
 static var _sets: Array = []
 

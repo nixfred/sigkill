@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="RuinsSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ruins/ruins_set.gd" id="1_set"]
+
+[resource]
+script = ExtResource("1_set")
+id = "sudoers"
+title = "the privilege ladder"
+seed = 520061
+register = "tron"
+cells = Vector2i(9, 18)
+blocks = 7
+holes = 4
+cover = 14
+towers = 26
+giants = 18
+cables = 12
+signs = 9
+folders = PackedStringArray("SUDOERS.D", "CRON.DAILY", "CRON.HOURLY", "RENICE", "WHEEL", "SPOOL", "AT.ALLOW", "IONICE", "NICE-19", "QUANTUM", "SCHED.FIFO", "SHADOW")
+words = PackedStringArray("PRIORITY", "SCHED", "QUANTUM", "RENICE", "WHEEL", "SPOOL", "IONICE", "ATD", "NICE -20", "RUNQUEUE")
+decay = "exit"
+room = "exit"
+room_names = "ROOT|SUDOERS|SHADOW|WHEEL|AUTH|SECURE|SPOOL|CRON.D"
+board = "plaza"
+board_lines = "CRONTAB -L|EVERY 12S   REAP.SH|EVERY 15S   FORK.SH|AT HOUR 0   RM -RF /VAR/LOG"

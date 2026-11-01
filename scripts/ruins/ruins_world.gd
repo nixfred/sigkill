@@ -71,6 +71,7 @@ var sun: DirectionalLight3D = null
 var register := ""
 var mix := Vector4(1, 0, 0, 0)
 var tear := 0.0
+var _tearing := true
 ## What it last pushed to the shader globals (ruins_mix, ruins_tear): the tests' view, as a headless run keeps no globals.
 var pushed_mix := Vector4(-1, -1, -1, -1)
 var pushed_tear := -1.0
@@ -121,6 +122,9 @@ const VAULT_MARK_OFF := 0.03
 var _vault_light: ShaderMaterial = null
 var _vault_mark: StandardMaterial3D = null
 var _vault_lamp: OmniLight3D = null
+## The crontab board's lamp (M5), and its light.
+const BOARD_LAMP := 5.0
+var _board_lamp: OmniLight3D = null
 var _vault_t := -1.0
 var _vault_power := 0.0
 var _lamp_level := 1.0
@@ -186,8 +190,9 @@ func points_of(prefix: String) -> Array[Vector3]:
 
 # --- The register. ---
 
-## Puts it in `name` ("tron", "cyberpunk", "matrix" or "all") over `seconds` (0 at once), tearing as it goes.
-func set_register(name: String, seconds: float = SHIFT_S) -> void:
+## Puts it in `name` ("tron", "cyberpunk", "matrix" or "all") over `seconds` (0 at once), tearing as it goes unless
+## `tearing` is off (M5: a slow decay, the place quietly going the other way over a minute).
+func set_register(name: String, seconds: float = SHIFT_S, tearing: bool = true) -> void:
 	if not RuinsRegister.NAMES.has(name):
 		name = "tron"
 	register = name
@@ -195,6 +200,7 @@ func set_register(name: String, seconds: float = SHIFT_S) -> void:
 	_to = RuinsRegister.weights(name)
 	_shift_s = maxf(seconds, 0.0)
 	_shift_t = 0.0
+	_tearing = tearing
 	if _shift_s <= 0.0:
 		mix = _to
 		tear = 0.0
@@ -213,7 +219,7 @@ func _process(delta: float) -> void:
 		_shift_t += delta
 		var k := clampf(_shift_t / _shift_s, 0.0, 1.0)
 		mix = _from.lerp(_to, k * k * (3.0 - 2.0 * k))
-		tear = sin(PI * k)
+		tear = sin(PI * k) if _tearing else 0.0
 		if k >= 1.0:
 			_shift_s = 0.0
 			mix = _to
@@ -342,6 +348,8 @@ func _build() -> Dictionary:
 					near_void += 1
 			var r: RandomNumberGenerator = dice.call("slab", z * 64 + x)
 			var damage := clampf(r.randf_range(0.05, 0.45) + near_void * 0.22, 0.0, 1.0) if not ruins.pristine else 0.0
+			if ruins.decay != "":
+				damage *= layout.decay_at(layout.center(c))  # whole at the start, the ruins' by the exit (M5)
 			var at: Array = near_kit.call(layout.center(c))
 			if c == layout.breach_cell:
 				RuinsPieces.shaft(at[0], at[1], layout.center(c), RuinsLayout.BREACH_OPENING, 3.6, r)  # its hatch is breach()'s (C37)
@@ -377,6 +385,10 @@ func _build() -> Dictionary:
 				_build_shop(dice.call("shop", i), out)
 			"stack":
 				RuinsPieces.stack(at[0], at[1], lo, hi, layout.folder_name(bl["seed"]), RuinsLayout.VAULT_STACK_H, dice.call("stack", i))
+			"wall":
+				RuinsPieces.stack(at[0], at[1], lo, hi, str(bl.get("name", "")), RuinsLayout.ROOM_WALL_H, dice.call("wall", i))  # the sealed room's (M5)
+			"board":
+				_build_board(dice.call("board", i), out)
 	for i in layout.cover.size():
 		var p: Dictionary = layout.cover[i]
 		var at: Array = near_kit.call(p["at"])
@@ -450,6 +462,9 @@ func _build() -> Dictionary:
 	if out.has("vault"):
 		triangles += int(out["vault"]["triangles"])  # the records screen's and console's own mesh (M4)
 		surfaces += 3
+	if out.has("board"):
+		triangles += int(out["board"]["triangles"])  # the crontab board's own mesh (M5)
+		surfaces += 2
 	var haze := _haze_mesh()
 	surfaces += 2 * DRIFT_TURN.size()
 	triangles += 2 * int(haze.get_meta(&"cards", 0))
@@ -508,6 +523,25 @@ func _build_vault(dice: Callable, out: Dictionary) -> void:
 	mesh.surface_set_material(1, mats["light"])
 	kit.commit(b["mark"], mesh)
 	out["vault"] = {"mesh": mesh, "lamp": lamp, "triangles": (kit.count(b["body"]) + kit.count(b["light"]) + kit.count(b["mark"])) / 3}
+
+
+## The crontab board (M5), when the plan has one: a screen on its block's face, lit from the start (its light the shared
+## material's), a mesh of its own (out["board"]: its body and its light) with its lamp's place.
+func _build_board(rng: RandomNumberGenerator, out: Dictionary) -> void:
+	if layout.board.is_empty():
+		return
+	var kit := ShapeKit.new()
+	var b := {"body": kit.bucket(Vector3.ZERO, true, true), "light": kit.bucket(Vector3.ZERO, false, true), "floor": kit.bucket(Vector3.ZERO, false, true), "mark": kit.bucket(Vector3.ZERO, false, false)}
+	var face: Vector3 = layout.board["face"]
+	var screen := {"at": face - layout.board["out"] * 0.35, "out": layout.board["out"], "size": RuinsLayout.BOARD_SCREEN}
+	var lamp := RuinsPieces.records_screen(kit, b, screen, ruins.board_lines, rng)
+	var mesh := ArrayMesh.new()
+	var mats := materials()
+	kit.commit(b["body"], mesh)
+	mesh.surface_set_material(0, mats["body"])
+	kit.commit(b["light"], mesh)
+	mesh.surface_set_material(1, mats["light"])
+	out["board"] = {"mesh": mesh, "lamp": lamp, "screen": screen, "triangles": (kit.count(b["body"]) + kit.count(b["light"])) / 3}
 
 
 ## The breach's pieces (C37), when the plan has one: the gangway out from the gate; the pocket's deck (its slabs on the
@@ -681,6 +715,7 @@ func _show() -> void:
 	_show_breach()
 	_show_shop()
 	_show_vault()
+	_show_board()
 	if not layout.field.is_empty():
 		_field = CacheField.new()
 		_field.layout = layout
@@ -707,6 +742,40 @@ func _show_shop() -> void:
 	_lamps.append({"light": _shop_lamp, "slot": RuinsPieces.Slot.SIGN_B, "energy": SHOP_LAMP, "shop": true})
 	_shop_t = 0.0
 	_step_shop(0.0)
+
+
+## The crontab board (M5), lit: its screen's lamp on from the start.
+func _show_board() -> void:
+	if not _built.has("board"):
+		return
+	var node := MeshInstance3D.new()
+	node.name = "Board"
+	node.mesh = _built["board"]["mesh"]
+	add_child(node)
+	_board_lamp = OmniLight3D.new()
+	_board_lamp.name = "BoardLamp"
+	_board_lamp.position = _built["board"]["lamp"]
+	_board_lamp.omni_range = 12.0
+	_board_lamp.omni_attenuation = 1.2
+	_board_lamp.shadow_enabled = false
+	_board_lamp.light_energy = BOARD_LAMP
+	add_child(_board_lamp)
+	_lamps.append({"light": _board_lamp, "slot": RuinsPieces.Slot.SCREEN, "energy": BOARD_LAMP})
+	_push_lamps()
+
+
+## True for a district with a crontab board (M5); where its screen stands (world space: its foot's middle, the way it
+## faces and its size), or {}; and where its light falls, or Vector3.INF.
+func has_board() -> bool:
+	return _built.has("board")
+
+
+func board_screen() -> Dictionary:
+	return _built["board"]["screen"] if _built.has("board") else {}
+
+
+func board_at() -> Vector3:
+	return _board_lamp.global_position if _board_lamp != null else Vector3.INF
 
 
 ## The records screen and the console (M4), the screen dark: its light at power 0 and its redaction mark unlit until a

@@ -65,6 +65,23 @@ extends Resource
 ## a line is drawn as a redaction bar, never letters). Needs cells at least 7 wide (an odd number: the aisle) and 20 long.
 @export var vault := ""
 @export var vault_lines := ""
+## Its decay (M5), "exit" or "" for none: a sector healthy at its start and eaten as it goes toward the exit (STORY.md
+## mission 5: the grid starts to rain as you go down). Every piece is built as clean as a pristine set's where
+## RuinsLayout.decay_at() is under DECAY_CLEAN and as broken as the ruins' at the exit end; the dice's holes, cover and
+## cables fall only past DECAY_CLEAN; the slabs' damage, the towers' lean and their dead lights grow with it. Not with
+## pristine (that is the whole sector clean).
+@export var decay := ""
+## Its sealed room (M5), "exit" or "" for none: the exit cell walled in on three sides and both corners by record stacks
+## named room_names (a "|" between two, cycled), its one doorway facing the start, where a mission stands a door only root
+## may pass (a "door" prop at the point "room_door"); the point "room" inside it. Needs cells at least 9 wide (an odd
+## number) and 8 long, and no vault.
+@export var room := ""
+@export var room_names := ""
+## Its crontab board (M5), "plaza" or "" for none: a screen two cells wide on the floor's edge nearest the plaza (where
+## the shop stands in a set with one; not both), lit from the start, showing board_lines in the sign font (a "|" between
+## two); the point "board" in front of it.
+@export var board := ""
+@export var board_lines := ""
 
 
 ## What is wrong with it; empty when it is good.
@@ -115,6 +132,34 @@ func problems() -> PackedStringArray:
 		out.append("%s: a vault in a sector that is not pristine (STORY.md: clean, healthy, guarded)" % id)
 	if pristine and (holes != 0 or cover != 0 or cables != 0):
 		out.append("%s: pristine, but with holes, cover or cables (%d, %d, %d: all must be 0)" % [id, holes, cover, cables])
+	if decay != "" and decay != "exit":
+		out.append("%s: decay \"%s\" (only toward the exit)" % [id, decay])
+	if decay != "" and pristine:
+		out.append("%s: decay in a pristine sector (one or the other)" % id)
+	if room != "" and room != "exit":
+		out.append("%s: room \"%s\" (only at the exit end)" % [id, room])
+	if room != "" and vault != "":
+		out.append("%s: a room and a vault (one set piece at the exit end)" % id)
+	if room != "" and (cells.x < RuinsLayout.ROOM_WIDE_LEAST or cells.x % 2 == 0 or cells.y < RuinsLayout.ROOM_LONG_LEAST):
+		out.append("%s: a room needs cells at least %d wide (an odd number) and %d long" % [id, RuinsLayout.ROOM_WIDE_LEAST, RuinsLayout.ROOM_LONG_LEAST])
+	var room_list := room_names.split("|", false)
+	if room != "" and room_list.size() < 3:
+		out.append("%s: a room needs at least three names for its walls" % id)
+	for name in room_list:
+		if not RuinsLayout.legible(name.strip_edges()):
+			out.append("%s: room name \"%s\" is longer than %d or has letters the sign font has not" % [id, name, RuinsLayout.NAME_LAST])
+	if board != "" and board != "plaza":
+		out.append("%s: board \"%s\" (only by the plaza)" % [id, board])
+	if board != "" and shop != "":
+		out.append("%s: a board and a shop (one block on the edge by the plaza)" % id)
+	if board != "" and board_lines.strip_edges() == "":
+		out.append("%s: a board with no lines on its screen" % id)
+	for line in board_lines.split("|", false):
+		if not RuinsLayout.legible_up_to(line.strip_edges(), RuinsLayout.VAULT_LINE_LAST):
+			out.append("%s: board line \"%s\" is longer than %d or has letters the sign font has not" % [id, line, RuinsLayout.VAULT_LINE_LAST])
+		for word in RuinsLayout.NEVER_SHOWN:
+			if line.to_lower().contains(word):
+				out.append("%s: \"%s\" gives the story away (\"%s\")" % [id, line, word])
 	for line in vault_lines.split("|", false):
 		var bare := line.replace("#", "")
 		if line.length() > RuinsLayout.VAULT_LINE_LAST or (bare.strip_edges() != "" and not RuinsLayout.legible_up_to(bare.strip_edges(), RuinsLayout.VAULT_LINE_LAST)):

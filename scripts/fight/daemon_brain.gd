@@ -77,9 +77,28 @@ extends RefCounted
 ## parent_process.gd) never moves, looks, strikes or is roused: its children do the fighting. Mission 3's loop core (M3,
 ## scripts/daemons/loop_core.gd) is rooted the same way (ROOTED); its forks fight.
 ##
+## An elite's own moves (M5, docs/STORY.md mission 5: "elites of all three types", each unlike the others): a rogue.d
+## elite flanks as it hunts (it circles off the straight line until it is near, the side swapped every ELITE_FLANK_S)
+## and its lunge is a pounce from ELITE_ROGUE_REACH times the reach, ELITE_ROGUE_LUNGE times as far; a zombie elite
+## throws no bolt: at its tell's end it charges, striding straight at its prey at ELITE_ZOMBIE_CHARGE_SPEED for
+## ELITE_ZOMBIE_CHARGE_S, and rams whoever its middle reaches within ELITE_ZOMBIE_RAM_M (its bolt's damage times
+## ELITE_ZOMBIE_RAM_SCALE, once), stopping at a wall; a runaway elite's dives come in bursts twice as long with tells
+## ELITE_SWARM_TELL as long. Only the brains that decide do any of it; a joiner's copy plays the host's word.
+##
 ## Fiction only: a daemon is a game object; nothing real is signalled, inspected or run.
 
 enum State { HOME, HUNT, TELL, STRIKE, RECOVER, RETURN, SCATTER, DOWN }
+## The elites' numbers (M5), as multiples of their type's tuning where they are.
+const ELITE_ROGUE_REACH := 2.2
+const ELITE_ROGUE_LUNGE := 2.6
+const ELITE_FLANK_M := 3.2
+const ELITE_FLANK_S := 2.4
+const ELITE_ZOMBIE_CHARGE_SPEED := 7.5
+const ELITE_ZOMBIE_CHARGE_S := 1.1
+const ELITE_ZOMBIE_RAM_M := 1.7
+const ELITE_ZOMBIE_RAM_SCALE := 1.6
+const ELITE_SWARM_BURST := 2
+const ELITE_SWARM_TELL := 0.6
 ## The kinds rooted where they stand, never moving, looking, striking or roused (M2's parent, M3's loop core).
 const ROOTED := ["parent", "core"]
 const STATE_NAMES := ["home", "hunt", "tell", "strike", "recover", "return", "scatter", "down"]
@@ -134,6 +153,17 @@ var _route := PackedVector3Array()
 var _route_t := 0.0
 ## "rogue", "zombie" or "swarm": its art's.
 var kind := "rogue"
+## Its type's elite (M5): the moves above are its.
+var elite := false
+## A zombie elite's charge (M5): running, and whether it rammed; a rogue elite's flank: the side it circles to and
+## when it last swapped (its clock).
+var _charging := false
+var _rammed := false
+var _flank_side := 1.0
+var _flank_at := 0.0
+## Charges run and rams landed, for the checks.
+var charges := 0
+var rams := 0
 var state: State = State.HOME
 var state_t := 0.0
 ## Staggers since it was made: tells a ping called off (C28).
@@ -219,6 +249,7 @@ func _init(owner: Node3D, daemon_art: DaemonArt) -> void:
 	dummy = owner
 	art = daemon_art
 	kind = daemon_art.ai_kind if daemon_art != null else "rogue"
+	elite = daemon_art != null and daemon_art.elite
 
 
 ## Takes its spot as home: where it stands now (once, when the dummy is ready in the tree).
@@ -452,7 +483,7 @@ func _step_hunt(delta: float, d) -> void:
 	_face(target if sees else goal, delta, d)
 	if sees and cooldown <= 0.0 and _in_range(target, d) and d.prey_attackable(prey) and d.take_slot(self, prey):
 		holds_slot = true
-		burst_left = d.tuning.swarm_burst if kind == "swarm" else 0
+		burst_left = d.tuning.swarm_burst * (ELITE_SWARM_BURST if elite else 1) if kind == "swarm" else 0
 		_tell()
 
 
@@ -483,9 +514,15 @@ func _strike(target: Vector3, d) -> void:
 	_dive_hit = false
 	var face := _flat(target - dummy.global_position)
 	_strike_dir = face.normalized() if face.length_squared() > 0.0001 else -dummy.global_transform.basis.z
-	# The lunge closes the gap to where the scythes reach the prey, never past it.
-	_lunge = clampf(face.length() + SCYTHES.z, 0.0, d.tuning.rogue_lunge_m)
-	if kind == "swarm":
+	# The lunge closes the gap to where the scythes reach the prey, never past it (an elite's pounce reaches farther, M5).
+	_lunge = clampf(face.length() + SCYTHES.z, 0.0, d.tuning.rogue_lunge_m * (ELITE_ROGUE_LUNGE if elite else 1.0))
+	_charging = false
+	_rammed = false
+	if kind == "zombie" and elite:
+		# A zombie elite charges (M5): no bolt; it runs its prey down.
+		_charging = true
+		charges += 1
+	elif kind == "swarm":
 		var nest: Vector3 = dummy.global_position + Vector3.UP * MIDDLE_M
 		_dive_from = nest
 		_dive_mark = target
@@ -512,6 +549,24 @@ func _step_strike(delta: float, d) -> void:
 				_slash(d)
 				_enter(State.RECOVER)
 		"zombie":
+			if _charging:
+				# The elite's charge (M5): striding at its prey, ramming it once if its middle comes near, until its time
+				# is up or a wall stops it.
+				art.drive(DaemonArt.Act.MOVE)
+				var ran := _shove(_strike_dir * ELITE_ZOMBIE_CHARGE_SPEED * delta, d)
+				if not _rammed and d.prey_valid(prey):
+					var at: Vector3 = d.prey_point(prey)
+					var middle: Vector3 = dummy.global_position + Vector3.UP * MIDDLE_M
+					if _flat(at - middle).length() <= ELITE_ZOMBIE_RAM_M and d.prey_attackable(prey) and d.clear(middle, at):
+						_rammed = true
+						rams += 1
+						_land(t.zombie_bolt_damage * ELITE_ZOMBIE_RAM_SCALE, _strike_dir, d)
+				if state_t >= ELITE_ZOMBIE_CHARGE_S or not ran or _rammed:
+					if not _rammed:
+						_note("miss")
+					_charging = false
+					_enter(State.RECOVER)
+				return
 			art.drive(DaemonArt.Act.STRIKE, state_t / t.zombie_throw_s)
 			velocity = Vector3.ZERO
 			if state_t >= t.zombie_throw_s:
@@ -1120,7 +1175,7 @@ func _in_range(target: Vector3, d) -> bool:
 	var gap := _flat(target - dummy.global_position).length()
 	match kind:
 		"rogue":
-			return gap <= t.rogue_reach_m
+			return gap <= t.rogue_reach_m * (ELITE_ROGUE_REACH if elite else 1.0)
 		"zombie":
 			return gap <= t.zombie_range_m
 	return gap <= t.swarm_orbit_m + 2.0
@@ -1132,7 +1187,7 @@ func _in_reach(target: Vector3, d) -> bool:
 	var gap := _flat(target - dummy.global_position).length()
 	match kind:
 		"rogue":
-			return gap <= t.rogue_reach_m + t.rogue_lunge_m
+			return gap <= t.rogue_reach_m + t.rogue_lunge_m * (ELITE_ROGUE_LUNGE if elite else 1.0)
 		"zombie":
 			return gap <= t.zombie_range_m
 	return gap <= t.swarm_orbit_m + 4.0
@@ -1148,6 +1203,12 @@ func _hunt_goal(target: Vector3, delta: float, d) -> Vector3:
 			if way.length() <= keep:
 				return here
 			var goal := target - way.normalized() * keep
+			if kind == "rogue" and elite and way.length() > keep * 2.5:
+				# A rogue elite flanks (M5): off the straight line, round to a side, the side swapped now and then.
+				if clock - _flank_at > ELITE_FLANK_S:
+					_flank_at = clock
+					_flank_side = -_flank_side
+				goal += Vector3(-way.z, 0.0, way.x).normalized() * ELITE_FLANK_M * _flank_side
 			goal.y = here.y
 			return goal
 	return _orbit_goal(target, delta, d)
@@ -1183,7 +1244,7 @@ func _tell_s(d) -> float:
 			return t.rogue_tell_s
 		"zombie":
 			return t.zombie_tell_s
-	return t.swarm_tell_s
+	return t.swarm_tell_s * (ELITE_SWARM_TELL if elite else 1.0)
 
 
 ## How long its strike lasts (I1: a function, so hunter ICE's brain gives its own).

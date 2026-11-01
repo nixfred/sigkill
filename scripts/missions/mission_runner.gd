@@ -394,6 +394,9 @@ func _make_stage(d: MissionDef) -> void:
 	stage.woke.connect(func(id: String) -> void: _fire("woke:" + id))
 	stage.cache_marked.connect(func(percent: int) -> void: _fire("cache:%d" % percent))
 	stage.cache_full.connect(_on_cache_full)
+	stage.job_ran.connect(_on_job_ran)
+	stage.job_due.connect(func(_id: String, reason: String) -> void: _fail(reason))
+	stage.job_removed.connect(func(id: String) -> void: line_said.emit("auditor", "audit: crontab: %s removed." % _job_name(id)))
 
 
 ## The cache full (M3): out of memory, the mission failed.
@@ -503,6 +506,25 @@ func need() -> float:
 	return 1.0
 
 
+## A scheduled job ran (M5): the Auditor logs it.
+func _on_job_ran(id: String, run: int, runs: int) -> void:
+	line_said.emit("auditor", "audit: cron ran %s (run %d of %d)." % [_job_name(id), run, runs])
+
+
+func _job_name(id: String) -> String:
+	if def == null:
+		return id
+	for p in def.job_props():
+		if str(p.get("id", "")) == id:
+			return str(p.get("name", id))
+	return id
+
+
+## Its scheduled jobs (M5) for the HUD's crontab, or [].
+func jobs() -> Array:
+	return stage.jobs() if stage != null and is_instance_valid(stage) else []
+
+
 ## Where the running objective points, for the HUD's marker: a reach point, or its log while it still stands, or INF.
 func target_point() -> Vector3:
 	var o := objective()
@@ -581,6 +603,12 @@ func _physics_process(delta: float) -> void:
 				_objective_done()
 		"log":
 			if logs_found.has(str(o["log"])):
+				progress = 1.0
+				_objective_done()
+		"root":
+			# Become root (M5): the moment the player is root#.
+			var sudo = player.get("sudo") if player != null and is_instance_valid(player) else null
+			if sudo != null and sudo.state != null and sudo.is_root():
 				progress = 1.0
 				_objective_done()
 
@@ -769,7 +797,8 @@ func _fire(trigger: String) -> void:
 			var from := register
 			register = shift["to"]
 			if world != null and is_instance_valid(world):
-				world.set_register(register)
+				# Over its own seconds and without the tear when it says so (M5: a slow decay).
+				world.set_register(register, float(shift.get("seconds", RuinsWorld.SHIFT_S)), bool(shift.get("tear", true)))
 			register_shifted.emit(from, register)
 
 

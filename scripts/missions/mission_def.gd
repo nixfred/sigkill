@@ -89,7 +89,11 @@ extends Resource
 
 ## The registers (STORY.md section 1); "all" is the finale's three at once.
 const REGISTERS := ["tron", "matrix", "cyberpunk", "all"]
-const KINDS := ["kill", "reach", "log", "survive"]
+const KINDS := ["kill", "reach", "log", "survive", "root"]
+## A scheduled job's (M5) name on the crontab, at most this long; its countdown, seconds; a root door's span (wide, tall).
+const JOB_NAME_LAST := 24
+const JOB_EVERY := Vector2(3.0, 300.0)
+const DOOR_SPAN := Vector2(3.4, 3.6)
 const DAEMONS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter", "any"]
 ## A mission's own ICE (M4): wave kinds that are pieces of ICE, placed through the ICE director (white ICE walls, white ICE
 ## nodes, hunter ICE); a node wave names each node's kind; a wall's span (wide, tall) when the data gives none.
@@ -111,7 +115,7 @@ const ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 const ABILITIES := {"code_rain_vision": "code-rain vision", "breakers": "ICEbreakers", "sudo": "sudo and root#", "sigstop": "SIGSTOP bullet time"}
 ## The daemon types a wave may be, the props' kinds, and a wave's numbers.
 const WAVE_KINDS := ["rogue", "zombie", "swarm", "parent", "core", "wall", "node", "hunter"]
-const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter"]
+const PROP_KINDS := ["vent", "ice_wall", "breach", "spot", "queue", "shop", "loop", "hush", "prompt", "pickup", "vault", "stutter", "job", "door"]
 const WAVE_EVERY_S := 0.6
 const WAVE_LAST := 12
 ## A dormant wave wakes as the player comes this near one of its daemons, metres (M2).
@@ -234,6 +238,8 @@ func problems(weapon_ids: PackedStringArray) -> PackedStringArray:
 		if not (wait is float or wait is int) or wait < 0.0 or wait > WAIT_LAST:
 			out.append("%s: a line's wait (0 to %.0f seconds)" % [id, WAIT_LAST])
 	for shift in transitions:
+		if shift is Dictionary and shift.has("seconds") and (not (shift["seconds"] is float or shift["seconds"] is int) or shift["seconds"] < 0.0 or shift["seconds"] > 180.0):
+			out.append("%s: a shift over 0 to 180 seconds" % id)  # M5: a slow decay
 		if not (shift is Dictionary) or not trigger_ok(str(shift.get("on", "")), objective_ids, log_ids, wave_ids) or not REGISTERS.has(shift.get("to")):
 			out.append("%s: a transition needs a good trigger and a register" % id)
 	for w in grants:
@@ -302,6 +308,10 @@ func _objective_problems(o: Variant, weapon_ids: PackedStringArray, seen: Packed
 			var s = o.get("seconds")
 			if not (s is float or s is int) or s < 1.0 or s > 900.0:
 				out.append("%s: objective %s needs 1 to 900 seconds" % [id, oid])
+		"root":
+			# Become root (M5): done the moment the player is root#; only where the campaign has handed sudo over.
+			if not allowed_abilities().has("sudo"):
+				out.append("%s: objective %s needs root in a mission the campaign has not handed sudo to" % [id, oid])
 		_:
 			out.append("%s: objective %s kind \"%s\"" % [id, oid, o.get("kind")])
 	var unlocks = o.get("unlocks", [])
@@ -403,6 +413,15 @@ func _has_vault() -> bool:
 	return s != null and s.vault != ""
 
 
+## Its scheduled jobs (M5) and its doors only root may pass, in their props' order.
+func job_props() -> Array:
+	return props.filter(func(p): return p is Dictionary and p.get("kind") == "job")
+
+
+func door_props() -> Array:
+	return props.filter(func(p): return p is Dictionary and p.get("kind") == "door")
+
+
 ## Its parent wave (M2), or {}: the one whose daemon reaps the rest.
 func parent_wave() -> Dictionary:
 	for w in waves:
@@ -494,6 +513,52 @@ func _prop_problems() -> PackedStringArray:
 						out.append("%s: hush %s seconds (0.2 to 5)" % [id, p["id"]])
 				elif not _has_field():
 					out.append("%s: prompt %s, but its ruins have no field" % [id, p["id"]])
+			"job":
+				# A scheduled job of the mission's (M5): its name on the crontab, its countdown, the waves its runs start in
+				# order (each the job's own: no trigger of its own), the trigger it is scheduled on, the one that removes it,
+				# and the fail it runs when its last countdown ends with it still scheduled.
+				var jname = p.get("name", "")
+				if not (jname is String) or jname.strip_edges() == "" or jname.length() > JOB_NAME_LAST:
+					out.append("%s: job %s needs a name of 1 to %d characters" % [id, p["id"], JOB_NAME_LAST])
+				var every = p.get("every", 0.0)
+				if not (every is float or every is int) or every < JOB_EVERY.x or every > JOB_EVERY.y:
+					out.append("%s: job %s runs every %.0f to %.0f seconds" % [id, p["id"], JOB_EVERY.x, JOB_EVERY.y])
+				if not trigger_ok(str(p.get("on", "")), _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: job %s trigger \"%s\"" % [id, p["id"], p.get("on")])
+				var runs = p.get("waves", [])
+				if not (runs is Array):
+					out.append("%s: job %s waves: a list of wave ids" % [id, p["id"]])
+					runs = []
+				for wid in runs:
+					var found := false
+					for w in waves:
+						if w is Dictionary and str(w.get("id", "")) == str(wid):
+							found = true
+							if w.has("on") or w.has("after") or w.has("by"):
+								out.append("%s: job %s runs wave %s, which has a trigger of its own" % [id, p["id"], wid])
+					if not found:
+						out.append("%s: job %s runs wave \"%s\", which is not one of its waves" % [id, p["id"], wid])
+				var fails = p.get("fails", "")
+				if not (fails is String) or fails.length() > TEXT_LAST:
+					out.append("%s: job %s fails: text of up to %d characters" % [id, p["id"], TEXT_LAST])
+					fails = ""
+				if runs.is_empty() and fails == "":
+					out.append("%s: job %s runs nothing and fails nothing" % [id, p["id"]])
+				var until = str(p.get("until", ""))
+				if until != "" and not trigger_ok(until, _objective_ids(), _log_ids(), wave_ids()):
+					out.append("%s: job %s until \"%s\"" % [id, p["id"], until])
+			"door":
+				# A door only root may pass (M5): where it stands, its turn, its span; its mission must have sudo.
+				if not _place_ok(p.get("at")):
+					out.append("%s: door %s needs \"at\", a Vector3 or a point of its ruins" % [id, p["id"]])
+				var yaw = p.get("yaw", 0.0)
+				var span = p.get("span", DOOR_SPAN)
+				if not (yaw is float or yaw is int) or not (span is Vector2) or span.x < 1.0 or span.x > 12.0 or span.y < 1.5 or span.y > 8.0:
+					out.append("%s: door %s span (1 to 12 wide, 1.5 to 8 tall) and yaw (degrees)" % [id, p["id"]])
+				if str(p.get("opens", "root")) != "root":
+					out.append("%s: door %s opens only to root" % [id, p["id"]])
+				if not allowed_abilities().has("sudo"):
+					out.append("%s: door %s only root may pass, in a mission the campaign has not handed sudo to" % [id, p["id"]])
 			"pickup":
 				# An ICEbreaker pickup of the mission's (M4): where, which, and the trigger it is laid on.
 				if not _place_ok(p.get("at")):
@@ -572,6 +637,11 @@ func _wave_of(wave_id: String) -> Dictionary:
 
 
 func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray) -> PackedStringArray:
+	# The waves a scheduled job runs (M5): started by the job, so they carry no trigger of their own.
+	var job_waves := PackedStringArray()
+	for jp in job_props():
+		for jw in jp.get("waves", []):
+			job_waves.append(str(jw))
 	var out := PackedStringArray()
 	var ids := wave_ids()
 	var vents := prop_ids("vent") + prop_ids("spot") + prop_ids("queue")
@@ -648,6 +718,8 @@ func _wave_problems(objective_ids: PackedStringArray, log_ids: PackedStringArray
 		var after := str(w.get("after", ""))
 		if by != "":
 			pass
+		elif job_waves.has(wid):
+			pass  # a scheduled job's (M5): the job starts it, run by run
 		elif (on == "") == (after == ""):
 			out.append("%s: wave %s needs one of \"on\" (a trigger) or \"after\" (a wave)" % [id, wid])
 		elif on != "" and not trigger_ok(on, objective_ids, log_ids, ids):

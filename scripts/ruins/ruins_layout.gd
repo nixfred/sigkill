@@ -98,6 +98,16 @@ const VAULT_BAY_A := 3
 const VAULT_START := 2
 const VAULT_WIDE_LEAST := 7
 const VAULT_STACK_H := 16.0
+## Decay (M5): the share of the way from the start to the exit under which a piece is built clean (a pristine set's),
+## and the share past which the dice may break the floor (holes) and the giants.
+const DECAY_CLEAN := 0.35
+const DECAY_BROKEN := 0.5
+## The sealed room (M5): the floor's least width (odd: the room is centred) and length; its walls' height.
+const ROOM_WIDE_LEAST := 9
+const ROOM_LONG_LEAST := 8
+const ROOM_WALL_H := 9.0
+## The crontab board's screen (M5): wide and tall, metres; it stands on a block two cells wide.
+const BOARD_SCREEN := Vector2(7.2, 4.2)
 const VAULT_SCREEN := Vector2(11.0, 6.4)
 const VAULT_LINE_LAST := 40
 const VAULT_POST := Vector3(0.6, 3.4, 0.6)
@@ -151,6 +161,11 @@ var field := {}
 ## (its middle on the floor line past the exit row's parapet), out: Vector3 (the way it faces: back down the hall), size:
 ## Vector2}, console: {at: Vector3 (the floor under its middle), yaw}}; {} for none.
 var vault := {}
+## The sealed room (M5), or {}: its cells (rect), its doorway's cell (door) and the cell inside (inside, the exit's).
+var room := {}
+## The crontab board (M5), or {}: its block (rect), the side it faces (front), its face's middle (face), the way out
+## from it (out), along its front (along) and its width, as the shop's.
+var board := {}
 var gate := {}
 var pocket := {}
 var gangway := {}
@@ -173,8 +188,10 @@ func _init(from: RuinsSet) -> void:
 	_outline()
 	_route()
 	_vault()
+	_room()
 	_ruins()
 	_shop()
+	_board()
 	_edges()
 	_points()
 	_floor_boxes()
@@ -253,16 +270,19 @@ func _route() -> void:
 			route.append(Vector2i(size.x / 2, z))
 		plaza_cell = Vector2i(size.x / 2, 1 + VAULT_DECK + 1 + VAULT_BAY_B / 2)
 		return
-	exit_cell = Vector2i(clampi(size.x / 2 + _rng.randi_range(-2, 2), 1, size.x - 2), 0)
+	var roomed := ruins.room != ""
+	# A sealed room (M5): the exit is the cell inside it, a row in from the end, and the route comes to it straight
+	# down the middle through its doorway.
+	exit_cell = Vector2i(size.x / 2, 1) if roomed else Vector2i(clampi(size.x / 2 + _rng.randi_range(-2, 2), 1, size.x - 2), 0)
 	for c in [start_cell, exit_cell, start_cell + Vector2i(0, -1), exit_cell + Vector2i(0, 1)]:
 		_put(c, Cell.FLOOR)
 	var here := start_cell
 	route = [here]
 	while here != exit_cell:
 		var step := Vector2i(0, -1)
-		if here.y == exit_cell.y:
+		if here.y == exit_cell.y or (roomed and here.y <= exit_cell.y + 2 and here.x != exit_cell.x):
 			step = Vector2i(signi(exit_cell.x - here.x), 0)
-		elif _rng.randf() < 0.35:
+		elif _rng.randf() < 0.35 and not (roomed and here.y <= exit_cell.y + 3):
 			var side := _rng.randi_range(0, 1) * 2 - 1
 			if here.x + side >= 1 and here.x + side <= size.x - 2:
 				step = Vector2i(side, 0)
@@ -281,6 +301,8 @@ func _reserved(c: Vector2i) -> bool:
 		return true
 	if not vault.is_empty():
 		return true  # the hall is the vault's plan (M4): no ruin or hole of the dice
+	if not room.is_empty() and (room["rect"] as Rect2i).grow(1).has_point(c):
+		return true  # the sealed room and the cells round it (M5)
 	if not field.is_empty() and (field["rect"] as Rect2i).grow(1).has_point(c):
 		return true  # the field and its ring (M3): never a ruin or a hole
 	if absi(c.x - plaza_cell.x) <= 1 and absi(c.y - plaza_cell.y) <= 1:
@@ -324,6 +346,75 @@ func _vault() -> void:
 	var end := center(Vector2i(mid, 0)) + Vector3(0, 0, -(CELL_M * 0.5 + PARAPET_T + 0.5))
 	vault["screen"] = {"at": end, "out": Vector3.BACK, "size": VAULT_SCREEN}
 	vault["console"] = {"at": center(Vector2i(mid, 1)) + Vector3(0, 0, -1.2), "yaw": 0.0}
+
+
+## The sealed room (M5, a set with a room): the exit cell walled in by stacks on its far side, both sides and both near
+## corners, the doorway the route's cell before it; nothing else of the plan changes for a set without one.
+func _room() -> void:
+	if ruins.room == "":
+		return
+	var names := ruins.room_names.split("|", false)
+	var rect := Rect2i(exit_cell.x - 1, exit_cell.y - 1, 3, 3)
+	var door := exit_cell + Vector2i(0, 1)
+	room = {"rect": rect, "door": door, "inside": exit_cell}
+	var i := 0
+	for z in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
+			var c := Vector2i(x, z)
+			if c == exit_cell or c == door:
+				continue
+			_put(c, Cell.BLOCK)
+			blocks.append({"rect": Rect2i(c, Vector2i.ONE), "kind": "wall", "seed": hash("%d:wall:%d" % [ruins.seed, i]), "name": names[i % names.size()].strip_edges()})
+			i += 1
+
+
+## The crontab board (M5, a set with a board): a block two cells wide on the floor's edge nearest the plaza, its screen
+## facing the floor, placed as the shop is.
+func _board() -> void:
+	if ruins.board == "":
+		return
+	var found := []
+	for c in floor_cells():
+		for back in 4:
+			var front: int = (back + 2) % 4
+			var c2: Vector2i = c + SIDES[(back + 1) % 4]
+			if cell(c + SIDES[back]) != Cell.VOID or cell(c2) != Cell.FLOOR or cell(c2 + SIDES[back]) != Cell.VOID:
+				continue
+			if cell(c + SIDES[front]) != Cell.FLOOR or cell(c2 + SIDES[front]) != Cell.FLOOR:
+				continue
+			var d := ((Vector2(c) + Vector2(c2)) * 0.5).distance_to(Vector2(plaza_cell))
+			found.append([d, found.size(), c, c2, front])
+	found.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	for f in found:
+		var c: Vector2i = f[2]
+		var c2: Vector2i = f[3]
+		var rect := Rect2i(Vector2i(mini(c.x, c2.x), mini(c.y, c2.y)), Vector2i(absi(c.x - c2.x) + 1, absi(c.y - c2.y) + 1))
+		if not _try_mark(rect, Cell.BLOCK):
+			continue
+		var front: int = f[4]
+		var out := Vector3(SIDES[front].x, 0, SIDES[front].y)
+		var mid := (center(rect.position) + center(rect.end - Vector2i.ONE)) * 0.5
+		blocks.append({"rect": rect, "kind": "board", "seed": hash("%d:board" % ruins.seed), "front": front})
+		board = {"rect": rect, "front": front, "face": mid + out * (CELL_M * 0.5 - BLOCK_INSET), "out": out, "along": Vector3(out.z, 0, -out.x), "width": CELL_M * 2.0 - BLOCK_INSET * 2.0}
+		return
+
+
+## How far `p` (world space) is down the decay (M5): 0 at the start's row and before it, 1 at the exit's row and past
+## it, eased between; 0 everywhere in a set without decay.
+func decay_at(p: Vector3) -> float:
+	if ruins.decay == "":
+		return 0.0
+	var from := center(start_cell).z
+	var to := center(exit_cell).z
+	if absf(from - to) < 0.001:
+		return 1.0
+	var k := clampf((from - p.z) / (from - to), 0.0, 1.0)
+	return k * k * (3.0 - 2.0 * k)
+
+
+## True where a piece at `p` is built clean (M4's pristine set everywhere; M5's decay before DECAY_CLEAN).
+func pristine_at(p: Vector3) -> bool:
+	return ruins.pristine or (ruins.decay != "" and decay_at(p) < DECAY_CLEAN)
 
 
 ## The hall's guard posts (M4): cover of kind "post" in pairs either side of the aisle on every row of the bays and the
@@ -402,6 +493,8 @@ func _ruins() -> void:
 		elif roll < 0.5 and w * h >= 2:
 			kind = "fallen"
 		var block_seed := _rng.randi()
+		if kind == "fallen" and ruins.decay != "" and decay_at(center(rect.position)) < DECAY_BROKEN:
+			kind = "racks"  # nothing has fallen yet in the clean part (M5)
 		if _try_mark(rect, Cell.BLOCK):
 			blocks.append({"rect": rect, "kind": kind, "seed": block_seed})
 			placed += 1
@@ -413,6 +506,8 @@ func _ruins() -> void:
 		var h := 1 if w == 2 else _rng.randi_range(1, 2)
 		var rect := Rect2i(_rng.randi_range(1, size.x - 1 - w), _rng.randi_range(2, size.y - 2 - h), w, h)
 		var hole_seed := _rng.randi()
+		if ruins.decay != "" and decay_at((center(rect.position) + center(rect.end - Vector2i.ONE)) * 0.5) < DECAY_BROKEN:
+			continue  # the floor is whole until well down the decay (M5)
 		if _try_mark(rect, Cell.HOLE):
 			holes.append({"rect": rect, "seed": hole_seed})
 			placed += 1
@@ -521,6 +616,8 @@ func _edges() -> void:
 		var tall := BLOCK_H if b["kind"] != "fallen" else 4.2
 		if b["kind"] == "stack":
 			tall = VAULT_STACK_H  # a record stack (M4) stands twice a ruin's height
+		elif b["kind"] == "wall":
+			tall = ROOM_WALL_H  # the sealed room's walls (M5)
 		var lo := center(r.position) - Vector3(CELL_M, 0, CELL_M) * 0.5
 		var hi := center(r.end - Vector2i.ONE) + Vector3(CELL_M, 0, CELL_M) * 0.5
 		var sz := Vector3(hi.x - lo.x - BLOCK_INSET * 2.0, tall, hi.z - lo.z - BLOCK_INSET * 2.0)
@@ -571,6 +668,26 @@ func _points() -> void:
 		_field_points(taken)
 	if not vault.is_empty():
 		_vault_points(taken)
+	if not room.is_empty():
+		# The sealed room (M5): inside it (the exit's own cell) and its doorway; its cells and the doorway's taken.
+		points["room"] = center(room["inside"]) + Vector3(0, STAND_Y, 0)
+		points["room_door"] = center(room["door"])
+		var rect: Rect2i = room["rect"]
+		for z in range(rect.position.y, rect.end.y + 1):
+			for x in range(rect.position.x, rect.end.x):
+				var c := Vector2i(x, z)
+				if not taken.has(c):
+					taken.append(c)
+	if not board.is_empty():
+		# The crontab board (M5): in front of its screen, as the shop's log stands.
+		points["board"] = board["face"] + board["out"] * 1.3 + Vector3(0, STAND_Y, 0)
+		var front: Vector2i = SIDES[board["front"]]
+		var rect: Rect2i = board["rect"]
+		for x in range(rect.position.x, rect.end.x):
+			for z in range(rect.position.y, rect.end.y):
+				var c := Vector2i(x, z) + front
+				if not taken.has(c):
+					taken.append(c)
 	# Logs: tucked against a ruin or an edge, away from each other.
 	var nooks: Array[Vector2i] = []
 	for c in open:
@@ -837,6 +954,8 @@ func _cover() -> void:
 		if cover.size() >= ruins.cover or open.is_empty():
 			break
 		var c: Vector2i = open[_rng.randi_range(0, open.size() - 1)]
+		if ruins.decay != "" and decay_at(center(c)) < DECAY_CLEAN:
+			continue  # nothing lies about in the clean part (M5)
 		var pick: Array = COVER[_rng.randi_range(0, COVER.size() - 1)]
 		var side: Vector2i = SIDES[_rng.randi_range(0, 3)]
 		var yaw := (0.0 if side.x == 0 else PI * 0.5) + _rng.randf_range(-0.25, 0.25)
@@ -1085,6 +1204,16 @@ func _scenery() -> void:
 			t["broken"] = false
 		for sg in signs:
 			sg["pristine"] = true
+	elif ruins.decay != "":
+		# Decay (M5): clean before DECAY_CLEAN, leaning more and dying as it goes, broken only well down it.
+		for t in towers + giants:
+			var k := decay_at(t["at"])
+			t["lean"] = (t["lean"] as Vector2) * k
+			t["pristine"] = k < DECAY_CLEAN
+			t["broken"] = t.get("broken", false) and k >= DECAY_BROKEN
+		for sg in signs:
+			sg["pristine"] = decay_at(towers[sg["tower"]]["at"]) < DECAY_CLEAN
+		cables = cables.filter(func(c): return decay_at(c["from"]) >= DECAY_CLEAN or decay_at(c["to"]) >= DECAY_CLEAN)
 
 
 ## True when nothing within `radius` of `at` (on x and z) is floor, a block or a hole.

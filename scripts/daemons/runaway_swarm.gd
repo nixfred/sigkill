@@ -8,7 +8,7 @@ extends DaemonArt
 ##
 ## No two alike (A5): its seed sets how many drones it flies and the size of each, its wings' length
 ## and sweep, how wide its flock holds round the core, and, one in twelve, an elite: more drones, a
-## bigger core with an armoured halo turning round it.
+## bigger core with an armoured halo turning round it, its flock in two rings turning against each other (M5).
 ##
 ## They flock as boids: each steers toward its neighbours' middle, matches their heading and keeps
 ## its distance from the nearest, while the core pulls them back to a shell round it and spins them
@@ -298,7 +298,9 @@ func _fly(t: float, dt: float) -> void:
 			force -= radial * (dist - orbit) * HOME
 			if dist < hollow:
 				force += radial * (hollow - dist) * HOME * 2.0
-			force += (axis + _tilt[i]).normalized().cross(radial) * SPIN
+			# An elite's flock (M5) flies as two rings turning against each other: every other drone the other way round.
+			var spin_axis := -axis if elite and i % 2 == 1 else axis
+			force += (spin_axis + _tilt[i]).normalized().cross(radial) * SPIN
 		var above := p.y - (GROUND_Y + 0.12)
 		if above < 0.25:
 			force += Vector3.UP * FLOOR_PUSH * (0.25 - above) / 0.25

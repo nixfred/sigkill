@@ -524,7 +524,7 @@ static func cover(kit: ShapeKit, b: Dictionary, p: Dictionary, rng: RandomNumber
 static func edge(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, rng: RandomNumberGenerator) -> void:
 	var side: Vector2i = RuinsLayout.SIDES[e["side"]]
 	var out := Vector3(side.x, 0, side.y)
-	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng, layout.ruins.pristine)
+	edge_at(kit, b, layout.center(e["cell"]) + out * RuinsLayout.CELL_M * 0.5, out, e["hole"], e["overlook"], rng, layout.pristine_at(layout.center(e["cell"])))
 
 
 ## A parapet (or an overlook) a cell long, its middle on the floor's edge at `line`, facing `out` (C37: anywhere, the

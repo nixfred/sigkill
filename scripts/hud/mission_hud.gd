@@ -75,6 +75,12 @@ const ABILITY_ACTIONS := {"code_rain_vision": "code_rain_vision", "sigstop": "si
 const CACHE_WORDS := "cache"
 const CACHE_HOT := 0.75
 const KIND_WORDS := {"rogue": "rogue.d", "zombie": "zombie", "swarm": "runaway", "core": "loop core", "parent": "parent", "wall": "white ICE", "node": "ICE node", "hunter": "hunter ICE", "any": "daemons"}
+## The crontab (M5): its heading, the most jobs shown, a row's height, and under how many seconds a job that fails
+## at the end blinks.
+const CRONTAB := "crontab -l"
+const JOBS_SHOWN := 3
+const JOB_ROW := 17.0
+const JOB_SOON_S := 10.0
 
 ## The runner whose mission this shows, the guide panel your AI's lines go to, and the player (for the metres).
 var runner: MissionRunner = null
@@ -172,6 +178,17 @@ func progress_text() -> String:
 			var at := runner.target_point()
 			return ("find %s  %d m" % [str(entry.get("name", "the log")), roundi(_metres_to(at))]) if at != Vector3.INF else "read"
 	return ""
+
+
+## The crontab's rows (M5): the jobs scheduled now and those just done, the most JOBS_SHOWN; [] with none.
+func jobs_rows() -> Array:
+	if runner == null or runner.state != MissionRunner.State.RUNNING:
+		return []
+	var out: Array = []
+	for job in runner.jobs():
+		if job["live"] or (job["done"] and job["done_s"] < MissionStage.JOB_DONE_SHOWN_S):
+			out.append(job)
+	return out.slice(0, JOBS_SHOWN)
 
 
 ## The loop's cache in words (M3): "cache  41%  i=3"; "" while no loop runs.
@@ -444,6 +461,9 @@ func _draw_panel() -> float:
 			rows += 18.0
 		if cache_text() != "":
 			rows += 20.0
+		var jobs := jobs_rows()
+		if not jobs.is_empty():
+			rows += 16.0 + JOB_ROW * jobs.size()
 	elif runner.state == MissionRunner.State.INTRO:
 		rows += 20.0
 	else:
@@ -504,6 +524,10 @@ func _draw_panel() -> float:
 				_text(Vector2(p.x + 16, row_y + 45), _clip(hint, MissionDef.HINT_LAST + 2), 11, Color(Palette.MINT, 0.55))
 			if cache_text() != "":
 				_draw_cache(Vector2(p.x + 16, row_y + (63.0 if hint != "" else 45.0)), w - 44)
+			var jobs := jobs_rows()
+			if not jobs.is_empty():
+				var jy := row_y + (63.0 if hint != "" else 45.0) + (20.0 if cache_text() != "" else 0.0)
+				_draw_jobs(Vector2(p.x + 16, jy), w - 44, jobs)
 		MissionRunner.State.FAILED:
 			_text(Vector2(p.x, row_y), "exit 137  " + runner.reason, 13, Palette.HOSTILE_RED)
 		MissionRunner.State.COMPLETE:
@@ -545,6 +569,40 @@ func _draw_progress(at: Vector2, w: float) -> void:
 		_:
 			var arrow := _arrow_word()
 			_text(at, words + ("  " + arrow if arrow != "" else ""), 12, Palette.MINT)
+
+
+## The crontab (M5): a row a job, its schedule and name on the left, its countdown on the right over a bar that empties
+## as the run comes; a job that fails at its end in the hostile red, blinking under JOB_SOON_S; a done one dim, "# ran"
+## or "# removed".
+func _draw_jobs(at: Vector2, w: float, jobs: Array) -> void:
+	_text(at, CRONTAB, 10, Color(Palette.TEAL, 0.8))
+	var y := at.y + JOB_ROW
+	for job in jobs:
+		var fails: bool = job["fails"]
+		var done: bool = job["done"]
+		var left: float = job["left"]
+		var colour := Palette.HOSTILE_RED if fails else Palette.MINT
+		if done:
+			colour = Color(colour, 0.45)
+		elif fails and left < JOB_SOON_S and fmod(_age, 0.5) < 0.25:
+			colour = Palette.FLASH
+		var schedule := "*/%d" % int(job["every"])
+		_text(Vector2(at.x, y), _clip("%-5s %s" % [schedule, job["name"]], 30), 11, colour)
+		var right := ""
+		if done:
+			right = "# ran" if int(job["run"]) > 0 and not (fails and int(job["run"]) >= int(job["runs"])) else "# removed"
+			if int(job["run"]) > 1:
+				right = "# ran x%d" % int(job["run"])
+		else:
+			right = _clock(left)
+			if int(job["runs"]) > 1:
+				right = "%d/%d  %s" % [int(job["run"]) + 1, int(job["runs"]), right]
+		_text(Vector2(at.x + w - _width(right, 11), y), right, 11, colour)
+		if not done:
+			var share := clampf(left / maxf(job["every"], 0.001), 0.0, 1.0)
+			draw_rect(Rect2(at.x, y + 3, w, 1), Color(colour, 0.2))
+			draw_rect(Rect2(at.x, y + 3, w * share, 1), Color(colour, 0.7))
+		y += JOB_ROW
 
 
 ## The loop's cache filling (M3): a bar from green to the runaway's magenta as it fills, its per cent and the loop's i.

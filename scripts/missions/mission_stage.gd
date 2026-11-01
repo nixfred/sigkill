@@ -49,6 +49,11 @@ signal woke(id: String)
 ##
 ## Its parent went down and init reaped `count` of its children still standing (M2).
 signal reaped(count: int)
+## A scheduled job (M5) ran (`run` of `runs`), ran its fail (its last countdown ended with it still scheduled), or was
+## removed from the crontab (its "until" trigger).
+signal job_ran(id: String, run: int, runs: int)
+signal job_due(id: String, reason: String)
+signal job_removed(id: String)
 ## Its loop (M3): a pass made (the field rewritten, its cores forking); a core forked `child`; the cache past a mark (per
 ## cent) and full; the loop broken (its last core down).
 signal passed(turn: int)
@@ -125,6 +130,13 @@ var _timed: Array = []
 ## fired) and not yet laid.
 var _pickup_spot := {}
 var _pickups_due: Array = []
+## Its scheduled jobs (M5): each its prop, the seconds to its next run (-1 not scheduled), the runs it has made, whether
+## it is scheduled now, done, and seconds since it was; its doors only root may pass; the crontab board's live line.
+var _jobs := {}
+var _doors: Array = []
+var _board_label: Label3D = null
+## Seconds a done job stays on the crontab.
+const JOB_DONE_SHOWN_S := 6.0
 
 
 ## Builds `d`'s set pieces here: its vents and its walls (its waves wait for their triggers).
@@ -153,6 +165,16 @@ func build(d: MissionDef) -> void:
 				_queues[p["id"]] = {"at": head, "way": way, "gap": float(p.get("gap", 1.3))}
 			"pickup":
 				_pickup_spot[p["id"]] = _pickup_spot.size()
+			"job":
+				_jobs[p["id"]] = {"p": p, "left": -1.0, "run": 0, "live": false, "done": false, "done_s": 0.0}
+			"door":
+				var door := RootDoor.new()
+				door.name = "Door_" + str(p["id"])
+				door.span = p.get("span", MissionDef.DOOR_SPAN)
+				add_child(door)
+				door.global_position = _floor(place.call(p["at"]))
+				door.rotation.y = deg_to_rad(float(p.get("yaw", 0.0)))
+				_doors.append(door)
 			"ice_wall":
 				var wall := IceBarrier.new()
 				wall.name = "Ice_" + str(p["id"])
@@ -167,6 +189,23 @@ func build(d: MissionDef) -> void:
 		_waves[w["id"]] = {"def": w, "state": "waiting", "next": 0, "wait": 0.0, "alive": [], "down": 0, "awake": not w.get("dormant", false)}
 	_reaps = str(d.parent_wave().get("reaps", ""))
 	_loop = d.loop_prop()
+	if world != null and is_instance_valid(world) and world.has_board() and not _jobs.is_empty():
+		# The crontab board's live line (M5): the next job's countdown, over its screen's lines.
+		var screen: Dictionary = world.board_screen()
+		_board_label = Label3D.new()
+		_board_label.name = "BoardLine"
+		_board_label.font = Palette.mono_font()
+		_board_label.font_size = 64
+		_board_label.pixel_size = 0.0055
+		_board_label.modulate = Palette.HOSTILE_AMBER
+		_board_label.outline_modulate = Color(0, 0, 0, 0.9)
+		_board_label.outline_size = 10
+		_board_label.shaded = false
+		_board_label.text = ""
+		add_child(_board_label)
+		var out: Vector3 = screen["out"]
+		_board_label.global_position = (screen["at"] as Vector3) + out * 0.3 + Vector3(0, 0.75, 0)
+		_board_label.rotation.y = atan2(out.x, out.z)
 
 
 ## Trigger `trigger` fired: the waves it starts, wakes or unseals, the breach it opens, the remnant it lights, the shop it
@@ -194,6 +233,16 @@ func fire(trigger: String) -> void:
 		if p.get("kind") == "pickup" and str(p.get("on", "")) == trigger:
 			_pickups_due.append(p)
 			_lay_pickups()
+		if p.get("kind") == "job":
+			var job: Dictionary = _jobs[p["id"]]
+			if str(p.get("on", "")) == trigger and not job["live"] and not job["done"]:
+				job["live"] = true
+				job["left"] = float(p["every"])
+			if str(p.get("until", "")) == trigger and not job["done"]:
+				job["live"] = false
+				job["done"] = true
+				job["left"] = -1.0
+				job_removed.emit(str(p["id"]))
 		if world == null or not is_instance_valid(world):
 			continue
 		if p.get("kind") == "vault" and str(p.get("lights", "")) == trigger:
@@ -292,6 +341,8 @@ func _physics_process(delta: float) -> void:
 	_step_timed(delta)
 	_step_loop(delta)
 	_lay_pickups()
+	_step_jobs(delta)
+	_step_doors()
 	for id in _order:
 		var wave: Dictionary = _waves[id]
 		var w: Dictionary = wave["def"]
@@ -647,6 +698,87 @@ func _break_loop() -> void:
 	if f != null:
 		f.freeze()
 	loop_broken.emit()
+
+
+## The scheduled jobs (M5): each live one counts down (held with the mission's clock) and at zero makes its next run: the
+## next of its waves started, or, past its last wave, its fail; done once it has nothing left to run.
+func _step_jobs(delta: float) -> void:
+	for id in _jobs:
+		var job: Dictionary = _jobs[id]
+		if job["done"]:
+			job["done_s"] += delta
+			continue
+		if not job["live"] or held or stopped:
+			continue
+		job["left"] -= delta
+		if job["left"] > 0.0:
+			continue
+		var p: Dictionary = job["p"]
+		var runs: Array = p.get("waves", [])
+		var total := runs.size() + (1 if str(p.get("fails", "")) != "" else 0)
+		var n: int = job["run"]
+		job["run"] = n + 1
+		if n < runs.size():
+			var wid := str(runs[n])
+			if _waves.has(wid) and _waves[wid]["state"] == "waiting":
+				_start(wid)
+			job_ran.emit(str(id), n + 1, total)
+			if n + 1 < total:
+				job["left"] = float(p["every"])
+			else:
+				job["live"] = false
+				job["done"] = true
+				job["left"] = -1.0
+		else:
+			job["live"] = false
+			job["done"] = true
+			job["left"] = -1.0
+			job_due.emit(str(id), str(p["fails"]))
+	if _board_label != null:
+		var line := ""
+		var soonest := INF
+		for id in _jobs:
+			var job: Dictionary = _jobs[id]
+			if job["live"] and job["left"] < soonest:
+				soonest = job["left"]
+				line = "NEXT  %s  %s" % [str(job["p"]["name"]).to_upper(), _clock(job["left"])]
+		_board_label.text = line
+
+
+## The doors only root may pass (M5): open while the player is root#.
+func _step_doors() -> void:
+	if _doors.is_empty():
+		return
+	var root := false
+	if player != null and is_instance_valid(player):
+		var sudo = player.get("sudo")
+		root = sudo != null and sudo.state != null and sudo.is_root()
+	for door in _doors:
+		if is_instance_valid(door):
+			door.set_open(root)
+
+
+## Its jobs for the HUD's crontab (M5), in their props' order: id, name, every, seconds left, runs made and in all,
+## whether it fails at the end, scheduled, done and for how long.
+func jobs() -> Array:
+	var out: Array = []
+	for id in _jobs:
+		var job: Dictionary = _jobs[id]
+		var p: Dictionary = job["p"]
+		var runs: Array = p.get("waves", [])
+		var fails := str(p.get("fails", "")) != ""
+		out.append({"id": str(id), "name": str(p["name"]), "every": float(p["every"]), "left": float(job["left"]), "run": int(job["run"]), "runs": runs.size() + (1 if fails else 0), "fails": fails, "live": bool(job["live"]), "done": bool(job["done"]), "done_s": float(job["done_s"])})
+	return out
+
+
+## Its doors (M5).
+func doors() -> Array:
+	return _doors.filter(func(d): return is_instance_valid(d))
+
+
+static func _clock(seconds: float) -> String:
+	var s := maxi(ceili(seconds), 0)
+	return "%02d:%02d" % [s / 60, s % 60]
 
 
 ## A hush or a prompt (M3), its wait over: the rain stopped for its seconds, or the red `>_` on a wall in front of the
