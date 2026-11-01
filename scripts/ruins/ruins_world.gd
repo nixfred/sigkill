@@ -115,6 +115,9 @@ var _field: CacheField = null
 ## (-1 not yet, then seconds) and how lit it is now; the lamps' last light level (ArenaArt.light_level), so they follow it.
 const VAULT_S := 1.7
 const VAULT_LAMP := 7.0
+## The redaction bar's brightness lit (over 1.0: it glows) and dark.
+const VAULT_MARK := 2.6
+const VAULT_MARK_OFF := 0.03
 var _vault_light: ShaderMaterial = null
 var _vault_mark: StandardMaterial3D = null
 var _vault_lamp: OmniLight3D = null
@@ -717,12 +720,11 @@ func _show_vault() -> void:
 	_vault_light = (materials()["light"] as ShaderMaterial).duplicate() as ShaderMaterial
 	_vault_light.set_shader_parameter("power", 0.0)
 	node.set_surface_override_material(1, _vault_light)
+	# The redaction bar: unshaded, so its colour is its albedo alone (an unshaded material draws no emission), driven
+	# over 1.0 as the screen wakes so the glow pass takes it.
 	_vault_mark = StandardMaterial3D.new()
 	_vault_mark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_vault_mark.albedo_color = Color(0.03, 0.0, 0.0)
-	_vault_mark.emission_enabled = true
-	_vault_mark.emission = Palette.HOSTILE_RED
-	_vault_mark.emission_energy_multiplier = 0.0
+	_vault_mark.albedo_color = Palette.HOSTILE_RED * VAULT_MARK_OFF
 	_vault_mark.disable_fog = true
 	node.set_surface_override_material(2, _vault_mark)
 	add_child(node)
@@ -844,7 +846,7 @@ func _step_vault(delta: float) -> void:
 	_vault_power = on
 	_vault_light.set_shader_parameter("power", on)
 	if _vault_mark != null:
-		_vault_mark.emission_energy_multiplier = 2.6 * on
+		_vault_mark.albedo_color = Palette.HOSTILE_RED * maxf(VAULT_MARK_OFF, VAULT_MARK * on)
 	for lamp in _lamps:
 		if lamp.get("vault", false):
 			lamp["energy"] = VAULT_LAMP * on

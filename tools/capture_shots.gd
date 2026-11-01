@@ -3285,14 +3285,17 @@ func _m4() -> void:
 	await _m2_quiet()
 	print("capture: m4-hall, %d standing" % stage.standing().size())
 	await _c37_save(sheet, "m4-hall", runner)
-	# The enforcement: a node's field over the aisle, the HUD scrambled by the other.
+	# The enforcement: a node's field over the aisle, the HUD scrambled by the other. The shield off for it (a node never
+	# looks at a protected intruder), back on after.
 	var hudnode: IceNode = ice.nodes[1]
 	var jam: IceNode = ice.nodes[0]
 	_c37_view(hudnode.global_position + Vector3(-5.5, 0, 0.6), hudnode.global_position + Vector3(0, 1.5, 0))
+	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
 	var waited := 0
 	while waited < 900 and not ice.corrupting():
 		await _frames(1)
 		waited += 1
+	runner.life.shield(100000.0)
 	_c37_view(hudnode.global_position + Vector3(-5.5, 0, 0.6), jam.global_position + Vector3(0, 1.4, 0))
 	await _frames(int(0.35 * Engine.physics_ticks_per_second))
 	print("capture: m4-nodes after %d frames, the HUD corrupted %s (%.1f s), the jam node %s" % [waited, ice.corrupting(), ice.corrupt_left, jam.state_name()])
@@ -3309,17 +3312,24 @@ func _m4() -> void:
 	_c37_view(Vector3(stand.x, 0.0, stand.z), hunter.aim_point())
 	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	await _m2_quiet()
-	_fire()
+	# The beam held as a player holds it (the trigger read off the player's own input each frame), on the hunter as it moves,
+	# until it freezes; its tank runs 4 s, so the hold is let go for a breath once past 2.6 s.
 	waited = 0
-	while waited < 300 and not hunter.chmod_frozen():
+	var held := 0
+	while waited < 420 and not hunter.chmod_frozen():
 		_m3_aim(hunter.aim_point())
+		var on := held < int(2.6 * Engine.physics_ticks_per_second)
+		_player.drive_input(Vector2.ZERO, false, false, on)
+		held = held + 1 if on else (0 if held >= int(4.6 * Engine.physics_ticks_per_second) else held + 1)
 		await _frames(1)
 		waited += 1
-	await _frames(int(0.4 * Engine.physics_ticks_per_second))
-	_m3_aim(hunter.aim_point())
+	for i in int(0.35 * Engine.physics_ticks_per_second):
+		_m3_aim(hunter.aim_point())
+		_player.drive_input(Vector2.ZERO, false, false, true)  # the beam on it as it stands frozen, for the frame
+		await _frames(1)
 	print("capture: m4-freeze after %d frames, the hunter frozen %s, adapted to %s %d%%" % [waited, hunter.chmod_frozen(), ice.adapt_weapon, ice.adapt_percent()])
 	await _c37_save(sheet, "m4-freeze", runner)
-	_unfire()
+	_player.drive_input(Vector2.ZERO)
 	await _m4_until(runner, func(): return runner.index >= 4, 0.0)
 	# The last rule and the deck; the hold: its hunter and nodes, the busiest fight (its GPU time), at 960 wide too.
 	await _m4_until(runner, func(): return runner.index >= 5, 0.0)
@@ -3340,30 +3350,48 @@ func _m4() -> void:
 	root.size = Vector2i(1920, 1080)
 	await _frames(4)
 	await _m4_until(runner, func(): return runner.index >= 7, 0.0)
-	# The record read: the records screen lighting over the deck, its session line a bar; your AI's line.
+	# The record read: the record open in the reader, the records screen lit over the deck behind it, its session line
+	# a bar, your AI's line. The reader stays up most of the end beat (its text's length and LOG_S), so the still is
+	# taken with it open, as a player sees it, once the screen has woken and your AI has spoken (its line at 2.8 s).
 	while runner.pickup("owner") == null:
 		await _frames(1)
 	var screen_at := world.vault_at()
+	var blackout := Blackout.of(_main)
+	var stutters_before: int = blackout.stutters() if blackout != null else 0
 	_player.global_position = runner.log_place("owner")
 	while not runner.logs_found.has("owner"):
 		await _frames(1)
 	var mh: MissionHud = _main.get_node("Hud").mission_hud()
-	while mh.showing_log():
-		await _frames(1)
+	var read_at := Time.get_ticks_msec()
 	_c37_view(world.point("records") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(2.2, 0, 5.5), screen_at + Vector3(0, 1.4, -2.0))
 	while world.vault_power() < 1.0:
 		await _frames(1)
-	await _frames(int(0.5 * Engine.physics_ticks_per_second))
-	print("capture: m4-records, the screen lit %.2f" % world.vault_power())
+	while Time.get_ticks_msec() - read_at < 3400:
+		await _frames(1)
+	print("capture: m4-records, the screen lit %.2f, the reader open %s" % [world.vault_power(), mh.showing_log()])
 	await _c37_save(sheet, "m4-records", runner)
-	# The end beat: the Auditor's escalation, and the lights stuttering: the frame with them down.
-	var blackout := Blackout.of(_main)
+	# The end beat: the Auditor's escalation, and the lights stuttering: the frame with them down. The mission's own
+	# stutter is a blink (0.29 s, 4.4 s after the record) that a still's PNG write can hitch past, so it is watched for
+	# by its count from before the record was read, and shown again for the frame if the blink fell inside a hitch.
 	_c37_view(world.point("records") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-1.0, 0, 7.0), screen_at + Vector3(0, 1.0, -2.0))
 	waited = 0
-	while waited < 900 and (blackout == null or not blackout.stuttering() or ArenaArt.light_level > 0.5):
+	var caught := false
+	while waited < 900 and not caught and blackout != null:
+		if blackout.stuttering() and ArenaArt.light_level < 0.5:
+			caught = true
+			break
+		if blackout.stutters() > stutters_before and not blackout.stuttering():
+			break  # it blinked past between two frames
 		await _frames(1)
 		waited += 1
-	print("capture: m4-end after %d frames, the lights at %.2f, stuttering %s" % [waited, ArenaArt.light_level, blackout != null and blackout.stuttering()])
+	if not caught and blackout != null:
+		blackout.stutter()
+		for i in 12:
+			await _frames(1)
+			if ArenaArt.light_level < 0.5:
+				caught = true
+				break
+	print("capture: m4-end after %d frames, the lights at %.2f, the mission's stutter counted %d, caught %s" % [waited, ArenaArt.light_level, (blackout.stutters() if blackout != null else 0) - stutters_before, caught])
 	await _c37_save(sheet, "m4-end", runner)
 	var end: MissionEndScreen = mh.end_screen()
 	while not end.is_up():

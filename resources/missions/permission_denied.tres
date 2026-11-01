@@ -216,7 +216,7 @@ waves = [{
 "count": 1,
 "face": "gate_2",
 "from": ["hunter_post"],
-"health": 300.0,
+"health": 240.0,
 "id": "hunter_1",
 "kind": "hunter",
 "on": "begin:hunter"
