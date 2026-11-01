@@ -394,6 +394,8 @@ const C37_GPU_FRAMES := 180
 const M2_SHEET := ["m2-opening", "m2-queue", "m2-crowd", "m2-guard", "m2-reap", "m2-exit0"]
 ## m3's sheet: mission 3 as a player meets it, three a row.
 const M3_SHEET := ["m3-opening", "m3-lines", "m3-storm", "m3-vision", "m3-cores", "m3-finish"]
+## m4's sheet: mission 4 as a player meets it, three a row.
+const M4_SHEET := ["m4-opening", "m4-hall", "m4-nodes", "m4-freeze", "m4-records", "m4-end"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
 ## parent's yard is, inside the threads' reach (so its guard's beat begins).
 const M2_QUEUE_VIEW := Vector3(4.5, 0.0, -0.8)
@@ -535,6 +537,11 @@ func _run() -> void:
 		return
 	if _set == "m3":
 		await _m3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "m4":
+		await _m4()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -3205,6 +3212,196 @@ func _m3() -> void:
 			stills.append(sheet[name])
 	if stills.size() == M3_SHEET.size():
 		_save_grid("m3-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## m4: mission 4 (permission denied), built, as a player plays it, started from the Missions screen with missions 1 to 3
+## done (the arena reloads into the records vault): its card; the opening, the hall's aisle ahead between the record
+## stacks and the guard posts, the first deny rule's white ICE wall sealing it, the ICEbreakers just put in hand
+## (m4-opening); the hall from the first bay, the stacks lining it and the second gate sealed (m4-hall, the set piece's
+## place); the enforcement nodes' fields, the HUD scrambled by one (m4-nodes); brute cracking a deny rule up close
+## (m4-brute); chmod 000's beam freezing the hunter, crusted in frost (m4-freeze, the chmod 000 beat; the busiest
+## fight's GPU time printed at the hold); the records screen lit over the deck with its redaction bar and the console
+## (m4-records, the set piece); the end beat, the sector's lights stuttering (m4-end); the exit 0 card; the Missions
+## screen with missions 1 to 4 done; a 960x540 window; and the sheet of six (m4-sequence). The player is shielded through
+## it (the shield off the HUD for each still); the pieces each beat counts are broken as a sure shot would, the rest left
+## as they stand. The session-holder's PID is a bar on every still that shows the records: never a number.
+func _m4() -> void:
+	var sheet := {}
+	var menu = _main.get_node("Hud").pause_menu()
+	MissionProgress.current().clear()
+	MissionProgress.current().record(MissionBook.at(1), 162.0, 3)
+	MissionProgress.current().record(MissionBook.at(2), 171.0, 3)
+	MissionProgress.current().record(MissionBook.at(3), 131.0, 2)
+	UnlockToast.drop_waiting()  # missions 1 to 3 marked done by hand: their weapons' toasts belong to their own ends
+	GameSettings.current().set_value("gameplay", "practice", false)
+	menu.open()
+	menu.open_missions()
+	await _frames(30)
+	menu.missions_screen().select(3)
+	await _frames(6)
+	var old: Node = _main
+	menu.missions_screen().start_selected()
+	await _c35_reloaded(old)
+	var runner := MissionRunner.of(_main)
+	var world := RuinsWorld.of(_main)
+	if runner == null or world == null or runner.def == null or runner.def.id != "permission_denied":
+		printerr("capture: mission 4 did not start in its ruins")
+		return
+	print("capture: mission %s in the ruins %s; %s" % [runner.def.id, world.ruins.id, str(world.stats())])
+	runner.life.shield(100000.0)
+	var stage := runner.stage
+	var ice := IceDirector.of(_main)
+	var breakers := BreakerDirector.of(_main)
+	var start := world.point("start")
+	var gate1 := world.point("gate_1")
+	var gate2 := world.point("gate_2")
+	var door := world.point("vault_door")
+	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 0), gate1 + Vector3(0, 1.8, 0))
+	await _frames(132)
+	await _c37_save(sheet, "m4-card", runner)
+	# The opening: the aisle ahead between the stacks and the posts, the first rule sealing it, the breakers put in hand.
+	while runner.state == MissionRunner.State.INTRO:
+		await process_frame
+	_c37_view(start - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(0.6, 0, -1.5), gate1 + Vector3(0, 1.7, 0))
+	await _frames(int(1.4 * Engine.physics_ticks_per_second))
+	print("capture: m4-opening, %d walls, %d nodes standing, %d pickups out" % [ice.walls.size(), ice.nodes.size(), breakers.pickups_out().size()])
+	await _c37_save(sheet, "m4-opening", runner)
+	# Brute cracking the first rule, up close: the charge and the wall bursting.
+	_c37_view(gate1 + Vector3(0.3, 0, 1.7), gate1 + Vector3(0, 1.9, 0))
+	await _frames(6)
+	await _m2_quiet()
+	breakers.press_run()
+	await _frames(5)
+	print("capture: m4-brute, the wall at %.0f of %.0f" % [ice.walls[0].health(), ice.walls[0].max_health])
+	await _c37_save(sheet, "m4-brute", runner)
+	while not ice.walls[0].broken:
+		ice.walls[0].hit(1000.0, ice.walls[0].global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await _frames(1)
+	await _m4_until(runner, func(): return runner.index >= 1, 0.0)
+	# The hall from the first bay: the stacks either side, the posts down the aisle, the second gate sealed ahead.
+	var bay_a := world.point("post_1").lerp(world.point("post_2"), 0.5) + Vector3(0, 0, 4.0)
+	_c37_view(Vector3(bay_a.x - 1.2, 0.0, bay_a.z + 1.0), gate2 + Vector3(0.5, 2.2, 0))
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	print("capture: m4-hall, %d standing" % stage.standing().size())
+	await _c37_save(sheet, "m4-hall", runner)
+	# The enforcement: a node's field over the aisle, the HUD scrambled by the other.
+	var hudnode: IceNode = ice.nodes[1]
+	var jam: IceNode = ice.nodes[0]
+	_c37_view(hudnode.global_position + Vector3(-5.5, 0, 0.6), hudnode.global_position + Vector3(0, 1.5, 0))
+	var waited := 0
+	while waited < 900 and not ice.corrupting():
+		await _frames(1)
+		waited += 1
+	_c37_view(hudnode.global_position + Vector3(-5.5, 0, 0.6), jam.global_position + Vector3(0, 1.4, 0))
+	await _frames(int(0.35 * Engine.physics_ticks_per_second))
+	print("capture: m4-nodes after %d frames, the HUD corrupted %s (%.1f s), the jam node %s" % [waited, ice.corrupting(), ice.corrupt_left, jam.state_name()])
+	await _c37_save(sheet, "m4-nodes", runner)
+	await _m4_until(runner, func(): return runner.index >= 2, 0.0)
+	await _m4_until(runner, func(): return runner.index >= 3, 0.0)
+	# The hunter: chmod 000 drawn, the beam held on it until it freezes; the frost crust and the beam in one frame.
+	while ice.hunter == null or not is_instance_valid(ice.hunter):
+		await _frames(1)
+	var hunter: HunterIce = ice.hunter
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	_player.select_slot(int(_player.inventory.slot_of("chmod_000")))
+	var stand: Vector3 = hunter.global_position + (world.point("gate_2") - hunter.global_position).normalized() * 6.5
+	_c37_view(Vector3(stand.x, 0.0, stand.z), hunter.aim_point())
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _m2_quiet()
+	_fire()
+	waited = 0
+	while waited < 300 and not hunter.chmod_frozen():
+		_m3_aim(hunter.aim_point())
+		await _frames(1)
+		waited += 1
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	_m3_aim(hunter.aim_point())
+	print("capture: m4-freeze after %d frames, the hunter frozen %s, adapted to %s %d%%" % [waited, hunter.chmod_frozen(), ice.adapt_weapon, ice.adapt_percent()])
+	await _c37_save(sheet, "m4-freeze", runner)
+	_unfire()
+	await _m4_until(runner, func(): return runner.index >= 4, 0.0)
+	# The last rule and the deck; the hold: its hunter and nodes, the busiest fight (its GPU time), at 960 wide too.
+	await _m4_until(runner, func(): return runner.index >= 5, 0.0)
+	_player.global_position = world.point("vault")
+	await _m4_until(runner, func(): return runner.index >= 6, 0.0)
+	while ice.hunter == null or not is_instance_valid(ice.hunter) or ice.nodes.size() < 4:
+		await _frames(1)
+	await _frames(int(1.5 * Engine.physics_ticks_per_second))
+	var deck := world.point("vault")
+	_c37_view(Vector3(deck.x + 1.5, 0.0, deck.z + 5.0), world.point("hunter_post_2") + Vector3(0, 1.6, 0))
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	var gpu: float = await _gpu_ms(C37_GPU_FRAMES)
+	print("capture: m4 the hold at %dx%d, %d of mission 4's ICE standing: the GPU %.2f ms a frame (%d frames), %.1f fps the engine's" % [root.size.x, root.size.y, stage.standing().size(), gpu, C37_GPU_FRAMES, Engine.get_frames_per_second()])
+	_c37_render_info("hold")
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	await _c37_save({}, "m4-960", runner)
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	await _m4_until(runner, func(): return runner.index >= 7, 0.0)
+	# The record read: the records screen lighting over the deck, its session line a bar; your AI's line.
+	while runner.pickup("owner") == null:
+		await _frames(1)
+	var screen_at := world.vault_at()
+	_player.global_position = runner.log_place("owner")
+	while not runner.logs_found.has("owner"):
+		await _frames(1)
+	var mh: MissionHud = _main.get_node("Hud").mission_hud()
+	while mh.showing_log():
+		await _frames(1)
+	_c37_view(world.point("records") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(2.2, 0, 5.5), screen_at + Vector3(0, 1.4, -2.0))
+	while world.vault_power() < 1.0:
+		await _frames(1)
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	print("capture: m4-records, the screen lit %.2f" % world.vault_power())
+	await _c37_save(sheet, "m4-records", runner)
+	# The end beat: the Auditor's escalation, and the lights stuttering: the frame with them down.
+	var blackout := Blackout.of(_main)
+	_c37_view(world.point("records") - Vector3(0, RuinsLayout.STAND_Y, 0) + Vector3(-1.0, 0, 7.0), screen_at + Vector3(0, 1.0, -2.0))
+	waited = 0
+	while waited < 900 and (blackout == null or not blackout.stuttering() or ArenaArt.light_level > 0.5):
+		await _frames(1)
+		waited += 1
+	print("capture: m4-end after %d frames, the lights at %.2f, stuttering %s" % [waited, ArenaArt.light_level, blackout != null and blackout.stuttering()])
+	await _c37_save(sheet, "m4-end", runner)
+	var end: MissionEndScreen = mh.end_screen()
+	while not end.is_up():
+		await _frames(1)
+	await _frames(90)
+	await _c37_save(sheet, "m4-exit0", runner)
+	old = _main
+	runner.to_missions()
+	await _c35_reloaded(old)
+	menu = _main.get_node("Hud").pause_menu()
+	await _frames(20)
+	if not menu.showing_missions():
+		menu.open()
+		menu.open_missions()
+	menu.missions_screen().select(3)
+	await _frames(70)
+	await _save("m4-missions")
+	var stills: Array[Image] = []
+	for name in M4_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == M4_SHEET.size():
+		_save_grid("m4-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## Mission 4 played on until `condition` (m4), at most `most` seconds (0: a minute): the pieces the objective running
+## counts broken as a sure shot would; the hold waited out.
+func _m4_until(runner: MissionRunner, condition: Callable, most: float) -> void:
+	var frames := 0
+	var limit := int((most if most > 0.0 else 60.0) * Engine.physics_ticks_per_second)
+	while frames < limit and not condition.call():
+		if runner.stage != null:
+			var of: Array = runner.objective().get("of", [])
+			for d in runner.stage.standing():
+				if d.is_alive() and of.has(str(d.get_meta(&"wave", ""))):
+					d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+		await process_frame
+		frames += 1
 
 
 ## Mission 3 played on until `condition` (m3), at most `most` seconds (0: a minute): the daemons the objective running

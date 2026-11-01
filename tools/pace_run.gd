@@ -49,6 +49,10 @@ const WAYPOINT_M := 0.45
 const LOOK_AHEAD_M := 1.2
 ## An optional log this near, with nothing to fight in sight, is walked to and read (M2), metres.
 const SIDE_LOG_M := 12.0
+## Mission 4's (M4): how close a brute is run from a wall (I2: full strength within 2.25 m), and how near a deny rule's
+## wall that is not this beat's must be to be in the way (the aisle sealed: the only way through).
+const BRUTE_M := 1.6
+const WALL_NEAR_M := 4.0
 
 var _rng := RandomNumberGenerator.new()
 var _main: Node = null
@@ -71,6 +75,16 @@ var _side_logs: Array = []
 var _hurt := 0.0
 var _lowest := 100.0
 var _mission := 1
+## Mission 4's (M4): whether the decoy has been thrown at a hunter this try (the pick's advice, once), and chmod 000's reach.
+var _decoyed := false
+var _chmod_reach := 0.0
+## How long the beam has been held, and how long it has rested (M4): chmod 000's tank runs 4 s and refills only let go,
+## so a first-timer pulses it: BEAM_HOLD_S on, BEAM_REST_S off.
+const BEAM_HOLD_S := 2.6
+const BEAM_REST_S := 2.0
+var _beam_held := 0.0
+var _beam_rest := 0.0
+var _last_move := Vector2.ZERO
 
 
 func _initialize() -> void:
@@ -119,7 +133,18 @@ func _run() -> void:
 		_clock += 1.0 / Engine.physics_ticks_per_second
 		if OS.get_cmdline_user_args().has("--trace") and int(_clock * 60.0) % 600 == 0:
 			var goal := _goal()
-			print("pace: trace %.0f s: at %s, goal %s, %d waypoints, threat %s, pause %.1f, standing %d" % [_runner.clock, str(_player.global_position.snapped(Vector3.ONE * 0.1)), str(goal.snapped(Vector3.ONE * 0.1)) if goal.is_finite() else "-", _path.size(), str(_target.global_position.snapped(Vector3.ONE * 0.1)) if _target != null and is_instance_valid(_target) else "-", _pause, _runner.stage.standing().size() if _runner.stage != null else 0])
+			var frozen: String = str((_target as IcePiece).chmod_frozen()) if _target is IcePiece else "-"
+			var against := "-"
+			for k in _player.get_slide_collision_count():
+				var hit: KinematicCollision3D = _player.get_slide_collision(k)
+				if absf(hit.get_normal().y) < 0.5:
+					against = "%s n%s" % [str(hit.get_collider().name) if hit.get_collider() != null else "?", str(hit.get_normal().snapped(Vector3.ONE * 0.1))]
+			var heading := "-"
+			if not _path.is_empty():
+				var eye: Vector3 = _player.eye_position()
+				var to: Vector3 = Vector3(_path[0].x, eye.y, _path[0].z) - eye
+				heading = "yaw %.2f want %.2f pitch %.2f" % [_player.rotation.y, atan2(-to.x, -to.z), _player.get_node("Head").rotation.x]
+			print("pace: trace %.0f s: against %s, %s, next %s, move %s: at %s, goal %s, %d waypoints, threat %s (frozen %s, health %s), weapon %d, pause %.1f, standing %d, health %.0f" % [_runner.clock, against, heading, str(_path[0].snapped(Vector3.ONE * 0.1)) if not _path.is_empty() else "-", str(_last_move), str(_player.global_position.snapped(Vector3.ONE * 0.1)), str(goal.snapped(Vector3.ONE * 0.1)), _path.size(), str(_target.global_position.snapped(Vector3.ONE * 0.1)) if _target != null else "-", frozen, str(_target.health()) if _target != null else "-", _player.inventory.current, _pause, _runner.stage.standing().size() if _runner.stage != null else 0, _runner.life.combat.health_of(SoloLife.ME) if _runner.life != null else -1.0])
 	var done := _runner.state == MissionRunner.State.COMPLETE
 	if _runner.stage != null and (_runner.stage.loop_running or _runner.stage.loop_broken_now):
 		print("pace: the loop made %d passes and forked %d; the cache %.0f%% full when it broke" % [_runner.stage.passes, _runner.stage.forks_made.size(), _runner.stage.cache * 100.0])
@@ -150,6 +175,9 @@ func _take_arena(old: Node) -> void:
 	_path_to = Vector3.INF
 	_target = null
 	_last_index = -1
+	_decoyed = false
+	var chmod_def = load("res://resources/chmod_000.tres")
+	_chmod_reach = float(chmod_def.fire_range) if chmod_def != null else 10.0
 	# The logs no objective asks for: a first-timer finds them by walking past (M2: any mission's, where C37 named login's).
 	_side_logs = []
 	for entry in _runner.def.logs:
@@ -187,11 +215,57 @@ func _step() -> void:
 		_aim_off += Vector2(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)) * WOBBLE * dt
 		_aim_off = (_aim_off * (1.0 - PULL * dt)).limit_length(AIM_ERROR * 1.6)
 		_arm_for(threat)
-		if _clock - _seen_at >= REACT_S:
-			var err := _turn_to(threat.threat_point(), dt)
-			fire = err < FIRE_ERROR
-		if threat.global_position.distance_to(_player.global_position) < BACK_M:
-			move = Vector2(0, 1)  # back up, or it opens you
+		var breakers := BreakerDirector.of(_main)
+		var has_brute: bool = threat is IceBarrier and breakers != null and breakers.mine.count(Breakers.Kind.BRUTE) > 0
+		if has_brute:
+			# A deny rule's wall (M4), a brute carried: up to it, Y until brute is loaded, U up close.
+			var wall_at: Vector3 = threat.global_position
+			var flat := Vector2(wall_at.x - _player.global_position.x, wall_at.z - _player.global_position.z)
+			if flat.length() > BRUTE_M:
+				var back := Vector3(-flat.x, 0, -flat.y).normalized() * 1.1
+				move = _walk_to(Vector3(wall_at.x, _player.global_position.y, wall_at.z) + back, dt)
+			elif breakers.mine.loaded != Breakers.Kind.BRUTE:
+				breakers.press_cycle()
+			elif _turn_to(_point_of(threat), dt) < 0.3:
+				breakers.press_run()
+		elif threat is HunterIce and not _decoyed and breakers != null and breakers.mine.count(Breakers.Kind.DECOY) > 0 and _clock - _seen_at >= REACT_S:
+			# The hunter (M4): the pick says decoy once it has adapted: Y to the decoy, U throws it its way, once a try.
+			if breakers.mine.loaded != Breakers.Kind.DECOY:
+				breakers.press_cycle()
+			elif _turn_to(_point_of(threat), dt) < 0.3:
+				breakers.press_run()
+				_decoyed = true
+		else:
+			var beam: bool = _player.inventory.current == int(_player.inventory.slot_of("chmod_000"))
+			if beam:
+				_aim_off *= 0.6  # a beam is tracked, not snapped at (M4): the hand steadies on it
+			if _clock - _seen_at >= REACT_S:
+				var err := _turn_to(_point_of(threat), dt)
+				fire = err < (FIRE_ERROR * 2.5 if beam else FIRE_ERROR)
+			var inv = _player.inventory
+			if not beam and inv.mags[inv.current] == 0 and inv.def().has_magazine() and not inv.is_reloading() and not inv.is_swapping():
+				_player.reload_weapon()  # an empty magazine reloaded (M4: SIGTERM's six shells), E as the strip says
+				fire = false
+			if beam:
+				# The beam pulsed (M4): held BEAM_HOLD_S at most, then let go BEAM_REST_S so its tank refills.
+				if _beam_rest > 0.0:
+					_beam_rest -= dt
+					fire = false
+				elif fire:
+					_beam_held += dt
+					if _beam_held >= BEAM_HOLD_S:
+						_beam_held = 0.0
+						_beam_rest = BEAM_REST_S
+						fire = false
+				else:
+					_beam_held = maxf(_beam_held - dt, 0.0)
+			else:
+				_beam_held = 0.0
+			var gap: float = threat.global_position.distance_to(_player.global_position)
+			if threat is HunterIce and _player.inventory.current == int(_player.inventory.slot_of("chmod_000")) and gap > _chmod_reach - 1.0:
+				move = Vector2(0, -1)  # chmod 000 drawn and the hunter out of its reach (M4): close in, the beam held
+			elif not (threat is IceBarrier) and gap < BACK_M:
+				move = Vector2(0, 1)  # back up, or it opens you
 	else:
 		_target = null
 		if _pause > 0.0:
@@ -200,18 +274,37 @@ func _step() -> void:
 			var goal := _goal()
 			if goal.is_finite():
 				move = _walk_to(goal, dt)
+	_last_move = move
 	_player.drive_input(move, false, false, fire)
 
 
-## The weapon a first-timer who read the hints draws for `threat` (M3): pipe | against a runaway once it is in hand, the
-## cannon against anything else.
+## The weapon a first-timer who read the hints draws for `threat` (M3): pipe | against a runaway once it is in hand, (M4)
+## chmod 000 against a hunter not yet frozen once it is in hand, the cannon against anything else; one a node's field has
+## jammed (M4) swapped for the next carried, as the HUD says to.
 func _arm_for(threat: Node3D) -> void:
+	if _player.inventory.is_reloading():
+		return  # a reload finished before any swap (M4): a swap would throw it away
 	var want := "terminal_cannon"
 	if MissionRunner.kind_of(threat) == "swarm" and _runner.carried.has("pipe_chain"):
 		want = "pipe_chain"
+	elif threat is HunterIce and _runner.carried.has("chmod_000") and not (threat as HunterIce).chmod_frozen():
+		want = "chmod_000"
+	elif threat is HunterIce and _runner.carried.has("sigterm"):
+		want = "sigterm"  # frozen (M4): every pellet lands doubled, as the hint says: hit it hard
+	var jams: Dictionary = _player.ice_jams()  # slot -> seconds left
+	if jams.has(int(_player.inventory.slot_of(want))):
+		for other in ["sigterm", "fork_shotgun", "terminal_cannon", "sigkill_rail"]:
+			if _runner.carried.has(other) and not jams.has(int(_player.inventory.slot_of(other))):
+				want = other
+				break
 	var slot := int(_player.inventory.slot_of(want))
 	if _player.inventory.current != slot:
 		_player.select_slot(slot)
+
+
+## Where to aim at `d`: a daemon's threat point, a piece of ICE's aim point (M4).
+func _point_of(d: Node3D) -> Vector3:
+	return d.threat_point() if d.has_method("threat_point") else d.aim_point()
 
 
 ## The nearest standing daemon it can see within ENGAGE_M, or null.
@@ -221,12 +314,19 @@ func _threat() -> Node3D:
 	var eye: Vector3 = _player.eye_position()
 	var best: Node3D = null
 	var best_d := ENGAGE_M
+	var of: Array = _runner.objective().get("of", [])
 	for d in _runner.stage.standing():
-		if not d.is_alive() or d.sealed:
+		if not d.is_alive() or (not (d is IcePiece) and d.sealed):
 			continue  # a sealed one (M2) takes nothing: a first-timer stops wasting shots on it
-		var at: Vector3 = d.threat_point()
+		var at: Vector3 = _point_of(d)
 		var dist := eye.distance_to(at)
-		if dist < best_d and _clear(eye, at):
+		if d is IceBarrier:
+			# A deny rule's wall (M4): a threat only as this beat's, or standing in the way a few metres ahead.
+			if not of.has(str(d.get_meta(&"wave", ""))) and dist > WALL_NEAR_M:
+				continue
+		elif not _clear(eye, at):
+			continue
+		if dist < best_d:
 			best = d
 			best_d = dist
 	return best
@@ -247,6 +347,12 @@ func _goal() -> Vector3:
 			var p := _runner.pickup(id)
 			if p != null and p.global_position.distance_to(_player.global_position) <= SIDE_LOG_M:
 				return p.global_position
+	# A brute pickup out and none carried (M4), with a deny rule's wall to break: a first-timer goes for the pickup.
+	var breakers := BreakerDirector.of(_main)
+	if breakers != null and breakers.staged and breakers.mine.count(Breakers.Kind.BRUTE) == 0 and (o.get("daemon") == "wall" or o.get("kind") == "reach"):
+		for spot in breakers.pickups_out():
+			if breakers.pickups_out()[spot] == Breakers.Kind.BRUTE and breakers.pickups[spot] != null and is_instance_valid(breakers.pickups[spot]):
+				return breakers.pickups[spot].global_position
 	match o.get("kind"):
 		"reach":
 			if o.get("id") == "drop":
@@ -260,7 +366,7 @@ func _goal() -> Vector3:
 			var of: Array = o.get("of", [])
 			var best: Node3D = null
 			for d in standing:
-				if d.sealed or (not of.is_empty() and not of.has(str(d.get_meta(&"wave", "")))):
+				if (not (d is IcePiece) and d.sealed) or (not of.is_empty() and not of.has(str(d.get_meta(&"wave", "")))):
 					continue
 				if best == null or d.global_position.distance_to(_player.global_position) < best.global_position.distance_to(_player.global_position):
 					best = d
@@ -284,13 +390,18 @@ func _walk_to(goal: Vector3, dt: float) -> Vector2:
 		_path = _route(_player.global_position, goal)
 		_path_to = goal
 		_path_turn = turn  # M3: the field rewritten, the way worked out again
-	while not _path.is_empty() and Vector2(_path[0].x - _player.global_position.x, _path[0].z - _player.global_position.z).length() < WAYPOINT_M:
+	var gap := func(p: Vector3) -> float: return Vector2(p.x - _player.global_position.x, p.z - _player.global_position.z).length()
+	while not _path.is_empty() and gap.call(_path[0]) < WAYPOINT_M:
 		_path.pop_front()
+	while _path.size() > 1 and gap.call(_path[1]) <= gap.call(_path[0]):
+		_path.pop_front()  # the first waypoint is behind it (M4: a corner cut on the way never leaves it standing on the second)
 	var next: Vector3 = goal if _path.is_empty() else _path[0]
-	if _path.size() > 1 and Vector2(next.x - _player.global_position.x, next.z - _player.global_position.z).length() < LOOK_AHEAD_M:
+	if _path.size() > 1 and gap.call(next) < LOOK_AHEAD_M:
 		next = _path[1]  # looking a step ahead, as a walker does
 	var flat := Vector2(next.x - _player.global_position.x, next.z - _player.global_position.z)
 	if flat.length() < 0.2:
+		if not _path.is_empty():
+			_path.pop_front()
 		return Vector2.ZERO
 	var err := _turn_to(Vector3(next.x, _player.eye_position().y, next.z), dt)
 	# A hand turns first and walks once it faces the way (at a run, its turn is far wider than a waypoint).
