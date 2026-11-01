@@ -277,7 +277,7 @@ func _maze_checks() -> void:
 			for side in 4:
 				ways += 1 if m.is_open(p, side) else 0
 			dead = dead and ways == 1 and p != m.start and p != m.exit
-		var this := m.reachable_from_start() == m.cells.size() and int(m.dist[m.exit]) == far and far > 8 and dead and m.pits.size() >= 1 and m.pits.size() <= NodeMaze.PITS_MOST and m.walls.size() == _closed_sides(m)
+		var this := m.reachable_from_start() == m.cells.size() and int(m.dist.get(m.exit, -1)) == far and far > 8 and dead and m.pits.size() >= 1 and m.pits.size() <= NodeMaze.PITS_MOST and m.walls.size() == _closed_sides(m)
 		ok = ok and this
 		if not this:
 			detail = "level %d: reach %d of %d, way out %d of %d, %d ways down, walls %d of %d\n%s" % [level, m.reachable_from_start(), m.cells.size(), int(m.dist.get(m.exit, -1)), far, m.pits.size(), m.walls.size(), _closed_sides(m), m.ascii()]
@@ -407,9 +407,11 @@ func _reader_checks() -> void:
 	var now_delta := reader.node_at(PackedStringArray(["Alpha", "Beta", "Gamma", "Delta"]))
 	_check("going into a folder reads deeper from there (Delta listed once Beta is asked for), what was read kept", reader.ready_for(PackedStringArray(["Alpha", "Beta"])) and not now_delta.is_empty() and int(reader.node_at(PackedStringArray(["Alpha"]))["own_files"]) == 3 and int(deeper[0]) >= 1)
 	var timed := FolderReader.new(home)
+	timed.keep_trail = true
+	timed.depth_most = 10
 	timed.scan_s = 0.0
 	_scan(timed, PackedStringArray())
-	_check("the time cap: a scan given no time ends at once, partial, and still says it is done (the map never waits on it forever)", timed.ready_for(PackedStringArray()) and bool(timed.home["partial"]))
+	_check("the time cap: a scan given no time ends at once, nothing listed, partial, and still says it is done (the map never waits on it forever)", timed.ready_for(PackedStringArray()) and bool(timed.home["partial"]) and timed.listed.is_empty(), "%d listed" % timed.listed.size())
 	_check("acceptance (safety): the reader changed nothing: every file, folder and link under the test's tree exactly as it was (sizes and times the same, nothing added or removed)", _snapshot(_abs) == before, "%d before, %d after" % [before.size(), _snapshot(_abs).size()])
 	# Cut off mid-listing (a door walked through while home is still being read): nothing is ever counted twice.
 	var cut := FolderReader.new(home)
@@ -496,6 +498,7 @@ func _arena_checks() -> void:
 	FolderMap.came_from = ""
 	var main := await _arena(true)
 	var map := FolderMap.of(main)
+	_check("acceptance (safety): the real layer is off by default: on a demo run the map's tree is the made-up one and no reader is made", FolderMap.source is DemoFolders and FolderReader.made == made_before)
 	await _until(func(): return map.running and not map.doors.is_empty())
 	var demo := DemoFolders.new()
 	var home := demo.root
@@ -598,7 +601,7 @@ func _maze_arena_checks() -> void:
 	await _frames(4)
 	var way := map.maze.path(map.maze.start, map.maze.exit)
 	var walked := map.way_out_from(map.maze.start)
-	_check("the visor's way out is the maze's own shortest way (%d cells walked down its steps, %d by the search)" % [walked.size(), way.size()], walked.size() == way.size() and walked[walked.size() - 1] == map.maze.exit and walked[0] == map.maze.start)
+	_check("the visor's way out is the maze's own shortest way (%d cells walked down its steps, %d by the search)" % [walked.size(), way.size()], not walked.is_empty() and walked.size() == way.size() and walked[walked.size() - 1] == map.maze.exit and walked[0] == map.maze.start)
 	_check("the visor in the maze draws the way out, cell by cell, from where the player stands (%d lines), and its breadcrumb says the depth" % map._lines.drawn_lines, map._lines.drawn_lines >= mini(way.size() - 1, VisorLines.LINES_MOST) - 2 and map._lines.drawn_lines > 2 and map._hud.breadcrumb_text().contains("node_modules") and map._hud.breadcrumb_text().contains("depth 1") and tall_enough)
 	map.visor.set_on(false)
 	var first_cells: int = map.maze.cells.size()
@@ -675,7 +678,7 @@ func _credit_checks() -> void:
 		if ProcHunt.world_credit_ok():
 			given += 1
 	ProcHunt.reset_world_credits()
-	_check("a world mode's kills earn a sudo charge's kill and a feat at most %d a minute (W1's farming, capped): %d of 30 at once" % [ProcHunt.WORLD_CREDITS, given], given == ProcHunt.WORLD_CREDITS and ProcHunt.WORLD_CREDITS == 12)
+	_check("a world mode's kills earn a sudo charge's kill and a feat at most 12 a minute (W1's farming, capped): %d of 30 at once, the cap %d" % [given, ProcHunt.WORLD_CREDITS], given == 12 and ProcHunt.WORLD_CREDITS == 12)
 
 
 # --- Helpers. ---

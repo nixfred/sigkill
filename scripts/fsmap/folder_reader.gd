@@ -105,7 +105,7 @@ func step(_delta: float) -> bool:
 		return false
 	var start := Time.get_ticks_usec()
 	while Time.get_ticks_usec() - start < budget_us:
-		if Time.get_ticks_msec() - _scan_started > int(scan_s * 1000.0) or _scan_entries >= scan_entries_most:
+		if Time.get_ticks_msec() - _scan_started >= int(scan_s * 1000.0) or _scan_entries >= scan_entries_most:
 			_cut_short()
 			break
 		if _dir == null:

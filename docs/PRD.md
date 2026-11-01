@@ -1,4 +1,4 @@
-# SIGKILL PRD (v1.7, 2026-11-01)
+# SIGKILL PRD (v1.8, 2026-11-01)
 
 Owner: Fred Nix. Producer: SIGKILL bot. All code: Larry (Claude Code, the project dir).
 Engine: Godot 4 (pick documented in docs/ENGINE.md; Fred approved Godot 4.7.2 from pacman).
@@ -9,7 +9,7 @@ This is the entire, current PRD (Fred, 2026-10-30 8:37 PM ET). [docs/DESIGN.md](
 ## Scope: 1.0, after 1.0, and 2.0
 
 - **1.0 is locked** (Fred, 2026-10-29 10:42 AM ET): everything in the design doc at the lock is 1.0. In this PRD that is sections 1 to 5.9, the safety rules (6) and every chunk in section 8 down to C44 and M5's world features (W1 onward), apart from what is marked post-1.0 or 2.0 below.
-- **Post-1.0:** every new idea after the lock, unless Fred pulls it in. That includes the community ideas from Carlos Granier, Jeremy and MindGameLabs (5.10). One older decision is post-1.0 in its own words: ICE taking its look from the names of security software on the host (1.x, with process enemies; 5.9). VR is a stretch beyond that, likely 2.x.
+- **Post-1.0:** every new idea after the lock, unless Fred pulls it in. That includes the community ideas from Carlos Granier, Jeremy, MindGameLabs and Tim Sonner (5.10). One older decision is post-1.0 in its own words: ICE taking its look from the names of security software on the host (1.x, with process enemies; 5.9). VR is a stretch beyond that, likely 2.x.
 - **2.0:** the browser version (Fred, 2026-10-28 12:46 AM ET): a Godot web export (WebGL renderer, shader fallbacks) on the WebSocket relay, with demo-data maps only (no filesystem, processes, local announcer or voice in a browser). It is not being built now; the native game ships first.
 - **Set aside:** the story's forks that were not picked (a second ending, nine missions, co-op missions; STORY.md section 8) are not planned at all.
 
@@ -144,9 +144,20 @@ The guide is the player's own AI: the coding agent they already picked in Omarch
 - **One voice** (STORY.md, pick 2): every line in the game is "your AI's". An answer that came live from the player's own AI carries a small "live" mark, so no line is ever misattributed.
 
 ### 5.5 Your machine is the world (later milestone)
-1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. The Audit Trail visor (C43) is built (2026-11-01; the producer's two-layer decision below), and so are live process enemies (W1, 2026-11-01).
-- **Numbering (producer decision, 2026-11-01, the W1 brief):** M5's world features are numbered W1, W2, ... in the order a player meets them. W1 is live process enemies, because the visor's real layer already reads processes and C43 listed them as its medium known issue. The order of the rest is proposed in 8.2, the producer's to confirm.
+1.0 scope, under the 2026-10-29 lock. "Later" is its place in the build order (8.1), after the opener and the missions. The Audit Trail visor (C43) is built (2026-11-01; the producer's two-layer decision below), and so are live process enemies (W1, 2026-11-01) and filesystem maps (W2, 2026-11-01).
+- **Numbering (producer decision, 2026-11-01, the W1 brief):** M5's world features are numbered W1, W2, ... in the order a player meets them. W1 is live process enemies, because the visor's real layer already reads processes and C43 listed them as its medium known issue. The order of the rest, proposed in 8.2, is confirmed by the producer (2026-11-01, the W2 brief): W2 filesystem maps, W3 theme-shift levels, W4 keybind gunplay, W5 the packet tracer arena, W6 split-screen co-op, W7 Ramblr voice commands.
 - Filesystem maps: rooms from the player's real folder tree (names and sizes only), node_modules is the endless maze.
+  - **As built (W2):**
+    - **The mode:** the folder map, a mode of the free arena. Esc, **Folder map** reloads the arena into home's room, and **Leave folder map** back out; `--fsmap` starts it on a demo or test run. Solo only: greyed in a match or a mission, ended where it stands if a match starts. One world mode at a time (the process hunt ends as the map begins, and the other way round). The arena's own four daemons are parked, ICE stands down and the rounds hold. Its own panel stands where a mission's would: the folder's path from `home`, its size, its files, its kind and register, the daemons standing, its doors biggest first, the last few `cd`s.
+    - **A folder is a room:** a ruins district made at play from it, with C36's kit and registers. Its size (it and everything under it that was read) sets the scale on a log scale: the floor from 6 by 8 cells (a kilobyte) to 16 by 24 (a few hundred gigabytes), and its towers' and giants' height from 0.42 to 2.7 times their usual. Its files (directly in it) set how busy it is: its ruins, cover, cables and signs, and how many daemons live there, none in an empty folder and up to 6. What most of its files are (by extension) sets the register: code the Matrix, video and pictures the cyberpunk ruins, audio the ruins in the abyss palette, documents and the rest Tron; an empty folder is a pristine Tron hall with nothing in it. Its monoliths carry its subfolders' names, and its signs its numbers.
+    - **Subfolders are doors:** a portal on the floor's edge for each, biggest first, at most 10 (the rest counted on the panel). Each stands as tall as its folder is big (4.6 to 13 m), with a beam of light into the sky over it and a lamp under it, its name on the lintel and its size, files and folders under that, and a lit bridge out to a floating island the size of what is behind it (a lit grid floor, towers on it): the room beyond, seen from this one. Walking into the portal reloads the arena into that folder (`$ cd <name>`). The back door behind the start goes up (`cd ..`, standing just inside the door you came out of); home's leaves the map (`exit`).
+    - **node_modules is the maze,** never a room: a seeded maze over the district's floor, every cell reachable. Its walls are 6.5 m tall, over a jump and over the eye, in one mesh: black glass with code falling down it and an install's progress bar filling over and over and never finishing; most lime, some amber WARN walls, a few red ERR! walls that pulse; package names and npm's complaints on them. The way out is a beam of white light over the farthest cell, its `cd ..` label the same size on screen from anywhere; standing on it leaves the maze whole, from any depth, at the node_modules door. The ways down are lit hatches in dead ends, each `<package>/node_modules`, a level deeper: a new maze, bigger, on and on. The arena's roster lives in it, 3 at the first level and one more a level, up to 6.
+    - **Two layers, as C43's and W1's:** the default demo layer is a home the game makes up (Videos, a 222 GB folder of recordings, edits, phone videos and a tiny subtitles folder; Music; Pictures; Code, with a game, its `node_modules` of invented package names, a website, a notes app and a scratch folder; Documents; Downloads; Games; Desktop; an empty Templates). Every test and capture uses only it. The opt-in real layer reads the player's home folder behind the same answer (opener data, real-machine data on, never a demo run): folder listings and each file's size by stat (`FileAccess.get_size`, which never opens a file: Godot refuses anything that is not a regular file before opening it, checked here with a pipe), a file's name used only for its extension's kind and then dropped. Hidden folders are skipped, with no opt-in. Symbolic links are never followed: a link, to a folder or a file, is skipped outright. It reads a slice a frame within 1.5 ms, a scan reading the folder asked for and 3 levels under it, at most 4,000 entries a folder, 48 subfolders listed a folder, 40,000 entries and 8 s a scan, 6,000 folders kept; whatever a cap cuts is shown as "at least" (`>=`). It never creates, writes, renames, moves, deletes or runs anything. Off, no reader is made. Labels are folder names only; home is always `home`.
+    - **The visor over it:** I draws the folder's lineage: a line from every door to the way up (the tree drawn in the room), every door's numbers seen through the walls, and across the top a breadcrumb from home with every folder's size. In the maze it draws the way out, cell by cell from where you stand, and the depth. The daemons' own lineage is the free arena's.
+    - **Kills:** the arena's own, cosmetic as everywhere: nothing real is touched. The world modes' kills (the hunt's and the map's) earn a sudo charge's kill and an unlock feat at most 12 a minute between them.
+    - **Frame time:** at 1920x1080 on the private display, the dev laptop's GPU under its power-saver profile (stepping between P8 and P2, 180 to 1,627 MHz, through the final run): the GPU 3.37 ms a frame in the biggest room, 9.11 ms in the maze with the visor off and 8.66 ms with it on. Across seven capture runs the maze read 1.6 to 9.9 ms, the swing following the GPU's clock.
+    - **Folded in:** three of W1's known issues (a thread drone now hangs from its nest in the visor with its process's PID; the pegged core rises and turns in practice; the kill credit cap above) and C44's (a long COMMAND is cut at the table's window with a "+", as top marks a cut field, and shown whole on its card).
+    - **The gate's step 66:** tests/folder_map_test.gd, fake folder trees only.
 - Live process enemies: real running processes become enemies (browser tabs swarm, pegged CPU core is a boss). Cosmetic only.
   - **As built (W1):**
     - **The mode:** the process hunt, a mode of the free arena. Esc, **Process hunt** reloads the arena into it, and **Leave process hunt** back out; `--procs` starts it on a demo or test run. Solo only: greyed in a match or a mission, ended where it stands if a match starts. The arena's own four daemons are parked while it runs, ICE stands down and the rounds hold; its own panel (a live `top` of its enemies, the table named, its last few events, kills marked simulated) stands where a mission's would, compact under 1280 wide.
@@ -373,16 +384,17 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
   - Carlos Granier, @cgranier, the third.
   - Jeremy, @ocdjeremy, the fourth.
   - MindGameLabs, @MindGamesLabs, the fifth.
-  - The last three are post-1.0 ideas (5.10).
+  - Tim Sonner, @timsonner, the sixth (2026-11-01).
+  - The last four are post-1.0 ideas (5.10).
   - Built features carry their tag, such as "ICE design: @TimProvencio" on ICE's HUD (I1).
 - **The C44 credits roll (planned as below; built 2026-11-01):**
-  - Contributors appear as processes: PID 1 @NixFred (init), Larry, the SIGKILL producer, then every community contributor, with their public handle as USER and their idea as COMMAND. That means @QuantaCortex, @TimProvencio, Carlos Granier @cgranier, Jeremy @ocdjeremy and MindGameLabs @MindGamesLabs, and everyone credited after them.
+  - Contributors appear as processes: PID 1 @NixFred (init), Larry, the SIGKILL producer, then every community contributor, with their public handle as USER and their idea as COMMAND. That means @QuantaCortex, @TimProvencio, Carlos Granier @cgranier, Jeremy @ocdjeremy, MindGameLabs @MindGamesLabs and Tim Sonner @timsonner, and everyone credited after them.
   - The last row stays `6666  ~  ...  thanks for running me` (STORY.md, pick 6). The final `kill -9` on the credits process takes it with the rest. Then come the derezz, "SIGKILL" and the hexagon.
   - Captures of the roll use demo data. CREDITS.md mirrors the roll.
   - **As built (C44):**
     - **Where it plays:** after the ending, once per ending: every way off the finale's win card rolls it (`MissionRunner.roll_credits()`), then Credits and Missions land on the Missions screen and Free play in the arena. Nowhere else. The save records the campaign finished (`[missions] finished=true` in user://progress.cfg) as the finale is recorded. Esc skips to STORY.md's bare `>_` and Esc again past it. Once the campaign is finished, the Esc menu shows **Credits** (under Play the opener; not there before, greyed in a match or a mission), which replays the roll over the paused arena and gives the menu back as it was.
     - **What it is:** `scripts/credits/credits_roll.gd`, drawn in code on a canvas layer over the HUD and under the colourblind filter, on the score's bars (150 beats a minute). `$ top -p sigkill --credits` types itself in a terminal window over the Tron grid; top's summary and column heads; a CREDITS title card; then a row every two bars, each raining in as code (every character a falling stream locking into place) with %CPU climbing and a branch to init's trunk, a packet of light running up to PID 1. Beside the table, a card for each contributor (a giant ghost PID, the name dropping in a letter a sixteenth, the handle, the command, what they made) in one of the three registers: Tron's grid and light cycles, the Matrix's rain, the ruins' skyline with the name reflected in the wet. The open projects CREDITS.md thanks, and the engine, follow as root's idle threads with a "with thanks" card. Then the adoption (every branch flashing up to init), the last row, and the prompt waiting for the player's own `kill -9` (fire, Enter or Space; it types itself after 9.6 s), the table derezzing into voxels from the prompt, SIGKILL slammed in on the brand's own hexagon file, the bare `>_`, the menu. The table assembles row by row and scrolls only when the window is too short to hold every row.
-    - **Its score:** `scripts/credits/credits_score.gd`, original and made in code on the opener's own instruments (a subclass of `OpenerScore`): the roll's 28 bars, the opener's stand-off loop while the prompt waits, and the kill (the rail's crack, the crumble, the title's riff). Made on a worker as the finale begins, or as the Esc menu opens on a finished campaign.
+    - **Its score:** `scripts/credits/credits_score.gd`, original and made in code on the opener's own instruments (a subclass of `OpenerScore`): the roll's 30 bars (two a cast row; W2 made room for the sixth contributor), the opener's stand-off loop while the prompt waits, and the kill (the rail's crack, the crumble, the title's riff). Made on a worker as the finale begins, or as the Esc menu opens on a finished campaign.
     - **Its data:** `scripts/credits/credits_cast.gd`; CREDITS.md's `top` block row for row, its community names and handles, its thanked projects. Nothing in the roll reads, runs or signals anything.
     - **Cost:** at 1920x1080 the roll's own drawing takes 2.0 to 2.7 ms of the main thread a frame, and the GPU 0.1 to 0.2 ms (the arena's 3D is not drawn under it), measured on the private display under the dev machine's power-saver profile. Check step 64 (`tests/credits_test.gd`).
 
@@ -447,6 +459,16 @@ These came in as public replies on X after the 1.0 lock (2026-10-29), so each is
 - **The password is an in-game one, shown on screen as a typing challenge.** The game never asks for, reads or stores the player's real password. Nothing typed is stored, logged, sent or checked against the system, and no Ctrl+Alt keys are used.
 - Credit: "MindGameLabs (@MindGamesLabs)" in CREDITS.md, the README's community section and the C44 credits roll.
 
+**Tim Sonner ([@timsonner](https://x.com/timsonner)), the sixth community contributor** (Fred, 2026-11-01 11:58 AM ET, "Add to PRD"):
+- **File mode:** walk your folders as rooms and hunt files as monsters built from the existing daemon art.
+- **File hunt:** name the file you want, and it carries a beacon through the maze.
+- **The producer's safety call** (the game never modifies, deletes or executes anything on the player's system):
+  - Killing a file monster is cosmetic only: the real file is never touched.
+  - The requested destructive root mode becomes an opt-in, default-off sandbox root mode. It wrecks an in-memory decoy copy of the folder tree (names and sizes only), never real files.
+  - Opening apps or files by killing monsters is out. A kill shows the file's path on screen and in an end-of-run found list, which the player can open themselves.
+- Nothing of it is built in W2: W2's filesystem maps are 5.5's own feature, with no file hunt, no file monsters and no root mode.
+- Credit: "Tim Sonner (@timsonner)" in CREDITS.md, the README's community section and the C44 credits roll (his row is in the roll since W2).
+
 ## 6. Hard safety rules (every chunk)
 - Never modify, delete, execute, signal or kill anything on the player's system. System features are read-only: names, sizes, counts, model names. Never file contents. Named exception (producer, 2026-10-26): the game may read the single-line Omarchy default-agent setting to learn which agent to use, and nothing else from that file.
 - The ONE exception to "never execute" (Fred, 2026-10-25): the game may launch the player's own Omarchy default agent CLI in its non-interactive mode, with tools, file edits and shell disabled, no auto-approve flags, never via omarchy-agent, and with only game stats and the player's typed text in the prompt. The SECOND and last exception (producer, 2026-10-26): an optional query-only `nvidia-smi --query-gpu=<fields> --format=csv,noheader` for HUD GPU stats, never with control flags; prefer /sys reads, and hide GPU stats if neither works. Nothing else is ever executed.
@@ -461,7 +483,7 @@ One small chunk at a time, from a producer brief: exact goal, files to touch, ac
   - Never force push, and never rewrite history.
   - Commits carry no Co-Authored-By trailer and no session link.
   - `git remote -v` before every commit. Before every push, a privacy grep of the diff and a secret scan (the repository is public).
-- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 65 steps as of live process enemies (W1).
+- **The gate is `scripts/check.sh`:** gdparse, a headless import, a headless 300-frame run and the headless tests, 66 steps as of filesystem maps (W2).
   - It runs in the foreground, and it is green before any report.
   - A known flake may be rerun once, and the report says so.
 - **Self-review, the current rule:** Codex bug runs are paused (Fred, 2026-10-28 8:04 PM ET), so Larry reviews each chunk's full diff himself before the report. He looks for bugs, Godot API misuse, frame-rate dependence, edge cases, safety-rule violations and anything private.
@@ -485,13 +507,13 @@ Fred, 2026-10-30 6:17 PM ET: "Work on the pieces that the user sees first." What
 2. The missions: C35 (done: the framework), C36 (done: the ruins art kit), C37 (done: mission 1, `login`), M2 (done: mission 2, `defunct`), M3 (done: mission 3, `while true`), M4 (done: mission 4, `permission denied`), M5 (done: mission 5, `sudo !!`), M6 (done: mission 6, `nohup`), M7 (done: mission 7, `kill -9`, the finale).
 3. C43, the Audit Trail visor: done (its demo layer first, and its opt-in real layer; the producer's decision in 5.5).
 4. C44, the credits: done.
-5. M5's world features, numbered W1 onward in player-facing order (producer, 2026-11-01): W1, live process enemies, done; W2 onward next (8.2).
+5. M5's world features, numbered W1 onward in player-facing order (producer, 2026-11-01; the order confirmed with the W2 brief): W1, live process enemies, done; W2, filesystem maps, done; W3 onward next (8.2).
 6. 1.0.
 
-What remains for 1.0, after W1: the rest of M5's world features (W2 to W7 in 8.2), the relay's hosting (open question 1), the producer's verification of every chunk, and a release on Fred's yes. The story, the opener, all seven missions, the visor, the credits and live process enemies are built.
+What remains for 1.0, after W2: the rest of M5's world features (W3 to W7 in 8.2), the relay's hosting (open question 1), the producer's verification of every chunk, and a release on Fred's yes. The story, the opener, all seven missions, the visor, the credits, live process enemies and filesystem maps are built.
 
 ### 8.2 Every chunk and its status
-Statuses are taken from `git log` (2026-11-01, after W1): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
+Statuses are taken from `git log` (2026-11-01, after W2): **done**, **in progress**, **next** or **planned**. The hashes are the commits that finished each chunk. Before M0 came the scaffold (`d086489`), and the decision that the player's AI is the Omarchy default agent landed as its own docs commit (`43b1f74`).
 
 **M0 Foundations**
 
@@ -587,12 +609,12 @@ Statuses are taken from `git log` (2026-11-01, after W1): **done**, **in progres
 | Chunk | What | Status | Commits |
 |---|---|---|---|
 | W1 | Live process enemies: the process hunt, a demo table and the opt-in real layer (C43's reader), a pegged core the boss, tabs and threads swarms round a nest, the rest daemons by memory, forks and exits following the table, kills simulated, the visor's real lineage over them, step 65. | done | `3e74f6c`, `02d3441`, `4d90df2`, `1b3338d` |
-| W2 | Filesystem maps: rooms from the player's real folder tree (names and sizes only), `node_modules` the endless maze. | planned (proposed order, the producer's to confirm) | |
-| W3 | Theme-shift levels from Omarchy themes; palette-only enemies. | planned (proposed order) | |
-| W4 | Keybind gunplay mapped to real Omarchy shortcuts (opt-in, no conflicts). | planned (proposed order) | |
-| W5 | Packet tracer arena: tailnet machines as islands. | planned (proposed order) | |
-| W6 | Hyprland split-screen co-op. | planned (proposed order) | |
-| W7 | Ramblr voice commands (read Ramblr's existing output, never open the mic). | planned (proposed order) | |
+| W2 | Filesystem maps: the folder map, a demo home and the opt-in read-only reader (names, sizes by stat, counts; hidden folders and links skipped; capped), a folder a ruins district scaled by its size and busied by its files, subfolders doors with beams and islands, `node_modules` the endless maze with its way out and ways down, the visor's breadcrumb, step 66; Tim Sonner credited. | done | `371406a`, `887c11a`, `c3c721d`, `e093c34` |
+| W3 | Theme-shift levels from Omarchy themes; palette-only enemies. | planned (order confirmed) | |
+| W4 | Keybind gunplay mapped to real Omarchy shortcuts (opt-in, no conflicts). | planned (order confirmed) | |
+| W5 | Packet tracer arena: tailnet machines as islands. | planned (order confirmed) | |
+| W6 | Hyprland split-screen co-op. | planned (order confirmed) | |
+| W7 | Ramblr voice commands (read Ramblr's existing output, never open the mic). | planned (order confirmed) | |
 | C43 | Audit Trail visor: lineage lines, a simulated spawn tree (the demo layer) and an opt-in read-only reader of PID/PPID/name/CPU/mem from stat and status only (the real layer), chain-sever arena reaction, credit tag. Live process enemies stay a later chunk (producer, 2026-11-01). | done | `f6d5f8d` |
 | C44 | CREDITS.md + in-game top-style credits roll (demo data for captures). CREDITS.md itself is in the repo since C6c; the roll is C44's: once per ending, skippable, replayable from the Esc menu once finished, its own score in code; the shell's bolts in its own red. | done | `861b015`, `4d3f012`, `44b32a7` |
 
@@ -642,6 +664,9 @@ The site is [playsigkill.com](https://playsigkill.com) (Fred, 2026-10-28 8:45 AM
 | Each weapon balanced on its own strengths | Jeremy, @ocdjeremy | planned, post-1.0 |
 | VR support (OpenXR) | Jeremy, @ocdjeremy | planned, post-1.0 stretch (likely 2.x) |
 | sudo grenade (an in-game password only) | MindGameLabs, @MindGamesLabs | planned, post-1.0 |
+| File mode: folders as rooms, files as monsters (cosmetic kills, the file never touched) | Tim Sonner, @timsonner | planned, post-1.0 |
+| File hunt: a named file carries a beacon through the maze; a found list at the end of a run | Tim Sonner, @timsonner | planned, post-1.0 |
+| Sandbox root mode (opt-in, default off, wrecks an in-memory decoy tree, never real files) | Tim Sonner, @timsonner | planned, post-1.0 |
 | ICE looks from security software names | Tim Provencio, @TimProvencio (5.9) | planned, post-1.0 (1.x) |
 | Browser version | Fred | planned, 2.0 |
 
