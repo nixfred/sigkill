@@ -45,7 +45,9 @@ const SIZE_FRAMES := 60
 ## The gameplay collision as it was at 1afcdb7: the scenes' hashes, the only lines of the dummy's
 ## script that touch its collision shape, and each arena dummy's shape as built.
 const SCENE_SHA := {"res://scenes/target_dummy.tscn": "ec147ba79534222d950b3b491e54dce9cdbb5fbf8ab0991f0caf85125464de0f", "res://scenes/arena.tscn": "1b8b69fc57c11e6787ba9ec1fca53a14c08be32f672a48795ec57bf711c17434"}
-const SHAPE_LINES := ["@onready var _shape: CollisionShape3D = $Shape", "\t_shape.set_deferred(\"disabled\", true)", "\t_shape.set_deferred(\"disabled\", false)"]
+## Since W1, two more: resize_volume() gives a process hunt's drone its own small volume (called only by the hunt, which
+## step 65 checks); every other daemon's, the arena's and the missions', is as at 1afcdb7 (the scenes' hashes below).
+const SHAPE_LINES := ["@onready var _shape: CollisionShape3D = $Shape", "\t_shape.set_deferred(\"disabled\", true)", "\t_shape.set_deferred(\"disabled\", false)", "\t_shape.shape = shape", "\t_shape.position = Vector3(0.0, height * 0.5, 0.0)"]
 const COLLISION_TEXT := """DummyA | layer 4 mask 0 | cylinder r 0.550 h 1.800 | at (0.000, 0.900, -15.000) x (1.000, 0.000, 0.000) y (0.000, 1.000, 0.000) z (0.000, 0.000, 1.000) | enabled
 DummyB | layer 4 mask 0 | cylinder r 0.550 h 1.800 | at (-17.500, 0.900, 5.000) x (1.000, 0.000, 0.000) y (0.000, 1.000, 0.000) z (0.000, 0.000, 1.000) | enabled
 DummyC | layer 4 mask 0 | cylinder r 0.550 h 1.800 | at (12.000, 0.900, 5.000) x (1.000, 0.000, 0.000) y (0.000, 1.000, 0.000) z (0.000, 0.000, 1.000) | enabled
@@ -163,7 +165,7 @@ func _source_checks() -> void:
 	for line in FileAccess.get_file_as_string("res://scripts/target_dummy.gd").split("\n"):
 		if line.contains("_shape") and not line.strip_edges().begins_with("#"):
 			shape_lines.append(line)
-	_check("acceptance: the gameplay collision is byte for byte as at 1afcdb7: the dummy's scene and the arena's scene, and the dummy's script touching its collision shape only where it did (its three lines, as they were)", hashes_ok and shape_lines == PackedStringArray(SHAPE_LINES), "%s" % [shape_lines])
+	_check("acceptance: the gameplay collision is byte for byte as at 1afcdb7: the dummy's scene and the arena's scene, and the dummy's script touching its collision shape only where it did (its three lines, as they were; since W1 two more, a hunt drone's own small volume)", hashes_ok and shape_lines == PackedStringArray(SHAPE_LINES), "%s" % [shape_lines])
 
 
 # --- Each type alone. ---

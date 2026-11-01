@@ -13,7 +13,8 @@ extends Node3D
 ##
 ## Its look: a cut amber crystal, a white-hot core inside, both made once and shared by every
 ## bolt; it glitches sideways a hand's width now and then and flickers. Nothing is made per frame.
-## The shell's true body (M7) throws the same bolt in its own red (C44): crimson crystal, a pink-white core, red sparks.
+## The shell's true body (M7) throws the same bolt in its own red (C44): crimson crystal, a pink-white core, red sparks; and
+## so does a pegged core (W1).
 ## Fiction only.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -105,7 +106,7 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	visible = true
 	set_physics_process(true)
 	# The shell's own red (M7's leftover, C44), every other thrower's amber.
-	var red := owner_brain != null and owner_brain.kind == "shell"
+	var red := owner_brain != null and (owner_brain.kind == "shell" or owner_brain.kind == "pegged")  # W1: a pegged core's too
 	_shell_mi.material_override = _shell_red if red else _shell_material
 	_core_mi.material_override = _core_red if red else _core_material
 	var fx := ParticleFx.of(self)

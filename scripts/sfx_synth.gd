@@ -757,7 +757,8 @@ static func daemon_voice(kind: String, what: String) -> AudioStreamWAV:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = NOISE_SEED + 300 + DAEMON_KINDS.find(kind) * 10 + DAEMON_WHATS.find(what)
 	# A mission's parent (M2) speaks as the zombies it never reaped, a loop's core (M3) as the runaways it forks.
-	var key := kind if DAEMON_KINDS.has(kind) else ("zombie" if kind == "parent" or kind == "shell" else "swarm" if kind == "core" else "rogue")
+	# W1's live process enemies: a pegged core booms as the shell does, a nest and its drones buzz as the runaway's swarm.
+	var key := kind if DAEMON_KINDS.has(kind) else ("zombie" if kind == "parent" or kind == "shell" or kind == "pegged" else "swarm" if kind == "core" or kind == "nest" or kind == "drone" else "rogue")
 	if (key == "barrier" or key == "node") and (what == "tell" or what == "strike"):
 		what = "hit"
 	var out := PackedFloat32Array()

@@ -93,6 +93,12 @@ const OPENER := "Play the opener"
 const OPENER_ONLINE := "Not during a match: it pauses the game."
 const OPENER_MISSION := "Not during a mission: quit it first."
 const CREDITS := "Credits"
+## The process hunt (W1): live process enemies in the free arena; the entry turns to its way out while it runs.
+const PROC_HUNT := "Process hunt"
+const PROC_HUNT_LEAVE := "Leave process hunt"
+const PROC_HUNT_TIP := "Your processes as enemies: a pegged core is a boss, a browser's tabs a swarm, the rest daemons sized by memory. A made-up table unless you said yes to opener data (then your machine's, read only: names, PIDs, CPU and memory). Kills are simulated: nothing real is ever signaled."
+const PROC_HUNT_ONLINE := "Solo only: not during a match."
+const PROC_HUNT_MISSION := "Not during a mission: quit it first."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
 const RESTART_MISSION := "Restart mission"
@@ -173,6 +179,7 @@ var _reset_left := 0.0
 var _version: Label
 var _opener_button: Button
 var _credits_button: Button
+var _hunt_button: Button
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -327,6 +334,26 @@ func _start_mission(id: String) -> void:
 		var def := MissionBook.of(id)
 		# A black frame with its command first, the district built behind it (C37); in from black (C36).
 		MissionRunner.reload_after_mount(get_tree(), "$ " + (def.title if def != null else id))
+
+
+## The process hunt (W1) on or off: the arena reloads into it, or out of it. Alone and outside a mission only.
+func toggle_proc_hunt() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if ProcHunt.queued:
+		ProcHunt.clear()
+	else:
+		ProcHunt.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), "$ top" if ProcHunt.queued else "$ exit")
+
+
+## The Esc menu's process hunt entry (the checks).
+func hunt_button() -> Button:
+	return _hunt_button
 
 
 func _on_restart_mission() -> void:
@@ -649,6 +676,9 @@ func _show_pause() -> void:
 	_credits_button.visible = MissionProgress.current().campaign_finished()
 	_credits_button.disabled = _online() or running != null
 	_credits_button.tooltip_text = _opener_button.tooltip_text
+	_hunt_button.text = PROC_HUNT_LEAVE if ProcHunt.queued else PROC_HUNT
+	_hunt_button.disabled = _online() or running != null
+	_hunt_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else PROC_HUNT_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -871,7 +901,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -882,6 +912,8 @@ func _build() -> void:
 			CREDITS:
 				_credits_button = button
 				button.visible = false
+			PROC_HUNT:
+				_hunt_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

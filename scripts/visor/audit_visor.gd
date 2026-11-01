@@ -25,6 +25,14 @@ extends Node3D
 ## Its real layer (opt-in, the opener's real-data answer, off by default): ProcReader (scripts/visor/proc_reader.gd)
 ## reads a sample of the machine's processes while the visor is on and the player has said yes, and ProcTree.fit() lays
 ## their labels over the same tree. Off, no reader is made and nothing is read.
+##
+## The process hunt (W1, scripts/procs/proc_hunt.gd): its enemies are processes already, so the visor draws their own
+## lineage from the hunt's table (the demo's, or the real reader's under the same yes; the visor makes no reader of its
+## own then): each enemy hangs from its real parent, that parent's enemy where one stands, else a ring for the parent
+## process itself (a JOB node, its true PID and short name), and so up to the session's holder (redacted, as ever) and
+## init. Parents are looked up again every frame, so every PPID shown is the table's; a thread drone is no process of its
+## own and draws no line. Its numbers are the table's. The free arena's sever applies (cosmetic): a hunt's enemy
+## reaped by a sever forks back in while its process runs.
 
 const Privacy = preload("res://scripts/boot/guide_settings.gd")
 const Dummy = preload("res://scripts/target_dummy.gd")
@@ -98,6 +106,8 @@ var _lines: VisorLines
 var _collapse: VisorCollapse
 var _clock := 0.0
 var _fit_size := -1
+## The process hunt's ancestor rings (W1): {pid: node id}.
+var _hunt_rings := {}
 
 
 static func of(node: Node) -> AuditVisor:
@@ -165,6 +175,7 @@ func _process(delta: float) -> void:
 	_sync()
 	_step_fuses()
 	_forget_done()
+	_sync_hunt()
 	_simulate()
 	_step_real(delta)
 	if on:
@@ -179,7 +190,7 @@ func _sync() -> void:
 	var stage := _stage()
 	var fresh: Array = []
 	for body in get_tree().get_nodes_in_group("targets"):
-		if _is_daemon(body) and (body.is_alive() or body.climbing()) and not _by_body.has(body.get_instance_id()):
+		if _is_daemon(body) and (body.is_alive() or body.climbing()) and not _by_body.has(body.get_instance_id()) and not _thread_drone(body):
 			fresh.append(body)
 	# Parents before children: the rooted and the flying first, then rogue.d, then the runaways, then the rest.
 	fresh.sort_custom(func(a, b): return _rank(a) < _rank(b))
@@ -226,8 +237,11 @@ func _register(body: Node3D, stage: MissionStage) -> void:
 		_listen(body)
 		return
 	var kind := MissionRunner.kind_of(body)
-	var id := tree.add_daemon(body, str(body.tag_text), kind, _parent_for(body, kind, stage))
+	var hunt := _hunt()
+	var id := tree.add_daemon(body, str(body.tag_text), kind, _hunt_parent(hunt.ppid_of(int(body.get_meta(&"proc_pid", 0))), hunt, 0) if hunt != null and body.has_meta(&"proc") else _parent_for(body, kind, stage))
 	var n: ProcTree.ProcNode = tree.node(id)
+	if hunt != null and body.has_meta(&"proc"):
+		_hunt_label(n, int(body.get_meta(&"proc_pid", 0)), hunt)
 	var art = body.art_node()
 	n.elite = art != null and art.elite
 	n.protected = stage != null or body.sealed or body.sessile()
@@ -326,6 +340,8 @@ func _on_down(body: Node3D) -> void:
 		_mission_cascade(id)
 	elif n.get_meta(&"cascading", false) or _severs_now():
 		_sever_from(id)
+	elif n.has_meta(&"proc"):
+		pass  # the hunt's (W1): its children hang from its process's ring now, looked up next frame
 	else:
 		_adopt_children(id)
 
@@ -485,8 +501,8 @@ func _severs_now() -> bool:
 func _simulate() -> void:
 	for id in tree.nodes:
 		var n: ProcTree.ProcNode = tree.node(id)
-		if n.real or n.down_s >= 0.0:
-			continue
+		if n.real or n.down_s >= 0.0 or n.has_meta(&"proc"):
+			continue  # the hunt's nodes (W1) carry the table's own numbers
 		var wave := 0.5 + 0.5 * sin(_clock * 0.9 + float(id) * 1.7)
 		match n.kind:
 			ProcTree.Kind.ROOT:
@@ -563,7 +579,7 @@ func real_allowed() -> bool:
 
 
 func _step_real(delta: float) -> void:
-	if not on or not real_allowed():
+	if not on or not real_allowed() or _hunt() != null:  # the hunt (W1) reads for both: one reader, C43's budget
 		_drop_real()
 		return
 	if real_reader == null:
@@ -778,3 +794,102 @@ func _threads_shown(shown: bool) -> void:
 	var stage := _stage()
 	if stage != null and stage.threads() != null and is_instance_valid(stage.threads()):
 		stage.threads().visible = shown
+
+
+# --- The process hunt (W1). ---
+
+func _hunt() -> ProcHunt:
+	var h := ProcHunt.of(self)
+	return h if h != null and h.running else null
+
+
+## A drone of a process's threads (its key "pid/n"): no process of its own, so no node and no line.
+static func _thread_drone(body: Node) -> bool:
+	return body.has_meta(&"proc") and str(body.get_meta(&"proc")).contains("/")
+
+
+## The tree node a hunt's process `pid` hangs from: its parent's enemy where one stands, the session's holder (redacted),
+## init, or a ring for the parent process itself, made on the way up.
+func _hunt_parent(ppid: int, hunt: ProcHunt, depth: int) -> int:
+	if ppid <= ProcTree.INIT_PID or depth > 8:
+		return tree.root
+	if ppid == hunt.session_pid:
+		return tree.hidden
+	var body := hunt.enemy_for_pid(ppid)
+	if body != null and _by_body.has(body.get_instance_id()):
+		return _by_body[body.get_instance_id()]
+	var row := hunt.row(ppid)
+	if row.is_empty():
+		return tree.root
+	if _hunt_rings.has(ppid) and tree.has(_hunt_rings[ppid]):
+		return _hunt_rings[ppid]
+	var up := _hunt_parent(int(row.get("ppid", 0)), hunt, depth + 1)
+	var id := tree.add_virtual(ProcTree.Kind.JOB, str(row.get("comm", "?")), up, place(up) + Vector3.DOWN * 3.0)
+	var n: ProcTree.ProcNode = tree.node(id)
+	_hunt_label(n, ppid, hunt)
+	n.set_meta(&"ring", true)
+	_hunt_rings[ppid] = id
+	return id
+
+
+## A hunt's node labelled from the table: its PID and name the table's, its numbers too.
+func _hunt_label(n: ProcTree.ProcNode, pid: int, hunt: ProcHunt) -> void:
+	var row := hunt.row(pid)
+	n.pid = pid
+	n.demo_pid = pid
+	n.set_meta(&"proc", pid)
+	n.real = hunt.layer == "real"
+	if not row.is_empty():
+		n.name = str(row.get("comm", n.name))
+		n.demo_name = n.name
+		n.cpu = float(row.get("cpu", 0.0))
+		n.mem_kb = int(row.get("mem_kb", 0))
+		n.state = str(row.get("state", "S"))
+
+
+## Every frame in the hunt: each enemy's parent looked up again (the table's truth), numbers refreshed, rings placed over
+## what hangs from them, rings with nothing under them or gone from the table let go.
+func _sync_hunt() -> void:
+	var hunt := _hunt()
+	if hunt == null:
+		if not _hunt_rings.is_empty():
+			for pid in _hunt_rings:
+				tree.remove(_hunt_rings[pid])
+			_hunt_rings.clear()
+		return
+	for id in tree.daemons():
+		var n: ProcTree.ProcNode = tree.node(id)
+		if n == null or not n.has_meta(&"proc") or n.down_s >= 0.0 or _burn.has(id):
+			continue
+		var pid := int(n.get_meta(&"proc"))
+		var want := _hunt_parent(hunt.ppid_of(pid), hunt, 0)
+		if want != n.parent and tree.has(want):
+			tree.reparent(id, want)
+		_hunt_label(n, pid, hunt)
+	for pid in _hunt_rings.keys():
+		var id: int = _hunt_rings[pid]
+		if not tree.has(id):
+			_hunt_rings.erase(pid)
+			continue
+		var n: ProcTree.ProcNode = tree.node(id)
+		var kids := tree.children_of(id)
+		if kids.is_empty() or hunt.row(pid).is_empty() or hunt.enemy_for_pid(pid) != null:
+			tree.remove(id)
+			_hunt_rings.erase(pid)
+			continue
+		_hunt_label(n, pid, hunt)
+	# The rings over what hangs from them, the deepest first so a ring above another sits over it.
+	var order := _hunt_rings.values()
+	order.sort_custom(func(a, b): return tree.depth(a) > tree.depth(b))
+	for id in order:
+		var sum := Vector3.ZERO
+		var count := 0
+		for c in tree.children_of(id):
+			var at := place(c)
+			if at.is_finite():
+				sum += at
+				count += 1
+		if count > 0:
+			var n: ProcTree.ProcNode = tree.node(id)
+			var mid := sum / float(count)
+			n.at = Vector3(mid.x, minf(mid.y + JOB_LIFT_M * 0.7, _center().y + HIDDEN_LIFT_M - 1.5), mid.z)

@@ -8,8 +8,8 @@ extends RefCounted
 ## What it reads, all of it: the names of the numbered folders in the process table's root (each a PID), and for each,
 ## two small files, `stat` and `status`, at most SMALL bytes apiece. From `stat`: the PID, the short process name
 ## between its brackets (at most COMM_LONGEST printable characters), its state letter, its parent's PID and its CPU
-## ticks; from `status`: its resident memory (VmRSS, kB). A process with no resident memory line is a kernel thread
-## and is left out. It opens nothing else in a process's folder, ever: no command line, no environment, no open files,
+## ticks; from `status`: its resident memory (VmRSS, kB) and how many threads it runs (Threads; W1's swarms). A process
+## with no resident memory line is a kernel thread and is left out. It opens nothing else in a process's folder, ever: no command line, no environment, no open files,
 ## no working folder, no executable, no memory map, no path and no file's contents. It writes, saves, prints, logs and
 ## sends nothing, runs nothing, and never signals a process: the visor's sever is drawn, never sent.
 ##
@@ -40,7 +40,7 @@ var root := ROOT
 var budget_us := BUDGET_US
 ## Every path this reader opened, in order, for the checks.
 var opened := PackedStringArray()
-## The last full scan: {pid: {"ppid", "comm", "state", "cpu", "mem_kb"}}.
+## The last full scan: {pid: {"ppid", "comm", "state", "cpu", "mem_kb", "threads"}}.
 var snapshot := {}
 var scans := 0
 var _queue := PackedStringArray()
@@ -129,10 +129,11 @@ func _read_one(pid_name: String) -> Dictionary:
 	var stat := parse_stat(_small(root.path_join(pid_name).path_join(STAT)))
 	if stat.is_empty() or stat["pid"] != int(pid_name) or stat["ppid"] == KTHREADD or stat["pid"] == KTHREADD:
 		return {}
-	var rss := parse_rss(_small(root.path_join(pid_name).path_join(STATUS)))
+	var status := _small(root.path_join(pid_name).path_join(STATUS))
+	var rss := parse_rss(status)
 	if rss < 0:
 		return {}
-	return {"ppid": stat["ppid"], "comm": stat["comm"], "state": stat["state"], "ticks": stat["ticks"], "mem_kb": rss}
+	return {"ppid": stat["ppid"], "comm": stat["comm"], "state": stat["state"], "ticks": stat["ticks"], "mem_kb": rss, "threads": parse_threads(status)}
 
 
 ## At most SMALL bytes of a file, as text; "" when it cannot be read or is longer.
@@ -174,6 +175,15 @@ static func parse_rss(text: String) -> int:
 			var fields := line.trim_prefix("VmRSS:").strip_edges().split(" ", false)
 			return int(fields[0]) if not fields.is_empty() and fields[0].is_valid_int() else -1
 	return -1
+
+
+## How many threads a `status` text says the process runs (W1); 1 when it says nothing.
+static func parse_threads(text: String) -> int:
+	for line in text.split("\n"):
+		if line.begins_with("Threads:"):
+			var fields := line.trim_prefix("Threads:").strip_edges().split(" ", false)
+			return maxi(int(fields[0]), 1) if not fields.is_empty() and fields[0].is_valid_int() else 1
+	return 1
 
 
 ## A process name as the visor shows it: printable ASCII only, at most COMM_LONGEST characters.

@@ -100,12 +100,30 @@ const ELITE_ZOMBIE_RAM_SCALE := 1.3
 const ELITE_SWARM_BURST := 2
 const ELITE_SWARM_TELL := 0.6
 ## The kinds rooted where they stand, never moving, looking, striking or roused (M2's parent, M3's loop core).
-const ROOTED := ["parent", "core"]
+const ROOTED := ["parent", "core", "nest"]
 ## The shell's true body (M7, scripts/daemons/shell_core.gd): never rooted, never a walker. It flies a slow orbit over its
 ## home at SHELL_HOVER_M, rising there over SHELL_RISE_S as it stands, bobbing SHELL_BOB_M, and every SHELL_VOLLEY_S with
 ## its prey in sight it throws SHELL_VOLLEY bolts from its heart SHELL_VOLLEY_GAP_S apart. Nothing holds it: no freeze, no
 ## hangup, no hole (its dummy refuses them); SIGSTOP freezes it as any.
-const BOSS := ["shell"]
+const BOSS := ["shell", "pegged"]
+## W1's pegged core (a live process running a core flat out): its hover over its home, orbit and rise, its tell before
+## each volley, the volley (bolts fanned across its prey), and its wait between volleys, from cool (half a core) to a
+## full core.
+const PEGGED_HOVER_M := 3.4
+const PEGGED_ORBIT_M := 3.5
+const PEGGED_TURN := 0.3
+const PEGGED_RISE_S := 3.0
+const PEGGED_BOB_M := 0.45
+const PEGGED_SPEED := 3.5
+const PEGGED_TELL_S := 1.1
+const PEGGED_VOLLEY := 5
+const PEGGED_FAN := 0.42
+const PEGGED_GAP_S := 0.09
+const PEGGED_WAIT_COOL_S := 8.0
+const PEGGED_WAIT_HOT_S := 4.5
+const PEGGED_BOLT_OUT_M := 2.4
+## W1's drones: flown by their swarm's flock (scripts/procs/swarm_flock.gd), never by the brain.
+const FLOWN := ["drone"]
 const SHELL_HOVER_M := 6.0
 const SHELL_ORBIT_M := 5.0
 const SHELL_TURN := 0.22
@@ -165,6 +183,11 @@ var dummy: Node3D
 var art: DaemonArt
 ## A mission's daemon (C37): no leash, and a lost prey heard again rather than given up.
 var relentless := false
+## W1: the last physics frame a drone's brain left it free to fly (not frozen, held or stopped); its flock reads it.
+var flown_frame := -1
+## W1: a pegged core's volleys and tells, for the checks.
+var pegged_tells := 0
+var _pegged_tell := 0.0
 ## Asleep at home (M2): no looking round, no hunting, until woken (alert()) or roused by a hit.
 var dormant := false
 ## The ruins it walks in (M2), found once, for its steps' floor and its way round them.
@@ -325,6 +348,12 @@ func step(delta: float, d) -> void:
 	clock += delta
 	state_t += delta
 	cooldown = maxf(cooldown - delta, 0.0)
+	if FLOWN.has(kind):
+		flown_frame = Engine.get_physics_frames()  # W1: a drone free to fly this frame; its flock flies it
+		return
+	if kind == "pegged":
+		_step_pegged(delta, d)  # W1: a pegged core's flight, tell and volleys
+		return
 	if BOSS.has(kind):
 		_step_shell(delta, d)  # M7: the shell's own flight and volleys, whatever state it is in
 		return
@@ -365,6 +394,10 @@ func rest(delta: float, d) -> void:
 		art.displays = true
 		art.drive(DaemonArt.Act.IDLE)
 		return  # rooted, or (M7) the shell: it hangs where it is in practice
+	if FLOWN.has(kind):
+		art.displays = true
+		flown_frame = Engine.get_physics_frames()  # W1: its flock flies it round its nest in practice too, never diving
+		return
 	if _held_by_chmod(d):
 		return  # frozen in practice too (C29): it stands where the beam caught it
 	if hup_pending:
@@ -394,8 +427,8 @@ func rest(delta: float, d) -> void:
 ## A hit that did not kill it, from `point` (world space): the swarm scatters (any dive off, its
 ## burst over); anything at home or going home is roused and hunts whoever is nearest in sight.
 func on_hit(point: Vector3, d) -> void:
-	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE or ROOTED.has(kind):
-		return  # a confused daemon (C32) is too busy reloading to be roused; a parent (M2) is never roused
+	if d == null or not d.runs() or state == State.DOWN or hup != Hup.NONE or ROOTED.has(kind) or FLOWN.has(kind):
+		return  # a confused daemon (C32) is too busy reloading to be roused; a parent (M2) is never roused; a drone's flock answers for it (W1)
 	dormant = false  # a hit wakes a sleeper (M2): its mission wakes the rest of its wave
 	if kind == "swarm":
 		_release(d)
@@ -1191,6 +1224,8 @@ func _sees(at: Vector3, d) -> bool:
 ## Where it looks from: a walker's eye, the swarm's nest, the shell's heart (M7).
 func _eye(d) -> Vector3:
 	var height: float = MIDDLE_M if kind == "swarm" else (SHELL_EYE_M if BOSS.has(kind) else d.tuning.eye_height_m)
+	if kind == "pegged" and art != null and art.is_inside_tree():
+		return art.anchor()  # W1: its heart, wherever its size puts it
 	return dummy.global_position + Vector3.UP * height
 
 
@@ -1244,6 +1279,89 @@ func _step_shell(delta: float, d) -> void:
 		volleys += 1
 		attacks += 1
 		_note("attack")
+
+
+## A pegged core's step (W1): up out of its home to its height and round its orbit, facing its prey; its tell (it draws in
+## and burns white, PEGGED_TELL_S), then a volley of bolts fanned across its prey from its heart, then a wait that is
+## shorter the hotter it runs (its art's heat, the process's live CPU). It takes no attacker's slot: it is the event.
+func _step_pegged(delta: float, d) -> void:
+	if not has_home:
+		take_home()
+	_risen = minf(_risen + delta / PEGGED_RISE_S, 1.0)
+	var rise := smoothstep(0.0, 1.0, _risen)
+	_orbit = fmod(_orbit + PEGGED_TURN * delta, TAU)
+	var centre := home.origin
+	var goal := centre + Vector3(cos(_orbit), 0.0, sin(_orbit)) * PEGGED_ORBIT_M * rise
+	goal.y = centre.y + PEGGED_HOVER_M * rise + PEGGED_BOB_M * sin(clock * 0.9) * rise
+	var step := (goal - dummy.global_position).limit_length(PEGGED_SPEED * delta)
+	dummy.global_position += step
+	moved = true
+	velocity = step / maxf(delta, 0.0001)
+	if prey == 0 or not d.prey_valid(prey) or d.prey_hidden(prey):
+		prey = 0
+		for id in d.prey_ids():
+			if d.prey_valid(id) and not d.prey_hidden(id):
+				prey = id
+				break
+	var heat: float = clampf(float(art.get("heat")) if art != null and art.get("heat") != null else 1.0, 0.0, 1.0)
+	if _volley_left > 0:
+		art.drive(DaemonArt.Act.STRIKE, 1.0 - float(_volley_left) / PEGGED_VOLLEY)
+		_volley_wait -= delta
+		if _volley_wait <= 0.0:
+			_volley_wait = PEGGED_GAP_S
+			var k := PEGGED_VOLLEY - _volley_left
+			_volley_left -= 1
+			_pegged_volley(k, d)
+			if _volley_left == 0:
+				_enter(State.RECOVER)
+		return
+	if _pegged_tell > 0.0:
+		_pegged_tell -= delta
+		art.drive(DaemonArt.Act.TELL, 1.0 - _pegged_tell / PEGGED_TELL_S)
+		if prey != 0 and d.prey_valid(prey):
+			_face(d.prey_point(prey), delta, d)
+		if _pegged_tell <= 0.0:
+			_volley_left = PEGGED_VOLLEY
+			_volley_wait = 0.0
+			volleys += 1
+			attacks += 1
+			_enter(State.STRIKE)
+			_note("attack")
+		return
+	art.drive(DaemonArt.Act.MOVE)
+	if state != State.HUNT and state != State.HOME:
+		_enter(State.HUNT if prey != 0 else State.HOME)
+	if prey == 0:
+		return
+	var target: Vector3 = d.prey_point(prey)
+	if not target.is_finite():
+		return
+	last_seen = target
+	_face(target, delta, d)
+	if cooldown <= 0.0 and _risen >= 1.0 and d.prey_attackable(prey) and d.clear(_eye(d), target):
+		cooldown = lerpf(PEGGED_WAIT_COOL_S, PEGGED_WAIT_HOT_S, heat) / d.aggression()
+		_pegged_tell = PEGGED_TELL_S
+		pegged_tells += 1
+		tells += 1
+		_enter(State.TELL)
+		_note("tell")
+
+
+## The `k`th bolt of a pegged core's volley, fanned across its prey from its heart, thrown only where nothing of the level
+## is between.
+func _pegged_volley(k: int, d) -> void:
+	if prey == 0 or not d.prey_valid(prey):
+		_note("miss")
+		return
+	var middle := _eye(d)
+	var to: Vector3 = d.prey_point(prey) - middle
+	var fan := lerpf(-PEGGED_FAN, PEGGED_FAN, float(k) / float(maxi(PEGGED_VOLLEY - 1, 1)))
+	var dir := (Basis(Vector3.UP, fan) * to).normalized()
+	var from := middle + dir * PEGGED_BOLT_OUT_M
+	if d.clear(middle, from):
+		d.throw_bolt(self, from, dir)
+	else:
+		_note("miss")
 
 
 ## Where the zombie's bolt leaves: its raised claw, as its art last posed it, kept near its body.

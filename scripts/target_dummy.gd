@@ -145,6 +145,8 @@ var _climb_s := 0.0
 var _body_rest := Vector3.ZERO
 ## How far under the floor a daemon climbing out of a vent starts, metres.
 const CLIMB_DEPTH_M := 1.6
+## How far under its place this one starts its climb (W1: a drone forked out of its nest grows in where it is, 0).
+var climb_depth_m := CLIMB_DEPTH_M
 
 @onready var _body: MeshInstance3D = $Body
 @onready var _shape: CollisionShape3D = $Shape
@@ -427,7 +429,7 @@ func _physics_process(delta: float) -> void:
 		if _climb_s > 0.0:
 			# Out of the vent (C37): risen from under the floor, fastest at first.
 			var rise := 1.0 - pow(1.0 - grown, 2.0)
-			_body.position = _body_rest + Vector3.DOWN * CLIMB_DEPTH_M * (1.0 - rise)
+			_body.position = _body_rest + Vector3.DOWN * climb_depth_m * (1.0 - rise)
 		_art.set_unstable(1.0 - grown)  # it glitches as it comes back (A2)
 		if grown >= 1.0 and own:
 			_climb_s = 0.0
@@ -632,9 +634,42 @@ func spawn_in(seconds: float) -> void:
 	_state_time = 0.0
 	_climb_s = maxf(seconds, 0.05)
 	_body.scale = Vector3.ONE * MIN_BODY_SCALE
-	_body.position = _body_rest + Vector3.DOWN * CLIMB_DEPTH_M
+	_body.position = _body_rest + Vector3.DOWN * climb_depth_m
 	_body.visible = true
 	_art.set_unstable(1.0)
+
+
+## Its own hit volume, `radius` round and `height` tall (W1: a drone is small), its body's centre at half that height:
+## a cylinder and a hex of its own, so no other daemon's changes. Before it spawns in (spawn_in()).
+func resize_volume(radius: float, height: float) -> void:
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	_shape.shape = shape
+	_shape.position = Vector3(0.0, height * 0.5, 0.0)
+	var hex := CylinderMesh.new()
+	hex.top_radius = radius
+	hex.bottom_radius = radius
+	hex.height = height
+	hex.radial_segments = 6
+	hex.rings = 1
+	_body.mesh = hex
+	_hex = hex
+	_body_rest = Vector3(0.0, height * 0.5, 0.0)
+	_body.position = _body_rest
+	_tag.position.y = _art.tag_y() + _body_rest.y - 0.9
+
+
+## Its art at `scale` of its own size (W1: a daemon sized by its process's memory, a pegged core by its CPU), its body box
+## and its tag fitted to it. Any time; nothing is rebuilt.
+func resize_art(scale: float) -> void:
+	if _art == null or absf(_art.size_scale - scale) < 0.001:
+		return
+	_art.resize(scale)
+	if _box != null:
+		(_box.shape as BoxShape3D).size = _art.box_size()
+		_fit_box()
+	_tag.position.y = _art.tag_y() + _body_rest.y - 0.9  # the tag rides with the body's centre
 
 
 ## True while it climbs out of a vent (C37).

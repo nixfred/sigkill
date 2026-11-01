@@ -21,7 +21,8 @@ extends Node3D
 ## A mission's own daemons (C37) count as the arena's: each one its runner says climbed out (daemon_spawned) is watched
 ## like the scene's own (a kill toward sudo, the kill count, the feats), and the runner holds the ICEbreakers' director
 ## to lock it while the mission has not handed them over. The Audit Trail visor (C43, scripts/visor/audit_visor.gd) stands
-## beside them all, on the player's I.
+## beside them all, on the player's I. The process hunt (W1, scripts/procs/proc_hunt.gd: live process enemies) stands
+## beside them too, begun when the Esc menu queued it (or --procs on a demo or test run), never with a mission queued.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -136,6 +137,17 @@ func _ready() -> void:
 	add_child(visor)
 	_hud.set_visor(visor)
 	_player.visor_pressed.connect(visor.toggle)
+	# The process hunt (W1): live process enemies, when queued; its enemies are the arena's own to the HUD and the kills.
+	var hunt := ProcHunt.new()
+	hunt.player = _player
+	hunt.director = director
+	hunt.runner = runner
+	hunt.ice = ice
+	hunt.rounds = _hud.round_hud()
+	hunt.guide = _hud.guide()
+	hunt.spawned.connect(_on_mission_daemon)
+	add_child(hunt)
+	ProcHunt.take_flag(launch_args)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -179,6 +191,11 @@ func _ready() -> void:
 		_hud.pause_menu().first_launch_path = SettingsFile.DEFAULT_PATH
 	var queued := MissionRunner.take_pending()
 	var after := MissionRunner.take_after()
+	if queued[0] != "":
+		ProcHunt.clear()  # a mission ends the process hunt (W1)
+	elif ProcHunt.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		hunt.begin.call_deferred()
 	if queued[0] != "":
 		_first_launch_taken = true
 		_begin_mission.call_deferred(queued[0], queued[1])

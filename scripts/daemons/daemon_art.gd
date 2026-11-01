@@ -297,6 +297,16 @@ func setup(target: Node3D, seed: int = -1) -> void:
 	_send(true)
 
 
+## Its size changed to `scale` (W1: a live process's memory or CPU), scaled about the ground under it as a build is.
+func resize(scale: float) -> void:
+	size_scale = maxf(scale, 0.05)
+	var xf := Transform3D(Basis.from_scale(Vector3.ONE * size_scale), Vector3(0.0, GROUND_Y * (1.0 - size_scale), 0.0))
+	if stretched > 0.0:
+		_unstretched = xf
+	else:
+		transform = xf
+
+
 # --- What the daemon tells it. ---
 
 ## /dev/null's pull (C31): the body drawn out toward `way` (world space) by `amount`, 0 (its own shape) to 1:
