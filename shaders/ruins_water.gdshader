@@ -48,12 +48,15 @@ void fragment() {
 		vec2 rel = p - l;
 		float along = dot(rel, axis);
 		float perp = dot(rel, vec2(-axis.y, axis.x));
-		float len = h * 0.9 + 4.0;
-		float width = 0.8 + 0.03 * max(along, 0.0);
-		float streak = exp(-perp * perp / (2.0 * width * width)) * exp(-max(along, 0.0) / len) * smoothstep(-2.5, 0.5, along);
+		// The streak runs from the lamp's foot toward whoever looks, brightest a little out from the foot and gone
+		// before it reaches them; wider as it goes, broken by the ripples.
+		float share = along / far;
+		float width = 0.7 + 0.04 * max(along, 0.0);
+		float streak = exp(-perp * perp / (2.0 * width * width)) * smoothstep(0.0, 0.12, share) * pow(clamp(1.0 - share, 0.0, 1.0), 1.6) * exp(-max(along, 0.0) / (h * 1.2 + 6.0));
 		streak *= 0.5 + 0.5 * ruins_noise(vec2(along * 0.5, perp * 1.6) + vec2(arena_clock * 0.35, 0.0));
 		glow += lamp_colors[i].rgb * streak * clamp(lamps[i].w / 7.0, 0.2, 1.4) * streak_gain;
 	}
+	glow = glow / (1.0 + 0.8 * (glow.r + glow.g + glow.b));  // many lamps never wash it out
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
 	glow += rim_color.rgb * (fres * (0.05 + 0.05 * ripple) + ring * 0.3);
 	ALBEDO = deep_color.rgb * (0.8 + 0.4 * ripple);

@@ -422,9 +422,10 @@ func _run_checks() -> void:
 	var black_line := await _until(func(): return _fired_has(BLACK_LINE))
 	var not_yet: bool = not ice.black_out()
 	var came := await _until(func(): return ice.black != null and is_instance_valid(ice.black))
-	var black: BlackIce = ice.black
-	var cut := await _until(func(): return guide.link_cut())
-	await _until(func(): return ice.black_darkness() > 0.8)
+	var black: BlackIce = ice.black if came else null
+	var cut := came and await _until(func(): return guide.link_cut())
+	if came:
+		await _until(func(): return ice.black_darkness() > 0.8)
 	var dark_lights: float = ArenaArt.light_level
 	var cut_off := _fired_has("Don't wait for m")
 	var alone := _fired_has("intruder alone")
@@ -434,16 +435,16 @@ func _run_checks() -> void:
 	await _frames(20)
 	_action("sigstop")
 	await _frames(3)
-	var out_phase := await _until(func(): return black.phase == BlackIce.Phase.OUT)
+	var out_phase := came and await _until(func(): return black.phase == BlackIce.Phase.OUT)
 	await _frames(90)
-	var black_floor := absf(black.global_position.y - (world.point("foot_1").y - RuinsLayout.STAND_Y))
-	_check("acceptance (Black ICE, the set piece): SIGSTOP put in hand as the beat begins, your AI's line said before the link goes (\"%s\"), Black ICE formed on the mission's word through the ICE director (staged, none of the director's own), the lights dying (%.2f of themselves), the link cut, the cut-off line, the Auditor alone on the line; F stops the world; it hunts on the lowest terrace's floor (%.2f m off it)" % [BLACK_LINE, dark_lights, black_floor], stop_told and black_line and not_yet and came and cut and dark_lights < 0.4 and cut_off and alone and stopped and out_phase and black_floor < 0.6 and black.touching())
+	var black_floor := absf(black.global_position.y - (world.point("foot_1").y - RuinsLayout.STAND_Y)) if came else INF
+	_check("acceptance (Black ICE, the set piece): SIGSTOP put in hand as the beat begins, your AI's line said before the link goes (\"%s\"), Black ICE formed on the mission's word through the ICE director (staged, none of the director's own), the lights dying (%.2f of themselves), the link cut, the cut-off line, the Auditor alone on the line; F stops the world; it hunts on the lowest terrace's floor (%.2f m off it)" % [BLACK_LINE, dark_lights, black_floor], stop_told and black_line and not_yet and came and cut and dark_lights < 0.4 and cut_off and alone and stopped and out_phase and black_floor < 0.6 and black.touching(), "told %s line %s not_yet %s came %s cut %s cut_off %s alone %s stopped %s out %s" % [str(stop_told), str(black_line), str(not_yet), str(came), str(cut), str(cut_off), str(alone), str(stopped), str(out_phase)])
 	# The oldest directory reached: Black ICE recalled, the link back, your AI's line, the shell waking and typing.
 	var shell_at := world.point("shell")
 	player.global_position = shell_at
 	player.velocity = Vector3.ZERO
 	var dark_done := await _until(func(): return runner.index >= 5)
-	var gone := await _until(func(): return not ice.black_out())
+	var gone := came and await _until(func(): return not ice.black_out())
 	var recalled := _fired_has("black ICE recalled")
 	var back := await _until(func(): return not guide.link_cut())
 	var still_here := await _until(func(): return _fired_has(STILL_HERE))

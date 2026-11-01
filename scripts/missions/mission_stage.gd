@@ -145,8 +145,8 @@ const JOB_DONE_SHOWN_S := 6.0
 ## waiting, how far the row typing has got; the SIGHUP bursts seen so far; its one hangup.
 const SHELL_CPS := 16.0
 const SHELL_ROWS := 6
-const SHELL_WRAP := 34
-const SHELL_ROW_M := 0.42
+const SHELL_WRAP := 30
+const SHELL_ROW_M := 0.36
 const SHELL_HUP_M := 9.0
 var _shell_wake := ""
 var _shell_labels: Array = []
@@ -198,14 +198,14 @@ func build(d: MissionDef) -> void:
 						label.name = "ShellRow%d" % i
 						label.font = Palette.mono_font()
 						label.font_size = 64
-						label.pixel_size = 0.0042
+						label.pixel_size = 0.0032
 						label.modulate = Palette.CRIMSON
 						label.outline_modulate = Color(0, 0, 0, 0.9)
 						label.outline_size = 8
 						label.shaded = false
 						label.text = ""
 						add_child(label)
-						label.global_position = (screen["at"] as Vector3) + sout * 0.3 + Vector3(0, 1.1 + size.y - 0.9 - 0.62 - SHELL_ROW_M * float(i), 0)
+						label.global_position = (screen["at"] as Vector3) + sout * 0.3 + Vector3(0, 1.1 + size.y - 0.9 - 1.0 - SHELL_ROW_M * float(i), 0)
 						label.rotation.y = atan2(sout.x, sout.z)
 						_shell_labels.append(label)
 			"door":

@@ -132,8 +132,8 @@ const SHELL_S := 1.6
 const SHELL_LAMP := 6.0
 const WATER_SIZE := 720.0
 const WATER_LAMPS := 16
-const CORE_LAMP := 14.0
-const CORE_GLOW := 3.2
+const CORE_LAMP := 9.0
+const CORE_GLOW := 0.9
 var _shell_light: ShaderMaterial = null
 var _shell_lamp: OmniLight3D = null
 var _shell_t := -1.0
@@ -713,8 +713,8 @@ func _build_breach(near_kit: Callable, dice: Callable, out: Dictionary) -> void:
 	if ruins.breach_core:
 		# The core's heat (M6): a red glow far under the deck in place of a remnant, dark until a mission lights it.
 		var glow := PlaneMesh.new()
-		glow.size = Vector2.ONE * RuinsLayout.POCKET_M * 2.6
-		out["core"] = {"mesh": glow, "at": deck + Vector3(0, -9.0, 0)}
+		glow.size = Vector2.ONE * RuinsLayout.POCKET_M * 5.0
+		out["core"] = {"mesh": glow, "at": deck + Vector3(0, -8.0, 0)}
 		return
 	var t: Dictionary = layout.remnant["tower"]
 	var tower_at: Array = near_kit.call(t["at"])
@@ -1060,12 +1060,12 @@ func _show_breach() -> void:
 		_core_mat = StandardMaterial3D.new()
 		_core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_core_mat.albedo_color = Color(0.0, 0.0, 0.0)
-		_core_mat.disable_fog = true
+		_core_mat.disable_fog = false  # the heat fades into the deep's fog with distance: red near, the dark far
 		glow.material_override = _core_mat
 		add_child(glow)
 		_core_lamp = OmniLight3D.new()
 		_core_lamp.name = "CoreLamp"
-		_core_lamp.position = (_built["core"]["at"] as Vector3) + Vector3(0, 4.0, 0)
+		_core_lamp.position = (_built["core"]["at"] as Vector3) + Vector3(0, 11.5, 0)  # over the deck: the heat on everything
 		_core_lamp.omni_range = 34.0
 		_core_lamp.omni_attenuation = 1.1
 		_core_lamp.light_color = Palette.HOSTILE_RED

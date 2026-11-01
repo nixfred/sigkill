@@ -3718,9 +3718,9 @@ func _m6() -> void:
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	await _m2_quiet()
-	_c37_view(Vector3(v_top.x + 2.8, 0.0, v_top.z + 7.5), v_top + Vector3(0, 1.1, 0))
+	_c37_view(Vector3(v_top.x + 4.0, 0.0, v_top.z + 12.0), v_top + Vector3(0, 1.1, 0))
 	await _m5_until(runner, func(): return stage.wave_state("top_1") != "waiting" and stage.wave_state("top_2") != "waiting", 0.0, false)
-	await _frames(int(1.9 * Engine.physics_ticks_per_second))
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
 	print("capture: m6-opening, %d standing at %.1f s" % [stage.standing().size(), runner.clock])
 	await _c37_save(sheet, "m6-opening", runner)
 	# The descent: from the head of the first ramp of racks, the pack behind, the landing and the water below.
@@ -3770,6 +3770,15 @@ func _m6() -> void:
 	# Black ICE: the set piece. Formed on the lowest terrace in the dark, the link cut; the world stopped as it comes.
 	await _m5_until(runner, func(): return ice.black != null and is_instance_valid(ice.black), 20.0, false)
 	var black: BlackIce = ice.black
+	# Its arrival: the warning on every screen, the lights going, the presence forming 7 m off.
+	var toward := (black.global_position - foot1) * Vector3(1, 0, 1)
+	toward = toward.normalized() if toward.length() > 0.1 else Vector3(1, 0, 0)
+	var stand := black.global_position - toward * 7.5
+	_c37_view(Vector3(stand.x, foot1.y, stand.z), black.global_position + Vector3(0, 2.4, 0))
+	await _m5_until(runner, func(): return black.tell_left() <= 2.6, 8.0, false)
+	_m3_aim(black.global_position + Vector3(0, 2.4, 0))
+	print("capture: m6-black (the arrival), tell left %.1f s, lights %.2f, link cut %s" % [black.tell_left(), ArenaArt.light_level, str(_main.get_node("Hud").guide().link_cut())])
+	await _c37_save(sheet, "m6-black", runner)
 	_c37_view(Vector3(foot1.x + 5.0, foot1.y, foot1.z - 4.0), black.global_position + Vector3(0, 2.2, 0))
 	await _m5_until(runner, func(): return black.phase == BlackIce.Phase.OUT, 12.0, false)
 	await _m5_until(runner, func(): return stage.wave_state("dark_1") != "waiting", 12.0, false)
@@ -3782,8 +3791,8 @@ func _m6() -> void:
 	_player.sigstop.press()
 	await _frames(int(0.35 * Engine.physics_ticks_per_second))
 	_m3_aim(black.aim_point())
-	print("capture: m6-black, phase %s, link cut %s, lights %.2f, SIGSTOP %s" % [black.phase_name(), str(_main.get_node("Hud").guide().link_cut()), ArenaArt.light_level, str(_player.sigstop.is_on())])
-	await _c37_save(sheet, "m6-black", runner)
+	print("capture: m6-dark, phase %s, link cut %s, lights %.2f, SIGSTOP %s, %.1f m" % [black.phase_name(), str(_main.get_node("Hud").guide().link_cut()), ArenaArt.light_level, str(_player.sigstop.is_on()), black.global_position.distance_to(_player.global_position)])
+	await _c37_save({}, "m6-dark", runner)
 	root.size = Vector2i(960, 540)
 	await _frames(4)
 	await _c37_save({}, "m6-960", runner)
@@ -3799,6 +3808,8 @@ func _m6() -> void:
 	var sat: Vector3 = screen["at"]
 	var sout: Vector3 = screen["out"]
 	_c37_view(Vector3(shell.x + 0.6, shell.y, shell.z + 0.9), sat - sout * 0.2 + Vector3(0, 2.3, 0))
+	UnlockToast.drop_waiting()
+	UnlockToast.hold(40.0)  # no mod toast over the shell's beats: told with the end screen
 	await _m5_until(runner, func(): return stage.shell_text().length() >= 26, 20.0, false)
 	print("capture: m6-shell, typed \"%s\", power %.2f, link cut %s" % [stage.shell_text().replace("\n", " / "), world.shell_power(), str(_main.get_node("Hud").guide().link_cut())])
 	await _c37_save(sheet, "m6-shell", runner)
@@ -3809,6 +3820,7 @@ func _m6() -> void:
 	await _m5_until(runner, func(): return runner.index >= 7, 8.0, false)
 	await _m5_until(runner, func(): return stage.shell_text().to_lower().contains("remember"), 8.0, false)
 	await _frames(int(0.9 * Engine.physics_ticks_per_second))
+	UnlockToast.drop_waiting()
 	_m3_aim(sat - sout * 0.2 + Vector3(0, 2.3, 0))
 	print("capture: m6-hangup, typed \"%s\", hatch open %s" % [stage.shell_text().replace("\n", " / "), str(world.breach().is_open())])
 	await _c37_save({}, "m6-hangup", runner)
@@ -3819,7 +3831,8 @@ func _m6() -> void:
 	await _m5_until(runner, func(): return runner.state == MissionRunner.State.COMPLETE, 10.0, false)
 	await _frames(int(1.2 * Engine.physics_ticks_per_second))
 	var below := world.point("below")
-	_m3_aim(Vector3(below.x + 4.0, below.y - 12.0, below.z - 8.0))
+	_c37_view(Vector3(below.x - 3.0, below.y, below.z + 4.0), Vector3(below.x + 6.0, below.y - 0.6, below.z - 12.0))  # across the lit deck, over its parapet, into the heat
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
 	print("capture: m6-core, the core lit %.2f, state %s, player y %.1f" % [world.remnant_power(), MissionRunner.State.keys()[runner.state], _player.global_position.y])
 	await _c37_save(sheet, "m6-core", runner)
 	var mh: MissionHud = _main.get_node("Hud").mission_hud()
