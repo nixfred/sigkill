@@ -96,6 +96,8 @@ const REGISTERS := ["tron", "matrix", "cyberpunk"]
 
 ## How many times a roll has opened this run (the checks: it plays once per ending, and nowhere else).
 static var plays := 0
+## The main thread's time in the roll's own drawing last frame, in microseconds (the capture tool reports it).
+var draw_us := 0
 
 ## Pause the game behind while it plays (the Esc menu's replay; never a match, where the menu offers none).
 var pause_world := false
@@ -576,6 +578,12 @@ func _scale(view: Vector2) -> float:
 func _draw_all() -> void:
 	if not _up:
 		return
+	var began := Time.get_ticks_usec()
+	_draw_frame()
+	draw_us = Time.get_ticks_usec() - began
+
+
+func _draw_frame() -> void:
 	var view := _canvas.size
 	var k := _scale(view)
 	var fade := clampf(_t / FADE_S, 0.0, 1.0)
@@ -623,15 +631,16 @@ func _draw_backdrop(view: Vector2, k: float, a: float) -> void:
 		for i in SKYLINE:
 			var w := view.x / SKYLINE * (0.7 + 0.5 * _hash(i, 1.0))
 			var x := view.x * float(i) / SKYLINE + (_hash(i, 2.0) - 0.5) * 18.0 * k
-			var h := view.y * (0.06 + 0.22 * pow(_hash(i, 3.0), 1.6))
-			_canvas.draw_rect(Rect2(x, horizon - h, w, h), Color(0.02, 0.0, 0.03, 0.9 * cyber))
+			var h := view.y * (0.08 + 0.34 * pow(_hash(i, 3.0), 1.4))
+			_canvas.draw_rect(Rect2(x, horizon - h, w, h), Color(0.03, 0.0, 0.05, 0.95 * cyber))
 			var edge := Palette.HOT_MAGENTA if i % 3 else Palette.SKIN_CGA_CYAN
-			_canvas.draw_rect(Rect2(x, horizon - h, w, 1.5 * k + 1.0), Color(edge, 0.55 * cyber))
+			_canvas.draw_rect(Rect2(x, horizon - h, w, 2.0 * k + 1.0), Color(edge, 0.85 * cyber))
+			_canvas.draw_rect(Rect2(x, horizon - h, 1.5 * k, h), Color(edge, 0.3 * cyber))
 			for wy in 6:
 				for wx in 3:
 					if _hash(i * 7.0 + wx, wy * 3.0) > 0.74:
 						var lit := 0.35 + 0.65 * _hash(i + wx, floorf(_t * 0.7) + wy)
-						_canvas.draw_rect(Rect2(x + w * (0.18 + wx * 0.28), horizon - h + h * (0.12 + wy * 0.13), w * 0.12, h * 0.05), Color(Palette.SODIUM if (wx + wy) % 3 else Palette.SKIN_CGA_CYAN, 0.32 * lit * cyber))
+						_canvas.draw_rect(Rect2(x + w * (0.18 + wx * 0.28), horizon - h + h * (0.12 + wy * 0.13), w * 0.12, h * 0.05), Color(Palette.SODIUM if (wx + wy) % 3 else Palette.SKIN_CGA_CYAN, 0.55 * lit * cyber))
 		# Rain across it all, slanting.
 		for i in STREAKS:
 			var sx := fposmod(_hash(i, 5.0) * view.x - _t * 140.0 * k, view.x)
@@ -643,16 +652,28 @@ func _draw_backdrop(view: Vector2, k: float, a: float) -> void:
 	var grid := Color(accent, 0.0)
 	for i in 23:
 		var lean := (float(i) / 22.0 - 0.5) * 2.0
-		grid.a = 0.17 * a
+		grid.a = 0.26 * a
 		_canvas.draw_line(Vector2(centre + lean * view.x * 0.09, horizon), Vector2(centre + lean * view.x * 1.5, view.y), grid, 1.5 * k, true)
 	for i in 14:
 		var z := (i + 1.0 - beat) / 14.0
 		var y := horizon + (view.y - horizon) * pow(z, 2.6)
-		grid.a = 0.24 * a * z
+		grid.a = 0.36 * a * z
 		_canvas.draw_line(Vector2(0.0, y), Vector2(view.x, y), grid, 1.5 * k, true)
 	for i in 7:
 		_canvas.draw_rect(Rect2(0.0, horizon - i * 3.0 * k, view.x, 6.0 * k), Color(accent, 0.035 * a))
-	_canvas.draw_rect(Rect2(0.0, horizon, view.x, 1.5 * k), Color(hi, 0.55 * a))
+	_canvas.draw_rect(Rect2(0.0, horizon, view.x, 1.5 * k), Color(hi, 0.7 * a))
+	for i in 10:
+		_canvas.draw_rect(Rect2(0.0, horizon - i * 6.0 * k, view.x, 6.0 * k), Color(accent, 0.05 * (1.0 - i / 10.0) * a))
+	# Tron's light cycles: two trails racing along the floor, one each way.
+	var tron := _weights.x * a
+	if tron > 0.01:
+		for c in 2:
+			var u := fposmod(_t * (0.32 + 0.11 * c) + c * 0.5, 1.0)
+			var y := horizon + (view.y - horizon) * (0.5 + 0.32 * c)
+			var head := view.x * (u if c == 0 else 1.0 - u)
+			var tail := 0.35 * view.x * (1.0 if c == 0 else -1.0)
+			_glow_line(Vector2(head - tail, y), Vector2(head, y), Color(Palette.MINT if c == 0 else Palette.HOSTILE_AMBER, 0.75 * tron), 2.5 * k)
+			_canvas.draw_circle(Vector2(head, y), 4.0 * k, Color(Color.WHITE, tron))
 	# The code rain: every column a stream, its head bright, thicker in the Matrix's register.
 	var rain := (0.06 + 0.2 * _weights.y + 0.04 * _weights.z) * a
 	var gpx := roundi(15.0 * k) + 3
@@ -689,7 +710,10 @@ func _draw_table(view: Vector2, k: float, a: float) -> Dictionary:
 		shake = Vector2(sin(_t * 97.0), cos(_t * 71.0)) * 7.0 * k * (1.0 - (_t - LAST_AT) / 0.5)
 	win.position += shake
 	# The window: near black over the grid, its frame in the register's light, corners lit.
-	_canvas.draw_rect(Rect2(win.position, Vector2(win.size.x, win.size.y * grow)), Color(0.0, 0.01, 0.012, 0.8 * a))
+	_canvas.draw_rect(Rect2(win.position, Vector2(win.size.x, win.size.y * grow)), Color(0.0, 0.012, 0.016, 0.62 * a))
+	_canvas.draw_rect(Rect2(win.position, Vector2(win.size.x, 3.0 * k)), Color(hi, 0.35 * a))
+	for g in 5:
+		_canvas.draw_rect(Rect2(win.position + Vector2(0.0, 3.0 * k + g * 4.0 * k), Vector2(win.size.x, 4.0 * k)), Color(accent, 0.05 * (5 - g) / 5.0 * a))
 	_canvas.draw_rect(Rect2(win.position, Vector2(win.size.x, win.size.y * grow)), Color(accent, 0.45 * a), false, 1.5 * k)
 	_brackets(Rect2(win.position, Vector2(win.size.x, win.size.y * grow)), 26.0 * k, Color(hi, 0.9 * a), 3.0 * k)
 	var x := win.position.x + pad
@@ -755,6 +779,11 @@ func _draw_row(i: int, at: Vector2, cw: float, fs: int, lh: float, a: float, sel
 		_canvas.draw_rect(Rect2(at.x - cw * 0.5, at.y - fs * 0.95, cw * 76.0, fs * 1.3), Color(accent, bar * a))
 	if selected:
 		_canvas.draw_rect(Rect2(at.x - cw * 0.9, at.y - fs * 0.95, 3.0, fs * 1.3), Color(hi, a))
+	if age >= 0.0 and age < 0.45 and not last:
+		# A sweep of light across the row as it lands.
+		var sx := at.x - cw * 0.5 + cw * 76.0 * ease(age / 0.45, 0.5)
+		_canvas.draw_rect(Rect2(sx - cw * 8.0, at.y - fs * 0.95, cw * 8.0, fs * 1.3), Color(hi, 0.18 * a))
+		_canvas.draw_rect(Rect2(sx - 2.0, at.y - fs * 1.1, 3.0, fs * 1.6), Color(Color.WHITE, 0.9 * a))
 	if last:
 		_draw_last_row(at, cw, fs, text, a)
 		return
@@ -913,29 +942,39 @@ func _draw_hero(view: Vector2, k: float, geo: Dictionary) -> void:
 	var wide := card.size.x - 68.0 * k
 	match kind:
 		"title":
-			_draw_ghost_pid(card, k, CreditsCast.TOP, accent, a * 0.8, false)
+			_draw_ghost_pid(card, k, CreditsCast.TOP, accent, a * 0.6, false)
 			var y := card.position.y + card.size.y * 0.5
-			var size := _fit_size(CARD_TITLE, 150.0 * k, wide)
+			var size := _fit_size(CARD_TITLE, 170.0 * k, wide)
+			_halo(Vector2(x + wide * 0.45, y - size * 0.3), size * 1.8, accent, a * clampf(age / 0.4, 0.0, 1.0))
 			_draw_name(Vector2(x, y), CARD_TITLE, size, age, accent, hi, a, reg)
 			_text(Vector2(x, y + size * 0.62), _typed(CARD_SUB, age - 0.8, 40.0), roundi(24.0 * k) + 1, Color(hi, 0.85 * a))
 		"cast":
 			var c: Array = CreditsCast.CAST[int(h["index"])]
 			_draw_ghost_pid(card, k, str(c[0]), accent, a, false)
 			var tag_px := roundi(17.0 * k) + 1
-			_text(Vector2(x, card.position.y + 44.0 * k), "PID %d   [%s]" % [int(c[0]), reg], tag_px, Color(hi, 0.7 * a))
-			var y := card.position.y + card.size.y * 0.44
-			var size := _fit_size(str(c[4]), 104.0 * k, wide)
+			_text(Vector2(x, card.position.y + 44.0 * k), "PID %d   [%s]" % [int(c[0]), reg], tag_px, Color(hi, 0.75 * a))
+			var size := _fit_size(str(c[4]), 150.0 * k, wide)
+			var y := card.position.y + card.size.y * 0.5 - size * 0.05
+			_halo(Vector2(x + _name_font.get_string_size(str(c[4]), HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(size)).x * 0.5, y - size * 0.3), size * 1.6, accent, a * clampf(age / 0.4, 0.0, 1.0))
 			_draw_name(Vector2(x, y), str(c[4]), size, age, accent, hi, a, reg)
 			var handle_a := clampf((age - 0.55) / 0.25, 0.0, 1.0)
-			_text(Vector2(x, y + size * 0.62), str(c[1]), roundi(38.0 * k) + 1, Color(hi, a * handle_a))
-			_canvas.draw_rect(Rect2(x, y + size * 0.62 + 22.0 * k, wide * ease(handle_a, 0.3), 2.0 * k), Color(accent, 0.6 * a))
-			_text(Vector2(x, y + size * 0.62 + 64.0 * k), _typed("$ " + str(c[3]), age - 0.8, 34.0), roundi(22.0 * k) + 1, Color(Palette.MINT, 0.92 * a))
-			var line_a := clampf((age - 1.4) / 0.3, 0.0, 1.0)
-			_canvas.draw_multiline_string(_font, Vector2(x, y + size * 0.62 + 104.0 * k), str(c[5]), HORIZONTAL_ALIGNMENT_LEFT, wide, roundi(21.0 * k) + 1, 3, Color(0.92, 0.97, 1.0, 0.72 * a * line_a))
+			# Their handle under the name; where the name is the handle (Larry, the producer), their line instead.
+			var second := str(c[1]) if str(c[1]) != str(c[4]) else str(c[5])
+			var hp := roundi(minf(40.0 * k, wide / maxf(second.length() * 0.62, 1.0))) + 1
+			_text(Vector2(x, y + size * 0.42 + hp), second, hp, Color(hi, a * handle_a))
+			var under := y + size * 0.42 + hp + 22.0 * k
+			_canvas.draw_rect(Rect2(x, under, wide * ease(handle_a, 0.3), 2.0 * k), Color(accent, 0.7 * a))
+			var cmd := "$ " + str(c[3])
+			var cp := roundi(minf(24.0 * k, wide / maxf(cmd.length() * 0.61, 1.0))) + 1
+			_text(Vector2(x, under + 18.0 * k + cp), _typed(cmd, age - 0.8, 34.0), cp, Color(Palette.MINT, 0.95 * a))
+			if second != str(c[5]):
+				var line_a := clampf((age - 1.4) / 0.3, 0.0, 1.0)
+				_canvas.draw_multiline_string(_font, Vector2(x, under + 30.0 * k + cp * 2.2), str(c[5]), HORIZONTAL_ALIGNMENT_LEFT, wide, roundi(22.0 * k) + 1, 3, Color(0.92, 0.97, 1.0, 0.78 * a * line_a))
 			_link(geo, int(h["index"]), Vector2(card.position.x, y - size * 0.3), accent, hi, a)
 		"thanks":
 			var y := card.position.y + card.size.y * 0.2
-			var size := _fit_size(CreditsCast.THANKS_NAME, 84.0 * k, wide)
+			var size := _fit_size(CreditsCast.THANKS_NAME, 110.0 * k, wide)
+			_halo(Vector2(x + wide * 0.4, y - size * 0.3), size * 1.8, accent, a * clampf(age / 0.4, 0.0, 1.0))
 			_draw_name(Vector2(x, y), CreditsCast.THANKS_NAME, size, age, accent, hi, a, reg)
 			var names := CreditsCast.thanks_names()
 			var px := roundi(25.0 * k) + 1
@@ -961,7 +1000,8 @@ func _draw_ghost_pid(card: Rect2, k: float, text: String, colour: Color, a: floa
 			_canvas.draw_string_outline(_name_font, at + off, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, roundi(3.0 * k) + 1, Color(colour, alpha * 0.35))
 		_canvas.draw_string(_name_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(colour, alpha * 0.22))
 		return
-	_canvas.draw_string_outline(_name_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, roundi(2.5 * k) + 1, Color(colour, 0.2 * a))
+	_canvas.draw_string(_name_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(colour, 0.045 * a))
+	_canvas.draw_string_outline(_name_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, roundi(2.5 * k) + 1, Color(colour, 0.22 * a))
 
 
 ## A name dropping in a letter a sixteenth, white hot, its glow and its two ghosts; in the Matrix register each letter
@@ -1088,10 +1128,10 @@ func _make_voxels(k: float) -> void:
 			var ch := text[i]
 			var cw := f.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 			if ch != " ":
-				var block := maxf(size * 0.28, 2.0)
+				var block := maxf(size * 0.34, 2.0)
 				for v in VOX_PER_CHAR:
 					_vox_pos.append(Vector2(x + cw * (0.2 + 0.3 * float(v % 2)), at.y - size * (0.15 + 0.25 * v)))
-					_vox_col.append(Color(col, maxf(col.a, 0.5)))
+					_vox_col.append(Color(col.lerp(Color.WHITE, 0.15), maxf(col.a, 0.85)))
 					_vox_size.append(block)
 			x += cw
 	_vox_made = true
@@ -1260,6 +1300,14 @@ func _brackets(r: Rect2, arm: float, colour: Color, width: float) -> void:
 		var d: Vector2 = corner[1]
 		_canvas.draw_line(p, p + Vector2(d.x * a, 0.0), colour, width)
 		_canvas.draw_line(p, p + Vector2(0.0, d.y * a), colour, width)
+
+
+## A soft glow of `colour` round `at`, `r` across.
+func _halo(at: Vector2, r: float, colour: Color, a: float) -> void:
+	if a <= 0.0:
+		return
+	for i in 12:
+		_canvas.draw_circle(at, r * (1.0 - i / 12.0) * 0.5, Color(colour, 0.018 * a))
 
 
 ## A line with its glow under it.

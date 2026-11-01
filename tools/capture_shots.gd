@@ -1,6 +1,7 @@
 extends SceneTree
 ## Demo-data stills of SIGKILL for the README, by set (-- --set=a1, the default, a2, a3, a2b, a4, c27b, c28, a5, i1, i2, i3, c29, c30, c31, c32, c33, c38, c39, c40, c41, c42, c35, c36, c37, m2, m3, m4, m5, m6 or m7):
-## (c43 also: the Audit Trail visor; see _c43().)
+## (c43 also: the Audit Trail visor; see _c43(). c44: the credits roll; see _c44(). Its stills are the ending's: only
+## c44-title is ever public.)
 ## a1, every weapon of the arsenal held in first person, at rest and mid-shot (and mid-charge for
 ## one that charges), and one wider view, the rail on a daemon; a2, each kind of daemon up close,
 ## several in one view, a derezz mid-shatter, and one wider view, grep locked on a daemon between
@@ -406,6 +407,9 @@ const SwarmArtC43 = preload("res://scripts/daemons/runaway_swarm.gd")
 const ZombieArtC43 = preload("res://scripts/daemons/zombie_process.gd")
 const RogueArtC43 = preload("res://scripts/daemons/rogue_daemon.gd")
 const DummySceneC43 = preload("res://scenes/target_dummy.tscn")
+## c44's sheet: the credits roll across its clock (never committed: the roll is the ending; only c44-title is public).
+const C44_SHEET := ["c44-title", "c44-fred", "c44-sigkill", "c44-rain", "c44-thanks", "c44-last", "c44-wait", "c44-derezz", "c44-hexagon"]
+const C44_GPU_FRAMES := 120
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
@@ -569,6 +573,11 @@ func _run() -> void:
 		return
 	if _set == "c43":
 		await _c43()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "c44":
+		await _c44()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4254,6 +4263,104 @@ func _c43() -> void:
 			stills.append(sheet[name])
 	if stills.size() == C43_SHEET.size():
 		_save_grid("c43-sequence", stills, C35_SHEET_COLUMNS)
+
+
+## c44: the credits roll (C44), replayed from the Esc menu over the paused arena with the campaign marked finished (demo
+## progress: nothing else of it), on the roll's own clock: the title card (c44-title, the one still that may be public:
+## no row past the first, nothing of the ending), Fred's, Larry's and the producer's cards in the three registers, a row
+## raining in, Albert's and Carlos's cards, the threads, the adoption, the last row, the prompt waiting, the derezz, the
+## hexagon and the bare prompt; then one at 960x540 and the sheet. Through its busiest stretches it prints the GPU's time
+## a frame and the main thread's (C44_GPU_FRAMES each, at 1920x1080).
+func _c44() -> void:
+	MissionProgress.current().finished = true
+	var menu = _main.get_node("Hud").pause_menu()
+	menu.open()
+	await _frames(10)
+	# The baseline: the same frames with the Esc menu up and no roll, for the main thread's process step.
+	var base := 0.0
+	for i in C44_GPU_FRAMES:
+		await _frames(1)
+		base += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	print("capture: c44 baseline, the Esc menu up over the arena, no roll: the engine's process step %.2f ms (%d frames)" % [base / C44_GPU_FRAMES, C44_GPU_FRAMES])
+	var roll: CreditsRoll = menu.open_credits()
+	if roll == null:
+		printerr("capture: c44 the roll did not open")
+		return
+	var sheet := {}
+	var every := CreditsRoll.CAST_EVERY_S
+	var cast := CreditsRoll.CAST_AT
+	for shot in [["c44-title", cast - 0.25], ["c44-fred", cast + 1.8], ["c44-larry", cast + every + 1.8], ["c44-sigkill", cast + 2.0 * every + 1.8], ["c44-rain", cast + 3.0 * every - 0.12], ["c44-albert", cast + 3.0 * every + 1.8]]:
+		await _c44_at(roll, shot[1])
+		await _c35_save(sheet, shot[0])
+	await _c44_measure(roll, "the table and Albert's card (Tron)")
+	await _c44_at(roll, cast + 5.0 * every + 1.8)
+	await _c35_save(sheet, "c44-carlos")
+	await _c44_measure(roll, "Carlos's card (the ruins: skyline, neon, rain)")
+	await _c44_at(roll, CreditsRoll.THANKS_AT + 3.4)
+	await _c35_save(sheet, "c44-thanks")
+	await _c44_measure(roll, "the threads (the Matrix: the rain at its thickest)")
+	for shot in [["c44-adoption", CreditsRoll.QUIET_AT + 1.2], ["c44-last", CreditsRoll.LAST_AT + 2.2], ["c44-wait", CreditsRoll.WAIT_AT + 1.4]]:
+		await _c44_at(roll, shot[1])
+		await _c35_save(sheet, shot[0])
+	roll.kill_now()
+	await _c44_at(roll, roll.elapsed() + CreditsRoll.KILL_TYPE_S + 0.15)
+	var shot_at := roll.elapsed()
+	await _frames(2)
+	await _c44_at(roll, shot_at + 0.42)
+	await _c35_save(sheet, "c44-derezz")
+	await _c44_measure(roll, "the derezz (every glyph a voxel)")
+	await _c44_at(roll, shot_at + CreditsRoll.SLAM_AFTER + 1.3)
+	await _c35_save(sheet, "c44-hexagon")
+	await _c44_measure(roll, "SIGKILL on the hexagon")
+	await _c44_at(roll, shot_at + CreditsRoll.BARE_AFTER + 0.3)
+	await _c35_save(sheet, "c44-bare")
+	await _c44_at(roll, roll.elapsed() + CreditsRoll.BARE_S + 0.2)
+	print("capture: c44 the roll over, the menu back %s, the world paused %s, the 3D view drawn %s" % [str(menu.visible and menu.is_open()), str(paused), str(not root.disable_3d)])
+	var stills: Array[Image] = []
+	for name in C44_SHEET:
+		if sheet.has(name):
+			stills.append(sheet[name])
+	if stills.size() == C44_SHEET.size():
+		_save_grid("c44-sequence", stills, C35_SHEET_COLUMNS)
+	# The same roll at 960x540.
+	root.size = Vector2i(960, 540)
+	await _frames(4)
+	roll = menu.open_credits()
+	if roll != null:
+		await _c44_at(roll, cast + 3.0 * every + 1.8)
+		await _save("c44-960")
+		await _c44_at(roll, CreditsRoll.LAST_AT + 2.2)
+		await _save("c44-960-last")
+		roll.end_now()
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+
+
+## The roll at `seconds` on its own clock (forward only), drawn.
+func _c44_at(roll: CreditsRoll, seconds: float) -> void:
+	roll.seek(seconds)
+	await _frames(3)
+
+
+## The GPU's time a frame and the main thread's, over C44_GPU_FRAMES frames of the roll playing on.
+func _c44_measure(roll: CreditsRoll, label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	var draw := 0.0
+	var most := 0
+	var from := roll.elapsed()
+	for i in C44_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		draw += roll.draw_us / 1000.0
+		most = maxi(most, roll.draw_us)
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	print("capture: c44 %s, %.1f to %.1f s of the roll at %dx%d: the GPU %.2f ms a frame; the roll's own drawing %.2f ms a frame on the main thread (most %.2f); the engine's process step %.2f ms (%d frames)" % [label, from, roll.elapsed(), root.size.x, root.size.y, gpu / C44_GPU_FRAMES, draw / C44_GPU_FRAMES, most / 1000.0, cpu / C44_GPU_FRAMES, C44_GPU_FRAMES])
 
 
 ## The arena's life alone (its SoloLife).
