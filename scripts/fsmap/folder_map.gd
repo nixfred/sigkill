@@ -49,6 +49,9 @@ const BACK_IN_M := 3.4
 const NAME_FONT := 120
 const NAME_PIXEL := 0.0095
 const INFO_FONT := 56
+## The longest door name drawn at its door's size (W3's fold-in): a longer one is drawn no wider than one this long (its
+## "/" included), so a very long name never overhangs its neighbours; every name up to it keeps W2's size.
+const NAME_LONGEST := 17
 ## A door's beam of light into the sky (W2's art pass: a door reads from across the biggest room), as tall as its folder
 ## is big, and its lamp on the floor; a subfolder's door in DOOR_COLOR, the way up in BACK_COLOR.
 const BEAM_TALL := Vector2(18.0, 120.0)
@@ -329,6 +332,7 @@ func _door_label(entry: Dictionary) -> void:
 	big.font = Palette.mono_font()
 	big.font_size = NAME_FONT
 	big.pixel_size = NAME_PIXEL * lerpf(0.75, 1.35, float(d["share"])) if not back else NAME_PIXEL
+	big.pixel_size *= name_fit(big.text)
 	big.outline_size = 18
 	big.outline_modulate = Color(0, 0, 0, 0.85)
 	big.modulate = colour.lerp(Color.WHITE, 0.35) * 1.7
@@ -390,6 +394,15 @@ func _door_beam(entry: Dictionary, d: Dictionary, tall: float, colour: Color) ->
 	add_child(lamp)
 	lamp.global_position = world.global_transform * ((d["at"] as Vector3) - (d["out"] as Vector3) * 1.2 + Vector3(0, 2.2, 0))
 	entry["beam"] = beam
+
+
+## The share of its size a door's name `text` is drawn at (W3's fold-in): 1 up to NAME_LONGEST characters, less past it so
+## it stands no wider than a name that long.
+static func name_fit(text: String) -> float:
+	var font := Palette.mono_font()
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_FONT).x
+	var most := font.get_string_size("M".repeat(NAME_LONGEST), HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_FONT).x
+	return minf(most / maxf(w, 1.0), 1.0)
 
 
 ## A door's numbers: "61 GB   212 files   4 dirs" (">=" when a cap cut its reading), "up" or "out" for the back door.

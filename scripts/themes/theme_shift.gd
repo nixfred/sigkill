@@ -60,7 +60,7 @@ const TAGS := {"rogue": "rogue.d", "zombie": "zombie", "runaway": "runaway"}
 const CONCEAL_TAG := "conceal"
 const EVENTS_KEPT := 5
 ## The visor's mark round a concealed one (a selection box, as selecting hidden text shows it): its half size, metres.
-const MARK_HALF := Vector2(0.95, 1.45)
+const MARK_HALF := Vector2(1.05, 1.65)
 
 ## Queued for the next arena (the Esc menu, the flag); kept while it runs, so its reloads stay in it. Its run (theme
 ## ids), the level it is on, the player's own palette (the real layer's; null on demo), its layer, every level's numbers.
@@ -693,7 +693,7 @@ func _draw_visor() -> void:
 		var hidden: bool = alive and bool(e["phased"])
 		var mark = e.get("mark")
 		if on and hidden and cam != null:
-			var mid: Vector3 = body.global_position + Vector3(0.0, ConcealArt.LIFT + 0.4, 0.0)
+			var mid: Vector3 = body.threat_point() + Vector3(0.0, 0.5, 0.0)
 			var right: Vector3 = cam.global_transform.basis.x
 			var up: Vector3 = cam.global_transform.basis.y
 			lines.append_array(_box(mid, right, up))

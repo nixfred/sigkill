@@ -24,6 +24,7 @@ const MainScene = preload("res://scenes/main.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
 const Controls = preload("res://scripts/controls.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
+const Palette = preload("res://scripts/palette.gd")
 
 ## The map's code: none of it may run, signal, send, write, rename, move or delete anything.
 const MAP_CODE := ["res://scripts/fsmap/folder_map.gd", "res://scripts/fsmap/folder_rooms.gd", "res://scripts/fsmap/folder_tree.gd", "res://scripts/fsmap/demo_folders.gd", "res://scripts/fsmap/node_maze.gd", "res://scripts/fsmap/maze_world.gd", "res://scripts/fsmap/folder_map_hud.gd", "res://scripts/fsmap/folder_reader.gd"]
@@ -68,6 +69,7 @@ func _run() -> void:
 	Progress.current().clear()
 	AuditVisor.remembered = false
 	_code_checks()
+	_fold_in_checks()
 	_mapping_checks()
 	_layout_checks()
 	_maze_checks()
@@ -114,6 +116,22 @@ func _code_checks() -> void:
 		if path != READER and (_code_of(path).contains("FileAccess") or _code_of(path).contains("DirAccess")):
 			touch.append(path.get_file())
 	_check("only the reader touches the filesystem at all: the rest of the map has no FileAccess or DirAccess", touch.is_empty(), ", ".join(touch))
+
+
+## W3's fold-ins on the map: a pipe or a socket counted and never sized (no engine error), a long name fitted over its
+## door, the `cd` behind the tear instead of a black frame.
+func _fold_in_checks() -> void:
+	var reader := _code_of(READER)
+	_check("a pipe, a socket or a device is counted and never sized: the reader asks FileAccess.file_exists() (a quiet stat, no for anything not a regular file) before get_size()", reader.contains("FileAccess.get_size(full) if FileAccess.file_exists(full) else 0"))
+	var short := FolderMap.name_fit("recordings/")
+	var edge := FolderMap.name_fit("m".repeat(FolderMap.NAME_LONGEST))
+	var long := FolderMap.name_fit("a-folder-name-far-too-long-for-any-door/")
+	var font := Palette.mono_font()
+	var long_w := font.get_string_size("a-folder-name-far-too-long-for-any-door/", HORIZONTAL_ALIGNMENT_LEFT, -1, FolderMap.NAME_FONT).x * long
+	var most_w := font.get_string_size("m".repeat(FolderMap.NAME_LONGEST), HORIZONTAL_ALIGNMENT_LEFT, -1, FolderMap.NAME_FONT).x
+	_check("a very long folder name never overhangs its door: up to %d characters drawn at the door's size ('recordings/' %.2f), a longer one no wider than that (%.2f of its size)" % [FolderMap.NAME_LONGEST, short, long], short == 1.0 and edge == 1.0 and long < 1.0 and absf(long_w - most_w) < 1.0)
+	var map_code := _code_of("res://scripts/fsmap/folder_map.gd")
+	_check("a `cd`'s wait for the next room is behind the tear (the last frame torn away as the room comes up), never a black frame", map_code.contains("SceneTear.reload_scene(get_tree(), label)") and not map_code.contains("MissionRunner.reload_after_mount("))
 
 
 ## A script's code with its comments taken out (the words in its notes are not calls).

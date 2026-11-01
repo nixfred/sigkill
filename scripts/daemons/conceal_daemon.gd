@@ -91,9 +91,9 @@ func _build() -> void:
 	tag_height = 2.35
 	budget_triangles = 4000
 	budget_draw_calls = 9
-	size_low = 0.9
-	size_high = 1.08
-	elite_size = 1.15
+	size_low = 1.15
+	size_high = 1.32
+	elite_size = 1.45
 	_rows = 5 if elite else pick(80, 0, 3, 5)
 	for r in _rows:
 		_per_row.append(pick(81, r, 4, 6))
@@ -143,7 +143,7 @@ func _make_cells() -> void:
 	add_child(_cell_node)
 	var i := 0
 	_cell_mm.set_instance_color(i, CURSOR)
-	_cell_mm.set_instance_custom_data(i, Color(0.5, 1.4, 1.0, 0.0))
+	_cell_mm.set_instance_custom_data(i, Color(0.5, 0.8, 1.0, 0.0))
 	_row_of.append(-1)
 	i += 1
 	for r in _rows:
@@ -250,18 +250,18 @@ func _pose(t: float, delta: float) -> void:
 		var x := s * (BRACKET_X - 0.3 * tell + 0.35 * dive)
 		var top := mid + Vector3(x, 0.45 + hb, 0.0)
 		var bottom := mid + Vector3(x, 0.45 - hb, 0.0)
-		var inward := Vector3(-s * 0.26, 0.0, 0.0)
+		var inward := Vector3(-s * 0.34, 0.0, 0.0)
 		var b0: int = _brackets[side * 3]
 		var b1: int = _brackets[side * 3 + 1]
 		var b2: int = _brackets[side * 3 + 2]
-		bone(b0, bottom, top, 0.12, 0.1)
-		bone(b1, top, top + inward, 0.1, 0.1)
-		bone(b2, bottom, bottom + inward, 0.1, 0.1)
-		bone(_bracket_seams[side * 3], bottom + Vector3(0, 0, 0.06), top + Vector3(0, 0, 0.06), 0.03, 0.03)
-		bone(_bracket_seams[side * 3 + 1], top + Vector3(0, 0, 0.06), top + inward + Vector3(0, 0, 0.06), 0.03, 0.03)
-		bone(_bracket_seams[side * 3 + 2], bottom + Vector3(0, 0, 0.06), bottom + inward + Vector3(0, 0, 0.06), 0.03, 0.03)
+		bone(b0, bottom, top, 0.2, 0.16)
+		bone(b1, top, top + inward, 0.17, 0.16)
+		bone(b2, bottom, bottom + inward, 0.17, 0.16)
+		bone(_bracket_seams[side * 3], bottom + Vector3(0, 0, 0.09), top + Vector3(0, 0, 0.09), 0.055, 0.04)
+		bone(_bracket_seams[side * 3 + 1], top + Vector3(0, 0, 0.09), top + inward + Vector3(0, 0, 0.09), 0.05, 0.04)
+		bone(_bracket_seams[side * 3 + 2], bottom + Vector3(0, 0, 0.09), bottom + inward + Vector3(0, 0, 0.09), 0.05, 0.04)
 		for k in 3:
-			brighten(_bracket_seams[side * 3 + k], 0.9 + 2.0 * tell + 1.5 * dive)
+			brighten(_bracket_seams[side * 3 + k], 1.6 + 2.0 * tell + 1.5 * dive)
 	if _cell_mat != null:
 		_cell_mat.set_shader_parameter("clock", t)
 		_cell_mat.set_shader_parameter("tell", tell)

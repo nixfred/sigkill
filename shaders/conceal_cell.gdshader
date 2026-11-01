@@ -13,14 +13,14 @@ render_mode unshaded, cull_back, depth_draw_always;
 uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear;
 uniform float reveal : hint_range(0.0, 1.0) = 1.0;
 uniform float clock = 0.0;
-uniform float energy = 3.2;
+uniform float energy = 1.7;
 // A hit's white flash, and the strike's red (its tell turns every cell to the hostile red: SGR 31).
 uniform float flash = 0.0;
 uniform float tell = 0.0;
 uniform vec4 tell_color : source_color = vec4(1.0, 0.07, 0.19, 1.0);
 // How far the concealed ripple bends what is behind it, in screen widths, and how bright its rim is.
-uniform float bend = 0.012;
-uniform float rim = 0.09;
+uniform float bend = 0.02;
+uniform float rim = 0.2;
 
 varying vec3 local;
 varying vec4 info;
@@ -54,7 +54,7 @@ void fragment() {
 	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 2.5);
 	vec2 wob = vec2(sin(clock * 3.1 + local.y * 9.0 + info.x * 6.0), cos(clock * 2.7 + local.x * 7.0 + info.w * 9.0));
 	vec3 behind = texture(screen_texture, SCREEN_UV + wob * bend * (0.6 + fres)).rgb;
-	vec3 hidden = behind * 1.04 + vec3(rim * fres) + vec3(glyph * 0.025);
+	vec3 hidden = behind * 1.06 + vec3(rim * fres) + vec3(glyph * 0.05);
 	ALBEDO = vec3(0.0);
 	EMISSION = vec3(0.0);
 	vec3 col = mix(hidden, lit, shown);

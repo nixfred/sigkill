@@ -7,7 +7,8 @@ extends RefCounted
 ##
 ## What it reads, all of it: the names in a folder's listing (DirAccess, hidden entries left out), whether each is a
 ## folder or a symbolic link, and each plain file's size (FileAccess.get_size(): a stat of the path, which never opens
-## the file; Godot refuses anything that is not a regular file without opening it, so a pipe never blocks). A file's
+## the file; only for what FileAccess.file_exists(), a stat too, calls a regular file: a pipe, a socket or a device is
+## counted and never sized, so nothing blocks and nothing prints). A file's
 ## name is used only for its extension's kind (FolderTree.kind_of_name()) and then dropped: no file name is kept, shown
 ## or sent. It never opens a file, never reads a byte of one, never follows a symbolic link (a link, to a folder or a
 ## file, is skipped outright, so nothing outside home is ever reached), never goes into a hidden folder, and never
@@ -203,7 +204,9 @@ func _read_entry() -> void:
 				_queue.append([(_dir_rel + "/" if _dir_rel != "" else "") + name, _dir_depth + 1])
 	else:
 		var full := _abs(_dir_rel).path_join(name)
-		var bytes := FileAccess.get_size(full)
+		# A pipe, a socket or a device is counted, never sized (W3's fold-in): FileAccess.file_exists() is a stat that says
+		# no to anything not a regular file, quietly, where get_size() printed an engine error refusing it.
+		var bytes := FileAccess.get_size(full) if FileAccess.file_exists(full) else 0
 		sizes += 1
 		if keep_trail:
 			sized.append((_dir_rel + "/" if _dir_rel != "" else "") + name)

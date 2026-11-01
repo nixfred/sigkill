@@ -211,9 +211,9 @@ func _district_checks() -> void:
 		if not problems.is_empty() or not stray.is_empty():
 			notes.append("%s: %s %s" % [id, ", ".join(problems), ", ".join(stray)])
 		ids[s.id] = true
-		looks["%s/%s/%s/%s/%d" % [s.register, s.decay, str(s.pristine), s.field, int(s.water)]] = true
+		looks["%s/%s/%s/%s/%d/%s" % [s.register, s.decay, str(s.pristine), s.field, int(s.water), s.palette]] = true
 	_check("acceptance: every theme has its own district, made at play: good sets (RuinsSet.problems() none), every floor reachable, daemon points for its roster", good and ids.size() == ThemeBook.run_ids(true).size(), " | ".join(notes))
-	_check("each theme its own world, not one scene recoloured: %d different registers and set pieces among the six built-in themes (megacity rain, a decaying grid, a pristine hall, a code grove, a drowned plain, daylight)" % (looks.size() - 1), looks.size() >= 6)
+	_check("each theme its own world, not one scene recoloured: %d different registers and set pieces among the six built-in themes (megacity rain, warm iron rusting, a pristine hall, a code grove, a drowned plain, daylight)" % (looks.size() - 1), looks.size() >= 6)
 	_check("the regular arena never shifts: no book district is a theme's, and the theme sets are made at play (\"fs_theme_\"), kept as W2's are (the last few)", RuinsBook.of(ThemeBook.set_id("night")) == null and ThemeBook.set_id("night").begins_with(RuinsWorld.MADE_PREFIX))
 
 
@@ -428,9 +428,9 @@ func _shift_checks() -> void:
 	await _until(func(): return mode.phase == "shift")
 	_check("acceptance: the theme's time up, it shifts: `$ export THEME=gruvbox-material` types itself", mode.phase == "shift" and mode.next_theme == "ember" and mode.events.any(func(e): return str(e["text"]) == "$ export THEME=gruvbox-material"))
 	await _until(func(): return mode.grade.tearing())
-	var mid_ok := mode.grade.tear > 0.0 and mode.grade.tear < 1.0 and mode.world.register == "tron" and mode.world.shifting()
+	var mid_ok := mode.grade.tear > 0.0 and mode.grade.tear < 1.0 and mode.world.register == str(ThemeBook.WORLDS["ember"]["register"]) and mode.world.shifting()
 	var tear_seen := float(mode.grade.grade_material().get_shader_parameter("tear"))
-	_check("acceptance: the shift is an event: the palette tears across the frame (the shader's tear running, %.2f), the ruins' register going with it (cyberpunk to tron, tearing)" % tear_seen, mid_ok and tear_seen > 0.0)
+	_check("acceptance: the shift is an event: the palette tears across the frame (the shader's tear running, %.2f), the ruins' register going with it (to Gruvbox Material's, tearing as it goes)" % tear_seen, mid_ok and tear_seen > 0.0)
 	await _until(func(): return mode.phase == "ambush")
 	var done_ok: bool = not mode.grade.tearing() and mode.grade.look == mode.look_of("ember") and mode.grade.shifts == 1 and mode.theme == "ember" and float(mode.grade.grade_material().get_shader_parameter("tear")) == 0.0
 	_check("acceptance: the transition completes: the tear finished, the whole frame now in Gruvbox Material, the tear's uniform back at rest", done_ok)
@@ -465,7 +465,7 @@ func _next_level_checks() -> void:
 	_check("the level done: its numbers kept (%d kills, %d caught, %d slipped, %.0f s)" % [int(s0["kills"]), int(s0["caught"]), int(s0["slipped"]), float(s0["time"])], int(s0["kills"]) >= ThemeShift.AMBUSH_DAEMONS and int(s0["caught"]) >= ThemeShift.LURKERS[0] and int(s0["slipped"]) >= 1 and float(s0["time"]) > 0.0)
 	main = await _after_reload(old_id)
 	mode = ThemeShift.of(main)
-	_check("acceptance: then the world follows its theme: the arena reloads into Gruvbox Material's own district (a warm grid decaying toward its far end), graded in it from its first frame", mode.theme == "ember" and mode.world.ruins.id == ThemeBook.set_id("ember") and mode.world.ruins.decay == "exit" and mode.grade.look == mode.look_of("ember") and mode.world.register == "tron")
+	_check("acceptance: then the world follows its theme: the arena reloads into Gruvbox Material's own district (warm iron decaying toward its far end, its lights the colour of heat), graded in it from its first frame", mode.theme == "ember" and mode.world.ruins.id == ThemeBook.set_id("ember") and mode.world.ruins.decay == "exit" and mode.world.ruins.palette == "core" and mode.grade.look == mode.look_of("ember") and mode.world.register == "cyberpunk")
 	var keys := {}
 	for e in mode.enemies:
 		if str(e["kind"]) == "conceal":

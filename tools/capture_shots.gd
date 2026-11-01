@@ -415,6 +415,8 @@ const W1_SHEET := ["w1-pegged", "w1-gather", "w1-swarm", "w1-boss-tell", "w1-bos
 const W1_GPU_FRAMES := 120
 ## w2's sheet.
 const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
+## w3's sheet: the six themes, then the shift's three moments.
+const W3_SHEET := ["w3-night", "w3-ember", "w3-frost", "w3-forest", "w3-mocha", "w3-latte", "w3-lurk", "w3-shift", "w3-reveal"]
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
 const M7_SHEET := ["m7-opening", "m7-term", "m7-rail", "m7-all", "m7-wont", "m7-kill"]
 ## Where m2's queue is seen from: the street in front of the shop's corner, past waking distance; and where its
@@ -588,6 +590,11 @@ func _run() -> void:
 		return
 	if _set == "w2":
 		await _w2()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w3":
+		await _w3()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4621,6 +4628,174 @@ func _w2() -> void:
 			stills.append(sheet[name])
 	if stills.size() == W2_SHEET.size():
 		_save_grid("w2-sequence", stills, 3)
+
+
+## w3: the theme shift on the demo palettes: every theme's own world; then in the first, a lurker concealed, the tear
+## mid-shift over it, and the lurker printing itself in; the visor's mark on a lurker; the panel at 960 wide; the GPU's
+## time a frame in a theme, mid-tear, and in the light theme.
+func _w3() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)
+	ThemeShift.fight_s = 100000.0
+	ThemeShift.ambush_s = 100000.0
+	for i in ThemeBook.ORDER.size():
+		var id: String = ThemeBook.ORDER[i]
+		await _w3_go(i)
+		var mode := ThemeShift.of(_main)
+		if mode == null or not mode.running or mode.theme != id:
+			printerr("capture: w3 the mode did not stand in %s" % id)
+			return
+		_w3_view(mode)
+		await _frames(int(1.2 * Engine.physics_ticks_per_second))
+		_w3_view(mode)
+		await _frames(2)
+		await _c35_save(sheet, "w3-" + id)
+		print("capture: w3 %s: %s cells, register %s, towers x%.2f, %d enemies (%d lurking)" % [id, str(mode.world.ruins.cells), mode.world.register, mode.world.ruins.tall, mode.enemies.size(), mode.lurking()])
+		if id == "night" or id == "latte" or id == "mocha":
+			await _w3_measure("%s, the visor off" % id)
+	# The shift, in the first theme: a lurker framed, then the tear over it, then it printing in.
+	await _w3_go(0)
+	var mode := ThemeShift.of(_main)
+	var lurker: Node3D = null
+	for e in mode.enemies:
+		if bool(e["phased"]):
+			lurker = e["body"]
+			break
+	if lurker == null:
+		printerr("capture: w3 no lurker")
+		return
+	_w3_face(mode, lurker.global_position, 4.5)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	_w3_face(mode, lurker.global_position, 4.5)
+	await _frames(2)
+	await _c35_save(sheet, "w3-lurk")
+	mode.visor.set_on(true)
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	_w3_face(mode, lurker.global_position, 6.0)
+	await _frames(2)
+	await _c35_save(sheet, "w3-visor")
+	print("capture: w3 visor: %d strokes round the lurkers" % mode._lines.drawn_lines)
+	await _w3_measure("night, the visor on")
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	await _c35_save({}, "w3-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	mode.visor.set_on(false)
+	await _frames(4)
+	_w3_face(mode, lurker.global_position, 5.0)
+	mode.shift()
+	var waited := 0
+	while waited < 600 and (mode.grade == null or mode.grade.tear < 0.46):
+		await _frames(1)
+		waited += 1
+	await _c35_save(sheet, "w3-shift")
+	print("capture: w3 the tear at %.2f" % mode.grade.tear)
+	var art = lurker.art_node()
+	waited = 0
+	while waited < 600 and (art.reveal < 1.0 or mode.grade.tearing()):
+		await _frames(1)
+		waited += 1
+	_w3_face(mode, lurker.global_position, 4.5)
+	await _frames(2)
+	await _c35_save(sheet, "w3-reveal")
+	print("capture: w3 the lurker printing in at reveal %.2f, the theme now %s" % [art.reveal, mode.theme])
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	await _c35_save({}, "w3-ambush")
+	mode.shift_t = 0.0
+	var stills: Array[Image] = []
+	for name in W3_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W3_SHEET.size():
+		_save_grid("w3-sequence", stills, 3)
+	# The GPU's time a frame through a whole shift (the line typed, the tear, the lurkers printing in).
+	await _w3_go(2)
+	mode = ThemeShift.of(_main)
+	_w3_view(mode)
+	await _frames(30)
+	mode.shift()
+	await _w3_measure("frost, through a shift (the tear and the lurkers printing in)")
+	ThemeShift.fight_s = ThemeShift.FIGHT_S
+	ThemeShift.ambush_s = ThemeShift.AMBUSH_S
+
+
+## The theme shift standing at level `level` (its own theme's district), the arena reloaded into it; its roster in.
+func _w3_go(level: int) -> void:
+	ThemeShift.queued = true
+	ThemeShift.level = level
+	ThemeShift.ensure_run(false)
+	while ThemeShift.stats.size() > level:
+		ThemeShift.stats.pop_back()
+	var old := _main
+	MissionRunner.reload_after_mount(self, "$ reset")
+	await _c35_reloaded(old)
+	var mode := ThemeShift.of(_main)
+	var waited := 0
+	while waited < 900 and (mode == null or not mode.running):
+		await _frames(1)
+		waited += 1
+		mode = ThemeShift.of(_main)
+	await _frames(int(2.5 * Engine.physics_ticks_per_second))
+
+
+## A theme's view: 8 m off the fighting daemon nearest the plaza, looking at it with its district behind it (from just
+## ahead of the start, down toward the plaza, when none stands).
+func _w3_view(mode: ThemeShift) -> void:
+	var w := mode.world
+	var start := w.point("start")
+	var plaza := w.point("plaza")
+	var best: Node3D = null
+	for e in mode.enemies:
+		var body = e["body"]
+		if is_instance_valid(body) and body.is_alive() and not bool(e["phased"]) and (best == null or body.global_position.distance_to(plaza) < best.global_position.distance_to(plaza)):
+			best = body
+	if best != null:
+		_w3_face(mode, best.global_position, 8.0)
+		return
+	var from := start + (plaza - start).normalized() * 2.0
+	_c37_view(Vector3(from.x, 0.0, from.z), plaza + Vector3(0.0, 3.2, 0.0))
+
+
+## The camera `dist` metres from `at` on open floor with a clear line to it, looking at it (the first such spot of
+## sixteen round it, from the plaza's side; else the nearer and farther rings).
+func _w3_face(mode: ThemeShift, at: Vector3, dist: float) -> void:
+	var w := mode.world
+	var plaza := w.point("plaza")
+	var base := atan2(plaza.x - at.x, plaza.z - at.z)
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	for d in [dist, dist * 0.75, dist * 1.3]:
+		for k in 16:
+			var a := base + TAU * float((k + 1) / 2) / 16.0 * (1.0 if k % 2 == 0 else -1.0)
+			var spot: Vector3 = at + Vector3(sin(a), 0.0, cos(a)) * float(d)
+			var c := w.layout.cell_at(w.to_local(spot))
+			if w.layout.cell(c) != RuinsLayout.Cell.FLOOR:
+				continue
+			var eye := Vector3(spot.x, w.floor_y_at(spot) + 1.7, spot.z)
+			var q := PhysicsRayQueryParameters3D.create(eye, at + Vector3(0.0, 1.0, 0.0))
+			q.exclude = [_player.get_rid()]
+			var hit: Dictionary = space.intersect_ray(q)
+			if hit.is_empty() or (hit["collider"] is Node and (hit["collider"] as Node).has_meta(&"theme_shift")) or (hit["position"] as Vector3).distance_to(at) < 1.6:
+				_c37_view(Vector3(spot.x, 0.0, spot.z), at + Vector3(0.0, 1.4, 0.0))
+				return
+	_c37_view(Vector3(at.x, 0.0, at.z + dist), at + Vector3(0.0, 1.4, 0.0))
+
+
+## The GPU's time a frame and the engine's steps in the mode, over W1_GPU_FRAMES frames.
+func _w3_measure(label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	print("capture: w3 frame time, %s, at %dx%d: the GPU %.2f ms a frame; the engine's process step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, W1_GPU_FRAMES])
 
 
 ## The map standing at `path` (maze level `level`), the arena reloaded into it as a door does; its daemons out.

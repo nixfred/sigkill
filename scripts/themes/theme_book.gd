@@ -8,10 +8,11 @@ extends RefCounted
 ## the district makes the theme its own place, not the same scene under a hue slider.
 ##
 ##   night   Tokyo Night         a rain-soaked megacity: the ruins' cyberpunk register, towers 2.3 times their height
-##   ember   Gruvbox Material    a warm old grid going to rust toward its far end (M5's decay), stepped down twice
+##   ember   Gruvbox Material    warm iron going to rust toward its far end (M5's decay), stepped down twice, every
+##                               light the colour of heat (the ruins' heat palette: gold, amber, embers for rain)
 ##   frost   Nord                a frozen hall: the Tron register pristine, nothing broken, an open plaza in the middle
 ##   forest  Everforest          a canopy: the Matrix register, its plaza a grove of code walls rewriting themselves
-##   mocha   Catppuccin Mocha    a drowned dream: the rain over black water holding the neon (M6's drowned plain)
+##   mocha   Catppuccin Mocha    a drowned dream: the rain over black water holding the signs' pink and violet neon
 ##   latte   Catppuccin Latte    daylight: the one light theme, the void turned to paper and every light to ink
 ##   yours   your Omarchy theme  (the opt-in real layer only) a plain grid in the player's own colours
 ##
@@ -35,10 +36,10 @@ const WORLDS := {
 		"motto": "a city that never logs off",
 	},
 	"ember": {
-		"name": "Gruvbox Material", "slug": "gruvbox-material", "register": "tron", "cells": Vector2i(11, 18), "seed": 7202,
+		"name": "Gruvbox Material", "slug": "gruvbox-material", "register": "cyberpunk", "cells": Vector2i(11, 18), "seed": 7202,
 		"blocks": 9, "holes": 2, "cover": 18, "towers": 36, "giants": 22, "cables": 16, "signs": 10, "tall": 1.15,
 		"words": ["WARM BOOT", "OLD IRON", "RUST", "DUST", "RETRO"],
-		"folders": ["furnace", "forge", "kiln", "anvil"], "set": "decay", "terraces": 2,
+		"folders": ["furnace", "forge", "kiln", "anvil"], "set": "decay", "terraces": 2, "palette": "core",
 		"motto": "warm iron going to rust",
 	},
 	"frost": {
@@ -60,7 +61,7 @@ const WORLDS := {
 		"name": "Catppuccin Mocha", "slug": "catppuccin", "register": "cyberpunk", "cells": Vector2i(12, 16), "seed": 7505,
 		"blocks": 7, "holes": 3, "cover": 14, "towers": 46, "giants": 30, "cables": 24, "signs": 16, "tall": 1.7,
 		"words": ["LATE CAFE", "SOFT GLOW", "MOCHA", "PASTEL", "STAY A WHILE"],
-		"folders": ["cafe", "lantern", "harbour", "quay"], "set": "water", "water": 3.0,
+		"folders": ["cafe", "lantern", "harbour", "quay"], "set": "water", "water": 3.0, "palette": "",
 		"motto": "pastel neon over black water",
 	},
 	"latte": {
@@ -141,7 +142,7 @@ static func set_for(id: String) -> RuinsSet:
 			s.field_code = str(w["code"])
 		"water":
 			s.water = float(w["water"])
-			s.palette = "abyss"
+	s.palette = str(w.get("palette", ""))
 	s.terraces = int(w.get("terraces", 0))
 	s.clearing = int(w.get("clearing", 0))
 	return s
