@@ -72,6 +72,13 @@ func shift_to(l: ThemeLook, seed: float = 0.0) -> void:
 	_material.set_shader_parameter("tear", tear)
 
 
+## At full strength at once (a level after the first: the run is already in the theme, so it never eases in from the
+## plain colours behind a reload's tear).
+func full() -> void:
+	strength = 1.0
+	_material.set_shader_parameter("strength", 1.0)
+
+
 func tearing() -> bool:
 	return _tearing
 

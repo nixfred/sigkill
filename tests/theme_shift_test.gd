@@ -149,7 +149,7 @@ func _palette_checks() -> void:
 	var credited := true
 	for name in CREDITED:
 		credited = credited and credits.contains(name)
-	_check("every theme's source is credited in CREDITS.md (%s), and the theme shift's use of them said there" % ", ".join(CREDITED), credited and credits.contains("theme shift"))
+	_check("every theme's source is credited in CREDITS.md (%s), and the theme shift's use of them said there" % ", ".join(CREDITED), credited and credits.contains("The theme shift (W3) plays its six levels in the same six palettes"))
 	var ramps := true
 	var mapped := true
 	var readable := true
@@ -428,7 +428,8 @@ func _shift_checks() -> void:
 	await _until(func(): return mode.phase == "shift")
 	_check("acceptance: the theme's time up, it shifts: `$ export THEME=gruvbox-material` types itself", mode.phase == "shift" and mode.next_theme == "ember" and mode.events.any(func(e): return str(e["text"]) == "$ export THEME=gruvbox-material"))
 	await _until(func(): return mode.grade.tearing())
-	var mid_ok := mode.grade.tear > 0.0 and mode.grade.tear < 1.0 and mode.world.register == str(ThemeBook.WORLDS["ember"]["register"]) and mode.world.shifting()
+	await _frames(10)
+	var mid_ok := mode.grade.tearing() and mode.grade.tear > 0.05 and mode.grade.tear < 0.95 and mode.world.register == str(ThemeBook.WORLDS["ember"]["register"]) and mode.world.shifting()
 	var tear_seen := float(mode.grade.grade_material().get_shader_parameter("tear"))
 	_check("acceptance: the shift is an event: the palette tears across the frame (the shader's tear running, %.2f), the ruins' register going with it (to Gruvbox Material's, tearing as it goes)" % tear_seen, mid_ok and tear_seen > 0.0)
 	await _until(func(): return mode.phase == "ambush")
@@ -465,7 +466,7 @@ func _next_level_checks() -> void:
 	_check("the level done: its numbers kept (%d kills, %d caught, %d slipped, %.0f s)" % [int(s0["kills"]), int(s0["caught"]), int(s0["slipped"]), float(s0["time"])], int(s0["kills"]) >= ThemeShift.AMBUSH_DAEMONS and int(s0["caught"]) >= ThemeShift.LURKERS[0] and int(s0["slipped"]) >= 1 and float(s0["time"]) > 0.0)
 	main = await _after_reload(old_id)
 	mode = ThemeShift.of(main)
-	_check("acceptance: then the world follows its theme: the arena reloads into Gruvbox Material's own district (warm iron decaying toward its far end, its lights the colour of heat), graded in it from its first frame", mode.theme == "ember" and mode.world.ruins.id == ThemeBook.set_id("ember") and mode.world.ruins.decay == "exit" and mode.world.ruins.palette == "core" and mode.grade.look == mode.look_of("ember") and mode.world.register == "cyberpunk")
+	_check("acceptance: then the world follows its theme: the arena reloads into Gruvbox Material's own district (warm iron decaying toward its far end, its lights the colour of heat), graded in it from its first frame", mode.theme == "ember" and mode.world.ruins.id == ThemeBook.set_id("ember") and mode.world.ruins.decay == "exit" and mode.world.ruins.palette == "core" and mode.grade.look == mode.look_of("ember") and mode.grade.strength >= 1.0 and mode.world.register == "cyberpunk")
 	var keys := {}
 	for e in mode.enemies:
 		if str(e["kind"]) == "conceal":

@@ -236,6 +236,8 @@ func begin() -> bool:
 	grade = ThemeGrade.new()
 	add_child(grade)
 	grade.show_theme(look_of(theme))
+	if level > 0:
+		grade.full()  # the run is in its themes already: only its first level eases in
 	_hud = ThemeShiftHud.new()
 	_hud.mode = self
 	add_child(_hud)
