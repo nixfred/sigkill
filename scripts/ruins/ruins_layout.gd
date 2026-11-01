@@ -1194,7 +1194,12 @@ func folder_name(seed: int) -> String:
 
 ## True when every letter of `text` is in the sign font and it is short enough to stand on a monolith.
 static func legible(text: String) -> bool:
-	return text != "" and text.length() <= NAME_LAST and load("res://scripts/arena/arena_font.gd").covers(text.to_upper())
+	return legible_up_to(text, NAME_LAST)
+
+
+## True when `text` is 1 to `most` letters the sign font has (M4: a records screen's line, longer than a name).
+static func legible_up_to(text: String, most: int) -> bool:
+	return text != "" and text.length() <= most and load("res://scripts/arena/arena_font.gd").covers(text.to_upper())
 
 
 ## The plan as rows of letters, north (the exit) first: for a look while tuning, and a test's message.

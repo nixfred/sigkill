@@ -117,7 +117,7 @@ func problems() -> PackedStringArray:
 		out.append("%s: pristine, but with holes, cover or cables (%d, %d, %d: all must be 0)" % [id, holes, cover, cables])
 	for line in vault_lines.split("|", false):
 		var bare := line.replace("#", "")
-		if line.length() > RuinsLayout.VAULT_LINE_LAST or (bare.strip_edges() != "" and not RuinsLayout.legible(bare.strip_edges().substr(0, RuinsLayout.NAME_LAST))):
+		if line.length() > RuinsLayout.VAULT_LINE_LAST or (bare.strip_edges() != "" and not RuinsLayout.legible_up_to(bare.strip_edges(), RuinsLayout.VAULT_LINE_LAST)):
 			out.append("%s: vault line \"%s\" is longer than %d or has letters the sign font has not" % [id, line, RuinsLayout.VAULT_LINE_LAST])
 		for word in RuinsLayout.NEVER_SHOWN:
 			if line.to_lower().contains(word):

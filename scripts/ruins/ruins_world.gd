@@ -843,6 +843,8 @@ func _step_vault(delta: float) -> void:
 			on = 0.05
 	else:
 		on = 0.4 if dice < 0.01 else 1.0
+	if is_equal_approx(on, _vault_power):
+		return  # nothing touched while it holds (lit, that is nearly every frame)
 	_vault_power = on
 	_vault_light.set_shader_parameter("power", on)
 	if _vault_mark != null:
