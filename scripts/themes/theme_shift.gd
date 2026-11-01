@@ -59,6 +59,9 @@ const DRIFT_TURN := 0.22
 const TAGS := {"rogue": "rogue.d", "zombie": "zombie", "runaway": "runaway"}
 const CONCEAL_TAG := "conceal"
 const EVENTS_KEPT := 5
+## In a light theme the grade draws a light as ink, so the glow round it reads as a dark haze: the arena's glow is turned
+## down to this share of its own while a light theme is on screen (eased with the tear), and given back as the mode ends.
+const LIGHT_GLOW := 0.3
 ## The visor's mark round a concealed one (a selection box, as selecting hidden text shows it): its half size, metres.
 const MARK_HALF := Vector2(1.05, 1.65)
 
@@ -117,6 +120,8 @@ var _clock := 0.0
 var _phase_t := 0.0
 var _gate_wait := 0.0
 var _whoosh: AudioStreamPlayer = null
+var _env: Environment = null
+var _glow_base := -1.0
 
 
 ## The mode of the arena `node` is (its own child), else any standing one not on its way out.
@@ -236,12 +241,17 @@ func begin() -> bool:
 	grade = ThemeGrade.new()
 	add_child(grade)
 	grade.show_theme(look_of(theme))
+	var world_env := get_parent().find_child("WorldEnvironment", true, false) as WorldEnvironment if get_parent() != null else null
+	_env = world_env.environment if world_env != null else null
+	_glow_base = _env.glow_intensity if _env != null else -1.0
+	_set_glow(1.0 if look_of(theme).light else 0.0)
 	if level > 0:
 		grade.full()  # the run is in its themes already: only its first level eases in
 	_hud = ThemeShiftHud.new()
 	_hud.mode = self
 	add_child(_hud)
 	_lines = VisorLines.new()
+	_lines.through_walls = true  # the box round a concealed one reads through walls, as its label does (W4)
 	add_child(_lines)
 	_whoosh = AudioStreamPlayer.new()
 	_whoosh.name = "Tear"
@@ -275,6 +285,7 @@ func end() -> void:
 		rounds.hold(false)
 	if director != null and is_instance_valid(director):
 		director.forget_brains()
+	_set_glow(0.0)
 	for node in [_hud, grade, _lines]:
 		if node != null and is_instance_valid(node):
 			node.queue_free()
@@ -550,7 +561,12 @@ func _step_shift(delta: float) -> void:
 			elif bool(art.shown_wanted):
 				art.set_shown(false)
 				_phase(e, true)  # this theme's own conceal hides with it, at once out of reach
+	if grade != null and grade.tearing():
+		var a := 1.0 if look_of(theme).light else 0.0
+		var b := 1.0 if look_of(next_theme).light else 0.0
+		_set_glow(lerpf(a, b, clampf(grade.tear, 0.0, 1.0)))
 	if grade != null and not grade.tearing() and grade.look == look_of(next_theme):
+		_set_glow(1.0 if look_of(next_theme).light else 0.0)
 		var from := theme
 		theme = next_theme
 		next_theme = ""
@@ -571,6 +587,18 @@ func _level_done() -> void:
 		return
 	level += 1
 	_go("$ reset  # " + ThemeBook.slug_of(run[level]))
+
+
+## The arena's glow at `light` of the way to a light theme's (0 its own, 1 LIGHT_GLOW of it).
+func _set_glow(light: float) -> void:
+	if _env == null or _glow_base < 0.0:
+		return
+	_env.glow_intensity = _glow_base * lerpf(1.0, LIGHT_GLOW, clampf(light, 0.0, 1.0))
+
+
+## The arena's glow now (the checks).
+func glow() -> float:
+	return _env.glow_intensity if _env != null else -1.0
 
 
 func _concealed_standing() -> int:

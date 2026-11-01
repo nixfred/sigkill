@@ -244,6 +244,9 @@ var hits_landed := 0
 ## True while the guide HUD's ask box is open: no movement, jump, slide, look or fire, and a
 ## click does not grab the mouse. The HUD sets it and clears it.
 var input_blocked := false
+## True while keybind gunplay's stand-in for Super is held (W4, scripts/keys/keybind_gunplay.gd): the keys pressed with it
+## are the mode's chord, so this player stands still and fires nothing; looking stays free.
+var chord_open := false
 ## The arena's ICEbreakers director (I2), set by main.gd: U and Y go to it.
 var breakers: Node = null
 ## The weapons a mission lets this player carry (C35, scripts/missions/mission_runner.gd), by id: only those draw,
@@ -690,7 +693,7 @@ func _captured() -> bool:
 
 
 func _read_player_input() -> void:
-	if input_blocked or not alive or not _captured():
+	if input_blocked or chord_open or not alive or not _captured():
 		_move_input = Vector2.ZERO
 		_jump_pressed = false
 		_slide_pressed = false

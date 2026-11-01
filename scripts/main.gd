@@ -76,6 +76,8 @@ func _ready() -> void:
 	FolderMap.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
 	# The theme shift (W3): the district of the level it is on, queued for the stage when it is (alone, no mission).
 	ThemeShift.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
+	# Keybind gunplay (W4): its district queued for the stage when it is (alone, no mission).
+	KeybindGunplay.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
 	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 	add_child(ParticleFx.new())
@@ -182,6 +184,19 @@ func _ready() -> void:
 	themes.spawned.connect(_on_mission_daemon)
 	_hud.set_theme_shift(themes)
 	add_child(themes)
+	# Keybind gunplay (W4): Omarchy's shortcuts as weapons, when queued; its daemons the arena's own to the HUD and the
+	# kills.
+	var keys := KeybindGunplay.new()
+	keys.player = _player
+	keys.director = director
+	keys.runner = runner
+	keys.ice = ice
+	keys.rounds = _hud.round_hud()
+	keys.guide = _hud.guide()
+	keys.visor = visor
+	keys.spawned.connect(_on_mission_daemon)
+	_hud.set_keybind_gunplay(keys)
+	add_child(keys)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -229,6 +244,10 @@ func _ready() -> void:
 		ProcHunt.clear()  # a mission ends the process hunt (W1)
 		FolderMap.clear()  # and the folder map (W2)
 		ThemeShift.clear()  # and the theme shift (W3)
+		KeybindGunplay.clear()  # and keybind gunplay (W4)
+	elif KeybindGunplay.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		keys.begin.call_deferred()
 	elif ThemeShift.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		themes.begin.call_deferred()

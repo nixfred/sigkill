@@ -23,6 +23,19 @@ var _line_mat: ShaderMaterial
 var _mark_mat: ShaderMaterial
 var drawn_lines := 0
 var drawn_marks := 0
+## Drawn over everything (W4; W3's known issue: a concealed daemon's box lost its corners behind walls): set before it
+## is added. Its own copy of the line shader with the depth test off, made once a run the first time one is asked for
+## (a mode's begin, never a shift or a frame).
+var through_walls := false
+static var _through: Shader = null
+
+
+## The line shader with its depth test off (made once).
+static func through_shader() -> Shader:
+	if _through == null:
+		_through = Shader.new()
+		_through.code = LineShader.code.replace("depth_draw_never,", "depth_draw_never, depth_test_disabled,")
+	return _through
 
 
 func _ready() -> void:
@@ -30,7 +43,7 @@ func _ready() -> void:
 	top_level = true
 	global_transform = Transform3D.IDENTITY
 	_line_mat = ShaderMaterial.new()
-	_line_mat.shader = LineShader
+	_line_mat.shader = through_shader() if through_walls else LineShader
 	_lines = _multi("Lines", _strip(), LINES_MOST, _line_mat, true)
 	_mark_mat = ShaderMaterial.new()
 	_mark_mat.shader = NodeShader

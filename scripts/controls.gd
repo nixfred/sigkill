@@ -29,6 +29,9 @@ extends RefCounted
 ## taken by a rebind test's own move, N is the guide's no while a question is up, and H, J, K and L are the multiplayer
 ## panel's.
 ##
+## Keybind gunplay (W4): the ` key (left of 1) stands in for Super while the mode runs, so it is a fixed key a bind is
+## shown in conflict with (scripts/keys/key_book.gd STANDIN). Nothing else in the game uses it.
+##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
 
@@ -53,7 +56,7 @@ const REBINDABLE := [
 ## question reads only while it is up are not listed: they count only there.
 const FIXED_KEYS := {
 	KEY_UP: "move forward (arrow)", KEY_DOWN: "move back (arrow)", KEY_LEFT: "move left (arrow)",
-	KEY_RIGHT: "move right (arrow)",
+	KEY_RIGHT: "move right (arrow)", KEY_QUOTELEFT: "Super stand-in (keybind gunplay)",
 }
 const FIXED_BUTTONS := {MOUSE_BUTTON_WHEEL_UP: "previous weapon", MOUSE_BUTTON_WHEEL_DOWN: "next weapon"}
 ## Keys that are never a bind: Esc is the menu's, and modifiers make chords.

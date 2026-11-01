@@ -236,7 +236,8 @@ func _register(body: Node3D, stage: MissionStage) -> void:
 		_by_body[body.get_instance_id()] = tree.hidden
 		_listen(body)
 		return
-	var kind := MissionRunner.kind_of(body)
+	# A palette-only daemon (W3) is its own kind: never forked into a runaway's chain (its brain is the runaway's).
+	var kind := "conceal" if body.has_meta(&"conceal") else MissionRunner.kind_of(body)
 	var hunt := _hunt()
 	var thread := hunt != null and _thread_drone(body)
 	var parent := _thread_parent(body) if thread else (_hunt_parent(hunt.ppid_of(int(body.get_meta(&"proc_pid", 0))), hunt, 0) if hunt != null and body.has_meta(&"proc") else _parent_for(body, kind, stage))

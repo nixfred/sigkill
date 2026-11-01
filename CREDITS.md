@@ -39,6 +39,10 @@ The opener's fake terminal (C38) ships six demo palettes, and each takes its col
 
 The theme shift (W3) plays its six levels in the same six palettes, in this order: Tokyo Night, Gruvbox Material, Nord, Everforest, Catppuccin Mocha and Catppuccin Latte. Each level's name on screen is the theme's own, and its colours are those values and nothing more: the worlds, the daemons and the tear between themes are SIGKILL's own, made in code. With opener data on, one more level plays in the player's own Omarchy theme's colours, read and never changed.
 
+## The shortcuts keybind gunplay teaches
+
+Keybind gunplay (W4) teaches Omarchy's default key bindings, with thanks to Omarchy (MIT, by Basecamp): the chords and the meanings its own binding files give them, Super with one key, as copied at [this commit](https://github.com/basecamp/omarchy/tree/63f60f4fcc4786d97e5c0384be640bcdef46f9a1/default/hypr/bindings). Every card shows Omarchy's own words for its shortcut. What a shortcut does in the game (a terminal blasting open, a window folding shut, the rest), the windows, the sounds and the daemons are SIGKILL's own, made in code. With opener data on, the drills follow the player's own binds, read and never changed.
+
 ## The pattern the pit's maze borrows
 
 The opener's node_modules pit (C40) is walled in the classic "10 PRINT" maze, a diagonal one way or the other in each cell, after the one-line Commodore 64 BASIC program `10 PRINT CHR$(205.5+RND(1)); : GOTO 10` that made it famous (and the book about it, *10 PRINT CHR$(205.5+RND(1)); : GOTO 10*, MIT Press, 2012). The game's own shader draws it; nothing is bundled.

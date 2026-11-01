@@ -372,6 +372,12 @@ func set_theme_shift(mode: ThemeShift) -> void:
 	mode.ended.connect(func(): _status.visible = true)
 
 
+## Keybind gunplay (W4): its own panel stands where the arena's counter would, while it runs.
+func set_keybind_gunplay(mode: KeybindGunplay) -> void:
+	mode.began.connect(func(): _status.visible = false)
+	mode.ended.connect(func(): _status.visible = true)
+
+
 ## The arena's mission runner (C35), shown from now on.
 func set_mission_runner(runner: MissionRunner) -> void:
 	_mission.set_runner(runner)

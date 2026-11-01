@@ -247,7 +247,7 @@ func _process(delta: float) -> void:
 
 ## Tab held, or this player derezzed in a match.
 func _wanted() -> bool:
-	if InputMap.has_action("show_top") and Input.is_action_pressed("show_top"):
+	if InputMap.has_action("show_top") and Input.is_action_pressed("show_top") and not KeybindGunplay.holding:
 		return true
 	return _online() and session.dead.get(session.my_id, false)
 
