@@ -441,7 +441,10 @@ func _limit_checks() -> void:
 	await _open(host_d)
 	var later := await _ask(host_d, RelayWire.Op.REGISTER, code_c)
 	_check("and the rooms of host links closed for idling are gone: the third room now fits", later.get("status", -1) == RelayWire.Status.OK, str(later.get("status")))
-	await _until_real(func(): return Time.get_ticks_msec() >= a_at + 5400, 8000)
+	# Forgotten at most 5.5 s after it was registered: its life is 2 s, it is "expired" for 3 s from the sweep that ends
+	# it, and the relay sweeps every 0.5 s (RelayServer.HOUSEKEEPING_S), so 5.4 s was short by the phase of one sweep
+	# (the "known relay flake" of C31). 6 s covers the worst case and the sweep's drift.
+	await _until_real(func(): return Time.get_ticks_msec() >= a_at + 6000, 8000)
 	var keep := RawWs.new(port)
 	await _open(keep)
 	var forgotten := await _ask(keep, RelayWire.Op.RESOLVE, code_a)
