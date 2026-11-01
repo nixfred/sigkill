@@ -69,7 +69,12 @@ func _ready() -> void:
 	# Never in a match: a session already beside the arena and online is looked at, never made (NetSession.of() makes one).
 	var session_now = get_parent().get_node_or_null(NetSession.NODE_NAME) if get_parent() != null else null
 	var ruins: RuinsWorld = null
-	if session_now == null or not session_now.has_method("is_online") or not session_now.is_online():
+	var alone: bool = session_now == null or not session_now.has_method("is_online") or not session_now.is_online()
+	# The folder map (W2): the room for the folder it stands in, queued for the stage when the map is (alone, no mission).
+	var guide_now = _hud.guide()
+	var link = guide_now.session_link() if guide_now != null and guide_now.has_method("session_link") else null
+	FolderMap.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
+	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
@@ -149,6 +154,19 @@ func _ready() -> void:
 	_hud.set_proc_hunt(hunt)
 	add_child(hunt)
 	ProcHunt.take_flag(launch_args)
+	# The folder map (W2): the player's folder tree as the level, when queued; its daemons the arena's own to the HUD and
+	# the kills.
+	var fsmap := FolderMap.new()
+	fsmap.player = _player
+	fsmap.director = director
+	fsmap.runner = runner
+	fsmap.ice = ice
+	fsmap.rounds = _hud.round_hud()
+	fsmap.guide = _hud.guide()
+	fsmap.visor = visor
+	fsmap.spawned.connect(_on_mission_daemon)
+	_hud.set_folder_map(fsmap)
+	add_child(fsmap)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -194,6 +212,10 @@ func _ready() -> void:
 	var after := MissionRunner.take_after()
 	if queued[0] != "":
 		ProcHunt.clear()  # a mission ends the process hunt (W1)
+		FolderMap.clear()  # and the folder map (W2)
+	elif FolderMap.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		fsmap.begin.call_deferred()
 	elif ProcHunt.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		hunt.begin.call_deferred()
@@ -312,6 +334,9 @@ func _on_mission_downed(dummy: Node3D) -> void:
 
 
 func _credit_kill(dummy: Node3D) -> void:
+	if dummy.has_meta(&"world") and not ProcHunt.world_credit_ok():
+		_hud.note_kill()
+		return  # a world mode's kill past its share (W2): on the screen, but no sudo charge or feat toward an unlock
 	if dummy.get("credited") != false:
 		_player.on_dummy_downed()  # alone, a kill toward a sudo charge (C22)
 		_hud.note_kill()

@@ -99,6 +99,10 @@ const PROC_HUNT_LEAVE := "Leave process hunt"
 const PROC_HUNT_TIP := "Your processes as enemies: a pegged core is a boss, a browser's tabs a swarm, the rest daemons sized by memory. A made-up table unless you said yes to opener data (then your machine's, read only: names, PIDs, CPU and memory). Kills are simulated: nothing real is ever signaled."
 const PROC_HUNT_ONLINE := "Solo only: not during a match."
 const PROC_HUNT_MISSION := "Not during a mission: quit it first."
+## The folder map (W2): your folder tree as the level; the entry turns to its way out while it runs.
+const FOLDER_MAP := "Folder map"
+const FOLDER_MAP_LEAVE := "Leave folder map"
+const FOLDER_MAP_TIP := "Your folders as the level: a folder is a room as big as it is, its subfolders doors, node_modules an endless maze. A made-up home unless you said yes to opener data (then your own, read only: folder names, sizes and counts, never what is in a file; hidden folders and links skipped). Nothing is ever changed."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
 const RESTART_MISSION := "Restart mission"
@@ -180,6 +184,7 @@ var _version: Label
 var _opener_button: Button
 var _credits_button: Button
 var _hunt_button: Button
+var _map_button: Button
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -344,11 +349,34 @@ func toggle_proc_hunt() -> void:
 	if ProcHunt.queued:
 		ProcHunt.clear()
 	else:
+		FolderMap.clear()
 		ProcHunt.queue()
 	_was_captured = true
 	close()
 	if is_inside_tree():
 		MissionRunner.reload_after_mount(get_tree(), "$ top" if ProcHunt.queued else "$ exit")
+
+
+## The folder map (W2) on or off: the arena reloads into its home room, or out of the map. Alone and outside a mission
+## only; the process hunt ends as it begins (one world mode at a time).
+func toggle_folder_map() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if FolderMap.queued:
+		FolderMap.clear()
+	else:
+		ProcHunt.clear()
+		FolderMap.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), "$ cd " + FolderTree.HOME_NAME if FolderMap.queued else "$ exit")
+
+
+## The Esc menu's folder map entry (the checks).
+func map_button() -> Button:
+	return _map_button
 
 
 ## The Esc menu's process hunt entry (the checks).
@@ -679,6 +707,9 @@ func _show_pause() -> void:
 	_hunt_button.text = PROC_HUNT_LEAVE if ProcHunt.queued else PROC_HUNT
 	_hunt_button.disabled = _online() or running != null
 	_hunt_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else PROC_HUNT_TIP
+	_map_button.text = FOLDER_MAP_LEAVE if FolderMap.queued else FOLDER_MAP
+	_map_button.disabled = _online() or running != null
+	_map_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else FOLDER_MAP_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -901,7 +932,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -914,6 +945,8 @@ func _build() -> void:
 				button.visible = false
 			PROC_HUNT:
 				_hunt_button = button
+			FOLDER_MAP:
+				_map_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

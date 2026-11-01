@@ -125,6 +125,12 @@ const RAIL_H := 0.9
 const SHELL_SCREEN := Vector2(6.4, 3.8)
 ## The most cells a clearing reaches round the plaza (M7).
 const CLEARING_MOST := 4
+## The folder doors (W2): at most this many a district; a door's bridge and its island, smallest to biggest share; the
+## island floats this far under the floor at the most.
+const DOORS_MOST := 12
+const DOOR_BRIDGE := Vector2(5.0, 15.0)
+const DOOR_ISLAND := Vector2(2.6, 11.0)
+const DOOR_SINK := Vector2(0.6, 4.0)
 const VAULT_SCREEN := Vector2(11.0, 6.4)
 const VAULT_LINE_LAST := 40
 const VAULT_POST := Vector3(0.6, 3.4, 0.6)
@@ -191,6 +197,9 @@ var shell := {}
 ## upper floor), "foot": Vector3 (the lower floor where it ends)}.
 var ramps: Array = []
 var gate := {}
+## The folder doors (W2), each {index (-1 the back door), cell, side, out: Vector3, at: Vector3 (its middle on the floor's
+## edge line), share, bridge (metres out to its island), island: Vector3 (the island's top middle), island_r}.
+var doors: Array = []
 var pocket := {}
 var gangway := {}
 var remnant := {}
@@ -218,6 +227,7 @@ func _init(from: RuinsSet) -> void:
 	_board()
 	_shell()
 	_edges()
+	_doors()
 	_points()
 	_floor_boxes()
 	_field_lattice()
@@ -236,6 +246,11 @@ static func of(from: RuinsSet) -> RuinsLayout:
 	if not _kept.has(key):
 		_kept[key] = RuinsLayout.new(from)
 	return _kept[key]
+
+
+## Lets a kept plan go (W2: a room the filesystem map made at play, once its build is let go).
+static func forget(id: String, seed: int) -> void:
+	_kept.erase("%s:%d" % [id, seed])
 
 
 # --- Cells. ---
@@ -1320,6 +1335,86 @@ func _breach() -> void:
 	remnant = {"tower": tower, "sign": {"tower": -1, "height": rng.randf_range(5.6, 6.6), "text": ruins.remnant, "slot": 0, "upright": false, "seed": rng.randi()}}
 
 
+## The folder doors (W2, a set with doors or a back door): the back door on the start's edge behind it; then a door a
+## subfolder, the biggest straight ahead on the far edge (the one nearest the middle of it), each next on the edge onto
+## the void farthest from every door already placed (so they spread round the floor), never on the start's own cell, a
+## hole's or a step's edge. Each door's edge stands as a portal over its parapet (still a parapet's box: the map, not
+## the floor, takes the player through), no overlook. No dice: the same doors every time.
+func _doors() -> void:
+	if ruins.doors.is_empty() and not ruins.back_door:
+		return
+	var open: Array = []
+	for e in edges:
+		if e["hole"] or e.get("drop", false) or e.get("gate", false) or cell(e["cell"] + SIDES[e["side"]]) != Cell.VOID:
+			continue
+		open.append(e)
+	var taken: Array = []
+	if ruins.back_door:
+		for e in open:
+			if e["cell"] == start_cell and e["side"] == 2:
+				_door_on(e, -1, 0.35)
+				taken.append(e)
+				break
+	for i in ruins.doors.size():
+		var best: Dictionary = {}
+		var best_score := -INF
+		for e in open:
+			if taken.has(e) or e["cell"] == start_cell:
+				continue
+			var at := _edge_mid(e)
+			var score := 0.0
+			if i == 0 and taken.size() <= 1:
+				score = -at.z * 10.0 - absf(at.x)  # the biggest straight ahead, far end, middle
+			else:
+				score = INF
+				for o in taken:
+					score = minf(score, at.distance_to(_edge_mid(o)))
+				score -= absf(at.x) * 0.01  # a tie to the middle
+			if score > best_score:
+				best_score = score
+				best = e
+		if best.is_empty():
+			break
+		_door_on(best, i, clampf(ruins.doors[i], 0.0, 1.0))
+		taken.append(best)
+
+
+func _edge_mid(e: Dictionary) -> Vector3:
+	return center(e["cell"]) + Vector3(SIDES[e["side"]].x, 0, SIDES[e["side"]].y) * CELL_M * 0.5
+
+
+func _door_on(e: Dictionary, index: int, share: float) -> void:
+	e["overlook"] = false
+	e["door"] = index
+	var out := Vector3(SIDES[e["side"]].x, 0, SIDES[e["side"]].y)
+	var at := _edge_mid(e)
+	var bridge := lerpf(DOOR_BRIDGE.x, DOOR_BRIDGE.y, share)
+	var r := lerpf(DOOR_ISLAND.x, DOOR_ISLAND.y, share)
+	var island := at + out * (PARAPET_T + bridge + r) - Vector3(0, lerpf(DOOR_SINK.x, DOOR_SINK.y, share), 0)
+	doors.append({"index": index, "cell": e["cell"], "side": e["side"], "out": out, "at": at, "share": share, "bridge": bridge, "island": island, "island_r": r})
+
+
+## The door with index `index` (-1 the back door), or {}.
+func door(index: int) -> Dictionary:
+	for d in doors:
+		if int(d["index"]) == index:
+			return d
+	return {}
+
+
+## True when a tower `reach` metres round at `at` would stand in a folder door's bridge or on its island (W2).
+func in_door_way(at: Vector3, reach: float) -> bool:
+	for d in doors:
+		var o: Vector3 = d["out"]
+		var rel: Vector3 = at - (d["at"] as Vector3)
+		var along := rel.dot(o)
+		var across := absf(rel.dot(Vector3(-o.z, 0, o.x)))
+		var r: float = d["island_r"]
+		if along > -reach and along < float(d["bridge"]) + r * 2.0 + reach + 2.0 and across < maxf(r, CELL_M * 0.5) + reach + 1.5:
+			return true
+	return false
+
+
 ## True when a tower `reach` metres round at `at` would stand in the breach's pocket, its gangway or its remnant (C37).
 func in_breach_way(at: Vector3, reach: float) -> bool:
 	if pocket.is_empty():
@@ -1356,6 +1451,8 @@ func _scenery() -> void:
 			continue
 		if in_breach_way(at, maxf(width, depth) * 0.75):
 			continue
+		if in_door_way(at, maxf(width, depth) * 0.75):
+			continue
 		var crowded := false
 		for t in towers:
 			if Vector2(t["at"].x - at.x, t["at"].z - at.z).length() < 3.6:
@@ -1363,7 +1460,7 @@ func _scenery() -> void:
 				break
 		if crowded:
 			continue
-		towers.append({"at": at, "tall": _rng.randf_range(TOWER_TALL.x, TOWER_TALL.y), "foot": _rng.randf_range(18.0, 70.0), "width": width, "depth": depth, "yaw": atan2(out.x, out.z) + _rng.randf_range(-0.35, 0.35), "lean": Vector2(_rng.randf_range(-7.0, 7.0), _rng.randf_range(-7.0, 7.0)), "seed": _rng.randi(), "inside": false})
+		towers.append({"at": at, "tall": _rng.randf_range(TOWER_TALL.x, TOWER_TALL.y) * ruins.tall, "foot": _rng.randf_range(18.0, 70.0), "width": width, "depth": depth, "yaw": atan2(out.x, out.z) + _rng.randf_range(-0.35, 0.35), "lean": Vector2(_rng.randf_range(-7.0, 7.0), _rng.randf_range(-7.0, 7.0)), "seed": _rng.randi(), "inside": false})
 	for b in blocks:
 		if b["kind"] != "racks":
 			continue
@@ -1375,11 +1472,11 @@ func _scenery() -> void:
 			var width := _rng.randf_range(1.8, 2.6)
 			var depth := _rng.randf_range(1.2, 1.6)
 			var at := Vector3(_rng.randf_range(lo.x + width * 0.5, maxf(lo.x + width * 0.5, hi.x - width * 0.5)), 0, _rng.randf_range(lo.z + depth * 0.5, maxf(lo.z + depth * 0.5, hi.z - depth * 0.5)))
-			towers.append({"at": at, "tall": _rng.randf_range(7.0, 26.0), "foot": 0.0, "width": width, "depth": depth, "yaw": float(_rng.randi_range(0, 3)) * PI * 0.5 + _rng.randf_range(-0.12, 0.12), "lean": Vector2(_rng.randf_range(-3.0, 3.0), _rng.randf_range(-3.0, 3.0)), "seed": _rng.randi(), "inside": true})
+			towers.append({"at": at, "tall": _rng.randf_range(7.0, 26.0) * ruins.tall, "foot": 0.0, "width": width, "depth": depth, "yaw": float(_rng.randi_range(0, 3)) * PI * 0.5 + _rng.randf_range(-0.12, 0.12), "lean": Vector2(_rng.randf_range(-3.0, 3.0), _rng.randf_range(-3.0, 3.0)), "seed": _rng.randi(), "inside": true})
 	for i in ruins.giants:
 		var a := TAU * (float(i) + _rng.randf_range(0.1, 0.9)) / float(maxi(ruins.giants, 1))
 		var d := _rng.randf_range(GIANT_OUT.x, GIANT_OUT.y)
-		giants.append({"at": Vector3(sin(a) * d, 0, cos(a) * d), "tall": _rng.randf_range(GIANT_TALL.x, GIANT_TALL.y) * clampf(d / 140.0, 0.6, 1.4), "foot": 260.0, "width": _rng.randf_range(9.0, 26.0), "depth": _rng.randf_range(7.0, 16.0), "yaw": _rng.randf_range(0.0, TAU), "lean": Vector2(_rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0)), "seed": _rng.randi(), "inside": false, "broken": _rng.randf() < 0.35})
+		giants.append({"at": Vector3(sin(a) * d, 0, cos(a) * d), "tall": _rng.randf_range(GIANT_TALL.x, GIANT_TALL.y) * clampf(d / 140.0, 0.6, 1.4) * ruins.tall, "foot": 260.0, "width": _rng.randf_range(9.0, 26.0), "depth": _rng.randf_range(7.0, 16.0), "yaw": _rng.randf_range(0.0, TAU), "lean": Vector2(_rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0)), "seed": _rng.randi(), "inside": false, "broken": _rng.randf() < 0.35})
 	_cables()
 	_signs()
 	if ruins.pristine:

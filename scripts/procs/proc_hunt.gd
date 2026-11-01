@@ -133,6 +133,30 @@ var _parked: Array = []
 var _hud: CanvasLayer = null
 
 
+## World-mode kills (W2, folded in from W1's known issue: a long hunt farmed sudo charges and unlock feats): the process
+## hunt's and the folder map's enemies (meta "world") earn a sudo charge's kill and a feat at most WORLD_CREDITS a minute
+## of play between them; past that a kill still counts on the screen and earns nothing. Game time (physics frames), so a
+## pause or a slow frame changes nothing.
+const WORLD_CREDITS := 12
+const WORLD_WINDOW_S := 60.0
+static var _world_credits: Array = []
+
+
+## True when a world-mode kill now may earn its credit (and counts it); false past the minute's share.
+static func world_credit_ok() -> bool:
+	var now := float(Engine.get_physics_frames()) / float(maxi(Engine.physics_ticks_per_second, 1))
+	while not _world_credits.is_empty() and now - float(_world_credits[0]) >= WORLD_WINDOW_S:
+		_world_credits.pop_front()
+	if _world_credits.size() >= WORLD_CREDITS:
+		return false
+	_world_credits.append(now)
+	return true
+
+
+static func reset_world_credits() -> void:
+	_world_credits.clear()
+
+
 static func of(node: Node) -> ProcHunt:
 	if node == null or not node.is_inside_tree():
 		return null
@@ -362,6 +386,7 @@ func _fork(key: String, spec: Dictionary) -> Node3D:
 	dummy.seed_wanted = _seed_for(key, role)
 	dummy.set_meta(&"proc", key)
 	dummy.set_meta(&"proc_pid", int(spec["pid"]))
+	dummy.set_meta(&"world", true)  # its kills share the world modes' credit cap (W2)
 	targets.add_child(dummy)
 	var at := _place_for(key, spec)
 	dummy.global_position = at

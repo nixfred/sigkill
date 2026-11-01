@@ -176,12 +176,34 @@ func _ready() -> void:
 	layout = RuinsLayout.of(ruins)
 	var key := "%s:%d:%d" % [ruins.id, ruins.seed, BUILD_VERSION]
 	if not _kept.has(key):
+		_forget_made_at_play(key)
 		_kept[key] = _build()
 	_built = _kept[key]
 	layout.walk_astar()  # its walkers' grid (M2), made with the district's first build, behind the same black
 	_show()
 	_spark_rng.seed = ruins.seed
 	set_register(ruins.register, 0.0)
+
+
+## Sets made at play (W2, the filesystem map's rooms, ids "fs_..."): only the last MADE_KEPT builds are kept, so walking a
+## big home never grows the kept builds without end. The book's sets are always kept.
+const MADE_PREFIX := "fs_"
+const MADE_KEPT := 3
+static var _made_order: Array = []
+
+
+static func _forget_made_at_play(key: String) -> void:
+	if not key.begins_with(MADE_PREFIX):
+		return
+	_made_order.append(key)
+	while _made_order.size() > MADE_KEPT:
+		var old: String = _made_order.pop_front()
+		_kept.erase(old)
+		RuinsLayout.forget(old.get_slice(":", 0), int(old.get_slice(":", 1)))
+
+
+static func kept_count() -> int:
+	return _kept.size()
 
 
 # --- Places. ---
@@ -437,6 +459,12 @@ func _build() -> Dictionary:
 		var at: Array = near_kit.call(layout.center(e["cell"]))
 		if e.get("gate", false):
 			RuinsPieces.gate(at[0], at[1], layout.gate, dice.call("edge", i))
+			continue
+		if e.has("door"):
+			var d := layout.door(int(e["door"]))
+			RuinsPieces.door(at[0], at[1], layout, e, d, dice.call("edge", i))  # a folder door (W2)
+			var by: Array = near_kit.call(d["island"])
+			RuinsPieces.door_island(by[0], by[1], d, dice.call("door", i))
 			continue
 		RuinsPieces.edge(at[0], at[1], layout, e, dice.call("edge", i))
 		if e.get("drop", false):

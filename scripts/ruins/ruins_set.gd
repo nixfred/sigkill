@@ -106,6 +106,14 @@ extends Resource
 ## no ruin, hole or cover of the dice, so a fight round something hanging over the plaza has room and sight lines; the
 ## points "ring_0" to "ring_3" stand at its four edges. The finale's arena round the core.
 @export var clearing := 0
+## Its folder doors (W2, the filesystem map; made in code by scripts/fsmap/folder_rooms.gd, never a .tres file's): a portal on
+## the floor's edge for each subfolder, biggest first, each a size share (0 to 1) that sets how tall it stands and how far
+## its bridge reaches out to a floating island the size of what is behind it (RuinsLayout.doors); and back_door, the way
+## up, on the start's own edge behind the player.
+@export var doors := PackedFloat32Array()
+@export var back_door := false
+## How tall its towers and giants stand, times their usual (W2: a folder's size sets it); 1 for every set in the book.
+@export var tall := 1.0
 
 
 ## What is wrong with it; empty when it is good.
@@ -236,6 +244,13 @@ func problems() -> PackedStringArray:
 		out.append("%s: a clearing of %d needs cells at least %d wide and %d long" % [id, clearing, clearing * 2 + 5, clearing * 2 + 7])
 	if clearing > 0 and (vault != "" or field != "" or room != ""):
 		out.append("%s: a clearing with a vault, a field or a room (one plan round the plaza)" % id)
+	if tall < 0.3 or tall > 3.0:
+		out.append("%s: tall %.2f (0.3 to 3)" % [id, tall])
+	if doors.size() > RuinsLayout.DOORS_MOST:
+		out.append("%s: %d doors (at most %d)" % [id, doors.size(), RuinsLayout.DOORS_MOST])
+	for share in doors:
+		if share < 0.0 or share > 1.0:
+			out.append("%s: a door's share %.2f (0 to 1)" % [id, share])
 	if shell != "":
 		for line in shell_lines.split("|", false):
 			if not RuinsLayout.legible_up_to(line.strip_edges(), RuinsLayout.VAULT_LINE_LAST):

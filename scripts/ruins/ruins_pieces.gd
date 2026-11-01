@@ -737,6 +737,114 @@ static func gate(kit: ShapeKit, b: Dictionary, g: Dictionary, rng: RandomNumberG
 	kit.box(b["body"], Vector3(0, 0.6, 0.15), Vector3(half * 2.0 - 0.6, 0.05, 0.05))
 
 
+## How tall a folder door's portal stands (W2): the back door 5.2 m, a subfolder's 4.6 m (tiny) to 13 m (huge).
+static func door_tall(d: Dictionary) -> float:
+	return 5.2 if int(d.get("index", 0)) < 0 else lerpf(4.6, 13.0, float(d.get("share", 0.0)))
+
+
+## A folder door (W2, layout.doors): the edge's parapet as ever, and over it a portal as tall as the folder behind it is
+## big (share 0 to 1): two pylons with light up their inner faces, a lintel with a beacon, and the opening between them a
+## field of lit scan bars over the parapet; the threshold lit on the floor. The back door (index -1) is a lower one in the
+## strip's colour. The map, not the floor, takes the player through (the parapet's box still stands).
+static func door(kit: ShapeKit, b: Dictionary, layout: RuinsLayout, e: Dictionary, d: Dictionary, rng: RandomNumberGenerator) -> void:
+	edge(kit, b, layout, e, rng)
+	var out: Vector3 = d["out"]
+	var along := Vector3(out.z, 0, -out.x)
+	var base := Transform3D(Basis(along, Vector3.UP, out), d["at"])
+	var share: float = d["share"]
+	var back := int(d["index"]) < 0
+	var half := RuinsLayout.CELL_M * 0.5
+	var tall := door_tall(d)
+	var slot := Slot.STRIP if back else Slot.SIGN_A
+	var pylon := lerpf(0.55, 1.1, share)
+	for sx in [-1.0, 1.0]:
+		kit.pose = base * Transform3D(Basis.IDENTITY, Vector3(sx * (half - pylon * 0.3), 0, 0.1))
+		paint_body(kit, 0.35, 0.95)
+		kit.frustum(b["body"], Vector3.ZERO, Vector2(pylon, pylon * 1.2), Vector2(pylon * 0.7, pylon * 0.85), tall)
+		kit.box(b["body"], Vector3(0, tall * 0.08, 0), Vector3(pylon * 1.35, tall * 0.16, pylon * 1.5))
+		paint_light(kit, rng.randf(), 1.0, slot, 3.4)
+		kit.box(b["light"], Vector3(-sx * pylon * 0.36, tall * 0.55, 0), Vector3(0.05, tall * 0.8, 0.14))
+		for k in int(3 + share * 6.0):
+			paint_light(kit, rng.randf(), _health(rng, 0.9), Slot.LED, 2.4)
+			light_quad(kit, b["light"], Vector3(rng.randf_range(-0.2, 0.2), 0.6 + k * (tall * 0.8) / (3.0 + share * 6.0), -pylon * 0.62), Vector2(0.16, 0.06), Vector3.FORWARD)
+	kit.pose = base
+	paint_body(kit, 0.3, 0.95)
+	var lintel := lerpf(0.5, 1.0, share)
+	kit.box(b["body"], Vector3(0, tall + lintel * 0.5, 0.1), Vector3(half * 2.0 + 0.6, lintel, pylon * 0.9))
+	paint_light(kit, rng.randf(), 1.0, slot, 4.0)
+	kit.box(b["light"], Vector3(0, tall - 0.06, 0.1), Vector3(half * 2.0 - 0.4, 0.05, pylon * 0.7))
+	kit.box(b["light"], Vector3(0, tall + lintel + 0.02, 0.1), Vector3(half * 2.0 + 0.2, 0.04, 0.12))
+	paint_light(kit, rng.randf(), 1.0, Slot.BEACON, 5.0)
+	kit.box(b["light"], Vector3(0, tall + lintel + 0.25, 0.1), Vector3(0.35, 0.35, 0.35))
+	# The field: thin bars across the opening over the parapet, closer at the bottom, thinning out toward the lintel.
+	var bars := int(5 + share * 9.0)
+	for k in bars:
+		var y := RuinsLayout.PARAPET_H + 0.25 + pow(float(k) / maxf(bars - 1, 1), 1.35) * (tall - RuinsLayout.PARAPET_H - 0.6)
+		paint_light(kit, rng.randf(), 1.0, slot, lerpf(2.6, 1.2, float(k) / bars))
+		kit.box(b["light"], Vector3(0, y, 0.1), Vector3(half * 2.0 - pylon * 1.2, 0.025, 0.025))
+	# The threshold: a lit band on the floor just inside, so the way through reads from across the room.
+	paint_light(kit, rng.randf(), 1.0, slot, 3.0)
+	kit.box(b["light"], Vector3(0, 0.02, -0.55), Vector3(half * 2.0 - 0.6, 0.02, 0.1))
+	kit.box(b["light"], Vector3(0, 0.02, -0.95), Vector3(half * 2.0 - 1.4, 0.02, 0.05))
+
+
+## A folder door's way out (W2): a bridge of plates lit along both rails, unbroken, out over the void to a floating
+## island as big as the folder behind it (a slab on an inverted spire of rock and racks, its rim lit, small towers on it,
+## more and taller the bigger the folder): the room beyond, seen from this one.
+static func door_island(kit: ShapeKit, b: Dictionary, d: Dictionary, rng: RandomNumberGenerator) -> void:
+	var out: Vector3 = d["out"]
+	var along := Vector3(out.z, 0, -out.x)
+	var share: float = d["share"]
+	var back := int(d["index"]) < 0
+	var slot := Slot.STRIP if back else Slot.SIGN_A
+	var start: Vector3 = (d["at"] as Vector3) + out * RuinsLayout.PARAPET_T
+	var island: Vector3 = d["island"]
+	var r: float = d["island_r"]
+	var end_at := island - out * r * 0.86
+	var run := end_at - start
+	var length := run.length()
+	var dir := run / maxf(length, 0.01)
+	var width := lerpf(1.8, 3.2, share)
+	var plates := maxi(int(length / 1.4), 2)
+	var bridge_basis := Basis(dir.cross(Vector3.UP).normalized() * -1.0, Vector3.UP, dir).orthonormalized()
+	for i in plates:
+		var at := start + dir * (length * (float(i) + 0.5) / plates) - Vector3(0, 0.12, 0)
+		kit.pose = Transform3D(bridge_basis, at)
+		paint_body(kit, rng.randf_range(0.2, 0.5), 0.9)
+		kit.box(b["body"], Vector3.ZERO, Vector3(width, 0.16, length / plates - 0.05))
+		for sx in [-1.0, 1.0]:
+			kit.box(b["body"], Vector3(sx * width * 0.5, 0.5, 0), Vector3(0.05, 1.0, 0.05))
+			paint_light(kit, rng.randf(), 1.0, slot, 2.4)
+			kit.box(b["light"], Vector3(sx * width * 0.5, 1.0, 0), Vector3(0.06, 0.06, length / plates))
+			kit.box(b["light"], Vector3(sx * (width * 0.5 - 0.08), 0.1, 0), Vector3(0.03, 0.03, length / plates * 0.9))
+			paint_body(kit, rng.randf_range(0.2, 0.5), 0.9)
+		if i % 2 == 0:
+			kit.box(b["body"], Vector3(0, -0.9, 0), Vector3(0.22, 1.6, 0.22), Vector3(20.0, 0, 0))
+	# The island: a slab, its rim lit, a spire under it into the void.
+	kit.pose = Transform3D(Basis(along, Vector3.UP, out), island)
+	paint_body(kit, 0.4, 0.9)
+	var thick := lerpf(0.7, 1.6, share)
+	kit.prism(b["body"], Vector3(0, -thick * 0.5, 0), r, thick, 8, Vector3(-90.0, 0, 0), r * 0.92, 22.5)
+	kit.prism(b["body"], Vector3(0, -thick - r * 0.9, 0), r * 0.8, r * 1.8, 8, Vector3(-90.0, 0, 0), 0.25, 22.5)
+	paint_light(kit, rng.randf(), 1.0, slot, 3.0)
+	kit.tube(b["light"], Vector3(0, 0.02, 0), r - 0.18, r - 0.06, 0.04, 8, Vector3(90.0, 0, 0), 22.5)
+	kit.tube(b["light"], Vector3(0, -thick - 0.05, 0), r * 0.84, r * 0.9, 0.06, 8, Vector3(90.0, 0, 0), 22.5)
+	var towers := 2 + int(share * 9.0)
+	for k in towers:
+		var a := TAU * (float(k) + rng.randf_range(0.0, 0.6)) / towers
+		var rr := rng.randf_range(0.25, 0.7) * r
+		var at := Vector3(cos(a) * rr, 0, sin(a) * rr)
+		var w := rng.randf_range(0.4, 0.9) * lerpf(0.7, 2.2, share)
+		var h := rng.randf_range(0.5, 1.0) * lerpf(1.6, 16.0, share)
+		paint_body(kit, rng.randf_range(0.2, 0.6), 0.9)
+		kit.frustum(b["body"], at, Vector2(w, w * 0.8), Vector2(w * 0.7, w * 0.55), h)
+		for j in int(2 + h / 2.5):
+			paint_light(kit, rng.randf(), _health(rng, 0.85), Slot.LED, 2.6)
+			kit.box(b["light"], at + Vector3(0, h * (float(j) + 0.6) / (2.0 + h / 2.5), w * 0.42), Vector3(w * 0.5, 0.05, 0.02))
+		paint_light(kit, rng.randf(), 1.0, Slot.BEACON if k == 0 else slot, 4.0)
+		kit.box(b["light"], at + Vector3(0, h + 0.08, 0), Vector3(w * 0.3, 0.16, w * 0.3))
+
+
 ## The gangway (layout.gangway): plates out from the gate into the void, rails lit along both sides, struts under it,
 ## and its far end broken off: the last plates bent down, one gone, cables hanging from where it tore.
 static func gangway(kit: ShapeKit, b: Dictionary, g: Dictionary, rng: RandomNumberGenerator) -> void:

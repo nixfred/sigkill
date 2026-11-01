@@ -20,6 +20,8 @@ const FLAG := "--ruins="
 const GOES := ["ArenaArt", "Skyline", "RoomLight"]
 
 static var _pending := ""
+## A set made at play (W2: the filesystem map's room for a folder), stood in before the queued id when there is no mission.
+static var _pending_set: RuinsSet = null
 
 
 ## Set `id` to stand the next arena in, with no mission (the flag, a test, a capture); "" for none.
@@ -27,15 +29,28 @@ static func queue(id: String) -> void:
 	_pending = id
 
 
+## Set `s`, made at play rather than read from the book (W2, the filesystem map), to stand the next arena in with no
+## mission; null for none.
+static func queue_set(s: RuinsSet) -> void:
+	_pending_set = s
+
+
+static func pending_set() -> RuinsSet:
+	return _pending_set
+
+
 static func pending() -> String:
 	return _pending
 
 
-## The set the arena loading now stands in, or null: the queued mission's, else the set queued.
+## The set the arena loading now stands in, or null: the queued mission's, else a set made at play (W2), else the set
+## queued.
 static func wanted() -> RuinsSet:
 	var mission := MissionBook.of(MissionRunner.pending())
 	if mission != null:
 		return RuinsBook.of(mission.ruins) if mission.ruins != "" else null
+	if _pending_set != null:
+		return _pending_set
 	return RuinsBook.of(_pending) if _pending != "" else null
 
 
