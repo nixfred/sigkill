@@ -65,7 +65,7 @@ func _make(texture: Texture2D) -> void:
 	_font = Palette.mono_font()
 	_material = ShaderMaterial.new()
 	_material.shader = TearShader
-	_material.set_shader_parameter("seed", float(Time.get_ticks_msec() % 997) * 0.01)
+	_material.set_shader_parameter("seed", float(tears % 97) * 0.37)  # its own count: no wall clock in the cosmetic code (A4)
 	_material.set_shader_parameter("jitter", 1.0)
 	_rect = TextureRect.new()
 	_rect.texture = texture
