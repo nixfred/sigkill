@@ -3332,10 +3332,10 @@ func _m4() -> void:
 	await _c37_save(sheet, "m4-freeze", runner)
 	_player.drive_input(Vector2.ZERO)
 	await _m4_until(runner, func(): return runner.index >= 4, 0.0)
-	# The last rule and the deck; the hold: its hunter and nodes, the busiest fight (its GPU time), at 960 wide too.
-	await _m4_until(runner, func(): return runner.index >= 5, 0.0)
+	# The last rule and the deck (the player put on the deck: the reach is the player's, not a shot's); the hold: its
+	# hunter and nodes, the busiest fight (its GPU time, measured in it), at 960 wide too; then the hold waited out.
 	_player.global_position = world.point("vault")
-	await _m4_until(runner, func(): return runner.index >= 6, 0.0)
+	await _m4_until(runner, func(): return runner.index >= 5, 0.0)
 	while ice.hunter == null or not is_instance_valid(ice.hunter) or ice.nodes.size() < 4:
 		await _frames(1)
 	await _frames(int(1.5 * Engine.physics_ticks_per_second))
@@ -3350,6 +3350,7 @@ func _m4() -> void:
 	await _c37_save({}, "m4-960", runner)
 	root.size = Vector2i(1920, 1080)
 	await _frames(4)
+	await _m4_until(runner, func(): return runner.index >= 6, 0.0)  # the hold waited out
 	await _m4_until(runner, func(): return runner.index >= 7, 0.0)
 	# The record read: the record open in the reader, the records screen lit over the deck behind it, its session line
 	# a bar, your AI's line. The reader stays up most of the end beat (its text's length and LOG_S), so the still is
