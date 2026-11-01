@@ -40,6 +40,8 @@ const READER_NEVER := ["cmdline", "environ", "\"fd\"", "/fd", "cwd", "\"exe\"", 
 const DEMO_NAMES := ["init", "session", "lumen", "nebula", "nebula-gpu", "nebula-tab", "quill", "quill-lsp", "tidesync", "chatter", "tickd", "soundd", "glass", "sh", "forge", "forge-cc", "forge-ld", "pkgcheck"]
 const POISON := "POISON"
 const MOST_FRAMES := 2400
+## The caps the brief and the PRD set, pinned here so a changed constant cannot move its own check.
+const CAPS := {"enemies": 40, "drones": 24, "swarms": 3, "bosses": 1, "daemons": 12}
 const LONG_ROUND_S := 100000.0
 
 var _fails := 0
@@ -202,7 +204,7 @@ func _map_checks() -> void:
 		huge[100 + i] = _row(parent if i >= 40 else 1, "fake-%d" % (i % 7), 95.0 if i % 97 == 0 else float(i % 30), 10000 + i * 300, "Z" if i % 50 == 0 else "R", 40 if i % 13 == 0 else 2)
 	var all: Dictionary = ProcMap.plan(huge, {}, -1)["enemies"]
 	var drones := _count(all, "drone")
-	_check("acceptance: the caps hold on a table of 1000: at most %d enemies, %d drones, %d swarms, one boss, %d daemons" % [ProcMap.ENEMIES_MOST, ProcMap.DRONES_MOST, ProcMap.SWARMS_MOST, ProcMap.DAEMONS_MOST], all.size() <= ProcMap.ENEMIES_MOST and drones <= ProcMap.DRONES_MOST and _count(all, "nest") <= ProcMap.SWARMS_MOST and _count(all, "boss") <= 1 and _count(all, "daemon") + _count(all, "zombie") <= ProcMap.DAEMONS_MOST, "%d enemies, %d drones" % [all.size(), drones])
+	_check("acceptance: the caps hold on a table of 1000: at most %d enemies, %d drones, %d swarms, one boss, %d daemons" % [CAPS["enemies"], CAPS["drones"], CAPS["swarms"], CAPS["daemons"]], all.size() <= CAPS["enemies"] and drones <= CAPS["drones"] and _count(all, "nest") <= CAPS["swarms"] and _count(all, "boss") <= CAPS["bosses"] and _count(all, "daemon") + _count(all, "zombie") <= CAPS["daemons"] and ProcMap.ENEMIES_MOST == CAPS["enemies"] and ProcMap.DRONES_MOST == CAPS["drones"] and ProcMap.DAEMONS_MOST == CAPS["daemons"], "%d enemies, %d drones" % [all.size(), drones])
 
 
 func _count(e: Dictionary, role: String) -> int:
@@ -370,6 +372,11 @@ func _arena_checks() -> void:
 	# An exit: a tab closes; its drone derezzes on its own, nobody's kill.
 	var exits_before := hunt.exits
 	var kills_before := hunt.kills
+	# Every enemy's death heard: an exit must never be a credited kill (no sudo charge, no feat).
+	var credited_deaths: Array = []
+	for key in hunt.enemies():
+		var b = hunt.enemies()[key]["body"]
+		b.downed.connect(func(d): if d.credited: credited_deaths.append(d.tag_text))
 	var gone_ok := false
 	for i in 14:
 		hunt.advance_table(1)
@@ -378,7 +385,7 @@ func _arena_checks() -> void:
 			gone_ok = true
 			break
 	await _frames(10)
-	_check("acceptance: a process that exits derezzes on its own: its enemy reaped, no kill credited, no kill counted", gone_ok and hunt.kills == kills_before, "%d exits" % hunt.exits)
+	_check("acceptance: a process that exits derezzes on its own: its enemy reaped, no kill credited, no kill counted", gone_ok and hunt.kills == kills_before and credited_deaths.is_empty(), "%d exits; credited %s" % [hunt.exits, credited_deaths])
 	_check("acceptance: the caps hold in the arena: at most %d enemies at once (%d), forks %s apart" % [ProcMap.ENEMIES_MOST, hunt.most_enemies, ProcHunt.FORK_GAP_S], hunt.most_enemies <= ProcMap.ENEMIES_MOST and hunt.most_enemies > 0)
 	_check("nest at its spot in the air, clear of the floor", nest_at.is_finite() and nest_at.y > 1.8, str(nest_at))
 
@@ -449,11 +456,21 @@ func _fight_checks() -> void:
 	var kills_before := hunt.kills
 	if victim != null:
 		victim.hit(10000.0)
+	var killed_at := hunt.clock()
 	await _frames(5)
 	var still := hunt.row(pid)
 	_check("acceptance: killing one is cosmetic: its enemy derezzed and counted (\"simulated\"), its process still in the table, unchanged by it", victim != null and hunt.kills == kills_before + 1 and not still.is_empty() and hunt.body_of(victim_key) == null and _last_event(hunt).contains("simulated"), _last_event(hunt))
+	# Its wait is kept while its process runs, even when the process is out of the plan for a while (a killed daemon
+	# loses its place to a busier one): checked on the session's holder, in the table and never in the plan.
+	var holder := str(hunt.session_pid)
+	hunt._cooldown[holder] = hunt.clock() + 100.0
+	hunt.advance_table(1)
+	var held: bool = hunt._cooldown.has(holder) and not hunt.row(hunt.session_pid).is_empty() and not (hunt.plan["enemies"] as Dictionary).has(holder)
+	hunt._cooldown.erase(holder)
+	_check("a killed process's wait is kept while its process runs, even out of the plan, so it never forks back early", held)
 	var back := await _until(func(): return hunt.body_of(victim_key) != null)
-	_check("while its process runs it forks back in after %.0f s" % ProcHunt.RESPAWN_S, back)
+	var after := hunt.clock() - killed_at
+	_check("while its process runs it forks back in after %.0f s, never sooner (%.1f s)" % [ProcHunt.RESPAWN_S, after], back and after >= ProcHunt.RESPAWN_S - 0.05)
 	# The linker exits: the boss derezzes on its own.
 	var exits := hunt.exits
 	hunt.advance_table(DemoProcs.LINK_PEG)

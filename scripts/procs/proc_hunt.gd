@@ -302,8 +302,8 @@ func _apply() -> void:
 			remakes += 1
 			_exit(key, "remake")
 	for key in _cooldown.keys():
-		if not want.has(key):
-			_cooldown.erase(key)  # its process is gone: nothing to come back
+		if not snapshot.has(int(str(key).get_slice("/", 0))):
+			_cooldown.erase(key)  # its process is gone: nothing to come back (out of the plan for a moment is not gone)
 	# Up already: their numbers.
 	for key in _enemies:
 		_enemies[key]["spec"] = want[key]
