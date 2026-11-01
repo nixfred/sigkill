@@ -3477,9 +3477,9 @@ func _m5() -> void:
 	while runner.state == MissionRunner.State.INTRO:
 		await process_frame
 	await _m2_quiet()
-	_c37_view(Vector3(vent1.x - 4.5, 0.0, vent1.z + 7.0), vent1 + Vector3(0, 1.1, 0))
+	_c37_view(Vector3(vent1.x + 3.6, 0.0, vent1.z + 6.5), vent1 + Vector3(0, 1.1, 0))
 	await _m5_until(runner, func(): return stage.wave_state("reap_1") != "waiting", 0.0, false)
-	await _frames(int(0.9 * Engine.physics_ticks_per_second))
+	await _frames(int(1.7 * Engine.physics_ticks_per_second))
 	print("capture: m5-opening, the first job ran at %.1f s, %d standing" % [runner.clock, stage.standing().size()])
 	await _c37_save(sheet, "m5-opening", runner)
 	# Root: three kills, Z, the password line, root# with the weapon's glow.
@@ -3501,11 +3501,11 @@ func _m5() -> void:
 	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
 	var waited := 0
 	while waited < 900 and watchdog.brain.tells < 1 and (watchdog.climbing() or watchdog.is_alive()):
-		_m3_aim(watchdog.aim_point() if watchdog.is_alive() else vent_mid + Vector3(0, 1.3, 0))
+		_m3_aim(_m5_point(watchdog) if watchdog.is_alive() else vent_mid + Vector3(0, 1.3, 0))
 		await _frames(1)
 		waited += 1
 	await _frames(int(0.3 * Engine.physics_ticks_per_second))
-	_m3_aim(watchdog.aim_point())
+	_m3_aim(_m5_point(watchdog))
 	print("capture: m5-watchdog after %d frames, elite %s, tells %d, state %s, %.1f m" % [waited, str(watchdog.art_node().elite), watchdog.brain.tells, watchdog.brain.state_name(), watchdog.global_position.distance_to(_player.global_position)])
 	await _c37_save(sheet, "m5-watchdog", runner)
 	await _m5_until(runner, func(): return runner.index >= 3, 0.0)
@@ -3518,15 +3518,17 @@ func _m5() -> void:
 	while waited < 120 and (_player.inventory.is_swapping() or _player.inventory.current != cron_slot):
 		await _frames(1)
 		waited += 1
+	# A mine lives about seven seconds (armed in one, three runs two apart): placed as the job's countdown nears its end.
+	await _m5_until(runner, func(): return _m5_job_left(runner, "fork") <= 4.5, 0.0, false)
 	for i in 3:
 		_m3_aim(vent_left)
 		_player.drive_input(Vector2.ZERO, false, false, true)
 		await physics_frame
 	_player.drive_input(Vector2.ZERO)
 	await _frames(10)
-	var mines := get_tree().get_nodes_in_group(&"cron_mine").size()
+	var mines: int = get_nodes_in_group(&"cron_mine").size()
 	await _m5_until(runner, func(): return stage.wave_state("fork_1") != "waiting", 0.0, false)
-	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
 	_m3_aim(vent_left + Vector3(0, 0.8, 0))
 	print("capture: m5-cron, %d mines, the fork job ran at %.1f s, %d standing" % [mines, runner.clock, stage.standing().size()])
 	await _c37_save(sheet, "m5-cron", runner)
@@ -3540,6 +3542,7 @@ func _m5() -> void:
 	var out: Vector3 = screen["out"]
 	var at: Vector3 = screen["at"]
 	_c37_view(at + out * 5.5 + Vector3(out.z, 0, -out.x) * 1.6, at - out * 0.2 + Vector3(0, 2.4, 0))
+	UnlockToast.drop_waiting()
 	await _frames(int(2.6 * Engine.physics_ticks_per_second))
 	print("capture: m5-author, the reader open %s" % str(_main.get_node("Hud").mission_hud().showing_log()))
 	await _c37_save(sheet, "m5-author", runner)
@@ -3551,7 +3554,7 @@ func _m5() -> void:
 	await _m2_quiet()
 	var rm_slot := int(_player.inventory.slot_of("rm_rf_cannon"))
 	_player.select_slot(rm_slot)
-	_c37_view(Vector3(plaza.x + 7.0, 0.0, plaza.z + 5.0), vent_mid + Vector3(0, 1.4, 0))
+	_c37_view(Vector3(plaza.x + 8.5, 0.0, plaza.z + 7.0), vent_mid + Vector3(0, 1.4, 0))
 	waited = 0
 	while waited < 600 and (wiper.climbing() or not wiper.is_alive()):
 		await _frames(1)
@@ -3559,28 +3562,28 @@ func _m5() -> void:
 	runner.life.combat.states[SoloLife.ME]["protect_left"] = 0.0
 	waited = 0
 	while waited < 600 and wiper.is_alive() and not (wiper.brain.state_name() == "strike" and wiper.brain.charges >= 1):
-		_m3_aim(wiper.aim_point())
+		_m3_aim(_m5_point(wiper))
 		await _frames(1)
 		waited += 1
 	runner.life.shield(100000.0)
 	# rm -rf wound up and let go at it; the blast ring is the frame.
-	var rings_before := get_tree().get_nodes_in_group(&"rm_ring").size()
+	var rings_before: int = get_nodes_in_group(&"rm_ring").size()
 	for i in int(1.0 * Engine.physics_ticks_per_second):
-		_m3_aim(wiper.aim_point())
+		_m3_aim(_m5_point(wiper))
 		_player.drive_input(Vector2.ZERO, false, false, true)
 		await physics_frame
 	_player.drive_input(Vector2.ZERO)
 	waited = 0
-	while waited < 240 and get_tree().get_nodes_in_group(&"rm_ring").size() <= rings_before:
-		_m3_aim(wiper.aim_point())
+	while waited < 240 and get_nodes_in_group(&"rm_ring").size() <= rings_before:
+		_m3_aim(_m5_point(wiper))
 		await _frames(1)
 		waited += 1
-	await _frames(4)
+	await _frames(int(0.3 * Engine.physics_ticks_per_second))
 	var row := {}
 	for r in runner.jobs():
 		if r["id"] == "wipe":
 			row = r
-	print("capture: m5-wipe after %d frames, the wiper charges %d, rings %d, the job at %.0f s, standing %d, mix %s" % [waited, wiper.brain.charges, get_tree().get_nodes_in_group(&"rm_ring").size(), float(row.get("left", -1.0)), stage.standing().size(), str(world.mix)])
+	print("capture: m5-wipe after %d frames, the wiper charges %d, rings %d, the job at %.0f s, standing %d, mix %s" % [waited, wiper.brain.charges, get_nodes_in_group(&"rm_ring").size(), float(row.get("left", -1.0)), stage.standing().size(), str(world.mix)])
 	await _c37_save(sheet, "m5-wipe", runner)
 	# The busiest fight: the first queued zombies out beside the runner, the mines and the board; its GPU time, at 960 too.
 	await _m5_until(runner, func(): return stage.wave_state("queue_1") != "waiting", 0.0, false)
@@ -3606,7 +3609,7 @@ func _m5() -> void:
 		await _frames(1)
 		waited += 1
 	await _frames(int(2.2 * Engine.physics_ticks_per_second))
-	_m3_aim(swarm.aim_point())
+	_m3_aim(_m5_point(swarm))
 	print("capture: m5-elites, the swarm elite %s at %.1f m, door open %.2f" % [str(swarm.art_node().elite), swarm.global_position.distance_to(_player.global_position), (stage.doors()[0] as RootDoor).open_share()])
 	await _c37_save(sheet, "m5-elites", runner)
 	await _m5_until(runner, func(): return runner.index >= 7, 0.0)
@@ -3660,6 +3663,19 @@ func _m5() -> void:
 		_save_grid("m5-sequence", stills, C35_SHEET_COLUMNS)
 
 
+## Seconds to job `id`'s next run (m5), or INF when it is not scheduled.
+func _m5_job_left(runner: MissionRunner, id: String) -> float:
+	for job in runner.jobs():
+		if job["id"] == id and job["live"]:
+			return float(job["left"])
+	return INF
+
+
+## Where to aim at `d` (m5): a daemon's threat point, a piece of ICE's aim point.
+func _m5_point(d: Node3D) -> Vector3:
+	return d.threat_point() if d.has_method("threat_point") else d.aim_point()
+
+
 ## Mission 5 played on until `condition` (m5), at most `most` seconds (0: a minute): with `shoot`, the daemons the
 ## objective running counts shot down as a sure shot would.
 func _m5_until(runner: MissionRunner, condition: Callable, most: float, shoot: bool = true) -> void:
@@ -3670,7 +3686,7 @@ func _m5_until(runner: MissionRunner, condition: Callable, most: float, shoot: b
 			var of: Array = runner.objective().get("of", [])
 			for d in runner.stage.standing():
 				if d.is_alive() and of.has(str(d.get_meta(&"wave", ""))):
-					d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "sigterm")
+					d.hit(1000.0, d.global_position + Vector3.UP, Vector3.FORWARD, "")  # no weapon named: no feat, no mod toast
 		await process_frame
 		frames += 1
 

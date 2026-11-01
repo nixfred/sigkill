@@ -216,7 +216,7 @@ func register_shown() -> String:
 	if runner == null:
 		return ""
 	if runner.world != null and is_instance_valid(runner.world) and runner.world.register != "":
-		return runner.world.register
+		return runner.world.register_now() if runner.world.shifting() else runner.world.register  # M5: a slow decay
 	return runner.register
 
 

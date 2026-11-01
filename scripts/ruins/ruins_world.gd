@@ -213,6 +213,18 @@ func shifting() -> bool:
 	return _shift_s > 0.0 and _shift_t < _shift_s
 
 
+## The register the place reads as now: the one weighing most in its mix (M5: through a slow decay the old name holds
+## until the blend is past half, so the HUD's chip says what the eye sees).
+func register_now() -> String:
+	var best := "tron"
+	var most := mix.x
+	for pair in [["cyberpunk", mix.y], ["matrix", mix.z], ["all", mix.w]]:
+		if float(pair[1]) > most:
+			most = float(pair[1])
+			best = str(pair[0])
+	return best
+
+
 func _process(delta: float) -> void:
 	ArenaArt.step_clock(delta)
 	if _shift_s > 0.0:
