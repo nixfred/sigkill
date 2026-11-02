@@ -172,7 +172,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	_let_go()
+	_let_go(true)
 
 
 ## Begins co-op where the arena stands: the arena's own daemons parked, ICE stood down, the rounds held, player 2 made
@@ -230,8 +230,9 @@ func _make_player2() -> void:
 	player2.seat = 2
 	player2.actions = CoopInput.P2.duplicate()
 	(player2.get_node("Head/Camera") as Camera3D).current = false  # the window's camera stays player 1's
+	# Placed before it enters the tree, so its own respawn point (a fall off the world) is beside player 1, not the origin.
+	player2.transform = host.global_transform.affine_inverse() * player.global_transform.translated(player.global_basis * P2_OFFSET)
 	host.add_child(player2)
-	player2.global_transform = player.global_transform.translated(player.global_basis * P2_OFFSET)
 	player2.set_abilities(PackedStringArray(), true)
 
 
@@ -278,7 +279,7 @@ func end() -> void:
 
 ## Everything the mode changed outside itself, put back: player 1's seat, the visor's HUD, the HUD, the input map, the
 ## window's 3D view; player 2 and the tiles gone.
-func _let_go() -> void:
+func _let_go(leaving_tree: bool = false) -> void:
 	_give_visor_hud()
 	if screen != null and is_instance_valid(screen):
 		screen.tear_down()
@@ -296,6 +297,10 @@ func _let_go() -> void:
 			body.queue_free()
 	_bodies = [null, null, null]
 	if player2 != null and is_instance_valid(player2):
+		# Out of the tree at once: it never reads its actions again once they are out of the map below.
+		# (Not while the arena itself is leaving the tree: its children go with it, and its parent is busy then.)
+		if not leaving_tree and player2.get_parent() != null:
+			player2.get_parent().remove_child(player2)
 		player2.queue_free()
 	player2 = null
 	if hud != null and is_instance_valid(hud) and hud.has_method("set_coop"):

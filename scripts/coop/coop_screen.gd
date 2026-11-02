@@ -413,10 +413,15 @@ func _follow() -> void:
 		var p = players[seat]
 		var cam: Camera3D = _cam[seat]
 		var port: SubViewport = _port[seat]
-		port.scaling_3d_scale = root.scaling_3d_scale
-		port.msaa_3d = root.msaa_3d
-		port.screen_space_aa = root.screen_space_aa
-		port.use_taa = root.use_taa
+		# The window's own 3D settings (the resolution scale and the antialiasing), copied only when one changes.
+		if port.scaling_3d_scale != root.scaling_3d_scale:
+			port.scaling_3d_scale = root.scaling_3d_scale
+		if port.msaa_3d != root.msaa_3d:
+			port.msaa_3d = root.msaa_3d
+		if port.screen_space_aa != root.screen_space_aa:
+			port.screen_space_aa = root.screen_space_aa
+		if port.use_taa != root.use_taa:
+			port.use_taa = root.use_taa
 		if p == null or not is_instance_valid(p):
 			continue
 		var src = p.get_node_or_null("Head/Camera") as Camera3D
