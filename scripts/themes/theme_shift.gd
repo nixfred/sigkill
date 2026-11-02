@@ -122,6 +122,8 @@ var _gate_wait := 0.0
 var _whoosh: AudioStreamPlayer = null
 var _env: Environment = null
 var _glow_base := -1.0
+## Whether the zombies wear the light-theme outline (P2): set with the glow, a light theme's.
+var _outline := false
 
 
 ## The mode of the arena `node` is (its own child), else any standing one not on its way out.
@@ -377,6 +379,8 @@ func _spawn_daemon(kind: String, at: Vector3, slot: String) -> Node3D:
 	_face_player(dummy)
 	dummy.downed.connect(_on_downed)
 	enemies.append({"body": dummy, "kind": kind, "key": "", "home": at, "phased": false, "mark": null})
+	if kind == "zombie" and _outline:
+		LightOutline.apply(dummy.art_node(), true)  # a light theme's zombie, outlined from its first frame (P2)
 	spawned.emit(dummy)
 	_forget()
 	return dummy
@@ -589,11 +593,29 @@ func _level_done() -> void:
 	_go("$ reset  # " + ThemeBook.slug_of(run[level]))
 
 
-## The arena's glow at `light` of the way to a light theme's (0 its own, 1 LIGHT_GLOW of it).
+## The arena's glow at `light` of the way to a light theme's (0 its own, 1 LIGHT_GLOW of it); past halfway, the zombies'
+## light-theme outline on (P2: scripts/themes/light_outline.gd), and off again below it.
 func _set_glow(light: float) -> void:
+	_set_outline(light > 0.5)
 	if _env == null or _glow_base < 0.0:
 		return
 	_env.glow_intensity = _glow_base * lerpf(1.0, LIGHT_GLOW, clampf(light, 0.0, 1.0))
+
+
+## Every zombie fought outlined (`on`, a light theme) or not (P2, W3's Latte zombie: its near-black armour has the void's
+## lightness, so a light theme's grade turns both to paper; the outline is its silhouette in the theme's red).
+func _set_outline(on: bool) -> void:
+	if on == _outline:
+		return
+	_outline = on
+	for e in enemies:
+		if str(e["kind"]) == "zombie" and is_instance_valid(e["body"]):
+			LightOutline.apply(e["body"].art_node(), on)
+
+
+## Whether the zombies wear the light-theme outline now (the checks).
+func outlined() -> bool:
+	return _outline
 
 
 ## The arena's glow now (the checks).
