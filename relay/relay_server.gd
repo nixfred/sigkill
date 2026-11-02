@@ -52,12 +52,12 @@ const SETTINGS := {
 	"hello_per_min": ["SIGKILL_RELAY_HELLO_PER_MIN", "--hello-per-min", 3000, 1, 1000000],
 	"max_clients": ["SIGKILL_RELAY_SOURCES", "--sources", 4096, 1, 1000000],
 	"max_payload": ["SIGKILL_RELAY_PAYLOAD_CAP", "--payload-cap", 1400, 100, 65000],
-	"room_pps": ["SIGKILL_RELAY_ROOM_PPS", "--room-pps", 400, 10, 100000],
+	"room_pps": ["SIGKILL_RELAY_ROOM_PPS", "--room-pps", 1600, 10, 100000],  # P2: 400 dropped a full room at protocol 19 (528 a second measured)
 	"tick_hz": ["SIGKILL_RELAY_TICK_HZ", "--tick-hz", 500, 10, 2000],
 	"stats_s": ["SIGKILL_RELAY_STATS_S", "--stats-s", 300, 0, 86400],
 	"ws_port": ["SIGKILL_RELAY_WS_PORT", "--ws-port", 0, 0, 65535],
 }
-const COUNTERS := ["requests", "registered", "resolved", "closed", "cookies", "rooms_peak", "relayed_packets", "relayed_bytes", "dropped_bad", "dropped_oversize", "dropped_rate", "dropped_unknown_source", "dropped_full", "busy", "taken", "unknown", "expired", "bad_code"]
+const COUNTERS := ["requests", "registered", "resolved", "closed", "cookies", "rooms_peak", "relayed_packets", "relayed_bytes", "largest_payload", "room_pps_peak", "dropped_bad", "dropped_oversize", "dropped_rate", "dropped_unknown_source", "dropped_full", "busy", "taken", "unknown", "expired", "bad_code"]
 
 
 class Slot:
@@ -485,6 +485,10 @@ func _payload_ok(data: PackedByteArray, room: Room, now: float) -> bool:
 	if room.window_packets > config["room_pps"]:
 		counters["dropped_rate"] += 1
 		return false
+	# The headroom under the two caps (P2, protocols 10 to 19's traffic): the biggest datagram relayed and the most a room
+	# has relayed in one second, aggregates only, never whose.
+	counters["largest_payload"] = maxi(counters["largest_payload"], data.size())
+	counters["room_pps_peak"] = maxi(counters["room_pps_peak"], room.window_packets)
 	return true
 
 

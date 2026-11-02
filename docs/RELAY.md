@@ -267,8 +267,9 @@ Every limit is a setting (below), proven to trip by `tests/relay_test.gd`:
 
 Nothing personal. The relay prints a start line (its control port and limits) and, every
 `stats_s` seconds and when it stops, one line of aggregate counters: rooms, requests,
-registrations, resolutions, closes, cookies, peak rooms, relayed packets and bytes, and each
-kind of drop and refusal. Never an address, a room code or a token: the relay test checks its
+registrations, resolutions, closes, cookies, peak rooms, relayed packets and bytes, the biggest
+datagram relayed and a room's busiest second (the headroom under the payload cap and the room's
+packet rate), and each kind of drop and refusal. Never an address, a room code or a token. The relay test checks its
 whole output for anything shaped like an IP address. Addresses live in memory only: a
 joiner's while its path carries traffic (60 s idle), a host's while its room holds its ports,
 a registering host's while its code lives (the per-address room cap), a source's for its
@@ -390,7 +391,7 @@ with exit 2 and the reason.
 | `SIGKILL_RELAY_HELLO_PER_MIN` | `--hello-per-min` | 3000 | Cookie replies a minute, in all |
 | `SIGKILL_RELAY_SOURCES` | `--sources` | 4096 | Source addresses tracked at once |
 | `SIGKILL_RELAY_PAYLOAD_CAP` | `--payload-cap` | 1400 | Largest relayed datagram, bytes |
-| `SIGKILL_RELAY_ROOM_PPS` | `--room-pps` | 400 | Datagrams a second one room may relay |
+| `SIGKILL_RELAY_ROOM_PPS` | `--room-pps` | 1600 | Datagrams a second one room may relay (a full room of four at protocol 19 sends about 530: P2 measured it; 400 dropped it) |
 | `SIGKILL_RELAY_TICK_HZ` | `--tick-hz` | 500 | Polls a second (2 ms of added latency at most) |
 | `SIGKILL_RELAY_STATS_S` | `--stats-s` | 300 | Seconds between counter lines; 0 for none |
 | `SIGKILL_RELAY_WS_PORT` | `--ws-port` | 0 (the UDP relay) | WebSocket mode on this one TCP port (C16d); `--sources` is then the connections at once |
@@ -477,3 +478,25 @@ did not state tax terms. Anything else: unpriced, Fred decides.
 
 Nothing is deployed. Hosting waits for Fred's decision (WebSocket mode on exe.dev is his pick;
 nothing has been set up there).
+
+## Protocols 10 to 19 (P2)
+
+The relay decodes nothing of a match: it carries datagrams and compares a joiner's protocol
+with the room's. What the game's protocols since 10 added is traffic: the host's daemon, bolt,
+ICE, Black ICE and breaker words to every joiner at the sync rate, every player's look in
+the roster, beam weapons' intents every tick. `tests/relay_match_test.gd` (check step 74) runs
+the relay in its own test process on 127.0.0.1 and proves it carries all of it:
+
+- a room registered at each protocol from 10 to 19 is resolved by a joiner on the same
+  protocol and refused, with the host's protocol named, to one a protocol off;
+- a full room at protocol 19 (a host and three joiners: the relay's room of four, its worst
+  case; the shipped game's matches are two), the daemons fighting back and ICE on, every
+  player firing every one of the thirteen weapons: everyone stays in the room, every joiner
+  has the host's rules, ICE and breaker words and every look, its daemons stand where the
+  host's do, movement still crosses both ways, and the relay drops nothing.
+
+Measured there, on the game's own clock: about 530 to 660 datagrams a second for the full
+room, the busiest real second about 670 to 960, the biggest datagram about 600 to 830 bytes.
+The old default of 400 datagrams a second a room dropped about one in six of them, so the
+default is 1600 now; the 1400-byte payload cap holds with room to spare. Nothing here is
+deployed: going live waits on Fred.
