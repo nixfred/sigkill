@@ -352,12 +352,24 @@ func _run_checks() -> void:
 	mode._unhandled_input(ev)
 	await _frames(int(NetLink.SYN_S * 60.0) + 10)
 	_check("Enter traces it again from its own machine", mode.phase == "clear" and mode.at_island == 0 and int(PacketTracer.stats["hops"]) == 0 and net.island_under(player.global_position) == 0)
+	# Killed on a ride: off the packet, and back on the island it left when it respawns.
+	await _until(func(): return (net.links[0] as NetLink).state == NetLink.State.UP)
+	mode.board(0)
+	await _frames(20)
+	life.combat.states[1]["protect_left"] = 0.0
+	life.damage(100000.0, null, Vector3.ZERO)
+	await _frames(3)
+	var off_ride: bool = mode.ride.is_empty() and not player.riding and mode.phase != "ride"
+	await _until(func(): return life.alive() and player.alive)
+	await _frames(5)
+	_check("a rider killed mid-ride is off the packet at once, and respawns on the island it left (never carried back onto the link)", off_ride and net.island_under(player.global_position) == 0 and mode.ride.is_empty())
+	life.shield(9999.0)
 	# A walk off the island's edge: retransmitted the same.
 	player.global_position = net.top(0) + Vector3(0.0, -9.0, 30.0)
 	player.velocity = Vector3.ZERO
 	await _until(func(): return mode.phase == "fall")
 	await _until(func(): return mode.phase != "fall")
-	_check("a fall off an island into the void is retransmitted too (back on its deck)", net.island_under(player.global_position) == 0 and int(PacketTracer.stats["falls"]) == 1)
+	_check("a fall off an island into the void is retransmitted too (back on its deck)", net.island_under(player.global_position) == 0 and int(PacketTracer.stats["falls"]) == 1, "under %d, falls %d, at %s, phase %s" % [net.island_under(player.global_position), int(PacketTracer.stats["falls"]), str(player.global_position), mode.phase])
 	_names_check(main, mode, "at the end")
 
 

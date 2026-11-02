@@ -112,10 +112,12 @@ func _code_checks() -> void:
 	for word in READER_NEVER:
 		if reader.contains(word):
 			bad.append(word)
-	# The drones' own small volume (resize_volume) is the hunt's alone: the arena's and the missions' daemons keep theirs.
+	# A daemon's own hit volume (resize_volume) is a world mode's for its own daemons alone: the hunt's drones, and since W5 the
+	# packet tracer's tap and stale route; the arena's and the missions' daemons keep theirs.
 	var callers := PackedStringArray()
 	_callers_of("res://scripts", "resize_volume(", callers)
-	_check("a drone's own small hit volume is the hunt's alone: resize_volume is called only by the hunt (every other daemon's volume as it was)", callers == PackedStringArray(["res://scripts/procs/proc_hunt.gd"]), ", ".join(callers))
+	callers.sort()
+	_check("a drone's own small hit volume is the hunt's alone: resize_volume is called only by the hunt (its drones) and the packet tracer (W5: its own tap and stale route), every other daemon's volume as it was", callers == PackedStringArray(["res://scripts/packets/packet_tracer.gd", "res://scripts/procs/proc_hunt.gd"]), ", ".join(callers))
 	_check("acceptance (safety): the reader opens only `stat` and `status` (its FILES), and names nothing else of a process's folder; it writes, prints and runs nothing", bad.is_empty() and reader.contains("const FILES := [STAT, STATUS]") and reader.contains("parse_threads"), ", ".join(bad))
 
 

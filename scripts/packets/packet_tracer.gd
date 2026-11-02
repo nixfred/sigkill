@@ -396,6 +396,9 @@ func port_under() -> int:
 
 
 func _step_ports(delta: float) -> void:
+	if not _can_act():
+		_board_t = 0.0  # down (or in the ask box): no boarding
+		return
 	var li := port_under()
 	if _port_block >= 0 and li != _port_block:
 		_port_block = -1  # stepped off the port it arrived at: it boards again
@@ -914,9 +917,15 @@ func _physics_process(delta: float) -> void:
 			_step_ports(delta)
 			_check_fallen()
 		"ride":
-			if Input.is_action_just_pressed("jump") and _can_act():
-				burst()
-			_step_ride(delta)
+			if player != null and is_instance_valid(player) and player.get("alive") == false:
+				# Killed mid-ride: off the packet, so the respawn stands on the island it left.
+				_let_go()
+				_enter("island" if standing_on(net.islands[at_island]["id"]) > 0 else "clear")
+				_note("lost", "rider down: the packet dropped")
+			else:
+				if Input.is_action_just_pressed("jump") and _can_act():
+					burst()
+				_step_ride(delta)
 		"fall":
 			_fall_t += delta
 			if player == null or not is_instance_valid(player) or player.global_position.y < net.lowest() - LOST_BELOW or _fall_t >= FALL_S:
@@ -929,8 +938,8 @@ func _physics_process(delta: float) -> void:
 
 ## Walked off a deck into the void: retransmitted the same as a drop (no drop counted).
 func _check_fallen() -> void:
-	if player == null or not is_instance_valid(player) or net == null:
-		return
+	if player == null or not is_instance_valid(player) or net == null or player.get("alive") == false:
+		return  # down: the respawn is SoloLife's, not a retransmit
 	var p: Vector3 = player.global_position
 	if p.y < net.top(at_island).y - 6.0 and net.island_under(p) < 0:
 		stats["falls"] = int(stats["falls"]) + 1
