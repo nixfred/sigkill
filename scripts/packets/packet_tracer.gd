@@ -254,7 +254,7 @@ func _start_run() -> void:
 			link.open_route(_clock)  # the wrong ways are always up: a stale route sends packets down them
 	at_island = 0
 	_arrive(0, true)
-	_note("begin", "traceroute to %s (%s), %d hops, 60 byte packets" % [NetBook.TARGET, NetBook.address(NetBook.machine(NetBook.TARGET)), NetBook.hops()])
+	_note("begin", "traceroute to %s (%s), %d hops" % [NetBook.TARGET, NetBook.address(NetBook.machine(NetBook.TARGET)), NetBook.hops()])
 
 
 ## Ends the mode where it stands (a match starting, the Esc menu's way out): its enemies gone, the arena's own back, ICE

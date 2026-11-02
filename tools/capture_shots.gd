@@ -4997,7 +4997,7 @@ func _w5() -> void:
 		var in3 := net.top(3) - sign_post.global_position
 		in3.y = 0.0
 		in3 = in3.normalized()
-		_c37_view(sign_post.global_position + in3 * 6.5 + Vector3(in3.z, 0.0, -in3.x) * 2.5 + Vector3.UP * 0.95, sign_post.global_position + Vector3.UP * 2.6)
+		_c37_view(sign_post.global_position + in3 * 6.5 + Vector3(in3.z, 0.0, -in3.x) * -2.5 + Vector3.UP * 0.95, sign_post.global_position + Vector3.UP * 2.6)
 	await _frames(int(0.6 * Engine.physics_ticks_per_second))
 	await _c35_save(sheet, "w5-stale")
 	_w5_kill(mode, func(e): return e["island"] == "edge-board")
@@ -5006,6 +5006,19 @@ func _w5() -> void:
 		await _w5_clear(mode, net.islands[i]["id"], NetBook.forward_from(net.islands[i]["id"]))
 		var f := NetBook.forward_from(net.islands[i]["id"])
 		(net.links[f] as NetLink).loss = 0.0
+		if i == 4:
+			# A packet lost: the link tears under the rider at its pace, the player falling into the void.
+			mode.board(f)
+			await _w5_ride_to(mode, 0.22)
+			(net.links[f] as NetLink).go_flaky(0.92)
+			await _w5_wait(func(): return mode.phase == "fall")
+			await _frames(int(0.45 * Engine.physics_ticks_per_second))
+			_player.get_node("Head").rotation.x = -0.35
+			await _frames(1)
+			await _c35_save({}, "w5-lost")
+			await _w5_wait(func(): return mode.phase != "fall")
+			await _w5_wait(func(): return (net.links[f] as NetLink).state == NetLink.State.UP)
+			await _frames(30)
 		mode.board(f)
 		await _w5_land(mode)
 	# The SYN flood over core-sink, flooding.

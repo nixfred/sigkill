@@ -104,7 +104,7 @@ func trace_lines() -> PackedStringArray:
 	if mode == null:
 		return out
 	var target := NetBook.machine(NetBook.TARGET)
-	out.append("traceroute to %s (%s), %d hops, 60 byte packets" % [NetBook.TARGET, NetBook.address(target), NetBook.hops()])
+	out.append("traceroute to %s (%s), %d hops" % [NetBook.TARGET, NetBook.address(target), NetBook.hops()])
 	for row in mode.trace:
 		if int(row["hop"]) == 0:
 			continue
