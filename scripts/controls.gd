@@ -31,6 +31,9 @@ extends RefCounted
 ##
 ## Keybind gunplay (W4): the ` key (left of 1) stands in for Super while the mode runs, so it is a fixed key a bind is
 ## shown in conflict with (scripts/keys/key_book.gd STANDIN). Nothing else in the game uses it.
+## Split-screen co-op (W6): player 1's tile keys (=, - and 0) and player 2's keypad keys are used only while the mode runs
+## (scripts/coop/coop_input.gd, which makes them as it begins and takes them out as it ends), so a bind on one of them is
+## shown in conflict too. None of them is in the input map outside the mode.
 ##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
@@ -248,6 +251,9 @@ static func _fixed_user(bind: String) -> String:
 		var code := (event as InputEventKey).physical_keycode
 		if SLOT_KEYS.has(code):
 			return "weapon slot %d" % (SLOT_KEYS.find(code) + 1)
+		var coop := CoopInput.key_user(code)
+		if coop != "":
+			return coop  # split-screen co-op's own keys (W6): used only while it runs, so shown in conflict
 		return FIXED_KEYS.get(code, "")
 	if event is InputEventMouseButton:
 		return FIXED_BUTTONS.get((event as InputEventMouseButton).button_index, "")

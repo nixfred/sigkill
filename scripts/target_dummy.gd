@@ -111,6 +111,8 @@ var killer := 0
 ## death was a frozen body shattered (C33: the feats a kill earns, scripts/unlocks/progress.gd).
 var killed_with := ""
 var shattered_last := false
+## The player whose weapon struck it last (W6: split-screen co-op credits a kill to that player); null for none.
+var struck_by: Node = null
 ## The next death's credit and killer: a hit another player's shot landed (the host judging a
 ## joiner's) credits none here and names that player.
 var _credit := true

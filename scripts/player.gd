@@ -144,6 +144,11 @@ const CodeRainVision = preload("res://scripts/abilities/code_rain_vision.gd")
 const VIEWMODEL_FOV_DEGREES := 80.0
 const VIEWMODEL_SHRINK := 0.25
 const VIEWMODEL_NEAR_M := 0.01
+## Downed in co-op (W6): the eye's height over the body's origin at a full slump, and the view's lean.
+const SLUMP_HEAD_M := -0.45
+const SLUMP_ROLL_DEGREES := 16.0
+## A seat's stand-in for a game action it has no key for (W6): an action with no events, made while co-op runs.
+const NO_ACTION := &"coop_none"
 ## How far a daemon's hit jolts the view alone (C27b), in metres, when screen shake is on.
 const HIT_SHAKE_M := 0.035
 const SudoOvercharge = preload("res://scripts/abilities/sudo_overcharge.gd")
@@ -254,6 +259,20 @@ var riding := false
 var ride_kick := 0.0
 ## The arena's ICEbreakers director (I2), set by main.gd: U and Y go to it.
 var breakers: Node = null
+## Split-screen co-op (W6, scripts/coop/coop_hunt.gd): this player's seat, 1 (the game's own player) or 2 (the second, made
+## by the mode). Seat 2 reads only the actions `actions` names (player 2's own keys and the gamepad), never the mouse, and
+## is always engaged (it has no mouse to capture); seat 1 reads the game's own, with the right stick off while the mode
+## runs (`stick_look`: the pad is player 2's then). Outside co-op `actions` is empty and nothing here changes.
+var seat := 1
+var actions := {}
+var stick_look := true
+## The tile's trade (W6): look speed, and the spread and recoil of a shot, times these; and the view's vertical field
+## times `view_tan` on its tangent (the tile's height share of the screen: a window onto the same world at the same zoom).
+var aim_scale := 1.0
+var steady_scale := 1.0
+var view_tan := 1.0
+## Downed in co-op (W6): 0 standing, up to 1 slumped on the floor (the view drops and tilts); the mode eases it.
+var slump := 0.0
 ## The weapons a mission lets this player carry (C35, scripts/missions/mission_runner.gd), by id: only those draw,
 ## cycle, swap back or throw. Empty (the arena, a match): every one, as ever.
 var carried := PackedStringArray()
@@ -502,11 +521,11 @@ func _notification(what: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if input_blocked:
 		return
-	if event.is_action_released("code_rain_vision") and vision != null:
+	if event.is_action_released(_act(&"code_rain_vision")) and vision != null:
 		vision.hold(false)  # let go wherever the mouse is: vision never sticks on
-	if event.is_action_released("fire"):
+	if event.is_action_released(_act(&"fire")):
 		_fire_down = false
-	if event.is_action_pressed("release_mouse"):
+	if event.is_action_pressed(_act(&"release_mouse")):
 		_release_mouse()
 		get_viewport().set_input_as_handled()
 		menu_requested.emit()
@@ -516,52 +535,54 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Click to engage, or press fire wherever the settings put it (C16b). That press is
 		# consumed so it never fires the cannon.
 		var click := event is InputEventMouseButton and event.is_pressed() and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
-		if click or event.is_action_pressed("fire"):
+		if click or event.is_action_pressed(_act(&"fire")):
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseMotion:
-		_look((event as InputEventMouseMotion).relative)
-	elif event.is_action_pressed("fire"):
+		if seat == 1:
+			_look((event as InputEventMouseMotion).relative)  # the mouse is player 1's (W6)
+	elif event.is_action_pressed(_act(&"fire")) and (not (event is InputEventJoypadMotion) or Input.is_action_just_pressed(_act(&"fire"))):
+		# A trigger (W6, player 2's pad) sends a stream of motion while held: only the pull itself is a press.
 		_fire_queued = true
 		_fire_down = true
-	elif event.is_action_pressed("reload"):
+	elif event.is_action_pressed(_act(&"reload")):
 		reload_weapon()
-	elif event.is_action_pressed("weapon_last"):
+	elif event.is_action_pressed(_act(&"weapon_last")):
 		swap_to_last()
-	elif event.is_action_pressed("weapon_next"):
+	elif event.is_action_pressed(_act(&"weapon_next")):
 		cycle_weapon(1)
-	elif event.is_action_pressed("weapon_prev"):
+	elif event.is_action_pressed(_act(&"weapon_prev")):
 		cycle_weapon(-1)
-	elif frozen_now() and (event.is_action_pressed("sigstop") or event.is_action_pressed("sudo_overcharge") or event.is_action_pressed("run_breaker") or event.is_action_pressed("cycle_breaker")):
+	elif frozen_now() and (event.is_action_pressed(_act(&"sigstop")) or event.is_action_pressed(_act(&"sudo_overcharge")) or event.is_action_pressed(_act(&"run_breaker")) or event.is_action_pressed(_act(&"cycle_breaker"))):
 		pass  # read-only while chmod 000 holds it (C29): no ability runs
-	elif event.is_action_pressed("sigstop"):
+	elif event.is_action_pressed(_act(&"sigstop")):
 		if _ability_pressed("sigstop"):
 			sigstop.press()
-	elif event.is_action_pressed("code_rain_vision"):
+	elif event.is_action_pressed(_act(&"code_rain_vision")):
 		if _ability_pressed("code_rain_vision"):
 			vision.hold(true)
-	elif event.is_action_pressed("sudo_overcharge"):
+	elif event.is_action_pressed(_act(&"sudo_overcharge")):
 		if _ability_pressed("sudo"):
 			sudo.press()
-	elif event.is_action_pressed("throw_bomb"):
+	elif event.is_action_pressed(_act(&"throw_bomb")):
 		var bomb := inventory.thrown_slot()
 		if bomb >= 0 and not slot_carried(bomb):
 			locked.emit(inventory.defs[bomb].id)  # not handed over in this mission (C37)
 		else:
 			_throw_queued = true
-	elif event.is_action_pressed("run_breaker"):
+	elif event.is_action_pressed(_act(&"run_breaker")):
 		if breakers != null and is_instance_valid(breakers) and _ability_pressed("breakers"):
 			breakers.press_run()
-	elif event.is_action_pressed("cycle_breaker"):
+	elif event.is_action_pressed(_act(&"cycle_breaker")):
 		if breakers != null and is_instance_valid(breakers) and _ability_pressed("breakers"):
 			breakers.press_cycle()
-	elif event.is_action_pressed("audit_visor"):
+	elif event.is_action_pressed(_act(&"audit_visor")):
 		visor_pressed.emit()
 	else:
 		for i in Controls.SLOT_KEYS.size():
-			if event.is_action_pressed("weapon_%d" % (i + 1)):
+			if event.is_action_pressed(_act(StringName("weapon_%d" % (i + 1)))):
 				# The bank key held, the same key draws bank 2's weapon (C29).
 				var slot := i + (Arsenal.BANK_SLOTS if bank_held() else 0)
 				if slot < inventory.slot_count() and not slot_carried(slot):
@@ -600,7 +621,12 @@ func _turn(right: float, down: float) -> void:
 
 
 func _look_scale() -> float:
-	return _ads_scale if _aiming else _mouse_scale
+	return (_ads_scale if _aiming else _mouse_scale) * aim_scale
+
+
+## The input action this player reads for the game's action `base` (W6): its own name, or player 2's in co-op.
+func _act(base: StringName) -> StringName:
+	return actions.get(base, NO_ACTION) if not actions.is_empty() else base
 
 
 # --- Movement and camera. Every number below comes from the tuning resource. ---
@@ -611,8 +637,8 @@ func _physics_process(frame_delta: float) -> void:
 	if not _scripted_input:
 		_read_player_input()
 	# The right stick looks while the player is engaged, as the mouse does.
-	if not input_blocked and alive and _captured():
-		var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+	if stick_look and not input_blocked and (alive or slump > 0.0) and _captured():
+		var stick := Input.get_vector(_act(&"look_left"), _act(&"look_right"), _act(&"look_up"), _act(&"look_down"))
 		if not stick.is_zero_approx():
 			look_with_stick(stick, delta)
 	if not alive:
@@ -694,7 +720,7 @@ func horizontal_speed() -> float:
 
 
 func _captured() -> bool:
-	return assume_captured or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	return assume_captured or seat != 1 or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 
 func _read_player_input() -> void:
@@ -711,12 +737,12 @@ func _read_player_input() -> void:
 		_crouching = _crouching and _crouch_toggles and alive
 		_aiming = _aiming and _aim_toggles and alive
 		return
-	_move_input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	_jump_pressed = Input.is_action_just_pressed("jump")
-	_slide_pressed = Input.is_action_just_pressed("slide")
-	_fire_held = _fire_down and Input.is_action_pressed("fire")
-	_crouching = (not _crouching if Input.is_action_just_pressed("crouch") else _crouching) if _crouch_toggles else Input.is_action_pressed("crouch")
-	_aiming = (not _aiming if Input.is_action_just_pressed("aim") else _aiming) if _aim_toggles else Input.is_action_pressed("aim")
+	_move_input = Input.get_vector(_act(&"move_left"), _act(&"move_right"), _act(&"move_forward"), _act(&"move_back"))
+	_jump_pressed = Input.is_action_just_pressed(_act(&"jump"))
+	_slide_pressed = Input.is_action_just_pressed(_act(&"slide"))
+	_fire_held = _fire_down and Input.is_action_pressed(_act(&"fire"))
+	_crouching = (not _crouching if Input.is_action_just_pressed(_act(&"crouch")) else _crouching) if _crouch_toggles else Input.is_action_pressed(_act(&"crouch"))
+	_aiming = (not _aiming if Input.is_action_just_pressed(_act(&"aim")) else _aiming) if _aim_toggles else Input.is_action_pressed(_act(&"aim"))
 	# Clicks arrive through _unhandled_input; the shot itself is resolved in the physics step.
 	_fire_pressed = _fire_queued
 	_fire_queued = false
@@ -833,6 +859,8 @@ func _step_camera(delta: float) -> void:
 
 	# Camera height: lowered while sliding and crouching, eased both ways.
 	var head_target := _t.slide_head_height if _sliding else (_t.crouch_head_height if _crouching else _t.stand_head_height)
+	if slump > 0.0:
+		head_target = lerpf(head_target, SLUMP_HEAD_M, slump)  # downed in co-op (W6): the view sinks toward the floor
 	_head.position.y = lerpf(_head.position.y, head_target, _smoothing(_t.head_height_smoothing, delta))
 
 	# Head bob: scales with ground speed, fades out in the air and while sliding.
@@ -861,6 +889,11 @@ func _step_camera(delta: float) -> void:
 	# Aiming down the sights narrows the view to ads_fov_scale of it, eased the same way.
 	_ads_blend = lerpf(_ads_blend, 1.0 if _aiming else 0.0, _smoothing(_t.fov_smoothing, delta))
 	_camera.fov = standard_fov() * lerpf(1.0, _t.ads_fov_scale, _ads_blend) + _fov_kick
+	if view_tan != 1.0:
+		# A co-op tile (W6): the same zoom as the whole screen, over the tile's share of its height.
+		_camera.fov = rad_to_deg(2.0 * atan(tan(deg_to_rad(_camera.fov) * 0.5) * view_tan))
+	if slump > 0.0 or _camera.rotation.z != 0.0:
+		_apply_recoil()  # and leans over (W6)
 	_fit_viewmodels()
 
 
@@ -1442,7 +1475,7 @@ func _fire() -> void:
 			if is_instance_valid(collider) and collider.has_method("hit"):
 				var before: float = collider.call("health") if collider.has_method("health") else 0.0
 				var base: float = _w.damage_at(origin.distance_to(end_point))
-				landed = collider.call("hit", base * _damage_scale(), end_point, dir, _w.id) == true
+				landed = _strike(collider, base * _damage_scale(), end_point, dir, _w.id)
 				if landed:
 					_meter_from(collider, before, base)
 			hit_target = hit_target or landed
@@ -1491,7 +1524,7 @@ func _fire_rail(origin: Vector3, dir: Vector3, fx_root: Node) -> bool:
 		var owner_node: Node = collider if dummy else collider.get_parent()
 		var head: bool = owner_node != null and owner_node.has_method("is_head_hit") and owner_node.call("is_head_hit", point)
 		if dummy:
-			var landed: bool = collider.call("hit", _w.damage_at(origin.distance_to(point)) * _damage_scale(), point, dir, _w.id) == true
+			var landed: bool = _strike(collider, _w.damage_at(origin.distance_to(point)) * _damage_scale(), point, dir, _w.id)
 			landed_any = landed_any or landed
 			if landed and collider.has_method("is_alive") and not collider.call("is_alive"):
 				rail_kill.emit(head)
@@ -1567,7 +1600,7 @@ func fork_hit(collider: Object, gen: int, at: Vector3, dir: Vector3, def: Weapon
 		return false
 	var before: float = collider.call("health") if collider.has_method("health") else 0.0
 	var base: float = def.fork_damage(gen)
-	var landed: bool = collider.call("hit", base * _damage_scale(), at, dir, def.id) == true
+	var landed: bool = _strike(collider, base * _damage_scale(), at, dir, def.id)
 	if landed:
 		_meter_from(collider, before, base)
 	return landed
@@ -1745,7 +1778,7 @@ func _fire_pipe() -> void:
 		if link["kind"] != PipeChain.Kind.PLAYER and is_instance_valid(node) and node.has_method("hit"):
 			var before: float = node.call("health") if node.has_method("health") else 0.0
 			var base: float = link["damage"]
-			var landed: bool = node.call("hit", base * _damage_scale(), point, (point - from).normalized(), _w.id) == true
+			var landed: bool = _strike(node, base * _damage_scale(), point, (point - from).normalized(), _w.id)
 			if landed:
 				_meter_from(node, before, base)
 				linked += 1
@@ -1836,7 +1869,7 @@ func hole_judge(def: WeaponDefScript) -> Callable:
 		if not is_instance_valid(node) or not node.has_method("hit"):
 			return false
 		var before: float = node.call("health") if node.has_method("health") else 0.0
-		var landed: bool = node.call("hit", damage * _damage_scale(), point, way, def.id) == true
+		var landed: bool = _strike(node, damage * _damage_scale(), point, way, def.id)
 		if landed and not match_meter and node.has_method("health"):
 			var max_health = node.get("max_health")
 			if max_health is float and max_health > 0.0:
@@ -1942,7 +1975,7 @@ func freeze_beam() -> Node3D:
 
 ## True while the bank key is held (C29): 1 to 9 then draw bank 2's weapons.
 func bank_held() -> bool:
-	return Input.is_action_pressed("weapon_bank")
+	return Input.is_action_pressed(_act(&"weapon_bank"))
 
 
 ## True while chmod 000 holds this player frozen (C29, the host's word in a match).
@@ -2046,7 +2079,7 @@ func _judge_slug(at: Vector3, def: WeaponDefScript, root: bool) -> int:
 		if not space.intersect_ray(sight).is_empty():
 			continue  # a wall between: the blast does not reach
 		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
-		if dummy.call("hit", base * _damage_scale(), middle, (middle - at).normalized(), def.id) == true:
+		if _strike(dummy, base * _damage_scale(), middle, (middle - at).normalized(), def.id):
 			hurt += 1
 			_meter_from(dummy, before, base)
 	var ice := IceDirector.of(self)
@@ -2177,7 +2210,7 @@ func _judge_blast(_gen: int, _index: int, at: Vector3, def: WeaponDefScript, tal
 		if not space.intersect_ray(sight).is_empty():
 			continue  # a wall between: the blast does not reach
 		var before: float = dummy.call("health") if dummy.has_method("health") else 0.0
-		var struck: bool = dummy.call("hit", amount, middle, (middle - at).normalized(), def.id) == true
+		var struck: bool = _strike(dummy, amount, middle, (middle - at).normalized(), def.id)
 		if struck and dummy.has_method("is_alive") and not dummy.call("is_alive"):
 			tally["kills"] = int(tally.get("kills", 0)) + 1
 			if tally["kills"] == BOMB_FEAT_KILLS:
@@ -2261,7 +2294,7 @@ func _show_weapon() -> void:
 func _apply_recoil() -> void:
 	var pitch_room := maxf(deg_to_rad(_t.pitch_limit_degrees) - _head.rotation.x, 0.0)
 	_recoil.x = minf(_recoil.x, pitch_room)
-	_camera.rotation = Vector3(_recoil.x, _recoil.y, 0.0)
+	_camera.rotation = Vector3(_recoil.x, _recoil.y, deg_to_rad(SLUMP_ROLL_DEGREES) * slump)
 
 
 ## Every pellet's direction for a shot along `forward`: the weapon's spread, or all of them
@@ -2269,7 +2302,16 @@ func _apply_recoil() -> void:
 func _pellets(forward: Vector3) -> PackedVector3Array:
 	if sigstop != null and sigstop.steady():
 		return _w.steady_directions(forward)
-	return _w.pellet_directions(forward, _pellet_rng)
+	var dirs := _w.pellet_directions(forward, _pellet_rng)
+	if steady_scale != 1.0:
+		# A co-op tile's trade (W6): every pellet's angle off the aim times the scale.
+		var aim := forward.normalized()
+		for i in dirs.size():
+			var off := aim.angle_to(dirs[i])
+			var axis := aim.cross(dirs[i])
+			if off > 0.0 and not axis.is_zero_approx():
+				dirs[i] = aim.rotated(axis.normalized(), off * steady_scale)
+	return dirs
 
 
 ## Camera kick up plus a small random yaw, both capped, and a cannon jolt. None while SIGSTOP
@@ -2280,9 +2322,17 @@ func _kick() -> void:
 		return
 	var max_pitch := deg_to_rad(_w.recoil_max_pitch_degrees)
 	var max_yaw := deg_to_rad(_w.recoil_max_yaw_degrees)
-	var yaw := deg_to_rad(_rng.randf_range(-_w.recoil_yaw_degrees, _w.recoil_yaw_degrees))
-	_recoil.x = minf(_recoil.x + deg_to_rad(_w.recoil_pitch_degrees), max_pitch)
+	var yaw := deg_to_rad(_rng.randf_range(-_w.recoil_yaw_degrees, _w.recoil_yaw_degrees)) * steady_scale
+	_recoil.x = minf(_recoil.x + deg_to_rad(_w.recoil_pitch_degrees) * steady_scale, max_pitch)
 	_recoil.y = clampf(_recoil.y + yaw, -max_yaw, max_yaw)
+
+
+## A hit of this player's weapon on `target` (a daemon, or ICE): its `hit`, true when it landed. The target is told who
+## struck it first (W6: co-op credits each kill to the player whose hit took it down).
+func _strike(target: Object, amount: float, point: Vector3, dir: Vector3, source: String) -> bool:
+	if "struck_by" in target:
+		target.set("struck_by", self)
+	return target.call("hit", amount, point, dir, source) == true
 
 
 ## Where world-space effects live: the running scene, or the player's parent in tests.

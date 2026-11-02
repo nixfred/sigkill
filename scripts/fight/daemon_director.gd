@@ -56,6 +56,9 @@ var life: Node = null
 var session: Node = null
 ## The ICEbreakers' director (I2): who is cloaked, where the decoys call. Set by main.gd; null for none.
 var breakers: Node = null
+## Split-screen co-op (W6, scripts/coop/coop_hunt.gd), set by main.gd: while it runs the daemons hunt both players (ids 1
+## and 2), each where it stands, up while not downed, and every hit lands through the mode's two lives.
+var coop: Node = null
 var mode: Mode = Mode.REST
 
 var _brains: Array = []
@@ -204,7 +207,14 @@ func _online() -> bool:
 func prey_ids() -> Array:
 	if _online():
 		return session.players.keys()
+	if _coop_on():
+		return [1, 2]
 	return [1]
+
+
+## True while split-screen co-op runs here (W6).
+func _coop_on() -> bool:
+	return coop != null and is_instance_valid(coop) and coop.running
 
 
 ## Where player `id`'s middle is now (world space); INF when it is down, not shown or unknown. A decoy's
@@ -224,6 +234,8 @@ func prey_point(id: int) -> Vector3:
 		# Its newest received place, not the drawn one a little behind it: a joiner's dodge counts
 		# as soon as the host hears of it (Codex review), as the host's own blasts judge it.
 		return to_world(avatar.latest_position())
+	if _coop_on():
+		return coop.prey_point(id)
 	return player.global_position if id == 1 and _player_up() else Vector3.INF
 
 
@@ -235,6 +247,8 @@ func prey_valid(id: int) -> bool:
 		return true
 	if _online():
 		return session.combat != null and session.combat.alive(id)
+	if _coop_on():
+		return coop.up(id)
 	return life == null or life.alive()
 
 
@@ -246,6 +260,8 @@ func prey_attackable(id: int) -> bool:
 		return true
 	if _online():
 		return not session.combat.protected(id)
+	if _coop_on():
+		return coop.attackable(id)
 	return life == null or not life.protected()
 
 
@@ -254,6 +270,8 @@ func prey_attackable(id: int) -> bool:
 func frozen(id: int) -> bool:
 	if _online():
 		return id > 0 and session.combat != null and session.combat.sigstop_on(id)
+	if _coop_on():
+		return false  # SIGSTOP is off in co-op: the two share one clock
 	return _player_up() and player.sigstop != null and player.sigstop.is_on()
 
 
@@ -338,6 +356,8 @@ func hurt(id: int, base: float, brain: DaemonBrain, way: Vector3) -> bool:
 		return breakers.strike_decoy(id, brain.dummy.global_position)  # a decoy (I2): it flashes, no one is hurt
 	if _online():
 		return session.daemon_hurt(id, amount, brain.dummy, way)
+	if _coop_on():
+		return coop.damage(id, amount, brain.dummy, way)
 	if life == null or id != 1:
 		return false
 	return life.damage(amount, brain.dummy, way)
@@ -491,6 +511,11 @@ func bodies() -> Dictionary:
 			out[id] = prey_point(id)
 	if _online():
 		for id in session.players:
+			var at := prey_point(id)
+			if at.is_finite():
+				out[id] = at
+	elif _coop_on():
+		for id in [1, 2]:
 			var at := prey_point(id)
 			if at.is_finite():
 				out[id] = at

@@ -23,6 +23,8 @@ extends Node3D
 ## to lock it while the mission has not handed them over. The Audit Trail visor (C43, scripts/visor/audit_visor.gd) stands
 ## beside them all, on the player's I. The process hunt (W1, scripts/procs/proc_hunt.gd: live process enemies) stands
 ## beside them too, begun when the Esc menu queued it (or --procs on a demo or test run), never with a mission queued.
+## Split-screen co-op (W6, scripts/coop/coop_hunt.gd) stands beside them as well: begun when queued (or --coop on a demo
+## or test run), it makes a second player and splits the window's view in two tiles; the daemons' director hunts both.
 
 const Controls = preload("res://scripts/controls.gd")
 const Palette = preload("res://scripts/palette.gd")
@@ -81,6 +83,8 @@ func _ready() -> void:
 	# The packet tracer (W5): the network of invented machines stands where the arena's level was (alone, no mission).
 	var net: PacketNet = null
 	var net_wanted := PacketTracer.prepare(launch_args, not alone)
+	# Split-screen co-op (W6): the regular arena, split in two tiles, when queued (alone, no mission).
+	CoopHunt.prepare(launch_args, not alone)
 	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 		if ruins == null and net_wanted:
@@ -222,6 +226,21 @@ func _ready() -> void:
 	tracer.spawned.connect(_on_mission_daemon)
 	_hud.set_packet_tracer(tracer)
 	add_child(tracer)
+	# Split-screen co-op (W6): a second player and the screen split in two tiles, when queued; its daemons the arena's own
+	# to the HUD and the kills, each kill credited to the player who made it.
+	var coop := CoopHunt.new()
+	coop.player = _player
+	coop.director = director
+	coop.runner = runner
+	coop.ice = ice
+	coop.rounds = _hud.round_hud()
+	coop.guide = _hud.guide()
+	coop.visor = visor
+	coop.hud = _hud
+	coop.spawned.connect(_on_mission_daemon)
+	director.coop = coop
+	_hud.set_coop_hunt(coop)
+	add_child(coop)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -271,6 +290,10 @@ func _ready() -> void:
 		ThemeShift.clear()  # and the theme shift (W3)
 		KeybindGunplay.clear()  # and keybind gunplay (W4)
 		PacketTracer.clear()  # and the packet tracer (W5)
+		CoopHunt.clear()  # and split-screen co-op (W6)
+	elif CoopHunt.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		coop.begin.call_deferred()
 	elif PacketTracer.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		tracer.begin.call_deferred()
@@ -401,6 +424,13 @@ func _on_mission_downed(dummy: Node3D) -> void:
 
 
 func _credit_kill(dummy: Node3D) -> void:
+	var coop := CoopHunt.of(self)
+	if coop != null and coop.running and coop.killer_seat(dummy) == 2:
+		# Player 2's kill in co-op (W6): its own sudo count; the unlocks are player 1's profile's, earned by player 1.
+		if coop.player2 != null and is_instance_valid(coop.player2):
+			coop.player2.on_dummy_downed()
+		_hud.note_kill()
+		return
 	if dummy.has_meta(&"world") and not ProcHunt.world_credit_ok():
 		_hud.note_kill()
 		return  # a world mode's kill past its share (W2): on the screen, but no sudo charge or feat toward an unlock

@@ -61,6 +61,12 @@ var _mission: MissionHud
 var _filter: CanvasLayer
 var _player: Node = null
 var _marker_weapon: Resource = null
+## Split-screen co-op (W6): while it runs, this HUD's play parts are out of sight (each tile has its own); the menu, the
+## unlock toast and the colour filter stay, and the visor's part is drawn in player 1's tile by the mode.
+var _coop := false
+var _coop_hidden: Array = []
+var _coop_quiet: Array = []
+var _hint: Label = null
 
 
 func _ready() -> void:
@@ -89,6 +95,7 @@ func _ready() -> void:
 	_status.position = Vector2(18.0, 14.0)
 
 	var hint := _make_label(root, 14)
+	_hint = hint
 	hint.text = HINT
 	hint.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 14)
@@ -216,7 +223,7 @@ func _process(_delta: float) -> void:
 	if _player != null and is_instance_valid(_player) and _player.has_method("weapon_tuning") and _player.weapon_tuning() != _marker_weapon:
 		set_weapon_tuning(_player.weapon_tuning())
 	# The break's summary panel takes the middle of the screen; a click still engages.
-	_engage.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing() and not _mission.end_screen().is_up() and not _mission.credits_screen().is_up()
+	_engage.visible = not _coop and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not _guide.is_typing() and not _net.is_typing() and not _round.showing_summary() and not _net.is_open() and not _menu.is_open() and not _top.is_showing() and not _mission.end_screen().is_up() and not _mission.credits_screen().is_up()
 
 
 func set_targets(remaining: int, total: int) -> void:
@@ -379,6 +386,45 @@ func set_keybind_gunplay(mode: KeybindGunplay) -> void:
 
 
 ## The packet tracer (W5): its own panel stands where the arena's counter would, while it runs.
+## Split-screen co-op (W6): nothing to wire; set_coop() is the mode's own switch.
+func set_coop_hunt(_mode: CoopHunt) -> void:
+	pass
+
+
+## Split-screen co-op on or off (W6): the play parts hidden while it runs (each tile has its own HUD), and the keys
+## of the parts that read their own (T, M) quiet; back as they were after.
+func set_coop(on: bool) -> void:
+	if on == _coop:
+		return
+	_coop = on
+	if on:
+		_coop_hidden.clear()
+		for part in [_crosshair, _hit_marker, _grep, _status, _hint, _engage, _guide, _round, _net, _combat, _weapons, _sudo, _top, _breakers, _ice, _black, _freeze, _pipe, _dev_null, _sighup, _mission]:
+			if part != null and is_instance_valid(part) and part.visible:
+				_coop_hidden.append(part)
+				part.visible = false
+		_coop_quiet.clear()
+		for part in [_guide, _net, _top, _round]:
+			if part != null and is_instance_valid(part):
+				_coop_quiet.append([part, part.is_processing_unhandled_input(), part.is_processing_input()])
+				part.set_process_unhandled_input(false)
+				part.set_process_input(false)
+	else:
+		for part in _coop_hidden:
+			if part != null and is_instance_valid(part):
+				part.visible = true
+		_coop_hidden.clear()
+		for entry in _coop_quiet:
+			if entry[0] != null and is_instance_valid(entry[0]):
+				entry[0].set_process_unhandled_input(entry[1])
+				entry[0].set_process_input(entry[2])
+		_coop_quiet.clear()
+
+
+func coop_on() -> bool:
+	return _coop
+
+
 func set_packet_tracer(mode: PacketTracer) -> void:
 	mode.began.connect(func(): _status.visible = false)
 	mode.ended.connect(func(): _status.visible = true)

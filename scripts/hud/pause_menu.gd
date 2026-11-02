@@ -114,6 +114,9 @@ const KEYBIND_GUNPLAY_TIP := "Learn Omarchy's shortcuts by fighting with them: h
 ## The packet tracer (W5): a traceroute across a network of invented machines; the entry turns to its way out while it runs.
 const PACKET_TRACER := "Packet tracer"
 const PACKET_TRACER_LEAVE := "Leave packet tracer"
+const COOP := "Split-screen co-op"
+const COOP_LEAVE := "Leave split-screen co-op"
+const COOP_TIP := "Two players on one machine, each in their own tile: player 1 on keyboard and mouse as ever, player 2 on a gamepad (or the number pad). Hunt the arena's daemons in waves together, and stand close to a downed partner to bring them back. Grow or shrink your tile (= and -, or RB and LB) and flip the split (0, or Back): a bigger tile sees more, a smaller one aims faster and steadier. Made-up daemons only; nothing of your machine is read."
 const PACKET_TRACER_TIP := "A traceroute you ride: machines float as islands in the void, joined by glowing links. Clear a machine's daemons and its route comes up; step onto the port and a packet carries you across (you can shoot as you ride). Links drop out under you: wait for a steady one, or press Space to burst through a tear. Every machine and address in it is made up; nothing of your network is read or touched."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
@@ -200,6 +203,7 @@ var _map_button: Button
 var _theme_button: Button
 var _keys_button: Button
 var _net_button: Button
+var _coop_button: Button
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -368,6 +372,7 @@ func toggle_proc_hunt() -> void:
 		ThemeShift.clear()
 		KeybindGunplay.clear()
 		PacketTracer.clear()
+		CoopHunt.clear()
 		ProcHunt.queue()
 	_was_captured = true
 	close()
@@ -388,6 +393,7 @@ func toggle_folder_map() -> void:
 		ThemeShift.clear()
 		KeybindGunplay.clear()
 		PacketTracer.clear()
+		CoopHunt.clear()
 		FolderMap.queue()
 	_was_captured = true
 	close()
@@ -413,6 +419,7 @@ func toggle_theme_shift() -> void:
 		FolderMap.clear()
 		KeybindGunplay.clear()
 		PacketTracer.clear()
+		CoopHunt.clear()
 		ThemeShift.queue()
 	_was_captured = true
 	close()
@@ -438,6 +445,7 @@ func toggle_keybind_gunplay() -> void:
 		FolderMap.clear()
 		ThemeShift.clear()
 		PacketTracer.clear()
+		CoopHunt.clear()
 		KeybindGunplay.queue()
 	_was_captured = true
 	close()
@@ -463,6 +471,7 @@ func toggle_packet_tracer() -> void:
 		FolderMap.clear()
 		ThemeShift.clear()
 		KeybindGunplay.clear()
+		CoopHunt.clear()
 		PacketTracer.queue()
 	_was_captured = true
 	close()
@@ -473,6 +482,32 @@ func toggle_packet_tracer() -> void:
 ## The Esc menu's packet tracer entry (the checks).
 func net_button() -> Button:
 	return _net_button
+
+
+## Split-screen co-op (W6) on or off: the arena reloads into it (two tiles, a second player), or out of it. Alone and outside
+## a mission only; the other world modes end as it begins (one world mode at a time).
+func toggle_coop() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if CoopHunt.queued:
+		CoopHunt.clear()
+	else:
+		ProcHunt.clear()
+		FolderMap.clear()
+		ThemeShift.clear()
+		KeybindGunplay.clear()
+		PacketTracer.clear()
+		CoopHunt.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), CoopHunt.RELOAD_LABEL if CoopHunt.queued else "$ exit")
+
+
+## The Esc menu's split-screen co-op entry (the checks).
+func coop_button() -> Button:
+	return _coop_button
 
 
 ## The Esc menu's process hunt entry (the checks).
@@ -815,6 +850,9 @@ func _show_pause() -> void:
 	_net_button.text = PACKET_TRACER_LEAVE if PacketTracer.queued else PACKET_TRACER
 	_net_button.disabled = _online() or running != null
 	_net_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else PACKET_TRACER_TIP
+	_coop_button.text = COOP_LEAVE if CoopHunt.queued else COOP
+	_coop_button.disabled = _online() or running != null
+	_coop_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else COOP_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -1037,7 +1075,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], [PACKET_TRACER, toggle_packet_tracer], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], [PACKET_TRACER, toggle_packet_tracer], [COOP, toggle_coop], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -1058,6 +1096,8 @@ func _build() -> void:
 				_keys_button = button
 			PACKET_TRACER:
 				_net_button = button
+			COOP:
+				_coop_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

@@ -673,8 +673,9 @@ func _menu_checks() -> void:
 		if (b as Button).text == "Play the opener":
 			entry = b
 	# C35 put Missions after Resume; the mission's own two rows show only while one runs; W1 put Process hunt before Settings,
-	# W2 Folder map after it, W3 Theme shift after that, W4 Keybind gunplay after that, W5 Packet tracer after that.
-	_check("acceptance: the Esc menu has the entry, between Loadout and Settings: %s" % " | ".join(texts.slice(0, 11)), texts.slice(0, 11) == PackedStringArray(["Resume", "Missions", "Loadout", "Play the opener", "Process hunt", "Folder map", "Theme shift", "Keybind gunplay", "Packet tracer", "Settings", "Quit SIGKILL"]) and entry != null and not entry.disabled)
+	# W2 Folder map after it, W3 Theme shift after that, W4 Keybind gunplay after that, W5 Packet tracer after that, W6
+	# Split-screen co-op after that.
+	_check("acceptance: the Esc menu has the entry, between Loadout and Settings: %s" % " | ".join(texts.slice(0, 12)), texts.slice(0, 12) == PackedStringArray(["Resume", "Missions", "Loadout", "Play the opener", "Process hunt", "Folder map", "Theme shift", "Keybind gunplay", "Packet tracer", "Split-screen co-op", "Settings", "Quit SIGKILL"]) and entry != null and not entry.disabled)
 	entry.pressed.emit()
 	await process_frame
 	var o: Opener = menu.opener()
