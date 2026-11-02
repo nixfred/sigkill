@@ -636,6 +636,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if _online():
 		end_here()
+		free_play()  # P1: and its district and daemons go with it, the plain arena back under the match
 		return
 	if state == State.INTRO:
 		if stage != null and is_instance_valid(stage):

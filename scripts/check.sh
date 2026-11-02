@@ -294,9 +294,9 @@ voice_step() {
 voice_step
 
 # 72. P1, the first polish pass after M5: one check for each known issue it fixed, so none comes back. The cover drone
-# out when the arena reloads starts its recharge (W7); a match starting in the folder map, the theme shift, keybind
-# gunplay or the packet tracer reloads into the plain arena, its district gone (W2 to W5). Demo data only; the match is
-# the game's own session hosting on a port the system picks, as the net test does, and nobody joins.
+# out when the arena reloads starts its recharge (W7); a match starting in a mission (C37), the folder map, the theme
+# shift, keybind gunplay or the packet tracer reloads into the plain arena, its district gone (W2 to W5). Demo data only;
+# the match is the game's own session hosting on a port the system picks, as the net test does, and nobody joins.
 run_godot "polish test" --fixed-fps 60 --script res://tests/polish_test.gd
 
 if [ "$failures" -ne 0 ]; then

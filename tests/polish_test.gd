@@ -6,7 +6,7 @@ extends SceneTree
 ## Each check pins one known issue P1 fixed, so it cannot come back:
 ## - W7's cover drone, out when the arena reloads (R), starts its recharge as it goes: the reloaded arena says
 ##   "recharging" and sends no fresh drone, as when it leaves on its own.
-## - A match starting mid-mode (W2's folder map, W3's theme shift, W4's keybind gunplay, W5's packet tracer) ends the
+## - A match starting mid-mission (C37's) or mid-mode (W2's folder map, W3's theme shift, W4's keybind gunplay, W5's packet tracer) ends the
 ##   mode and reloads into the plain arena: its district goes with it, the arena's own four daemons are back. The match
 ##   is the game's own session hosting on a port the system picks, as tests/net_test.gd does; nobody joins, and it
 ##   leaves again after each check.
@@ -53,6 +53,7 @@ func _run() -> void:
 	AuditVisor.remembered = false
 	await _drone_checks()
 	await _match_checks()
+	await _mission_match_checks()
 	await _cleanup()
 	print("POLISH: %d checks" % _checks)
 	print("POLISH RESULT: ", "ALL PASS" if _fails == 0 else "%d FAILED" % _fails)
@@ -136,6 +137,38 @@ func _match_checks() -> void:
 		if session != null and is_instance_valid(session):
 			session.leave()
 		await _frames(4)
+
+
+# --- C37's known issue: a match starting mid-mission. ---
+
+func _mission_match_checks() -> void:
+	_clear_modes()
+	var main := await _arena()
+	var runner := MissionRunner.of(main)
+	var old_id := main.get_instance_id()
+	runner.begin(MissionBook.at(1))
+	main = await _after_reload(old_id)
+	runner = MissionRunner.of(main) if main != null else null
+	await _until(func(): return runner != null and runner.state == MissionRunner.State.RUNNING)
+	await _frames(20)
+	var in_ruins := main != null and RuinsWorld.of(main) != null
+	var running_before: bool = runner != null and runner.running()
+	var session = runner.session if runner != null else null
+	var hosted: bool = session != null and session.host(0)
+	old_id = main.get_instance_id() if main != null else 0
+	var next := await _after_reload(old_id, RELOAD_FRAMES)
+	var arena: Node = next if next != null else main
+	var now := MissionRunner.of(arena) if is_instance_valid(arena) else null
+	var targets := 0
+	var plain := false
+	if is_instance_valid(arena) and arena.is_inside_tree():
+		targets = arena.get_tree().get_nodes_in_group("targets").filter(func(t): return arena.is_ancestor_of(t)).size()
+		plain = RuinsWorld.of(arena) == null
+	_check("mission 1: a match starts (the game's session hosts)", hosted)
+	_check("C37's known issue fixed: a match starting mid-mission ends it and reloads into the plain arena: the mission ran in its district first (%s), then the next arena has no district, no mission running or pending, the arena's own %d daemons back" % ["yes" if in_ruins else "no", targets], running_before and in_ruins and next != null and plain and now != null and not now.running() and MissionRunner.pending() == "" and targets == 4, "" if next != null else "no reload")
+	if session != null and is_instance_valid(session):
+		session.leave()
+	await _frames(4)
 
 
 ## Whether the packet tracer's invented network stands under this arena.
