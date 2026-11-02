@@ -144,7 +144,10 @@ func _ready() -> void:
 		print("SIGKILL boot: headless run, AI link skipped, straight to the arena")
 		_leave.call_deferred(false)
 		return
-	if hand_off and next_scene != "":
+	# The arena in the background, except headless: there the dummy renderer cannot make the arena's shaders on a loader's
+	# thread ("Could not preload resource file"), so a headless --demo run loads it on the main thread as it leaves (W5's
+	# known issue, folded in with W6).
+	if hand_off and next_scene != "" and DisplayServer.get_name() != "headless":
 		_loading = ResourceLoader.load_threaded_request(next_scene) == OK
 	_say(TITLE, _t.title_color, _t.title_font_size)
 

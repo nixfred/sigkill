@@ -13,6 +13,8 @@ extends DaemonArt
 ## flickering lens or plate. Never an elite (one to a link is enough). Faceless: armour and two lenses.
 
 const TAP_VIOLET := Color(0.816, 0.0, 1.0)
+## Its bolts' colour (W6's fold-in): the director's shared bolt thrown in its violet, not the zombie's amber.
+var bolt_color := TAP_VIOLET
 const JAW_R := 0.5
 const BODY_L := 1.3
 const LEG_L := 0.95

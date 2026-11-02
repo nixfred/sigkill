@@ -52,6 +52,10 @@ const BURST_SPEED := 64.0
 const BURST_S := 0.9
 const BOARD_S := 0.35
 const PORT_REACH := 1.9
+## How nearly a player on a port must face out along its link to board (the cosine: within about 72 degrees).
+const FACE_OUT := 0.3
+## The visor folds the tags of the daemons within this of the SYN flood into its own (W6's fold-in).
+const CROWD_M := 7.0
 ## How high the player stands over the packet's middle while it rides.
 const RIDE_STAND := 1.15
 ## How far past where the rider will be a threatened link tears (metres): no rider at its pace slips past.
@@ -418,9 +422,27 @@ func _step_ports(delta: float) -> void:
 	if _board_link != li:
 		_board_link = li
 		_board_t = 0.0
+	if not facing_out(li):
+		_board_t = 0.0  # backing onto it mid-fight (W6's fold-in): only a player facing the link boards
+		return
 	_board_t += delta
 	if _board_t >= BOARD_S:
 		board(li)
+
+
+## True while the player on port `li` faces out along its link (its look within FACE_OUT of the way out): a player who
+## backs onto a port facing the fight is not carried off (W5's known issue, folded in with W6).
+func facing_out(li: int) -> bool:
+	if player == null or not is_instance_valid(player) or net == null:
+		return false
+	var isl: Dictionary = net.islands[at_island]
+	var out: Vector3 = (isl["ports"][li] as Vector3) - net.top(at_island)
+	var look: Vector3 = -player.global_basis.z
+	var a := Vector2(out.x, out.z)
+	var b := Vector2(look.x, look.z)
+	if a.is_zero_approx() or b.is_zero_approx():
+		return true
+	return a.normalized().dot(b.normalized()) >= FACE_OUT
 
 
 ## Boards link `li` at the island the player stands on: a packet carries the player across (or, with a stale route
@@ -1054,10 +1076,22 @@ func _draw_visor() -> void:
 			mark.text = "hop %d  %s\n%s%s  %s" % [i, id, NetBook.address(m), ms, "reached" if reached.has(id) else "unreached"]
 			var half: Vector2 = net.islands[i]["half"]
 			mark.global_position = net.top(i) + Vector3(-half.x + 0.8, 3.2, -half.y + 0.8)
+		# Every daemon hanging close round the SYN flood is folded into the flood's own tag (W5's known issue, folded in
+		# with W6: their tags crowded over it), its line still drawn.
+		var flood: Node3D = null
+		for e in enemies:
+			if e["kind"] == "flood" and _alive(e["body"]):
+				flood = e["body"]
+		var crowd := 0
+		for e in enemies:
+			var body = e["body"]
+			if flood != null and body != flood and _alive(body) and body.global_position.distance_to(flood.global_position) < CROWD_M:
+				crowd += 1
 		for e in enemies:
 			var body = e["body"]
 			if not _alive(body):
 				continue
+			var near_flood: bool = flood != null and body != flood and body.global_position.distance_to(flood.global_position) < CROWD_M
 			var key := "e%d" % body.get_instance_id()
 			live[key] = true
 			var home: Vector3
@@ -1067,11 +1101,18 @@ func _draw_visor() -> void:
 				home = net.top(net.island_index(str(e["island"]))) + Vector3.UP * 4.0
 			var p: Vector3 = body.threat_point()
 			lines.append(_line(p, home, 0.8, 0.06))
+			if near_flood:
+				var was = _marks.get(key)
+				if was != null and is_instance_valid(was):
+					was.visible = false
+				continue  # folded into the flood's tag: its line only
 			var mk := _mark(key)
 			mk.visible = true
 			var port: int = 1024 + (int(body.get_instance_id()) % 60000)
 			mk.text = "%s  ESTAB\n:%d -> %s" % [str(body.tag_text), port, str(e["island"]) if str(e["island"]) != "" else "on the link"]
-			mk.global_position = p + Vector3.UP * 1.6
+			if body == flood and crowd > 0:
+				mk.text += "\n+%d SYN_RECV round it" % crowd
+			mk.global_position = p + Vector3.UP * (1.6 if body != flood else 3.4)
 	for key in _marks.keys():
 		if not live.has(key):
 			var m = _marks[key]

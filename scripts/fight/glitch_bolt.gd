@@ -61,6 +61,11 @@ static var _shell_material: StandardMaterial3D
 static var _core_material: StandardMaterial3D
 static var _shell_red: StandardMaterial3D
 static var _core_red: StandardMaterial3D
+## A thrower's own colour (W6's fold-in of W5's known issue: the man in the middle's bolts in its violet): by the art's
+## bolt_color, made once each and kept.
+static var _tinted := {}
+## This bolt's colour as thrown: its trail's and its impact's.
+var tint := Color(1.0, 0.690196078, 0.0)
 var _shell_mi: MeshInstance3D
 var _core_mi: MeshInstance3D
 
@@ -109,9 +114,19 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	var red := owner_brain != null and (owner_brain.kind == "shell" or owner_brain.kind == "pegged")  # W1: a pegged core's too
 	_shell_mi.material_override = _shell_red if red else _shell_material
 	_core_mi.material_override = _core_red if red else _core_material
+	tint = Palette.CRIMSON if red else Palette.HOSTILE_AMBER
+	# A thrower whose art names its own bolt colour (the man in the middle's violet, W5) throws in it.
+	var art = owner_brain.dummy.art_node() if owner_brain != null and is_instance_valid(owner_brain.dummy) and owner_brain.dummy.has_method("art_node") else null
+	var own = art.get("bolt_color") if art != null else null
+	if own is Color:
+		tint = own
+		if not _tinted.has(own):
+			_tinted[own] = [_glow(own, ENERGY, 0.85), _glow((own as Color).lerp(Color.WHITE, 0.7), ENERGY * 1.4, 1.0)]
+		_shell_mi.material_override = _tinted[own][0]
+		_core_mi.material_override = _tinted[own][1]
 	var fx := ParticleFx.of(self)
 	if fx != null:
-		fx.follow(self, Palette.CRIMSON if red else Palette.HOSTILE_AMBER)
+		fx.follow(self, tint)
 
 
 func _physics_process(delta: float) -> void:
@@ -166,7 +181,7 @@ func _physics_process(delta: float) -> void:
 			_director.lash_met(brain, collider, way, lash_scale)  # a confused zombie's lash (C32)
 		var fx := ParticleFx.of(self)
 		if fx != null:
-			fx.impact(hit["position"], hit["normal"], true, Palette.HOSTILE_AMBER)
+			fx.impact(hit["position"], hit["normal"], true, tint)
 		_end("daemon" if daemon else "level")
 		return
 	global_position = to

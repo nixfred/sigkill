@@ -22,6 +22,7 @@ const MainScene = preload("res://scenes/main.tscn")
 const Link = preload("res://scripts/guide/guide_link.gd")
 const Controls = preload("res://scripts/controls.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
+const Palette = preload("res://scripts/palette.gd")
 
 const MODE_CODE := ["res://scripts/packets/packet_tracer.gd", "res://scripts/packets/packet_net.gd", "res://scripts/packets/net_link.gd", "res://scripts/packets/net_book.gd", "res://scripts/packets/packet_tracer_hud.gd", "res://scripts/packets/packet_sound.gd", "res://scripts/daemons/retransmit_swarm.gd", "res://scripts/daemons/mitm_tap.gd", "res://scripts/daemons/stale_route.gd", "res://scripts/daemons/syn_flood.gd"]
 ## Nothing of the network may be touched: no socket of any kind, no lookup, no program run, no file, no key press.
@@ -65,6 +66,7 @@ func _run() -> void:
 	_key_checks()
 	await _arena_checks()
 	await _run_checks()
+	await _foldin_checks()
 	await _menu_checks()
 	_check("acceptance (no conflicts): the arena's keys are unchanged after the mode: every action and its keys as before", _input_map() == _keys_before)
 	await _cleanup()
@@ -433,6 +435,61 @@ func _kill(mode: PacketTracer, which: Callable) -> void:
 func _hud(mode: PacketTracer) -> PacketTracerHud:
 	var found := mode.find_children("*", "PacketTracerHud", true, false)
 	return found[0] if not found.is_empty() else null
+
+
+## W6's fold-ins of W5's known issues: a player backing onto a port mid-fight is not carried off; the man in the middle's
+## bolts fly in its own violet, not the zombie's amber.
+func _foldin_checks() -> void:
+	var main := await _arena(true)
+	var mode := PacketTracer.of(main)
+	await _until(func(): return mode.running)
+	var net := mode.net
+	var first: NetLink = net.links[0]
+	await _until(func(): return first.state == NetLink.State.UP)
+	var player = main.get_node("Player")
+	main.get_node("SoloLife").shield(9999.0)
+	var port0 := net.port(0, "localhost")
+	var inward: Vector3 = net.top(0) - port0
+	player.global_position = port0 + Vector3.UP * 0.95
+	player.velocity = Vector3.ZERO
+	player.rotation.y = atan2(-inward.x, -inward.z)  # facing back into the island: backing onto the port
+	await _frames(int(PacketTracer.BOARD_S * 60.0) * 3)
+	var held: bool = mode.phase != "ride" and not player.riding and not mode.facing_out(0)
+	player.rotation.y = atan2(inward.x, inward.z)  # turned to face out along the link
+	await _frames(int(PacketTracer.BOARD_S * 60.0) + 6)
+	_check("fold-in (W5's known issue): backing onto a port facing the fight does not board it; turned out along the link, it boards", held and mode.phase == "ride" and player.riding)
+	mode._let_go()
+	mode._enter("clear")
+	mode._spawn_mitm(2)
+	await _frames(40)
+	var tap = null
+	for e in mode.enemies:
+		if e["kind"] == "mitm" and is_instance_valid(e["body"]):
+			tap = e["body"]
+	var bolt: GlitchBolt = null
+	if tap != null and tap.brain != null:
+		bolt = mode.director.throw_bolt(tap.brain, tap.global_position + Vector3.UP, Vector3.FORWARD)
+	_check("fold-in (W5's known issue): the man in the middle's bolt flies in its own violet (%s), not the zombie's amber" % (bolt.tint.to_html(false) if bolt != null else "none"), bolt != null and bolt.tint.is_equal_approx(preload("res://scripts/daemons/mitm_tap.gd").TAP_VIOLET) and not bolt.tint.is_equal_approx(Palette.HOSTILE_AMBER))
+	if bolt != null:
+		bolt.stop()
+	# The visor over the SYN flood: the daemons round it folded into its own tag, never a pile of tags over it.
+	var at := net.top(2)
+	var flood := mode._spawn("flood", at + Vector3.UP * 0.6, "fold_flood", "rack-delta", -1, -1.0)
+	mode._spawn("retransmit", at + Vector3(2.0, 1.0, 0.0), "fold_r1", "rack-delta", -1, -1.0)
+	mode._spawn("retransmit", at + Vector3(-2.0, 1.0, 1.0), "fold_r2", "rack-delta", -1, -1.0)
+	await _until(func(): return not mode.enemies.any(func(e): return is_instance_valid(e["body"]) and e["body"].climbing()))
+	mode.visor.toggle()
+	await _frames(6)
+	var near := 0
+	var flood_text := ""
+	for m in main.get_tree().get_nodes_in_group(PacketTracer.MARK_GROUP):
+		var l := m as Label3D
+		if l.visible and l.text.contains("ESTAB") and l.global_position.distance_to(flood.global_position) < PacketTracer.CROWD_M + 3.5:
+			near += 1
+			if l.text.begins_with("SYN flood"):
+				flood_text = l.text
+	mode.visor.toggle()
+	_check("fold-in (W5's known issue): the visor's tags never crowd over the SYN flood: the daemons round it folded into its own tag (%d tag there: \"%s\")" % [near, flood_text.replace("\n", " / ")], near == 1 and flood_text.contains("+2 SYN_RECV"))
 
 
 func _menu_checks() -> void:

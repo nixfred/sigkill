@@ -786,6 +786,8 @@ func _handoff_checks() -> void:
 	await _free_current()
 	var auto := _boot(null, null, "handoff.cfg", {"demo": true, "hand_off": true})
 	current_scene = auto["boot"]
+	await process_frame
+	_check("headless, a demo boot never loads the arena on a loader's thread (W5's known issue, folded in with W6: the dummy renderer cannot make its shaders there); it loads it as it leaves", auto["boot"]._loading == false and DisplayServer.get_name() == "headless")
 	var went: bool = await _until(func(): return current_scene != null and current_scene.scene_file_path == ARENA)
 	_check("with no key pressed it continues to the arena on its own", went and auto["done"] and not auto["skipped"] and current_scene.has_node("Player"))
 	await _free_current()
