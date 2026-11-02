@@ -914,6 +914,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if _online():
 		end()  # a match started mid-run: the match's rules, the arena's own back
+		SceneTear.reload_scene(get_tree(), "$ exit")  # P1: and its district goes with it, the plain arena back
 		return
 	_clock += delta
 	_phase_t += delta

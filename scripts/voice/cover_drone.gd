@@ -64,6 +64,9 @@ var _flash_t := 0.0
 var _burst: MeshInstance3D
 var _burst_mat: StandardMaterial3D
 var _sfx: AudioStreamPlayer3D
+## Whether it left as it should (folded and flew off); freed any other way (the arena reloading under it), it starts the
+## recharge as it goes, so a reload never hands a fresh drone straight back (P1).
+var _left_sent := false
 
 
 func _ready() -> void:
@@ -73,6 +76,11 @@ func _ready() -> void:
 		global_position = _station()
 	scale = Vector3.ONE * 0.05
 	_play("deploy")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and not _left_sent:
+		VoiceCommands.cover_wait = VoiceCommands.COVER_COOL_S
 
 
 ## Seconds of cover left (0 once it is leaving).
@@ -125,6 +133,7 @@ func _physics_process(delta: float) -> void:
 			scale = Vector3.ONE * maxf(1.0 - k * 0.7, 0.05)
 			global_position += Vector3.UP * delta * lerpf(2.0, 26.0, k * k)
 			if k >= 1.0:
+				_left_sent = true
 				left.emit()
 				queue_free()
 				return
