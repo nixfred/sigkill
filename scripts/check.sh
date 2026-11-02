@@ -262,7 +262,8 @@ run_godot "packet tracer test" --fixed-fps 60 --script res://tests/packet_tracer
 # arena's keys unchanged, no Ctrl+Alt combo; one OS window, two tiles drawing the one world; the split moving (keys,
 # buttons, cooldowns, the flip) and the trade applying both ways (view, look speed, spread); a downed player revived by
 # the partner standing close, a bleed-out, a wipe; a two-player run of every wave to the shared results card; the visor
-# in player 1's tile; each body seen only by the partner; the Esc menu's entry; leaving puts everything back.
+# in player 1's tile; each body seen only by the partner; the Esc menu's entry; leaving puts everything back. P2: the
+# revive ring a band of segments lit round with a curtain of light, the ring's full size always, standing at 0% too.
 run_godot "split-screen co-op test" --fixed-fps 60 --script res://tests/coop_test.gd
 
 # 71. Voice commands (W7): the game's own demo feed and a fake feed the test serves itself on 127.0.0.1 only, never a real

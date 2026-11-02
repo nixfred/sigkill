@@ -8,8 +8,9 @@ extends Node3D
 ##   player 2, azure, `$_`: the operator's partner: broader, square pauldrons, a turning halo of six bars behind its head
 ##             (flat-top), a mast on its back with a blinking tip, rings of light on its forearms
 ## Both hold a rifle along their aim (pitched with the view), walk with their speed, and carry a name tag the partner sees
-## through walls. Downed, the body falls to its knees and over, a ring of light on the floor marks where a partner stands
-## to revive it (its progress filling it), and a beacon of light rises through walls with the job-control line
+## through walls. Downed, the body falls to its knees and over, a ring of segments on the floor and a low curtain of light
+## rising from it mark where a partner stands to revive it (the revive lighting them round, P2), and a beacon of light
+## rises through walls with the job-control line
 ## ("[2]+  Stopped"). Visual only: no hit volume (the player's own body is the player's capsule), no brain.
 ## Drawn on its seat's body layer (scripts/coop/coop_screen.gd), so its own tile never sees it.
 
@@ -24,21 +25,67 @@ const HEAD := 0.78
 ## A full stride's swing of the legs, radians, at a run.
 const SWING := 0.75
 const STRIDE_HZ := 1.6
-## The revive's fill: rings running outward (their spacing in the disc's own units, so they spread as it grows), a soft
-## floor under them and a bright edge at the progress.
-const FILL_SHADER := """shader_type spatial;
-render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
-uniform vec4 tint : source_color = vec4(0.2, 0.6, 1.0, 0.5);
+## The revive's ring (P2: it was a flat disc of rings growing from the middle, a floor of colour from inside it): one
+## shape that reads at a glance from anywhere, near, far or standing in it. On the floor, a band of SEGMENTS round the
+## ring's edge, lit round from the front clockwise as far as the revive has come, in the body's bright light, the leading
+## segment flaring white; the rest pulse in the down's red, so a ring nobody is reviving says "come here". Inside the band
+## the floor stays nearly dark: a small core under the body, and faint rings running in toward it only while a partner
+## revives. A low curtain of light rises from the band, its stripes climbing, lit over the same arc: a silhouette that
+## stands up off the floor and shows the progress from afar or from inside the ring. Both meshes are the ring's full size
+## always: only the light moves, so where to stand never changes.
+const SEGMENTS := 24.0
+const RING_SHADER_PARTS := """
+uniform vec4 hot : source_color = vec4(0.49, 1.0, 0.81, 1.0);
+uniform vec4 idle : source_color = vec4(1.0, 0.25, 0.3, 1.0);
+uniform float progress = 0.0;
+uniform float segments = 24.0;
+// The angle round the ring, 0 at its front and running clockwise to 1.
+float round_of(vec2 q) { return fract(atan(q.x, -q.y) / 6.2831853 + 1.0); }
+// 1 inside a segment, 0 in the gaps between them.
+float segment_of(float a) { float f = fract(a * segments); return smoothstep(0.0, 0.07, f) * (1.0 - smoothstep(0.9, 0.97, f)); }
+"""
+const BAND_SHADER := "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;\n" + RING_SHADER_PARTS + """
+uniform vec4 tint : source_color = vec4(0.1, 0.83, 0.77, 1.0);
 varying vec2 p;
 void vertex() { p = VERTEX.xz; }
 void fragment() {
 	float r = length(p);
-	float rings = 1.0 - smoothstep(0.0, 0.22, abs(fract(r * 5.0 - TIME * 1.3) - 0.5) * 2.0 - 0.55);
-	float edge = smoothstep(0.82, 0.98, r) * (1.0 - smoothstep(0.98, 1.0, r));
-	ALBEDO = tint.rgb;
-	ALPHA = clamp(tint.a * (0.25 + 0.9 * rings * r + 2.2 * edge), 0.0, 1.0);
+	float a = round_of(p);
+	float lit = step(a, progress) * step(0.001, progress);
+	float lead = (1.0 - smoothstep(0.0, 1.2 / segments, abs(a - progress))) * step(0.001, progress) * step(progress, 0.999);
+	float band = smoothstep(0.79, 0.82, r) * (1.0 - smoothstep(0.97, 1.0, r)) * segment_of(a);
+	float beat = 0.5 + 0.5 * sin(TIME * 5.0);
+	vec3 col = mix(idle.rgb, hot.rgb, lit);
+	float glow = band * mix(0.3 + 0.25 * beat, 0.7, lit);
+	// A crisp rim along the band's outer edge, unbroken, so the ring's line holds as one shape.
+	glow = max(glow, (smoothstep(0.955, 0.97, r) * (1.0 - smoothstep(0.99, 1.0, r))) * mix(0.75, 0.9, lit));
+	float rings = (1.0 - smoothstep(0.0, 0.25, abs(fract(r * 4.0 + TIME * 1.2) - 0.5) * 2.0 - 0.5)) * (1.0 - smoothstep(0.7, 0.78, r));
+	float inner = rings * 0.16 * step(0.001, progress);
+	float core = (1.0 - smoothstep(0.07, 0.15, r)) * 0.55;
+	ALBEDO = col * glow + vec3(1.0) * lead * band + tint.rgb * inner + mix(idle.rgb, hot.rgb, progress) * core;
+	ALPHA = clamp(glow + lead * band + inner + core, 0.0, 1.0);
 }
 """
+const CURTAIN_SHADER := "shader_type spatial;\nrender_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;\n" + RING_SHADER_PARTS + """
+varying vec3 q;
+void vertex() { q = VERTEX; }
+void fragment() {
+	float h = clamp(q.y / 0.5 + 0.5, 0.0, 1.0);
+	float a = round_of(q.xz);
+	float lit = step(a, progress) * step(0.001, progress);
+	float fade = pow(1.0 - h, 1.6);
+	float climb = 0.55 + 0.45 * sin(h * 22.0 - TIME * 7.0);
+	float beat = 0.5 + 0.5 * sin(TIME * 5.0);
+	float glow = fade * climb * segment_of(a) * mix(0.22 + 0.18 * beat, 0.6, lit);
+	// Its lip: the foot of the curtain lit hard, an edge that stands up and holds from afar, where a flat band goes thin.
+	float lip = (1.0 - smoothstep(0.0, 0.14, h)) * segment_of(a) * mix(0.7 + 0.2 * beat, 0.95, lit);
+	glow = max(glow, lip);
+	ALBEDO = mix(idle.rgb, hot.rgb, lit) * glow;
+	ALPHA = clamp(glow, 0.0, 1.0);
+}
+"""
+## The curtain's height, metres.
+const CURTAIN_H := 0.5
 ## The revive ring's radius (the mode's reach).
 const RING_R := 2.4
 
@@ -53,7 +100,8 @@ var player: Node3D = null
 var _armor: StandardMaterial3D
 var _light: StandardMaterial3D
 var _light_hi: StandardMaterial3D
-var _ring_mat: StandardMaterial3D
+var _ring_mat: ShaderMaterial
+var _band_mat: ShaderMaterial
 var _beacon_mat: StandardMaterial3D
 var _rig: Node3D
 var _torso: Node3D
@@ -278,38 +326,50 @@ func _build() -> void:
 	add_child(_tag)
 
 
+## A ring's material (the band's or the curtain's): `code` with the body's bright light and the down's red.
+func _ring_material(code: String) -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = code
+	var m := ShaderMaterial.new()
+	m.shader = shader
+	m.set_shader_parameter("hot", Color(hue_hi, 1.0))
+	m.set_shader_parameter("idle", Color(1.0, 0.25, 0.3, 1.0))
+	m.set_shader_parameter("segments", SEGMENTS)
+	m.set_shader_parameter("progress", 0.0)
+	return m
+
+
 func _build_down() -> void:
-	_ring_mat = StandardMaterial3D.new()
-	_ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ring_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_ring_mat.albedo_color = Color(hue_hi, 0.9)
-	_ring_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# The curtain (the ring's silhouette, P2): an open cylinder at the ring's edge, its light rising off the floor.
+	_ring_mat = _ring_material(CURTAIN_SHADER)
 	_ring = MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	torus.inner_radius = RING_R - 0.07
-	torus.outer_radius = RING_R
-	torus.rings = 48
-	torus.ring_segments = 4
-	_ring.mesh = torus
+	_ring.name = "ReviveCurtain"
+	var wall := CylinderMesh.new()
+	wall.top_radius = RING_R
+	wall.bottom_radius = RING_R
+	wall.height = CURTAIN_H
+	wall.radial_segments = 72
+	wall.rings = 1
+	wall.cap_top = false
+	wall.cap_bottom = false
+	_ring.mesh = wall
 	_ring.material_override = _ring_mat
-	_ring.position = Vector3(0, FEET + 0.04, 0)
+	_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ring.position = Vector3(0, FEET + CURTAIN_H * 0.5 + 0.02, 0)
 	add_child(_ring)
+	# The band on the floor, the ring's full size always (P2): the revive lights it round, it never grows.
+	_band_mat = _ring_material(BAND_SHADER)
+	_band_mat.set_shader_parameter("tint", Color(hue, 1.0))
 	_fill = MeshInstance3D.new()
+	_fill.name = "ReviveBand"
 	var disc := CylinderMesh.new()
-	disc.top_radius = 1.0
-	disc.bottom_radius = 1.0
+	disc.top_radius = RING_R
+	disc.bottom_radius = RING_R
 	disc.height = 0.01
-	disc.radial_segments = 48
+	disc.radial_segments = 96
 	_fill.mesh = disc
-	# The fill (folded in with W7: it read as a flat floor of colour from right over it): rings of light running out
-	# from the middle to a bright edge that is the progress itself, so it reads as filling from any angle.
-	var fill_shader := Shader.new()
-	fill_shader.code = FILL_SHADER
-	var fill_mat := ShaderMaterial.new()
-	fill_mat.shader = fill_shader
-	fill_mat.set_shader_parameter("tint", Color(hue, 0.2))
-	_fill.material_override = fill_mat
+	_fill.material_override = _band_mat
+	_fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_fill.position = Vector3(0, FEET + 0.03, 0)
 	add_child(_fill)
 	_beacon_mat = StandardMaterial3D.new()
@@ -382,9 +442,8 @@ func _process(delta: float) -> void:
 	_tag.visible = not downed
 	if downed:
 		var pulse := 0.6 + 0.4 * sin(_clock * 6.0)
-		_ring_mat.albedo_color = Color(hue_hi.lerp(Color(1.0, 0.25, 0.3), 0.5 * (1.0 - revive)), 0.55 + 0.4 * pulse)
-		_fill.scale = Vector3(RING_R * revive, 1.0, RING_R * revive)
-		_fill.visible = revive > 0.0
+		_ring_mat.set_shader_parameter("progress", clampf(revive, 0.0, 1.0))
+		_band_mat.set_shader_parameter("progress", clampf(revive, 0.0, 1.0))
 		_beacon_mat.albedo_color = Color(Color(1.0, 0.2, 0.3).lerp(hue, revive), 0.22 + 0.18 * pulse)
 		_down_tag.modulate = Color(1.0, 0.45, 0.5).lerp(hue_hi, revive)
 		_down_tag.text = "[%d]+  Stopped" % seat if revive <= 0.0 else "fg %%%d" % seat

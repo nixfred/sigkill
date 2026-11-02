@@ -431,6 +431,9 @@ func _down_checks(_main: Node, mode: CoopHunt, p1, p2) -> void:
 	_check("acceptance (down): player 2's health at 0 is a down, not a death: the job stopped, it cannot move or shoot, its view sunk and drained, the daemons hunting player 1 alone", took and mode.state(2) == "down" and not p2.alive and p2.slump > 0.5 and mode.screen.down[2] > 0.5 and not director.prey_valid(2) and director.prey_valid(1) and mode.events.any(func(e): return str(e["text"]).begins_with("[2]+  Stopped")))
 	await _frames(60)
 	_check("from afar (%.0f m) nothing revives it: no progress" % CoopHunt.REVIVE_M, mode.state(2) == "down" and float(mode.lives[2]["revive"]) == 0.0)
+	var idle_band = mode._bodies[2].get("_fill")
+	var idle_wall = mode._bodies[2].get("_ring")
+	_check("P2: with nobody reviving, the ring still shows where to stand: its band and curtain up, the ring's full size, lit nowhere (its segments in the down's red)", idle_band != null and idle_band.visible and idle_wall != null and idle_wall.visible and idle_band.scale == Vector3.ONE and float(idle_band.material_override.get_shader_parameter("progress")) == 0.0)
 	p1.global_position = p2.global_position + Vector3(1.2, 0.0, 0.0)
 	await _frames(int(CoopHunt.REVIVE_S * 60.0 * 0.5))
 	var half := float(mode.lives[2]["revive"])
@@ -439,8 +442,11 @@ func _down_checks(_main: Node, mode: CoopHunt, p1, p2) -> void:
 	var fell := float(mode.lives[2]["revive"])
 	_check("standing close fills the revive (%.0f%% at half the time) and stepping away lets it fall back (%.0f%%)" % [half * 100.0, fell * 100.0], half > 0.35 and half < 0.65 and fell < half and mode.state(2) == "down")
 	var fill = mode._bodies[2].get("_fill")
-	var fill_mat = fill.material_override if fill != null else null
-	_check("fold-in (W6's known issue, folded in with W7): the revive's fill is rings running out to a bright edge at the progress, never a flat floor of colour", fill_mat is ShaderMaterial and (fill_mat as ShaderMaterial).shader.code.contains("fract(r * 5.0") and (fill_mat as ShaderMaterial).shader.code.contains("edge"))
+	var ring = mode._bodies[2].get("_ring")
+	var band_mat = fill.material_override if fill != null else null
+	var curtain_mat = ring.material_override if ring != null else null
+	var shown_progress: float = band_mat.get_shader_parameter("progress") if band_mat is ShaderMaterial else -1.0
+	_check("fold-in (W6's known issue; W7 then P2): the revive is a ring of segments lit round as far as it has come (%.0f%% shown, %.0f%% held) and a curtain of light rising off it, the ring's full size always, never a flat floor of colour" % [shown_progress * 100.0, fell * 100.0], band_mat is ShaderMaterial and (band_mat as ShaderMaterial).shader.code.contains("segment_of") and curtain_mat is ShaderMaterial and (curtain_mat as ShaderMaterial).shader.code.contains("climb") and fill.scale == Vector3.ONE and absf(shown_progress - fell) < 0.05)
 	p1.global_position = p2.global_position + Vector3(1.2, 0.0, 0.0)
 	await _until(func(): return mode.state(2) == "up")
 	await _frames(30)
