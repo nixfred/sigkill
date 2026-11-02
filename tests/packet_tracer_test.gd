@@ -264,7 +264,7 @@ func _run_checks() -> void:
 	_check("acceptance: a link going bad warns first (it stutters, TIMEOUT where it will tear, a little ahead of the rider), then tears under the rider kept at its pace: the player falls into the void", threat and warned and mode.phase == "fall" and not player.riding and int(PacketTracer.stats["taken"]) == 1)
 	await _until(func(): return mode.phase != "fall")
 	var hurt: float = health_before - life.health()
-	_check("acceptance: the drop is survivable: the packet retransmitted, the player back on the island it boarded from, a little hurt (%.0f), alive" % hurt, mode.at_island == 1 and net.island_under(player.global_position) == 1 and life.alive() and player.alive and hurt > 0.0 and hurt <= PacketTracer.DROP_HURT)
+	_check("acceptance: the drop is survivable: the packet retransmitted, the player back on the island it boarded from, a little hurt (%.0f), alive" % hurt, mode.at_island == 1 and net.island_under(player.global_position) == 1 and life.alive() and player.alive and hurt > 0.0 and hurt <= 15.0)  # pinned here, so a changed constant cannot move its own check
 	life.shield(9999.0)
 	# A torn link refuses a boarding; a burst outruns a tear.
 	await _until(func(): return out1.state == NetLink.State.UP)

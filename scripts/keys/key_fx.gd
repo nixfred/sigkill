@@ -196,11 +196,20 @@ class TerminalBlast extends Node3D:
 			var d := p.distance_to(point)
 			if d > RADIUS:
 				continue
+			if not _clear_to(point - dir * 0.3, p):
+				continue  # behind a wall or a prop at the blast's edge: shielded (W5, W4's known issue folded in)
 			if body.hit(lerpf(2.0, 1.0, d / RADIUS), p, dir, KeyFx.SOURCE_PREFIX + "terminal"):
 				hits += 1
 				if not body.is_alive():
 					kills += 1
 		landed.emit(self)
+
+	## True when nothing of the level (walls, cover, props: the world's layer only) stands between `a` and `b`.
+	func _clear_to(a: Vector3, b: Vector3) -> bool:
+		if not is_inside_tree() or a.is_equal_approx(b):
+			return true
+		var q := PhysicsRayQueryParameters3D.create(a, b, 1)
+		return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
 # --- Close window: the daemon folded shut. ---
@@ -325,6 +334,8 @@ class CloseFold extends Node3D:
 		if not closed and body != null and is_instance_valid(body) and _alive():
 			var squash := 1.0 - fold * 0.96
 			body.scale = Vector3(rest.x * wide, rest.y * squash, rest.z * wide)
+		elif body != null and is_instance_valid(body) and not _alive() and body.scale != rest:
+			body.scale = rest  # killed mid-fold by something else: its body whole again as it derezzes (W5, W4's known issue)
 
 	func _close() -> void:
 		closed = true
@@ -394,6 +405,8 @@ class SplitPane extends Node3D:
 			if body != null and is_instance_valid(body) and _alive():
 				var squeeze := lerpf(1.0, 0.55, clampf((t - DRAW_S) / SEAM_S, 0.0, 1.0))
 				body.scale = Vector3(rest.x * squeeze, rest.y, rest.z * squeeze)
+			elif body != null and is_instance_valid(body) and not _alive() and body.scale != rest:
+				body.scale = rest  # killed mid-split by something else: whole again as it derezzes (W5, W4's known issue)
 			if t >= DRAW_S + SEAM_S:
 				_cut(eye)
 			return
@@ -488,6 +501,8 @@ class FloatTile extends Node3D:
 				spin += delta * (2.4 if t < LIFT_S + HOLD_S else 0.0)
 				if body != null and is_instance_valid(body):
 					body.rotation.y = spin
+			elif body != null and is_instance_valid(body):
+				body.rotation.y = 0.0  # killed mid-float by something else: square again as it derezzes
 			frame.face(eye)
 			frame.set_param("fade", clampf(t / 0.15, 0.0, 1.0))
 			frame.set_param("glow", 2.4 + sin(t * 9.0) * 0.6)

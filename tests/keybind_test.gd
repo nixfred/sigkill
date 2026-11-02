@@ -74,6 +74,7 @@ func _run() -> void:
 	await _drill_checks()
 	await _wave_checks()
 	await _menu_checks()
+	await _foldin_checks()
 	await _cleanup()
 	print("KEYBIND GUNPLAY: %d checks" % _checks)
 	print("KEYBIND GUNPLAY RESULT: ", "ALL PASS" if _fails == 0 else "%d FAILED" % _fails)
@@ -580,6 +581,57 @@ func _menu_checks() -> void:
 	main = await _after_reload(old_id)
 	ThemeShift.clear()
 	KeybindGunplay.clear()
+
+
+## W4's two known issues folded in by W5: a daemon killed mid-effect by something else stands whole as it derezzes, and a
+## terminal's blast never reaches a daemon behind the level at its edge.
+func _foldin_checks() -> void:
+	var main := await _arena(false)
+	GameSettings.current().set_value("gameplay", "practice", true)
+	await _frames(10)
+	var live := main.get_tree().get_nodes_in_group("targets").filter(func(d): return d.is_alive())
+	if live.size() < 2:
+		_check("two of the arena's daemons for the fold-ins", false)
+		return
+	var first: Node3D = live[0]
+	var body: Node3D = first.get_node("Body")
+	var rest := body.scale
+	var fold := KeyFx.CloseFold.new()
+	main.add_child(fold)
+	fold.call("start", first)
+	await _frames(16)
+	var squashed: bool = body.scale.y < rest.y * 0.6
+	first.hit(100000.0, first.threat_point(), Vector3.FORWARD, "test")
+	await _frames(2)
+	_check("fold-in (W4's known issue): a daemon killed mid-fold by something else is whole again as it derezzes, not left squashed", squashed and not first.is_alive() and body.scale.is_equal_approx(rest))
+	var second: Node3D = live[1]
+	var at: Vector3 = second.threat_point()
+	var point := at + Vector3(2.4, 0.0, 0.0)
+	var wall := StaticBody3D.new()
+	wall.collision_layer = 1
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.2, 4.0, 4.0)
+	shape.shape = box
+	wall.add_child(shape)
+	main.add_child(wall)
+	wall.global_position = at + Vector3(1.2, 0.0, 0.0)
+	await _frames(3)
+	var blast := KeyFx.TerminalBlast.new()
+	main.add_child(blast)
+	blast.start(point, Vector3.LEFT, null)
+	blast.call("_burst", point)
+	await _frames(2)
+	var shielded: bool = second.is_alive()
+	wall.queue_free()
+	await _frames(3)
+	var open := KeyFx.TerminalBlast.new()
+	main.add_child(open)
+	open.start(point, Vector3.LEFT, null)
+	open.call("_burst", point)
+	await _frames(2)
+	_check("fold-in (W4's known issue): a terminal's blast stops at the level: a daemon behind a wall at its edge is shielded, the same daemon in the open is hit", shielded and not second.is_alive())
+	GameSettings.current().set_value("gameplay", "practice", false)
 
 
 func _cleanup() -> void:
