@@ -94,6 +94,9 @@ var _http_url := ""
 var _asked_at := 0
 var _task := -1
 var _task_result := {}
+## Bumped every time the feed is begun again: a read begun for an earlier feed (another address, the demo) is dropped.
+var _gen := 0
+var _task_gen := 0
 var _demo_t := 0.0
 var _sfx: AudioStreamPlayer = null
 
@@ -270,6 +273,7 @@ func _set_state(next: String) -> void:
 
 
 func _reset_feed() -> void:
+	_gen += 1
 	_learned = false
 	_last_id = -1
 	_fails = 0
@@ -316,7 +320,10 @@ func _process(delta: float) -> void:
 			_task = -1
 			var r := _task_result
 			_task_result = {}
-			_apply(r)
+			if _task_gen == _gen:
+				_apply(r)
+			else:
+				_busy = false  # read for a feed no longer asked about
 		return
 	if source == "":
 		return
@@ -367,6 +374,7 @@ func _read(body: PackedByteArray) -> void:
 	_busy = true
 	var last := _last_id
 	var learn := not _learned
+	_task_gen = _gen
 	_task = WorkerThreadPool.add_task(func(): _task_result = VoiceFeed.digest(body, last, learn), false, "voice feed")
 
 
@@ -471,10 +479,8 @@ func _ability(id: String) -> bool:
 func cover_me(by_voice: bool) -> String:
 	if player == null or not is_instance_valid(player) or not _alone():
 		return "not now"
-	if not by_voice:
-		pass  # the key's own gate (the player's _ability_pressed) already said no where abilities are locked
-	elif not _ability("cover"):
-		return "locked here"
+	if by_voice and not _ability("cover"):
+		return "locked here"  # the key's own gate (the player's _ability_pressed) says no for the key
 	if drone != null and is_instance_valid(drone):
 		return "already covering, %ds left" % ceili(drone.left_s())
 	if cover_wait > 0.0:

@@ -528,6 +528,13 @@ func _adapter_checks() -> void:
 	_check("a command heard while the menu is up does nothing and says so", visor_on_menu, voice.last_outcome)
 	var guide_link = main.get_node("Hud").guide().session_link()
 	_check("acceptance: nothing goes to the player's AI: no call made while commands were heard (the guide's calls %d)" % (guide_link.calls if guide_link != null else -1), guide_link != null and guide_link.calls == 0)
+	# A read begun for one feed, the feed begun again before it lands (an address changed, the demo began): dropped.
+	await _until(func(): return voice._task < 0)
+	var before_stale := _fired.size()
+	voice._read(JSON.stringify([{"id": 500, "media": 0, "text": "visor"}]).to_utf8_buffer())
+	voice._reset_feed()
+	await _frames(20)
+	_check("a read begun for a feed no longer asked about (another address, the demo begun) is dropped: nothing fires and the feed begun again learns afresh, never taking the old feed's place in its lines", _fired.size() == before_stale and voice._last_id < 500, "last id %d" % voice._last_id)
 	voice.real_gate = func(): return false
 	await _frames(40)
 	var asks_then: int = voice.asks
