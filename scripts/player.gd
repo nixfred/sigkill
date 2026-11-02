@@ -247,6 +247,11 @@ var input_blocked := false
 ## True while keybind gunplay's stand-in for Super is held (W4, scripts/keys/keybind_gunplay.gd): the keys pressed with it
 ## are the mode's chord, so this player stands still and fires nothing; looking stays free.
 var chord_open := false
+## True while the packet tracer (W5, scripts/packets/packet_tracer.gd) carries this player down a link on a packet: the
+## mode sets where it is every physics frame, so it neither walks, jumps, slides nor falls; looking and fire stay free.
+var riding := false
+## The ride's widening of the view in degrees (W5: faster in a burst), with the speed effects setting like the run's own.
+var ride_kick := 0.0
 ## The arena's ICEbreakers director (I2), set by main.gd: U and Y go to it.
 var breakers: Node = null
 ## The weapons a mission lets this player carry (C35, scripts/missions/mission_runner.gd), by id: only those draw,
@@ -724,6 +729,12 @@ func _read_player_input() -> void:
 func _step_movement(delta: float, own_rate: float = 1.0) -> void:
 	var on_floor := is_on_floor()
 	_slide_cooldown_left = maxf(_slide_cooldown_left - delta, 0.0)
+	if riding:
+		# Carried by a packet (W5): the mode places the body; no walk, jump, slide or gravity of its own.
+		velocity = Vector3.ZERO
+		if _sliding:
+			_end_slide()
+		return
 	if not on_floor:
 		velocity += get_gravity() * _t.gravity_scale * delta
 
@@ -844,6 +855,8 @@ func _step_camera(delta: float) -> void:
 	if _sliding:
 		kick += _t.fov_slide_kick
 	kick = minf(kick, _t.fov_max_kick) if _speed_fx_on else 0.0
+	if _speed_fx_on:
+		kick += ride_kick  # a packet ride's rush (W5), past the run's own cap: it is far faster than a run
 	_fov_kick = lerpf(_fov_kick, kick, _smoothing(_t.fov_smoothing, delta))
 	# Aiming down the sights narrows the view to ads_fov_scale of it, eased the same way.
 	_ads_blend = lerpf(_ads_blend, 1.0 if _aiming else 0.0, _smoothing(_t.fov_smoothing, delta))

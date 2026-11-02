@@ -111,6 +111,10 @@ const THEME_SHIFT_TIP := "A run of levels, each in a terminal theme's colours an
 const KEYBIND_GUNPLAY := "Keybind gunplay"
 const KEYBIND_GUNPLAY_LEAVE := "Leave keybind gunplay"
 const KEYBIND_GUNPLAY_TIP := "Learn Omarchy's shortcuts by fighting with them: hold the ` key (it stands in for SUPER, which your desktop keeps) and press W to close a daemon's window, RETURN to blast a terminal open, F to go full screen. Every shortcut shows its real meaning. Opener data has the drills teach your own binds (read only: key combos and their names; no bind is ever changed)."
+## The packet tracer (W5): a traceroute across a network of invented machines; the entry turns to its way out while it runs.
+const PACKET_TRACER := "Packet tracer"
+const PACKET_TRACER_LEAVE := "Leave packet tracer"
+const PACKET_TRACER_TIP := "A traceroute you ride: machines float as islands in the void, joined by glowing links. Clear a machine's daemons and its route comes up; step onto the port and a packet carries you across (you can shoot as you ride). Links drop out under you: wait for a steady one, or press Space to burst through a tear. Every machine and address in it is made up; nothing of your network is read or touched."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
 const RESTART_MISSION := "Restart mission"
@@ -195,6 +199,7 @@ var _hunt_button: Button
 var _map_button: Button
 var _theme_button: Button
 var _keys_button: Button
+var _net_button: Button
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -362,6 +367,7 @@ func toggle_proc_hunt() -> void:
 		FolderMap.clear()
 		ThemeShift.clear()
 		KeybindGunplay.clear()
+		PacketTracer.clear()
 		ProcHunt.queue()
 	_was_captured = true
 	close()
@@ -381,6 +387,7 @@ func toggle_folder_map() -> void:
 		ProcHunt.clear()
 		ThemeShift.clear()
 		KeybindGunplay.clear()
+		PacketTracer.clear()
 		FolderMap.queue()
 	_was_captured = true
 	close()
@@ -405,6 +412,7 @@ func toggle_theme_shift() -> void:
 		ProcHunt.clear()
 		FolderMap.clear()
 		KeybindGunplay.clear()
+		PacketTracer.clear()
 		ThemeShift.queue()
 	_was_captured = true
 	close()
@@ -429,6 +437,7 @@ func toggle_keybind_gunplay() -> void:
 		ProcHunt.clear()
 		FolderMap.clear()
 		ThemeShift.clear()
+		PacketTracer.clear()
 		KeybindGunplay.queue()
 	_was_captured = true
 	close()
@@ -439,6 +448,31 @@ func toggle_keybind_gunplay() -> void:
 ## The Esc menu's keybind gunplay entry (the checks).
 func keys_button() -> Button:
 	return _keys_button
+
+
+## The packet tracer (W5) on or off: the arena reloads into the network, or out of it. Alone and outside a mission only;
+## the other world modes end as it begins (one world mode at a time).
+func toggle_packet_tracer() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if PacketTracer.queued:
+		PacketTracer.clear()
+	else:
+		ProcHunt.clear()
+		FolderMap.clear()
+		ThemeShift.clear()
+		KeybindGunplay.clear()
+		PacketTracer.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), PacketTracer.RELOAD_LABEL if PacketTracer.queued else "$ exit")
+
+
+## The Esc menu's packet tracer entry (the checks).
+func net_button() -> Button:
+	return _net_button
 
 
 ## The Esc menu's process hunt entry (the checks).
@@ -778,6 +812,9 @@ func _show_pause() -> void:
 	_keys_button.text = KEYBIND_GUNPLAY_LEAVE if KeybindGunplay.queued else KEYBIND_GUNPLAY
 	_keys_button.disabled = _online() or running != null
 	_keys_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else KEYBIND_GUNPLAY_TIP
+	_net_button.text = PACKET_TRACER_LEAVE if PacketTracer.queued else PACKET_TRACER
+	_net_button.disabled = _online() or running != null
+	_net_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else PACKET_TRACER_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -1000,7 +1037,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], [PACKET_TRACER, toggle_packet_tracer], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -1019,6 +1056,8 @@ func _build() -> void:
 				_theme_button = button
 			KEYBIND_GUNPLAY:
 				_keys_button = button
+			PACKET_TRACER:
+				_net_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:

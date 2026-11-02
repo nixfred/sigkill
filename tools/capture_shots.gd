@@ -416,6 +416,8 @@ const W1_GPU_FRAMES := 120
 ## w2's sheet.
 const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
 ## w3's sheet: the six themes, then the shift's three moments.
+## w5's sheet: the network, a ride and its warning, a drop, then the islands' fights, foes and the boss.
+const W5_SHEET := ["w5-network", "w5-ride", "w5-timeout", "w5-drop", "w5-fight", "w5-mitm", "w5-stale", "w5-boss", "w5-visor"]
 const W4_SHEET := ["w4-drill", "w4-cannon", "w4-burst", "w4-close", "w4-split", "w4-float", "w4-full", "w4-workspace", "w4-visor"]
 const W3_SHEET := ["w3-night", "w3-ember", "w3-frost", "w3-forest", "w3-mocha", "w3-latte", "w3-lurk", "w3-shift", "w3-reveal"]
 ## m7's sheet: the finale as a player meets it, three a row (never committed: the ending is a spoiler).
@@ -596,6 +598,11 @@ func _run() -> void:
 		return
 	if _set == "w3":
 		await _w3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w5":
+		await _w5()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -4886,6 +4893,248 @@ func _w4() -> void:
 		_save_grid("w4-sequence", stills, 3)
 	KeybindGunplay.drill_s = KeybindGunplay.DRILL_S
 	KeybindGunplay.wave_s = KeybindGunplay.WAVE_S
+
+
+func _w5() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)
+	PacketTracer.queue()
+	var old := _main
+	MissionRunner.reload_after_mount(self, PacketTracer.RELOAD_LABEL)
+	await _c35_reloaded(old)
+	var mode := PacketTracer.of(_main)
+	var waited := 0
+	while waited < 900 and (mode == null or not mode.running):
+		await _frames(1)
+		waited += 1
+		mode = PacketTracer.of(_main)
+	if mode == null or not mode.running or mode.net == null:
+		printerr("capture: w5 the mode did not begin in the network")
+		return
+	var net := mode.net
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	# The network wide: from high over the player's own machine, the trace winding away island to island.
+	_w5_hover(Vector3(-48.0, 24.0, -34.0), Vector3(22.0, 4.0, -230.0))
+	await _frames(30)
+	await _c35_save(sheet, "w5-network")
+	await _w5_measure("the network wide")
+	_player.riding = false
+	_player.respawn_at(net.start_point())
+	_player.rotation.y = net.start_yaw()
+	await _frames(20)
+	# A ride, mid-flight: the packet under the player, the link racing ahead, the next island coming up.
+	mode.board(0)
+	await _w5_ride_to(mode, 0.48)
+	_player.get_node("Head").rotation.x = -0.1
+	await _frames(1)
+	await _c35_save(sheet, "w5-ride")
+	await _w5_measure("a packet ride")
+	await _w5_land(mode)
+	await _w5_clear(mode, "gw-lantern", 1)
+	# The warning on a ride: the link going bad under the player, TIMEOUT and the burst's key on the screen.
+	(net.links[1] as NetLink).loss = 0.0
+	mode.board(1)
+	await _w5_ride_to(mode, 0.28)
+	(net.links[1] as NetLink).go_flaky(0.9)
+	await _frames(int(0.35 * Engine.physics_ticks_per_second))
+	_player.get_node("Head").rotation.x = -0.08
+	await _c35_save(sheet, "w5-timeout")
+	mode.burst()
+	await _w5_land(mode)
+	# A dropped connection seen from the deck: the link back tearing from its middle, its packets spilling into the void.
+	var back: NetLink = net.links[1]
+	await _w5_wait(func(): return back.state == NetLink.State.UP)
+	var port_here := net.port(1, "rack-delta")
+	var inward := net.top(2) - port_here
+	inward.y = 0.0
+	inward = inward.normalized()
+	var side := Vector3(inward.z, 0.0, -inward.x)
+	_c37_view(port_here + inward * 6.0 + side * 9.0 + Vector3.UP * 0.95, back.at(0.3) + Vector3.DOWN * 2.5)
+	await _frames(10)
+	back.go_flaky(0.3)
+	await _frames(int((NetLink.FLAKY_S + 0.22) * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w5-drop")
+	await _w5_measure("a link dropping, its packets spilling")
+	# A fight on an island: rack-delta's daemons awake among the racks.
+	var fighter: Node3D = null
+	for e in mode.enemies:
+		if e["island"] == "rack-delta" and e["kind"] == "zombie" and is_instance_valid(e["body"]) and e["body"].is_alive():
+			fighter = e["body"]
+	if fighter != null:
+		_w5_face(net, 2, fighter.global_position, 8.5, 1.1)
+		await _frames(int(0.8 * Engine.physics_ticks_per_second))
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+		await _frames(4)
+	await _c35_save(sheet, "w5-fight")
+	await _w5_measure("a fight on an island, the visor off")
+	mode.visor.set_on(true)
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+	await _w5_measure("a fight on an island, the visor on")
+	mode.visor.set_on(false)
+	# The man in the middle: the packet held before it on the link, its jaws and lenses filling the view.
+	await _w5_clear(mode, "rack-delta", -1)
+	await _w5_wait(func(): return (net.links[2] as NetLink).state == NetLink.State.UP)
+	(net.links[2] as NetLink).loss = 0.0
+	mode.board(2)
+	await _w5_wait(func(): return not mode.ride.is_empty() and bool(mode.ride["held"]))
+	await _frames(int(1.6 * Engine.physics_ticks_per_second))
+	for e in mode.enemies:
+		if e["kind"] == "mitm" and is_instance_valid(e["body"]):
+			_w5_look(e["body"].threat_point())
+	await _frames(2)
+	await _c35_save(sheet, "w5-mitm")
+	_w5_kill(mode, func(e): return e["kind"] == "mitm")
+	await _w5_land(mode)
+	# The stale route at edge-board's forward port, its arrows pointing every wrong way.
+	var sign_post: Node3D = null
+	for e in mode.enemies:
+		if e["kind"] == "stale" and e["island"] == "edge-board" and is_instance_valid(e["body"]):
+			sign_post = e["body"]
+	if sign_post != null:
+		await _w5_wait(func(): return sign_post.is_alive())
+		var in3 := net.top(3) - sign_post.global_position
+		in3.y = 0.0
+		in3 = in3.normalized()
+		_c37_view(sign_post.global_position + in3 * 6.5 + Vector3(in3.z, 0.0, -in3.x) * 2.5 + Vector3.UP * 0.95, sign_post.global_position + Vector3.UP * 2.6)
+	await _frames(int(0.6 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w5-stale")
+	_w5_kill(mode, func(e): return e["island"] == "edge-board")
+	# On to the last hop.
+	for i in [3, 4, 5]:
+		await _w5_clear(mode, net.islands[i]["id"], NetBook.forward_from(net.islands[i]["id"]))
+		var f := NetBook.forward_from(net.islands[i]["id"])
+		(net.links[f] as NetLink).loss = 0.0
+		mode.board(f)
+		await _w5_land(mode)
+	# The SYN flood over core-sink, flooding.
+	var boss: Node3D = null
+	for e in mode.enemies:
+		if e["kind"] == "flood":
+			boss = e["body"]
+	if boss == null:
+		printerr("capture: w5 no SYN flood")
+		return
+	await _frames(int(3.4 * Engine.physics_ticks_per_second))
+	mode._flood_t = PacketTracer.FLOOD_EVERY_S
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	_w5_hover(net.top(6) + Vector3(-4.0, 3.2, 15.5), boss.global_position + Vector3.DOWN * 0.8)
+	await _frames(3)
+	await _c35_save(sheet, "w5-boss")
+	await _w5_measure("the SYN flood, the visor off")
+	mode.visor.set_on(true)
+	_w5_hover(net.top(6) + Vector3(0.0, 4.5, 13.0), boss.global_position + Vector3.DOWN * 2.0)
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w5-visor")
+	await _w5_measure("the SYN flood, the visor on")
+	mode.visor.set_on(false)
+	root.size = Vector2i(960, 540)
+	await _frames(8)
+	await _c35_save({}, "w5-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(4)
+	_w5_kill(mode, func(e): return e["kind"] == "flood")
+	await _w5_wait(func(): return mode.phase == "results")
+	await _frames(20)
+	await _c35_save({}, "w5-results")
+	print("capture: w5 results: %s" % " / ".join(mode._hud.result_lines()))
+	var stills: Array[Image] = []
+	for name in W5_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W5_SHEET.size():
+		_save_grid("w5-sequence", stills, 3)
+
+
+## The camera hanging at `at` (the player held there, as on a ride) looking at `look`.
+func _w5_hover(at: Vector3, look: Vector3) -> void:
+	_player.riding = true
+	_player.global_position = at
+	_player.velocity = Vector3.ZERO
+	_w5_look(look)
+
+
+func _w5_look(look: Vector3) -> void:
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to: Vector3 = look - cam.global_position
+	_player.rotation.y = atan2(-to.x, -to.z)
+	_player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+
+
+## The ride going until it is `u` of the way along.
+func _w5_ride_to(mode: PacketTracer, u: float) -> void:
+	await _w5_wait(func(): return mode.ride.is_empty() or float(mode.ride["u"]) >= u)
+
+
+func _w5_land(mode: PacketTracer) -> void:
+	await _w5_wait(func(): return mode.phase != "ride" and mode.phase != "fall")
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))
+
+
+func _w5_wait(condition: Callable) -> void:
+	var waited := 0
+	while waited < 1800 and not condition.call():
+		await _frames(1)
+		waited += 1
+
+
+## Every one of the mode's daemons `which` picks shot down (the stills' own hand).
+func _w5_kill(mode: PacketTracer, which: Callable) -> void:
+	for e in mode.enemies.duplicate():
+		var body = e["body"]
+		if is_instance_valid(body) and body.is_alive() and which.call(e):
+			body.hit(100000.0, body.threat_point(), Vector3.FORWARD, "capture")
+
+
+## Island `id`'s fighters (and the tap on link `link`) down, every dup with them, its route up.
+func _w5_clear(mode: PacketTracer, id: String, link: int) -> void:
+	for pass_n in 3:
+		await _w5_wait(func(): return not mode.enemies.any(func(e): return is_instance_valid(e["body"]) and e["body"].climbing()))
+		_w5_kill(mode, func(e): return e["island"] == id or (e["kind"] == "mitm" and int(e["link"]) == link))
+		await _frames(int((PacketTracer.DUP_S + 0.7) * Engine.physics_ticks_per_second))
+	if link >= 0:
+		await _w5_wait(func(): return (mode.net.links[link] as NetLink).state == NetLink.State.UP)
+
+
+## The camera `dist` metres from `at` on island `i`'s deck, with a clear line to it, looking at it `lift` metres up.
+func _w5_face(net: PacketNet, i: int, at: Vector3, dist: float, lift: float) -> void:
+	var top := net.top(i)
+	var half: Vector2 = net.islands[i]["half"]
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var base := atan2(top.x - at.x, top.z - at.z)
+	for d in [dist, dist * 0.75, dist * 1.25]:
+		for k in 16:
+			var a := base + TAU * float((k + 1) / 2) / 16.0 * (1.0 if k % 2 == 0 else -1.0)
+			var spot: Vector3 = at + Vector3(sin(a), 0.0, cos(a)) * float(d)
+			if absf(spot.x - top.x) > half.x - 1.2 or absf(spot.z - top.z) > half.y - 1.2:
+				continue
+			var eye := Vector3(spot.x, top.y + 1.7, spot.z)
+			var q := PhysicsRayQueryParameters3D.create(eye, at + Vector3(0.0, 1.0, 0.0))
+			q.exclude = [_player.get_rid()]
+			var hit: Dictionary = space.intersect_ray(q)
+			if hit.is_empty() or (hit["collider"] is Node and (hit["collider"] as Node).has_meta(&"net")) or (hit["position"] as Vector3).distance_to(at) < 1.6:
+				_player.riding = false
+				_c37_view(Vector3(spot.x, top.y + 0.95, spot.z), at + Vector3(0.0, lift, 0.0))
+				return
+	_player.riding = false
+	_c37_view(Vector3(top.x, top.y + 0.95, top.z), at + Vector3(0.0, lift, 0.0))
+
+
+## The GPU's time a frame and the engine's steps in the packet tracer, over W1_GPU_FRAMES frames.
+func _w5_measure(label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	print("capture: w5 frame time, %s, at %dx%d: the GPU %.2f ms a frame; the engine's process step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, gpu / W1_GPU_FRAMES, cpu / W1_GPU_FRAMES, W1_GPU_FRAMES])
 
 
 ## Waits for drill `n` to stand (the one before learned, or skipped on the capture's word), its daemons out of the floor.

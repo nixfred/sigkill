@@ -78,8 +78,13 @@ func _ready() -> void:
 	ThemeShift.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
 	# Keybind gunplay (W4): its district queued for the stage when it is (alone, no mission).
 	KeybindGunplay.prepare(launch_args, not alone, AuditVisor.real_gate_for(link))
+	# The packet tracer (W5): the network of invented machines stands where the arena's level was (alone, no mission).
+	var net: PacketNet = null
+	var net_wanted := PacketTracer.prepare(launch_args, not alone)
 	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
+		if ruins == null and net_wanted:
+			net = PacketNet.stage(self)
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
 	DaemonVoice.prewarm()  # the daemons' and ICE's sounds (C42), made once a run, here as the arena loads
@@ -105,6 +110,13 @@ func _ready() -> void:
 		var spots := []
 		for at in ruins.points_of("breaker"):
 			spots.append($Arena.to_local(at))
+		breakers.spots = spots
+	elif net != null:
+		var spots := []
+		for i in range(1, net.islands.size()):
+			var deck := net.spots(i)
+			if not deck.is_empty():
+				spots.append($Arena.to_local(deck[deck.size() - 1]))
 		breakers.spots = spots
 	breakers.daemons = director
 	breakers.ice = ice
@@ -134,7 +146,7 @@ func _ready() -> void:
 	# A mission ended where it stood (M2): the arena's own daemons are back on the top table.
 	runner.ended.connect(func(): _hud.set_round_targets(get_tree().get_nodes_in_group("targets")))
 	add_child(runner)
-	if ruins != null and MissionRunner.pending() == "":
+	if (ruins != null or net != null) and MissionRunner.pending() == "":
 		ice.stand_down = true  # ruins with no mission: ICE's walls and nodes stand where the arena's level was
 	_hud.set_mission_runner(runner)
 	# The Audit Trail visor (C43): every daemon's process and lineage, on I.
@@ -197,6 +209,19 @@ func _ready() -> void:
 	keys.spawned.connect(_on_mission_daemon)
 	_hud.set_keybind_gunplay(keys)
 	add_child(keys)
+	# The packet tracer (W5): a traceroute across a network of invented machines, when queued; its daemons the arena's own
+	# to the HUD and the kills.
+	var tracer := PacketTracer.new()
+	tracer.player = _player
+	tracer.director = director
+	tracer.runner = runner
+	tracer.ice = ice
+	tracer.rounds = _hud.round_hud()
+	tracer.guide = _hud.guide()
+	tracer.visor = visor
+	tracer.spawned.connect(_on_mission_daemon)
+	_hud.set_packet_tracer(tracer)
+	add_child(tracer)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -245,6 +270,10 @@ func _ready() -> void:
 		FolderMap.clear()  # and the folder map (W2)
 		ThemeShift.clear()  # and the theme shift (W3)
 		KeybindGunplay.clear()  # and keybind gunplay (W4)
+		PacketTracer.clear()  # and the packet tracer (W5)
+	elif PacketTracer.queued and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		tracer.begin.call_deferred()
 	elif KeybindGunplay.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		keys.begin.call_deferred()
