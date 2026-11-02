@@ -417,6 +417,7 @@ const W1_GPU_FRAMES := 120
 const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
 ## w3's sheet: the six themes, then the shift's three moments.
 ## w5's sheet: the network, a ride and its warning, a drop, then the islands' fights, foes and the boss.
+const W6_SHEET := ["w6-side", "w6-stacked", "w6-trade", "w6-down", "w6-revive", "w6-boss", "w6-visor", "w6-partners", "w6-results"]
 const W5_SHEET := ["w5-network", "w5-ride", "w5-timeout", "w5-drop", "w5-fight", "w5-mitm", "w5-stale", "w5-boss", "w5-visor"]
 const W4_SHEET := ["w4-drill", "w4-cannon", "w4-burst", "w4-close", "w4-split", "w4-float", "w4-full", "w4-workspace", "w4-visor"]
 const W3_SHEET := ["w3-night", "w3-ember", "w3-frost", "w3-forest", "w3-mocha", "w3-latte", "w3-lurk", "w3-shift", "w3-reveal"]
@@ -598,6 +599,11 @@ func _run() -> void:
 		return
 	if _set == "w3":
 		await _w3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w6":
+		await _w6()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -5058,6 +5064,266 @@ func _w5() -> void:
 			stills.append(sheet[name])
 	if stills.size() == W5_SHEET.size():
 		_save_grid("w5-sequence", stills, 3)
+
+
+## Split-screen co-op (W6): two players in two tiles hunting the arena's waves together. The players are kept from harm
+## for the stills (their protection held, so nothing on the screen counts it), the daemons fight as ever.
+func _w6() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", false)
+	CoopHunt.queue()
+	var old := _main
+	MissionRunner.reload_after_mount(self, CoopHunt.RELOAD_LABEL)
+	await _c35_reloaded(old)
+	var mode := CoopHunt.of(_main)
+	var waited := 0
+	while waited < 900 and (mode == null or not mode.running):
+		await _frames(1)
+		waited += 1
+		mode = CoopHunt.of(_main)
+	if mode == null or not mode.running or mode.player2 == null:
+		printerr("capture: w6 co-op did not begin")
+		return
+	print("capture: w6 OS windows: %d" % DisplayServer.get_window_list().size())
+	var p1 = _player
+	var p2 = mode.player2
+	_w6_guard(mode)
+	# Wave 2 forks in; the players stand back to back across the floor's middle, both firing.
+	await _w5_wait(func(): return mode.phase == "wave" and mode.wave == 1)
+	_w6_kill(mode, func(_e): return true)
+	await _w5_wait(func(): return mode.phase == "wave" and mode.wave == 2 and mode._queue.is_empty())
+	await _frames(int(2.6 * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	await _w6_stage(mode, p1, p2, Vector3(-4.0, 0.95, 13.0), Vector3(-6.0, 1.2, -8.0))
+	await _w6_fire(mode, p1, p2, 14)
+	await _c35_save(sheet, "w6-side")
+	await _w6_measure(mode, "two tiles side by side, a wave up, both firing")
+	# Stacked: the split flipped, still in the fight.
+	mode.screen.flip(1)
+	await _frames(int((CoopScreen.FLIP_S + 0.1) * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	await _w6_stage(mode, p1, p2, Vector3(8.0, 0.95, 13.0), Vector3(4.0, 1.2, -10.0))
+	await _w6_fire(mode, p1, p2, 12)
+	await _c35_save(sheet, "w6-stacked")
+	await _w6_measure(mode, "two tiles stacked, a wave up")
+	mode.screen.flip_cooldown = 0.0
+	mode.screen.flip(2)
+	await _frames(int((CoopScreen.FLIP_S + 0.1) * Engine.physics_ticks_per_second))
+	# The trade: player 2's tile grown to its limit, player 1's at its smallest; each tile's numbers on it.
+	for i in 2:
+		mode.screen.cooldown[2] = 0.0
+		mode.screen.grow(2)
+		await _frames(int((CoopScreen.RESIZE_S + 0.05) * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	await _w6_stage(mode, p1, p2, Vector3(-9.0, 0.95, 14.0), Vector3(2.0, 1.2, -10.0))
+	await _w6_fire(mode, p1, p2, 12)
+	await _c35_save(sheet, "w6-trade")
+	print("capture: w6 trade: p1 %s / p2 %s" % [str(_w6_trade(mode, 1)), str(_w6_trade(mode, 2))])
+	mode.screen.share = 0.5
+	mode.screen._share_from = mode.screen._share_shown
+	mode.screen._share_t = 0.0
+	await _frames(int((CoopScreen.RESIZE_S + 0.1) * Engine.physics_ticks_per_second))
+	# A down: player 2 stopped, its tile drained and red; player 1 sees the beacon and the ring across the floor.
+	_w6_kill(mode, func(_e): return true)
+	await _w5_wait(func(): return mode.phase == "wave" and mode.wave == 3 and mode._queue.is_empty())
+	await _frames(int(2.0 * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	_w6_clear_near(mode, [Vector3(4.0, 0.95, 6.0), Vector3(-5.0, 0.95, 12.0)], 7.0)
+	_w6_put(p2, Vector3(4.0, 0.95, 6.0), Vector3(-6.0, 1.5, -8.0))
+	_w6_put(p1, Vector3(-5.0, 0.95, 12.0), Vector3(4.0, 0.2, 6.0))
+	await _frames(4)
+	mode.lives[2]["protect"] = 0.0
+	mode.damage(2, 1000.0, null, Vector3.FORWARD)
+	mode.lives[2]["bleed"] = 19.0
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	_w6_hold(mode)
+	await _c35_save(sheet, "w6-down")
+	await _w6_measure(mode, "a player down")
+	# The revive: player 1 standing over player 2, the ring filling, fg %2.
+	_w6_clear_near(mode, [Vector3(4.0, 0.95, 6.0)], 9.0)
+	_w6_put(p1, Vector3(5.5, 0.95, 7.3), Vector3(4.0, -0.2, 5.6))
+	await _w5_wait(func(): return float(mode.lives[2]["revive"]) >= 0.62 or mode.state(2) == "up")
+	_w6_hold(mode)
+	await _c35_save(sheet, "w6-revive")
+	await _w5_wait(func(): return mode.state(2) == "up")
+	await _frames(int(0.25 * Engine.physics_ticks_per_second))
+	await _save("w6-revived")
+	# The boss: the last wave, the pegged core with its daemons, both players on it.
+	_w6_kill(mode, func(_e): return true)
+	await _w5_wait(func(): return mode.phase == "wave" and mode.wave == 4 and mode._queue.is_empty())
+	await _frames(int(2.4 * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	var boss := mode.boss()
+	var core: Vector3 = boss.global_position if boss != null else Vector3(0, 2, -3.5)
+	if boss != null:
+		boss.hit(320.0, boss.threat_point(), Vector3.FORWARD, "capture")
+	_w6_clear_near(mode, [Vector3(-5.0, 0.95, 12.0), Vector3(-2.0, 0.95, 13.5)], 5.0)
+	_w6_put(p1, Vector3(-5.0, 0.95, 12.0), core + Vector3.UP * 0.6)
+	_w6_put(p2, Vector3(-2.2, 0.95, 10.0), core + Vector3.UP * 0.6)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	_w6_guard(mode)
+	await _w6_fire(mode, p1, p2, 6)
+	await _frames(int(0.4 * Engine.physics_ticks_per_second))  # the core's hit flash settled, its own heat showing
+	await _c35_save(sheet, "w6-boss")
+	await _w6_measure(mode, "the boss wave")
+	# The visor in player 1's tile only.
+	mode.visor.toggle()
+	await _frames(12)
+	await _c35_save(sheet, "w6-visor")
+	await _w6_measure(mode, "the boss wave, the visor on in tile 1")
+	mode.visor.toggle()
+	# The partners: each one seen in the other's tile, their own figures.
+	_w6_put(p1, Vector3(-1.8, 0.95, 9.0), Vector3(1.8, 1.0, 9.6))
+	_w6_put(p2, Vector3(1.8, 0.95, 9.6), Vector3(-1.8, 1.0, 9.0))
+	await _frames(10)
+	await _c35_save(sheet, "w6-partners")
+	root.size = Vector2i(960, 540)
+	await _frames(10)
+	await _c35_save({}, "w6-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(6)
+	_w6_kill(mode, func(_e): return true)
+	await _w5_wait(func(): return mode.phase == "results")
+	await _frames(20)
+	await _c35_save(sheet, "w6-results")
+	print("capture: w6 results: %s" % " / ".join(mode.result_lines()))
+	var stills: Array[Image] = []
+	for name in W6_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W6_SHEET.size():
+		_save_grid("w6-sequence", stills, 3)
+
+
+## Both players kept from harm for the stills: their protection held (not shown: the HUD shows only a real one's).
+func _w6_guard(mode: CoopHunt) -> void:
+	for seat in [1, 2]:
+		if mode.state(seat) == "up":
+			mode.lives[seat]["protect"] = 99999.0
+			mode.lives[seat]["health"] = CoopHunt.MAX_HEALTH * (0.78 if seat == 1 else 0.56)
+
+
+## A down held where it is for a still: its bleed kept from running out.
+func _w6_hold(mode: CoopHunt) -> void:
+	for seat in [1, 2]:
+		if mode.state(seat) == "down":
+			mode.lives[seat]["bleed"] = maxf(float(mode.lives[seat]["bleed"]), 12.0)
+
+
+## Player `p` standing at `at` looking at `look`.
+func _w6_put(p, at: Vector3, look: Vector3) -> void:
+	p.global_position = at
+	p.velocity = Vector3.ZERO
+	var eye: Vector3 = at + Vector3.UP * 0.7
+	var to: Vector3 = look - eye
+	p.rotation.y = atan2(-to.x, -to.z)
+	p.get_node("Head").rotation.x = clampf(atan2(to.y, Vector2(to.x, to.z).length()), -1.2, 1.2)
+
+
+## The two players side by side at `a` (player 1) and a little ahead and to the right of it (player 2), each looking at
+## a daemon standing 7 to 18 m off in front of them (or at `look`); a daemon closer than 4 m to either one shot down first,
+## so nothing stands on top of them. Player 2 in player 1's view, as a partner fighting beside it.
+func _w6_stage(mode: CoopHunt, p1, p2, a: Vector3, look: Vector3) -> void:
+	_w6_clear_near(mode, [a], 4.5)
+	var fwd: Vector3 = (look - a)
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var used := {}
+	var t1 = _w6_target(mode, a, fwd, used)
+	var aim1: Vector3 = t1.threat_point() if t1 != null else look
+	_w6_put(p1, a, aim1)
+	# Player 2 ahead and to the right in player 1's view, turned a little further right to its own daemon.
+	var f1 := Vector3(aim1.x - a.x, 0.0, aim1.z - a.z).normalized()
+	var r1 := Vector3(-f1.z, 0.0, f1.x)
+	var b: Vector3 = a + f1 * 3.4 + r1 * 1.7
+	_w6_clear_near(mode, [b], 4.5)
+	var f2 := f1.rotated(Vector3.UP, -0.55)
+	var t2 = _w6_target(mode, b, f2, used)
+	_w6_put(p2, b, t2.threat_point() if t2 != null else b + f2 * 12.0 + Vector3.UP * 0.4)
+	await physics_frame
+
+
+## The daemon standing 7 to 18 m from `at`, most nearly along `fwd`, not in `used` (then in it); null for none.
+func _w6_target(mode: CoopHunt, at: Vector3, fwd: Vector3, used: Dictionary):
+	var best = null
+	var best_score := INF
+	for e in mode.enemies:
+		var body = e["body"]
+		if not (is_instance_valid(body) and body.is_alive()) or used.has(body):
+			continue
+		var to: Vector3 = body.global_position - at
+		var d := Vector2(to.x, to.z).length()
+		var ahead := Vector2(to.x, to.z).normalized().dot(Vector2(fwd.x, fwd.z))
+		if d < 7.0 or d > 18.0 or ahead < 0.5:
+			continue
+		var score := d - ahead * 6.0
+		if score < best_score:
+			best_score = score
+			best = body
+	if best != null:
+		used[best] = true
+	return best
+
+
+## Every daemon within `reach` metres of any of `spots` shot down (by player 1, for the stills).
+func _w6_clear_near(mode: CoopHunt, spots: Array, reach: float) -> void:
+	for e in mode.enemies.duplicate():
+		var body = e["body"]
+		if not (is_instance_valid(body) and body.is_alive()) or e["kind"] == "boss":
+			continue
+		for at in spots:
+			if Vector2(body.global_position.x - at.x, body.global_position.z - at.z).length() < reach:
+				mode.player._strike(body, 100000.0, body.threat_point(), Vector3.FORWARD, "capture")
+				break
+
+
+## Both players firing for `n` frames (each tile's weapon, its beams and flashes).
+func _w6_fire(mode: CoopHunt, p1, p2, n: int) -> void:
+	for i in n:
+		for p in [p1, p2]:
+			if p.alive:
+				p.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame  # not _frames(): it would hold player 1 still, its press wiped
+
+
+## Every daemon `which` picks shot down, each by one player's weapon turn about (the stills' own hand).
+func _w6_kill(mode: CoopHunt, which: Callable) -> void:
+	var turn := 0
+	for e in mode.enemies.duplicate():
+		var body = e["body"]
+		if is_instance_valid(body) and body.is_alive() and which.call(e):
+			var by = mode.player if turn % 2 == 0 else mode.player2
+			by._strike(body, 100000.0, body.threat_point(), Vector3.FORWARD, "capture")
+			turn += 1
+	mode._queue.clear()
+
+
+func _w6_trade(mode: CoopHunt, seat: int) -> Dictionary:
+	var v: Vector2 = mode.screen.view_degrees(seat)
+	var tr := CoopScreen.trade_for(mode.screen.share_of(seat, true))
+	return {"share": snappedf(mode.screen.share_of(seat, true), 0.001), "view": "%.0fx%.0f" % [v.x, v.y], "aim": snappedf(tr["aim"], 0.01), "steady": snappedf(tr["steady"], 0.01)}
+
+
+## The GPU's time a frame in co-op: the window (its 2D: the tiles composited, the HUDs) and each tile's own 3D view,
+## over W1_GPU_FRAMES frames; and the engine's process step.
+func _w6_measure(mode: CoopHunt, label: String) -> void:
+	var rids := [root.get_viewport_rid(), mode.screen.port(1).get_viewport_rid(), mode.screen.port(2).get_viewport_rid()]
+	for rid in rids:
+		RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := [0.0, 0.0, 0.0]
+	var cpu := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		for k in 3:
+			gpu[k] += RenderingServer.viewport_get_measured_render_time_gpu(rids[k])
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	for rid in rids:
+		RenderingServer.viewport_set_measure_render_time(rid, false)
+	var n := float(W1_GPU_FRAMES)
+	print("capture: w6 frame time, %s, at %dx%d: the GPU %.2f ms a frame in all (tile 1 %.2f ms at %dx%d, tile 2 %.2f ms at %dx%d, the window %.2f ms); the engine's process step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, (gpu[0] + gpu[1] + gpu[2]) / n, gpu[1] / n, mode.screen.port(1).size.x, mode.screen.port(1).size.y, gpu[2] / n, mode.screen.port(2).size.x, mode.screen.port(2).size.y, gpu[0] / n, cpu / n, W1_GPU_FRAMES])
 
 
 ## The camera hanging at `at` (the player held there, as on a ride) looking at `look`.

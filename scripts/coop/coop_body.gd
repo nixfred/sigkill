@@ -60,13 +60,14 @@ var _clock := 0.0
 func _ready() -> void:
 	name = "CoopBody%d" % seat
 	_armor = StandardMaterial3D.new()
-	_armor.albedo_color = Color(0.035, 0.042, 0.05)
-	_armor.metallic = 0.7
-	_armor.roughness = 0.32
+	_armor.albedo_color = Color(0.05, 0.06, 0.07)
+	_armor.metallic = 0.75
+	_armor.roughness = 0.28
 	_armor.rim_enabled = true
-	_armor.rim = 0.35
-	_light = _glow(hue, 3.2)
-	_light_hi = _glow(hue_hi, 4.5)
+	_armor.rim = 0.6
+	_armor.rim_tint = 0.8
+	_light = _glow(hue, 4.2)
+	_light_hi = _glow(hue_hi, 6.0)
 	_rig = Node3D.new()
 	_rig.name = "Rig"
 	add_child(_rig)
@@ -94,6 +95,16 @@ func _box(parent: Node3D, size: Vector3, at: Vector3, mat: Material, rot := Vect
 	m.position = at
 	m.rotation = rot
 	parent.add_child(m)
+	if mat == _armor and size.y >= 0.2 and size.x >= 0.06:
+		# Light along the armour's front edges, Tron style: the plate drawn by its seams.
+		for side in [-1.0, 1.0]:
+			var e := MeshInstance3D.new()
+			var eb := BoxMesh.new()
+			eb.size = Vector3(0.012, size.y * 0.86, 0.012)
+			e.mesh = eb
+			e.material_override = _light
+			e.position = Vector3(side * (size.x * 0.5 - 0.004), 0.0, -size.z * 0.5 - 0.002)
+			m.add_child(e)
 	return m
 
 
@@ -168,20 +179,21 @@ func _build() -> void:
 		var mid := (p0 + p1) * 0.5
 		var bar := _box(_head, Vector3(p0.distance_to(p1) * 0.78, 0.03, 0.05), Vector3(mid.x, mid.y, 0), _light)
 		bar.rotation.z = atan2(p1.y - p0.y, p1.x - p0.x)
-	# The prompt on the face (as the partner sees it from the front: the head looks along -Z).
+	# The prompt on the face, as the partner reads it from the front (the head looks along -Z, so its own +X is the
+	# partner's left): `>_` and `$_` the right way round, never the mirrored `_<` of `~`'s copies.
 	var glyph := _light_hi
 	if seat == 1:
-		_box(_head, Vector3(0.11, 0.025, 0.02), Vector3(-0.045, 0.035, -0.05), glyph, Vector3(0, 0, -0.6))
-		_box(_head, Vector3(0.11, 0.025, 0.02), Vector3(-0.045, -0.035, -0.05), glyph, Vector3(0, 0, 0.6))
-		_box(_head, Vector3(0.09, 0.025, 0.02), Vector3(0.07, -0.08, -0.05), glyph)
+		_box(_head, Vector3(0.13, 0.03, 0.02), Vector3(0.05, 0.042, -0.05), glyph, Vector3(0, 0, 0.6))
+		_box(_head, Vector3(0.13, 0.03, 0.02), Vector3(0.05, -0.042, -0.05), glyph, Vector3(0, 0, -0.6))
+		_box(_head, Vector3(0.1, 0.03, 0.02), Vector3(-0.08, -0.09, -0.05), glyph)
 	else:
-		_box(_head, Vector3(0.1, 0.022, 0.02), Vector3(-0.05, 0.06, -0.05), glyph)
-		_box(_head, Vector3(0.1, 0.022, 0.02), Vector3(-0.05, 0.0, -0.05), glyph)
-		_box(_head, Vector3(0.1, 0.022, 0.02), Vector3(-0.05, -0.06, -0.05), glyph)
-		_box(_head, Vector3(0.022, 0.07, 0.02), Vector3(-0.1, 0.03, -0.05), glyph)
-		_box(_head, Vector3(0.022, 0.07, 0.02), Vector3(0.0, -0.03, -0.05), glyph)
-		_box(_head, Vector3(0.016, 0.17, 0.02), Vector3(-0.05, 0.0, -0.05), glyph)
-		_box(_head, Vector3(0.08, 0.022, 0.02), Vector3(0.08, -0.08, -0.05), glyph)
+		_box(_head, Vector3(0.11, 0.026, 0.02), Vector3(0.055, 0.065, -0.05), glyph)
+		_box(_head, Vector3(0.11, 0.026, 0.02), Vector3(0.055, 0.0, -0.05), glyph)
+		_box(_head, Vector3(0.11, 0.026, 0.02), Vector3(0.055, -0.065, -0.05), glyph)
+		_box(_head, Vector3(0.026, 0.07, 0.02), Vector3(0.11, 0.033, -0.05), glyph)
+		_box(_head, Vector3(0.026, 0.07, 0.02), Vector3(0.0, -0.033, -0.05), glyph)
+		_box(_head, Vector3(0.018, 0.19, 0.02), Vector3(0.055, 0.0, -0.05), glyph)
+		_box(_head, Vector3(0.09, 0.026, 0.02), Vector3(-0.09, -0.09, -0.05), glyph)
 		# The halo: six bars behind the head, turning.
 		_halo = Node3D.new()
 		_halo.position = Vector3(0, 0, 0.14)
@@ -211,6 +223,30 @@ func _build() -> void:
 		_box(leg, Vector3(0.02, 0.3, 0.02), Vector3(side * 0.06, -0.58, -0.05), _light)
 		_box(leg, Vector3(0.13, 0.05, 0.22), Vector3(0, -0.8, -0.04), _armor)
 		_legs.append(leg)
+	# Its presence on the floor: a soft disc of its light under its feet, and a small light of its own on the floor round it.
+	var foot := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.62
+	disc.bottom_radius = 0.62
+	disc.height = 0.01
+	disc.radial_segments = 6
+	foot.mesh = disc
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.albedo_color = Color(hue, 0.32)
+	foot.material_override = fm
+	foot.position = Vector3(0, FEET + 0.02, 0)
+	foot.rotation.y = PI / 6.0 if seat == 2 else 0.0
+	add_child(foot)
+	var glow := OmniLight3D.new()
+	glow.light_color = hue
+	glow.light_energy = 1.4
+	glow.omni_range = 3.2
+	glow.shadow_enabled = false
+	glow.position = Vector3(0, CHEST, -0.3)
+	_rig.add_child(glow)
 	# The name tag, through walls, small.
 	_tag = Label3D.new()
 	_tag.text = "p%d %s" % [seat, CoopScreen.PROMPT[seat]]
@@ -252,7 +288,7 @@ func _build_down() -> void:
 	disc.radial_segments = 48
 	_fill.mesh = disc
 	var fill_mat := _ring_mat.duplicate() as StandardMaterial3D
-	fill_mat.albedo_color = Color(hue, 0.35)
+	fill_mat.albedo_color = Color(hue, 0.16)
 	_fill.material_override = fill_mat
 	_fill.position = Vector3(0, FEET + 0.03, 0)
 	add_child(_fill)
@@ -283,7 +319,7 @@ func _build_down() -> void:
 	_down_tag.no_depth_test = true
 	_down_tag.shaded = false
 	_down_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_down_tag.position = Vector3(0, 1.4, 0)
+	_down_tag.position = Vector3(0, 2.6, 0)
 	add_child(_down_tag)
 	for n in [_ring, _fill, _beacon, _down_tag]:
 		n.visible = false
@@ -331,4 +367,4 @@ func _process(delta: float) -> void:
 		_fill.visible = revive > 0.0
 		_beacon_mat.albedo_color = Color(Color(1.0, 0.2, 0.3).lerp(hue, revive), 0.22 + 0.18 * pulse)
 		_down_tag.modulate = Color(1.0, 0.45, 0.5).lerp(hue_hi, revive)
-		_down_tag.text = "[%d]+  Stopped   p%d %s\nstand close: fg %%%d" % [seat, seat, CoopScreen.PROMPT[seat], seat] if revive <= 0.0 else "fg %%%d   %d%%" % [seat, int(revive * 100.0)]
+		_down_tag.text = "[%d]+  Stopped" % seat if revive <= 0.0 else "fg %%%d" % seat

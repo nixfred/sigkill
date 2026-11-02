@@ -31,6 +31,8 @@ const GAP_OUT := 10.0
 const GAP_IN := 8.0
 const TITLE_H := 26.0
 const BORDER := 2.0
+## The shared bar across the top (as a tiling desktop's bar sits over its windows): its height at 1080 lines.
+const BAR_H := 30.0
 ## The split: player 1's share of the room, its limits, a press's step; how long a resize and a flip take to settle.
 const SHARE_LOW := 0.35
 const SHARE_HIGH := 0.65
@@ -292,7 +294,8 @@ func _screen() -> Vector2:
 func tile_rect(seat: int) -> Rect2:
 	var k := _k()
 	var s := _screen()
-	var room := Rect2(Vector2.ONE * GAP_OUT * k, s - Vector2.ONE * 2.0 * GAP_OUT * k)
+	var top := (GAP_OUT * 0.6 + BAR_H + GAP_IN) * k
+	var room := Rect2(Vector2(GAP_OUT * k, top), Vector2(s.x - 2.0 * GAP_OUT * k, s.y - top - GAP_OUT * k))
 	var gap := GAP_IN * k
 	var a := _share_shown
 	var side := _split(room, gap, a, false, seat)
@@ -311,6 +314,13 @@ static func _split(room: Rect2, gap: float, a: float, rows: bool, seat: int) -> 
 	if seat == 1:
 		return Rect2(room.position, Vector2(w1, room.size.y))
 	return Rect2(room.position + Vector2(w1 + gap, 0.0), Vector2(room.size.x - gap - w1, room.size.y))
+
+
+## The shared bar's rectangle, across the top over both tiles.
+func bar_rect() -> Rect2:
+	var k := _k()
+	var s := _screen()
+	return Rect2(Vector2(GAP_OUT * k, GAP_OUT * 0.6 * k), Vector2(s.x - 2.0 * GAP_OUT * k, BAR_H * k))
 
 
 ## Tile `seat`'s picture: inside its border, under its title bar.

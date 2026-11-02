@@ -84,31 +84,10 @@ func _draw_shared() -> void:
 	var k := _k()
 	var font := Palette.mono_font()
 	var s := _root.size
+	_bar(k, font, s)
 	if mode.phase == "results":
 		_results(k, font, s)
 		return
-	# The wave, top middle.
-	var top := top_line()
-	if top != "":
-		var fs := int(round(22.0 * k))
-		var w := font.get_string_size(top, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var y := 44.0 * k + (34.0 * k if mode.screen != null and not mode.screen.stacked else 34.0 * k)
-		var box := Rect2(Vector2(s.x * 0.5 - w * 0.5 - 16.0 * k, y - fs * 1.05), Vector2(w + 32.0 * k, fs * 1.5))
-		_root.draw_rect(box, Color(0.01, 0.015, 0.02, 0.88))
-		_root.draw_rect(box, Color(1.0, 0.7, 0.25, 0.7), false, maxf(1.0, 1.5 * k))
-		_root.draw_string(font, Vector2(s.x * 0.5 - w * 0.5, y), top, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.82, 0.45))
-		# The boss's bar under it.
-		var b := mode.boss()
-		if b != null and is_instance_valid(b) and b.is_alive():
-			var share := clampf(b.health() / float(CoopHunt.HEALTH["boss"]), 0.0, 1.0)
-			var bw := 520.0 * k
-			var bar := Rect2(Vector2(s.x * 0.5 - bw * 0.5, y + 18.0 * k), Vector2(bw, 14.0 * k))
-			_root.draw_rect(bar.grow(3.0 * k), Color(0, 0, 0, 0.8))
-			_root.draw_rect(Rect2(bar.position, Vector2(bw * share, bar.size.y)), Color(1.0, 0.18, 0.25).lerp(Color(1.0, 0.94, 0.78), 0.5 + 0.5 * sin(_clock * 7.0)) if share < 0.25 else Color(1.0, 0.2, 0.28))
-			var label := "PEGGED  core 0  %d%% CPU   %d / %d" % [int(round(100.0 - share * 30.0)), int(ceil(b.health())), int(CoopHunt.HEALTH["boss"])]
-			var lfs := int(round(15.0 * k))
-			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs).x
-			_root.draw_string(font, Vector2(s.x * 0.5 - lw * 0.5, bar.end.y + lfs * 1.3), label, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs, Color(1.0, 0.8, 0.75))
 	# The big moment, across the middle.
 	if _banner_t > 0.0 and _banner != "":
 		var a := clampf(_banner_t / 0.4, 0.0, 1.0) * clampf((BANNER_S - _banner_t) / 0.15 + 0.2, 0.0, 1.0)
@@ -120,20 +99,71 @@ func _draw_shared() -> void:
 		_root.draw_line(band.position, Vector2(band.end.x, band.position.y), Color(_banner_color, 0.7 * a), maxf(1.0, 2.0 * k))
 		_root.draw_line(Vector2(0, band.end.y), band.end, Color(_banner_color, 0.7 * a), maxf(1.0, 2.0 * k))
 		_root.draw_string(font, Vector2(s.x * 0.5 - w * 0.5, y), _banner, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(_banner_color, a))
-	# The job control, bottom middle: the last few lines.
-	var lines: Array = []
+
+
+## The shared bar across the top, as a tiling desktop's bar: left, the two players as workspaces (lit while up, red while
+## stopped, the active tile's marked); middle, the wave and how many stand, or the boss's bar while it stands; right, the
+## run's last line of job control and its time.
+func _bar(k: float, font: Font, s: Vector2) -> void:
+	if mode.screen == null:
+		return
+	var bar := mode.screen.bar_rect()
+	_root.draw_rect(bar, Color(0.012, 0.016, 0.02, 0.94))
+	_root.draw_line(Vector2(bar.position.x, bar.end.y), bar.end, Color(1.0, 1.0, 1.0, 0.08), maxf(1.0, k))
+	var fs := int(round(15.0 * k))
+	var mid_y := bar.position.y + bar.size.y * 0.5 + fs * 0.36
+	# Left: SIGKILL, then a pill per player.
+	var x := bar.position.x + 12.0 * k
+	_root.draw_string(font, Vector2(x, mid_y), "SIGKILL", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 1.0, 1.0, 0.85))
+	x += font.get_string_size("SIGKILL", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16.0 * k
+	for seat: int in [1, 2]:
+		var st := mode.state(seat)
+		var hue: Color = CoopScreen.COLOR[seat] if st == "up" else Color(1.0, 0.25, 0.32)
+		var label := "%d  p%d %s" % [seat, seat, CoopScreen.PROMPT[seat]] if st == "up" else "%d  p%d %s" % [seat, seat, "Stopped" if st == "down" else "Killed"]
+		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 18.0 * k
+		var pill := Rect2(Vector2(x, bar.position.y + 4.0 * k), Vector2(w, bar.size.y - 8.0 * k))
+		var active := seat == mode.screen.focus
+		_root.draw_rect(pill, Color(hue, 0.28 if active else 0.12))
+		if active:
+			_root.draw_line(Vector2(pill.position.x, pill.end.y), pill.end, hue, maxf(1.5, 2.0 * k))
+		_root.draw_string(font, Vector2(x + 9.0 * k, mid_y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, hue.lightened(0.35))
+		x += w + 8.0 * k
+	# Middle: the wave, or the boss.
+	var b := mode.boss()
+	if b != null and is_instance_valid(b) and b.is_alive() and mode.phase == "wave":
+		var share := clampf(b.health() / float(CoopHunt.HEALTH["boss"]), 0.0, 1.0)
+		var label := "PEGGED  core 0  %d%%" % int(round(100.0 - share * 30.0))
+		var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var bw := 300.0 * k
+		var left := s.x * 0.5 - (lw + bw + 14.0 * k) * 0.5
+		_root.draw_string(font, Vector2(left, mid_y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.75, 0.7))
+		var r := Rect2(Vector2(left + lw + 14.0 * k, bar.position.y + bar.size.y * 0.5 - 5.0 * k), Vector2(bw, 10.0 * k))
+		_root.draw_rect(r, Color(0.0, 0.0, 0.0, 0.8))
+		var hot := Color(1.0, 0.2, 0.28).lerp(Color(1.0, 0.94, 0.78), (0.5 + 0.5 * sin(_clock * 7.0)) * (1.0 - share))
+		_root.draw_rect(Rect2(r.position, Vector2(bw * share, r.size.y)), hot)
+		var n := "%d / %d   %d STANDING" % [int(ceil(b.health())), int(CoopHunt.HEALTH["boss"]), mode.standing() + mode._queue.size()]
+		_root.draw_string(font, Vector2(r.end.x + 12.0 * k, mid_y), n, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.82, 0.45))
+	else:
+		var top := top_line()
+		var tw := font.get_string_size(top, HORIZONTAL_ALIGNMENT_LEFT, -1, int(fs * 1.1)).x
+		_root.draw_string(font, Vector2(s.x * 0.5 - tw * 0.5, mid_y + 1.0 * k), top, HORIZONTAL_ALIGNMENT_LEFT, -1, int(fs * 1.1), Color(1.0, 0.82, 0.45))
+	# Right: the last line of job control, the time.
+	var t := float(CoopHunt.stats.get("time", 0.0))
+	var clock := "%d:%02d" % [int(t) / 60, int(t) % 60]
+	var cw := font.get_string_size(clock, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	_root.draw_string(font, Vector2(bar.end.x - cw - 12.0 * k, mid_y), clock, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 1.0, 1.0, 0.85))
+	var last := ""
 	for e in mode.events:
 		if e["kind"] != "tile":
-			lines.append(e)
-	lines = lines.slice(maxi(lines.size() - 3, 0))
-	var lfs := int(round(14.0 * k))
-	var ly := s.y - 52.0 * k - (lines.size() - 1) * lfs * 1.3
-	for e in lines:
-		var t: String = "$ " + str(e["text"])
-		var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs).x
-		_root.draw_rect(Rect2(Vector2(s.x * 0.5 - w * 0.5 - 8.0 * k, ly - lfs), Vector2(w + 16.0 * k, lfs * 1.3)), Color(0, 0, 0, 0.5))
-		_root.draw_string(font, Vector2(s.x * 0.5 - w * 0.5, ly), t, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs, Color(0.85, 0.92, 0.9, 0.85))
-		ly += lfs * 1.3
+			last = "$ " + str(e["text"])
+	if last != "":
+		var room := bar.end.x - cw - 30.0 * k - (s.x * 0.5 + 330.0 * k)
+		var lfs := int(round(13.0 * k))
+		while last.length() > 8 and font.get_string_size(last, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs).x > room:
+			last = last.substr(0, last.length() - 4) + "..."
+		var lw2 := font.get_string_size(last, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs).x
+		if room > 60.0 * k:
+			_root.draw_string(font, Vector2(bar.end.x - cw - 24.0 * k - lw2, mid_y), last, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs, Color(0.75, 0.85, 0.82, 0.8))
 
 
 ## The shared results card: the run's head line, each player's column, the team's line, how to go again.

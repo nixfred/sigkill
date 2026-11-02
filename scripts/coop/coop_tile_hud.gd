@@ -79,12 +79,14 @@ func _draw() -> void:
 			draw_rect(Rect2(Vector2(size.x - w - 18.0 * k, y - fs * 0.95), Vector2(w + 10.0 * k, fs * 1.25)), Color(0, 0, 0, 0.42))
 			draw_string(font, Vector2(size.x - w - 13.0 * k, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, hi if key == "view" else Color(hi, 0.9))
 			y += fs * 1.35
-	# Kills and downs, top left.
+	# Kills and downs, top left (giving way to the visor's header in player 1's tile while it is on).
 	var r: Dictionary = mode.per[seat] if not mode.per[seat].is_empty() else {}
+	var visor_up: bool = seat == 1 and mode.visor != null and is_instance_valid(mode.visor) and mode.visor.get("on") == true
 	var fs2 := int(round(15.0 * k))
 	var left := "kills %d   downs %d   revives %d" % [int(r.get("kills", 0)), int(r.get("downs", 0)), int(r.get("revives", 0))]
-	draw_rect(Rect2(Vector2(8.0 * k, 22.0 * k - fs2 * 0.95), Vector2(font.get_string_size(left, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x + 10.0 * k, fs2 * 1.25)), Color(0, 0, 0, 0.42))
-	draw_string(font, Vector2(13.0 * k, 22.0 * k), left, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, Color(hi, 0.92))
+	var ly := 22.0 * k if not visor_up else size.y - 64.0 * k
+	draw_rect(Rect2(Vector2(8.0 * k, ly - fs2 * 0.95), Vector2(font.get_string_size(left, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x + 10.0 * k, fs2 * 1.25)), Color(0, 0, 0, 0.42))
+	draw_string(font, Vector2(13.0 * k, ly), left, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, Color(hi, 0.92))
 	if st == "up":
 		_crosshair(mid, k, hue, hi, p)
 	_health(k, hue, hi, font)
@@ -124,7 +126,9 @@ func _health(k: float, hue: Color, hi: Color, font: Font) -> void:
 	var ch := 12.0 * k
 	var at := Vector2(16.0 * k, size.y - 26.0 * k)
 	var fs := int(round(15.0 * k))
-	draw_string(font, at + Vector2(0, -8.0 * k), "HP %d" % int(ceil(hp)), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, hi)
+	var hp_text := "HP %d" % int(ceil(hp))
+	draw_rect(Rect2(at + Vector2(-5.0 * k, -8.0 * k - fs), Vector2(font.get_string_size(hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 10.0 * k, fs * 1.25)), Color(0, 0, 0, 0.45))
+	draw_string(font, at + Vector2(0, -8.0 * k), hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, hi)
 	var lit := int(ceil(share * cells - 0.001))
 	var low := share <= 0.3
 	for i in cells:
@@ -134,7 +138,8 @@ func _health(k: float, hue: Color, hi: Color, font: Font) -> void:
 			var c := hue if not low else Color(1.0, 0.22, 0.3).lerp(hue, 0.5 + 0.5 * sin(_clock * 8.0))
 			draw_rect(r.grow(-1.5), c)
 	var life: Dictionary = mode.lives[seat]
-	if float(life.get("protect", 0.0)) > 0.0 and str(life.get("state", "")) == "up":
+	var protect := float(life.get("protect", 0.0))
+	if protect > 0.0 and protect <= CoopHunt.PROTECT_S and str(life.get("state", "")) == "up":
 		draw_string(font, at + Vector2(cells * (cw + 3.0 * k) + 8.0 * k, ch), "protected", HORIZONTAL_ALIGNMENT_LEFT, -1, int(13 * k), Color(hi, 0.7))
 
 
