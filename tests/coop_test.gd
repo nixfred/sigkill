@@ -438,6 +438,9 @@ func _down_checks(_main: Node, mode: CoopHunt, p1, p2) -> void:
 	await _frames(30)
 	var fell := float(mode.lives[2]["revive"])
 	_check("standing close fills the revive (%.0f%% at half the time) and stepping away lets it fall back (%.0f%%)" % [half * 100.0, fell * 100.0], half > 0.35 and half < 0.65 and fell < half and mode.state(2) == "down")
+	var fill = mode._bodies[2].get("_fill")
+	var fill_mat = fill.material_override if fill != null else null
+	_check("fold-in (W6's known issue, folded in with W7): the revive's fill is rings running out to a bright edge at the progress, never a flat floor of colour", fill_mat is ShaderMaterial and (fill_mat as ShaderMaterial).shader.code.contains("fract(r * 5.0") and (fill_mat as ShaderMaterial).shader.code.contains("edge"))
 	p1.global_position = p2.global_position + Vector3(1.2, 0.0, 0.0)
 	await _until(func(): return mode.state(2) == "up")
 	await _frames(30)

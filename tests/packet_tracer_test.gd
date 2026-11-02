@@ -296,6 +296,8 @@ func _run_checks() -> void:
 	await _frames(30)
 	var held_u := mode.ride_link_u()
 	_check("acceptance: a packet meeting the man in the middle is held before it, intercepted, while it lives", mode.phase == "ride" and bool(mode.ride["held"]) and held_u < float(tap[0]["u"]) and int(PacketTracer.stats["intercepted"]) == 1)
+	var thud = mode.get("_hud")
+	_check("fold-in (W5's known issue, folded in with W7): INTERCEPTED is said once, by the ride's own line while the packet is held, never by a banner over it too", thud != null and thud.banner_head() != "INTERCEPTED", str(thud.banner_head()) if thud != null else "no HUD")
 	await _kill(mode, func(e): return e["kind"] == "mitm")
 	await _until(func(): return mode.phase != "ride")
 	_check("the man in the middle down, the ride goes on and lands", mode.at_island == 3)

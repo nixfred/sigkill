@@ -24,6 +24,21 @@ const HEAD := 0.78
 ## A full stride's swing of the legs, radians, at a run.
 const SWING := 0.75
 const STRIDE_HZ := 1.6
+## The revive's fill: rings running outward (their spacing in the disc's own units, so they spread as it grows), a soft
+## floor under them and a bright edge at the progress.
+const FILL_SHADER := """shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never;
+uniform vec4 tint : source_color = vec4(0.2, 0.6, 1.0, 0.5);
+varying vec2 p;
+void vertex() { p = VERTEX.xz; }
+void fragment() {
+	float r = length(p);
+	float rings = 1.0 - smoothstep(0.0, 0.22, abs(fract(r * 5.0 - TIME * 1.3) - 0.5) * 2.0 - 0.55);
+	float edge = smoothstep(0.82, 0.98, r) * (1.0 - smoothstep(0.98, 1.0, r));
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(tint.a * (0.25 + 0.9 * rings * r + 2.2 * edge), 0.0, 1.0);
+}
+"""
 ## The revive ring's radius (the mode's reach).
 const RING_R := 2.4
 
@@ -287,8 +302,13 @@ func _build_down() -> void:
 	disc.height = 0.01
 	disc.radial_segments = 48
 	_fill.mesh = disc
-	var fill_mat := _ring_mat.duplicate() as StandardMaterial3D
-	fill_mat.albedo_color = Color(hue, 0.16)
+	# The fill (folded in with W7: it read as a flat floor of colour from right over it): rings of light running out
+	# from the middle to a bright edge that is the progress itself, so it reads as filling from any angle.
+	var fill_shader := Shader.new()
+	fill_shader.code = FILL_SHADER
+	var fill_mat := ShaderMaterial.new()
+	fill_mat.shader = fill_shader
+	fill_mat.set_shader_parameter("tint", Color(hue, 0.2))
 	_fill.material_override = fill_mat
 	_fill.position = Vector3(0, FEET + 0.03, 0)
 	add_child(_fill)

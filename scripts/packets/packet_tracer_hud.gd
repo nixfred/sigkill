@@ -52,6 +52,11 @@ func _ready() -> void:
 		mode.event.connect(_on_event)
 
 
+## The banner's head up now, or "" (the checks).
+func banner_head() -> String:
+	return str(_banner.get("head", ""))
+
+
 func _on_event(kind: String, text: String) -> void:
 	match kind:
 		"hop":
@@ -62,7 +67,7 @@ func _on_event(kind: String, text: String) -> void:
 			if text.begins_with("stale route: sent"):
 				_banner = {"head": "STALE ROUTE", "sub": text.trim_prefix("stale route: "), "color": Color(0.56, 0.63, 0.72), "t": 0.0}
 		"intercepted":
-			_banner = {"head": "INTERCEPTED", "sub": "a man in the middle holds the packet: kill it", "color": Color(0.82, 0.0, 1.0), "t": 0.0}
+			pass  # the ride's own line says INTERCEPTED while it is held (W5's two INTERCEPTED over each other, folded in W7)
 		"lost":
 			_banner = {"head": "* * *   PACKET LOST", "sub": text.trim_prefix("* * *  "), "color": RST, "t": 0.0}
 		"retransmit":
