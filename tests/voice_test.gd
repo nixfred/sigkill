@@ -614,7 +614,7 @@ func _cover_checks() -> void:
 	await _key(KEY_P)
 	await _frames(4)
 	var drone: CoverDrone = voice.drone
-	_check("acceptance: the cover key (P) sends your AI's cover drone out, over the player's shoulder, its tag counting down", drone != null and is_instance_valid(drone) and drone.global_position.distance_to(player.eye_position()) < 2.5)
+	_check("acceptance: the cover key (P) sends your AI's cover drone out, high on the player's right, its tag counting down", drone != null and is_instance_valid(drone) and drone.global_position.distance_to(player.eye_position()) < 3.5)
 	# Watched through the adapter, never a capture of the drone itself (it frees itself as it leaves).
 	var locked := await _until(func(): return voice.drone != null and voice.drone.target() != null, 120)
 	await _until(func(): return voice.drone == null or voice.drone.shots >= 1, 240)

@@ -4,8 +4,8 @@ extends Node3D
 ## voice (scripts/voice/voice_commands.gd) or the cover key (P), alone, wherever the player's abilities are not gated
 ## (never in a mission, which hands out its own abilities, and never in co-op, which is weapons only).
 ##
-## It deploys out of the player's shoulder (its ring unfolding, a flash), keeps station at their shoulder for COVER_S,
-## and covers: it picks the nearest daemon it can see within RANGE_M, locks on for LOCK_S (a sight line drawn from its
+## It deploys out of the player's shoulder (its ring unfolding, a flash), keeps station high on their right for COVER_S,
+## and covers: it picks a daemon it can see within RANGE_M (the nearest, those in front of the player first), locks on for LOCK_S (a sight line drawn from its
 ## lens, thin and pulsing, whitening as the lock closes, and a tick), then fires one bolt (a tracer, a flash at the lens,
 ## sparks where it lands) for DAMAGE, and recovers for RECOVER_S. Then it folds its ring and streaks up out of sight.
 ## Its kills are on the screen as anyone's, and credited as its own (the source "cover"): no sudo charge, no feat
@@ -26,9 +26,12 @@ const LEAVE_S := 0.65
 ## Seconds: a lock's tell, and the rest after a shot.
 const LOCK_S := 0.55
 const RECOVER_S := 0.55
-## Metres: how far it sees a daemon, and where it keeps station from the player's eye (right, up, back).
+## Metres: how far it sees a daemon, and where it keeps station from the player's eye (right, up, ahead): high on the
+## right, out in front, where the player sees it work without it crossing the crosshair.
 const RANGE_M := 30.0
-const STATION := Vector3(0.95, 0.42, 0.35)
+const STATION := Vector3(1.25, 0.62, 2.7)
+## Its size against the parts' own (the parts are modelled at a metre across, ring to ring).
+const SIZE := 0.6
 ## A shot's damage (a plain daemon has 1 health; an elite 30; a world mode's own more).
 const DAMAGE := 20.0
 ## How fast it follows its station (per second, exponential).
@@ -152,17 +155,25 @@ func _step_cover(delta: float) -> void:
 		_rest_t = RECOVER_S
 
 
-## The nearest daemon it can see within reach: alive, not sealed, not hidden, with a clear line from its lens.
+## The daemon to cover the player from: alive, not sealed, not hidden, with a clear line from its lens, the nearest by a
+## measure that weighs what is in front of the player (where they are looking) over what is beside them (2.5 times as
+## far) or behind them (4 times), so its fire goes where the player can see it land.
 func _pick() -> Node3D:
 	var best: Node3D = null
-	var best_d := RANGE_M
+	var best_score := INF
+	var facing := -player.global_transform.basis.z if player != null and is_instance_valid(player) else Vector3.FORWARD
+	facing.y = 0.0
+	facing = facing.normalized() if facing.length() > 0.01 else Vector3.FORWARD
 	for node in get_tree().get_nodes_in_group("targets"):
 		var dummy := node as Node3D
 		if dummy == null or not _ok(dummy):
 			continue
-		var d := global_position.distance_to(_aim_of(dummy))
-		if d < best_d and _clear(dummy):
-			best_d = d
+		var to := _aim_of(dummy) - global_position
+		var flat := Vector3(to.x, 0.0, to.z)
+		var ahead := flat.normalized().dot(facing) if flat.length() > 0.01 else 1.0
+		var score := to.length() * (1.0 + (1.0 - ahead) * 1.5)
+		if score < best_score and _clear(dummy):
+			best_score = score
 			best = dummy
 	return best
 
@@ -204,7 +215,7 @@ func _fire(dummy: Node3D) -> void:
 		dummy.struck_by = player
 	dummy.hit(DAMAGE, to, (to - from).normalized(), SOURCE)
 	_tracer_t = 0.09
-	_place_beam(_tracer, from, to, 0.05)
+	_place_beam(_tracer, from, to, 0.028)
 	_flash_t = 0.12
 	var fx := ParticleFx.of(self)
 	if fx != null:
@@ -225,8 +236,8 @@ func _station() -> Vector3:
 	var eye: Vector3 = player.eye_position() if player.has_method("eye_position") else player.global_position + Vector3.UP * 1.6
 	var basis: Basis = player.global_transform.basis
 	var right := basis.x.normalized()
-	var back := basis.z.normalized()
-	return eye + right * STATION.x + Vector3.UP * STATION.y + back * STATION.z
+	var ahead := -basis.z.normalized()
+	return eye + right * STATION.x + Vector3.UP * STATION.y + ahead * STATION.z
 
 
 # --- The look. ---
@@ -246,16 +257,16 @@ func _animate(delta: float) -> void:
 	if aim != null:
 		_sight.visible = true
 		var flicker := 0.75 + 0.25 * sin(_t * 60.0)
-		_place_beam(_sight, _lens.global_position, _aim_of(aim), lerpf(0.008, 0.026, lock_k))
+		_place_beam(_sight, _lens.global_position, _aim_of(aim), lerpf(0.006, 0.018, lock_k))
 		_sight_mat.albedo_color = Color(Palette.TEAL.lerp(Palette.FLASH, lock_k * 0.8), lerpf(0.35, 0.95, lock_k) * flicker)
 	_tracer_t = maxf(_tracer_t - delta, 0.0)
 	_tracer.visible = _tracer_t > 0.0
 	_tracer_mat.albedo_color = Color(Palette.MINT.lerp(Palette.FLASH, 0.6), _tracer_t / 0.09)
 	_flash_t = maxf(_flash_t - delta, 0.0)
-	_light.light_energy = 1.2 + 6.0 * _flash_t / 0.12 + 1.5 * lock_k
+	_light.light_energy = 0.8 + 4.0 * _flash_t / 0.12 + 1.0 * lock_k
 	var core_mat := _core.material_override as StandardMaterial3D
-	core_mat.emission_energy_multiplier = 3.0 + 4.0 * lock_k + 8.0 * _flash_t / 0.12
-	(_lens.material_override as StandardMaterial3D).emission_energy_multiplier = 2.0 + 10.0 * lock_k + 12.0 * _flash_t / 0.12
+	core_mat.emission_energy_multiplier = 1.8 + 2.5 * lock_k + 5.0 * _flash_t / 0.12
+	(_lens.material_override as StandardMaterial3D).emission_energy_multiplier = 1.5 + 5.0 * lock_k + 8.0 * _flash_t / 0.12
 	var left := ceili(left_s())
 	_tag.text = "your AI  cover  %d" % left if phase == "cover" else ("your AI  cover" if phase == "deploy" else "")
 	_tag.modulate.a = 1.0 if phase != "leave" else 0.0
@@ -293,19 +304,21 @@ func _place_beam(beam: MeshInstance3D, from: Vector3, to: Vector3, width: float)
 	var forward := (to - from) / length
 	var up := Vector3.UP if absf(forward.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
 	var b := Basis.looking_at(forward, up)
-	beam.global_transform = Transform3D(b.scaled(Vector3(width, width, length)), mid)
+	# Scaled along the beam's own axes (Basis.scaled() would scale along the world's, stretching a sideways beam wide).
+	beam.global_transform = Transform3D(Basis(b.x * width, b.y * width, b.z * length), mid)
 
 
 func _build() -> void:
 	_rig = Node3D.new()
 	_rig.name = "Rig"
+	_rig.scale = Vector3.ONE * SIZE
 	add_child(_rig)
-	_core = _mesh(_rig, _sphere(0.15, 6, 3), _glow(Palette.MINT, 3.0))
+	_core = _mesh(_rig, _sphere(0.15, 6, 3), _glow(Palette.MINT, 1.8))
 	var plate_mat := _metal()
 	for y in [0.085, -0.085]:
 		var plate := _mesh(_rig, _hex(0.24, 0.2, 0.05), plate_mat)
 		plate.position = Vector3(0, y, 0)
-		var rim := _mesh(_rig, _hex(0.25, 0.25, 0.012), _glow(Palette.TEAL, 2.2))
+		var rim := _mesh(_rig, _hex(0.25, 0.25, 0.012), _glow(Palette.TEAL, 1.3))
 		rim.position = Vector3(0, y + (0.026 if y > 0 else -0.026), 0)
 	_ring = Node3D.new()
 	_ring.name = "Ring"
@@ -315,13 +328,13 @@ func _build() -> void:
 	torus.outer_radius = 0.375
 	torus.rings = 24
 	torus.ring_segments = 6
-	_mesh(_ring, torus, _glow(Palette.TEAL, 2.6))
+	_mesh(_ring, torus, _glow(Palette.TEAL, 1.4))
 	for i in 3:
 		var a := TAU * float(i) / 3.0
 		var arm := _mesh(_ring, _box(Vector3(0.03, 0.03, 0.2)), plate_mat)
 		arm.position = Vector3(cos(a), 0, sin(a)) * 0.25
 		arm.rotation.y = -a + PI * 0.5
-		var pod := _mesh(_ring, _sphere(0.045, 6, 3), _glow(Palette.MINT, 4.0))
+		var pod := _mesh(_ring, _sphere(0.045, 6, 3), _glow(Palette.MINT, 2.4))
 		pod.position = Vector3(cos(a), 0, sin(a)) * 0.375
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.045
@@ -339,15 +352,15 @@ func _build() -> void:
 	add_child(_light)
 	_tag = Label3D.new()
 	_tag.font = Palette.mono_font()
-	_tag.font_size = 40
-	_tag.pixel_size = 0.0024
+	_tag.font_size = 32
+	_tag.pixel_size = 0.0012
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tag.no_depth_test = true
 	_tag.fixed_size = false
 	_tag.modulate = Palette.MINT
 	_tag.outline_modulate = Color(Palette.VOID, 0.85)
 	_tag.outline_size = 10
-	_tag.position = Vector3(0, 0.36, 0)
+	_tag.position = Vector3(0, 0.3, 0)
 	_tag.render_priority = 2
 	add_child(_tag)
 	_sight_mat = _beam_mat(Palette.TEAL)

@@ -1340,7 +1340,8 @@ func _build_privacy(col: VBoxContainer) -> void:
 	_voice_feed = LineEdit.new()
 	_voice_feed.max_length = VoiceFeed.URL_LAST
 	_voice_feed.placeholder_text = VOICE_FEED_HINT
-	_voice_feed.custom_minimum_size.x = CONTROL_W
+	_voice_feed.custom_minimum_size.x = CONTROL_W + VALUE_W  # its hint whole, in the value's room (no value here)
+	_voice_feed.add_theme_font_size_override("font_size", FONT - 2)
 	_voice_feed.tooltip_text = VOICE_TIP
 	_voice_feed.text_submitted.connect(func(text): _set_voice_feed(text))
 	_voice_feed.focus_exited.connect(func(): _set_voice_feed(_voice_feed.text))

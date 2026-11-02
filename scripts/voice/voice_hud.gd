@@ -14,7 +14,8 @@ extends Control
 ## nothing once it is ready (the key list and the README teach P).
 ##
 ## A toast for every command that fires, by voice: a dark card dropping in at the top's middle, torn in slices for its
-## first moments as if it came in over a bad line, its corners bracketed in the command's own colour, a glyph of what it
+## first moments as if it came in over a bad line, a strip of the command's own colour down its edge washing into it,
+## scanlines over it, its corners bracketed in that colour, a glyph of what it
 ## does (a shield for cover, a bolt for a breaker, a turning arrow for reload, an eye for the visor, bars for pause, a
 ## play mark for resume) beside its name large, and under it what came of it ("drone out  10 s", "no breaker loaded",
 ## "SIGSTOP"); a bar of light sweeps it once, then it fades. Several at once queue. Cosmetic only; it never takes input.
@@ -112,14 +113,15 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Its scale with the window: the arena's own HUD text keeps its size in a small window, so this keeps most of its own.
 func _k() -> float:
-	return clampf(size.y / 1080.0, 0.55, 1.6)
+	return clampf(size.y / 1080.0, 0.82, 1.6)
 
 
 func _draw() -> void:
 	var k := _k()
 	var state := _state()
-	var y := CHIP_AT.y * k
+	var y := CHIP_AT.y * maxf(k, 1.0)
 	if state.get("shown", false):
 		y = _draw_chip(state, k)
 	var cover := cover_line()
@@ -134,7 +136,7 @@ func _draw_chip(state: Dictionary, k: float) -> float:
 	var word: String = state.get("word", "")
 	var source: String = state.get("source", "")
 	var hue: Color = Palette.MINT if listening else (Palette.HOSTILE_AMBER if state.get("warn", false) else Color(Palette.MINT, 0.55))
-	var at := CHIP_AT * k
+	var at := Vector2(CHIP_AT.x * k, CHIP_AT.y * maxf(k, 1.0))  # under the round's lines, which never shrink
 	var h := CHIP_H * k
 	var fs := int(13 * k)
 	var head_w := _font.get_string_size("VOICE", HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * k)).x
@@ -226,7 +228,18 @@ func _draw_toast(toast: Dictionary, k: float) -> void:
 		var off := 0.0
 		if tearing:
 			off = sin(float(s) * 12.9 + _t * 80.0) * 14.0 * k * (1.0 - _age / TEAR_S)
-		draw_rect(Rect2(at + Vector2(off, sy), Vector2(w, sh)), Color(Palette.VOID, 0.84 * a))
+		draw_rect(Rect2(at + Vector2(off, sy), Vector2(w, sh)), Color(Palette.VOID, 0.93 * a))
+	# The command's own light: a strip down its left edge, a wash fading in from it, a hairline frame; scanlines over all.
+	draw_rect(Rect2(at, Vector2(5.0 * k, h)), Color(hue, 0.95 * a))
+	var steps := 32
+	for i in steps:
+		var u := float(i) / float(steps)
+		draw_rect(Rect2(at + Vector2(5.0 * k + w * 0.75 * u, 0), Vector2(w * 0.75 / float(steps) + 1.0, h)), Color(hue, 0.1 * pow(1.0 - u, 1.6) * a))
+	draw_rect(Rect2(at, Vector2(w, h)), Color(hue, 0.35 * a), false, 1.0)
+	var line_y := 0.0
+	while line_y < h:
+		draw_rect(Rect2(at + Vector2(0, line_y), Vector2(w, 1.0)), Color(0.0, 0.0, 0.0, 0.22 * a))
+		line_y += 3.0 * k
 	# A ghost split off its edges while it tears (red and blue), the bad line's mark.
 	if tearing:
 		var g := (1.0 - _age / TEAR_S) * a

@@ -417,6 +417,7 @@ const W1_GPU_FRAMES := 120
 const W2_SHEET := ["w2-big", "w2-doors", "w2-small", "w2-maze", "w2-deeper", "w2-visor"]
 ## w3's sheet: the six themes, then the shift's three moments.
 ## w5's sheet: the network, a ride and its warning, a drop, then the islands' fights, foes and the boss.
+const W7_SHEET := ["w7-chip", "w7-toast", "w7-cover", "w7-fire", "w7-pause", "w7-off", "w7-settings"]
 const W6_SHEET := ["w6-side", "w6-stacked", "w6-trade", "w6-down", "w6-revive", "w6-boss", "w6-visor", "w6-partners", "w6-results"]
 const W5_SHEET := ["w5-network", "w5-ride", "w5-timeout", "w5-drop", "w5-fight", "w5-mitm", "w5-stale", "w5-boss", "w5-visor"]
 const W4_SHEET := ["w4-drill", "w4-cannon", "w4-burst", "w4-close", "w4-split", "w4-float", "w4-full", "w4-workspace", "w4-visor"]
@@ -599,6 +600,11 @@ func _run() -> void:
 		return
 	if _set == "w3":
 		await _w3()
+		print("capture: %d stills" % _shots)
+		quit(0)
+		return
+	if _set == "w7":
+		await _w7()
 		print("capture: %d stills" % _shots)
 		quit(0)
 		return
@@ -5194,6 +5200,168 @@ func _w6() -> void:
 			stills.append(sheet[name])
 	if stills.size() == W6_SHEET.size():
 		_save_grid("w6-sequence", stills, 3)
+
+
+## W7 (voice commands): the voice demo's made-up feed only (no real feed is ever asked), the regular arena's daemons. The
+## demo's clock is moved on to each scripted line as the stills need it; the lines go through the very reading a real
+## feed's would.
+func _w7() -> void:
+	var sheet := {}
+	UnlockToast.drop_waiting()
+	GameSettings.current().set_value("gameplay", "practice", true)  # the daemons stand and never hit: no shield on the HUD
+	VoiceCommands.cover_wait = 0.0
+	VoiceDemo.queue()
+	var old := _main
+	MissionRunner.reload_after_mount(self, VoiceDemo.RELOAD_LABEL)
+	await _c35_reloaded(old)
+	var voice := VoiceCommands.of(_main)
+	await _w5_wait(func(): return voice != null and voice.demo and voice.state() == "listening")
+	if voice == null or voice.state() != "listening":
+		printerr("capture: w7 the demo feed did not start")
+		return
+	var hud = _main.get_node("Hud").voice_hud()
+	# The chip, listening, a few lines heard, the arena quiet a moment: a daemon or two in sight.
+	await _w7_say(voice, 0)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	await _w7_say(voice, 1)
+	await _frames(int(1.0 * Engine.physics_ticks_per_second))
+	var target := _w7_stage(10.0)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))  # before the script's "Reload!" at 8 s
+	await _c35_save(sheet, "w7-chip")
+	await _w7_measure("the arena, the demo feed listening")
+	# A command firing: "Reload!" heard after a few SIGTERM shots, its toast in.
+	_player.select_slot(1)
+	await _frames(int(0.8 * Engine.physics_ticks_per_second))
+	target = _w7_stage(11.0)
+	await _w7_fire(50)
+	await _w7_say(voice, 2)
+	await _w5_wait(func(): return not hud.current_toast().is_empty())
+	await _frames(int(0.45 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w7-toast")
+	print("capture: w7 toast: %s" % str(hud.current_toast()))
+	_player.select_slot(0)
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	# "Larry, cover me": the drone out, its toast; then the drone locked on and firing, the player firing beside it.
+	target = _w7_stage(13.0)
+	await _w7_say(voice, 3)
+	await _w5_wait(func(): return voice.drone != null and voice.drone.phase == "cover")
+	await _frames(int(0.25 * Engine.physics_ticks_per_second))
+	_w7_face(target)
+	await _c35_save(sheet, "w7-cover")
+	await _w7_measure("the cover drone out")
+	await _w5_wait(func(): return voice.drone == null or (voice.drone.target() != null and voice.drone._lock_t > CoverDrone.LOCK_S * 0.7))
+	await _w7_fire(4)
+	await _w5_wait(func(): return voice.drone == null or voice.drone._tracer_t > 0.05)
+	await _c35_save(sheet, "w7-fire")
+	await _w7_measure("the cover drone firing")
+	# "pause": SIGSTOP, the world slowed, its toast.
+	await _w5_wait(func(): return voice.drone == null)
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	_w7_stage(12.0)
+	await _w7_say(voice, 9)
+	await _w5_wait(func(): return _player.sigstop.is_on())
+	await _frames(int(0.3 * Engine.physics_ticks_per_second))
+	await _c35_save(sheet, "w7-pause")
+	await _w7_say(voice, 10)
+	await _w5_wait(func(): return not _player.sigstop.is_on())
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	# One at 960 wide: "drop a breaker" toasted over the arena.
+	root.size = Vector2i(960, 540)
+	await _frames(6)
+	_w7_stage(11.0)
+	await _w7_say(voice, 6)
+	await _w5_wait(func(): return not hud.current_toast().is_empty() and hud.current_toast()["id"] == &"breaker")
+	await _frames(int(0.5 * Engine.physics_ticks_per_second))
+	await _c35_save({}, "w7-960")
+	root.size = Vector2i(1920, 1080)
+	await _frames(int(3.0 * Engine.physics_ticks_per_second))
+	# The feed off: the demo ended, a feed address set and the real-data opt-in off (a demo run's), so voice stays off
+	# and says why. No request is made: the opt-in is never on here.
+	voice.end_demo()
+	voice.feed_url = func(): return "http://localhost/feed"
+	_w7_stage(10.0)
+	await _frames(int(1.2 * Engine.physics_ticks_per_second))
+	print("capture: w7 off: state %s, asks %d" % [voice.state(), voice.asks])
+	await _c35_save(sheet, "w7-off")
+	# The settings: Privacy and AI's voice feed, empty, its hint.
+	var menu = _main.get_node("Hud").pause_menu()
+	menu.open()
+	menu.open_settings()
+	await _frames(8)
+	await _c35_save(sheet, "w7-settings")
+	menu.close()
+	voice.feed_url = Callable()
+	VoiceDemo.clear()
+	var stills: Array[Image] = []
+	for name in W7_SHEET:
+		if sheet.has(name) and sheet[name] != null:
+			stills.append(sheet[name])
+	if stills.size() == W7_SHEET.size():
+		_save_grid("w7-sequence", stills, 3)
+
+
+## The demo feed's line `index` (VoiceDemo.SCRIPT) said now, alone: the lines before it marked seen, so each still has
+## exactly its own command (a jump of the demo's clock over several lines fires them all, as a real feed's backlog would).
+func _w7_say(voice: VoiceCommands, index: int) -> void:
+	var hud = _main.get_node("Hud").voice_hud()
+	await _w5_wait(func(): return hud.current_toast().is_empty())  # the last command's toast gone first
+	voice._last_id = index
+	voice._demo_t = float(VoiceDemo.SCRIPT[index][0]) + 0.01
+
+
+## The player `metres` from the nearest daemon standing, facing it; that daemon (or null).
+func _w7_stage(metres: float) -> Node3D:
+	var best: Node3D = null
+	var best_d := INF
+	for t in _main.get_tree().get_nodes_in_group("targets"):
+		if _main.is_ancestor_of(t) and t.has_method("is_alive") and t.is_alive():
+			var d := (t as Node3D).global_position.distance_to(_player.global_position)
+			if d < best_d:
+				best_d = d
+				best = t
+	if best == null:
+		return null
+	var at: Vector3 = best.global_position
+	var away := Vector3(_player.global_position.x - at.x, 0.0, _player.global_position.z - at.z)
+	if away.length() < 0.5:
+		away = Vector3(0, 0, 1)
+	var stand := at + away.normalized() * metres
+	_player.global_position = Vector3(stand.x, _player.global_position.y, stand.z)
+	_player.velocity = Vector3.ZERO
+	_w7_face(best)
+	return best
+
+
+func _w7_face(target: Node3D) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	var look: Vector3 = target.threat_point() if target.has_method("threat_point") else target.global_position
+	var cam: Camera3D = _player.get_node("Head/Camera")
+	var to: Vector3 = look - cam.global_position
+	_player.rotation.y = atan2(-to.x, -to.z) + 0.06
+	_player.get_node("Head").rotation.x = clampf(atan2(to.y, Vector2(to.x, to.z).length()), -1.0, 1.0)
+
+
+func _w7_fire(n: int) -> void:
+	for i in n:
+		_player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame  # not _frames(): it would wipe the press
+
+
+func _w7_measure(label: String) -> void:
+	var rid := root.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(5)
+	var gpu := 0.0
+	var cpu := 0.0
+	for i in W1_GPU_FRAMES:
+		await _frames(1)
+		await RenderingServer.frame_post_draw
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		cpu += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	var n := float(W1_GPU_FRAMES)
+	print("capture: w7 frame time, %s, at %dx%d: the GPU %.2f ms a frame; the engine's process step %.2f ms (%d frames)" % [label, root.size.x, root.size.y, gpu / n, cpu / n, W1_GPU_FRAMES])
 
 
 ## Both players kept from harm for the stills: their protection held (not shown: the HUD shows only a real one's).
