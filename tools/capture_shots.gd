@@ -4566,6 +4566,32 @@ func _w1_measure(hunt: ProcHunt, label: String) -> void:
 ## maze, down a corridor of code toward the way out's beacon (w2-maze); three levels down, the maze grown (w2-deeper);
 ## the visor in the maze, the way out traced and the breadcrumb across the top (w2-visor); the same at 960x540; and
 ## the sheet. The GPU's time a frame printed in the big room and in the maze, the visor off and on.
+## One of the room's own daemons stood in a W2 still (P2: the stills showed rooms with their daemons out of frame): the
+## nearest living one moved to the floor `dist` metres from `from` toward `toward`, `side` metres to the right of that
+## line, facing the camera. Nothing is added: it is the room's, put where the shot sees it.
+func _w2_stage(map: FolderMap, from: Vector3, toward: Vector3, dist: float, side: float) -> void:
+	var w := map.world
+	var ahead := Vector3(toward.x - from.x, 0.0, toward.z - from.z).normalized()
+	var right := Vector3(-ahead.z, 0.0, ahead.x)
+	var spot := from + ahead * dist + right * side
+	for d in [dist, dist * 0.8, dist * 1.2, dist * 0.6]:
+		var at: Vector3 = from + ahead * float(d) + right * side
+		if w.layout.cell(w.layout.cell_at(w.to_local(at))) == RuinsLayout.Cell.FLOOR:
+			spot = at
+			break
+	var best: Node3D = null
+	for e in map.enemies:
+		if is_instance_valid(e) and e.has_method("is_alive") and e.is_alive():
+			if best == null or (e as Node3D).global_position.distance_to(spot) < best.global_position.distance_to(spot):
+				best = e
+	if best == null:
+		print("capture: w2 no daemon to stage")
+		return
+	best.global_position = Vector3(spot.x, best.global_position.y, spot.z)
+	best.look_at(Vector3(from.x, best.global_position.y, from.z), Vector3.UP)
+	print("capture: w2 staged %s at %.1f m" % [best.name, best.global_position.distance_to(from)])
+
+
 func _w2() -> void:
 	var sheet := {}
 	UnlockToast.drop_waiting()
@@ -4582,6 +4608,7 @@ func _w2() -> void:
 	var tall := RuinsPieces.door_tall(big)
 	var back_from := start + (big_at - start).normalized() * 0.5  # never back into the back door's portal: it goes up
 	_c37_view(Vector3(back_from.x, 0.0, back_from.z), big_at + Vector3(0.0, tall * 0.55, 0.0))
+	_w2_stage(map, back_from, big_at, 11.0, 2.5)  # P2: one of the room's own daemons in the shot (W2's stills showed none)
 	await _frames(int(1.5 * Engine.physics_ticks_per_second))
 	await _c35_save(sheet, "w2-big")
 	print("capture: w2 Videos: %s cells, towers x%.2f, %d doors, %d daemons" % [str(w.ruins.cells), w.ruins.tall, map.doors.size(), map.enemies.size()])
@@ -4611,6 +4638,7 @@ func _w2() -> void:
 	var back_at: Vector3 = w.global_transform * (back["at"] as Vector3)
 	var far := back_at - (back["out"] as Vector3) * (float(w.layout.size.y) * RuinsLayout.CELL_M - 3.0)
 	_c37_view(Vector3(far.x, 0.0, far.z), back_at + Vector3(0.0, 3.0, 0.0))
+	_w2_stage(map, far, back_at, 8.0, -2.0)  # P2: one of the room's own daemons in the shot
 	await _frames(int(1.2 * Engine.physics_ticks_per_second))
 	await _c35_save(sheet, "w2-small")
 	print("capture: w2 subtitles: %s cells, towers x%.2f, %d doors, %d daemons" % [str(w.ruins.cells), w.ruins.tall, map.doors.size(), map.enemies.size()])
