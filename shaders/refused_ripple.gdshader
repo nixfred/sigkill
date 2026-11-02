@@ -5,7 +5,7 @@ shader_type spatial;
 
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
-uniform vec4 steel : source_color = vec4(0.62, 0.68, 0.75, 1.0);
+uniform vec4 steel : source_color = vec4(0.663, 0.741, 0.839, 1.0);
 // 0 as it meets, 1 gone.
 uniform float age = 0.0;
 
