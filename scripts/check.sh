@@ -6,12 +6,12 @@
 #
 # Steps: gdparse every .gd file, headless import, headless run of 300 frames, and the
 # headless movement, cannon, derezz, code rain, AI detector, guide adapter, boot sequence,
-# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall, trailer, opener link, opener end, mission, ruins and mission 1 to 7 tests, and (step 63, C43) the audit visor test with the mission tests run again with the visor on, and (step 64, C44) the credits test, and (step 65, W1) the process hunt test, and (step 66, W2) the folder map test, and (step 67, W3) the theme shift test, and (step 68, W4) the keybind gunplay test, and (step 69, W5) the packet tracer test, and (step 70, W6) the split-screen co-op test (tests/movement_test.gd,
+# guide HUD, model load, round, net, combat, room, weapon, settings, relay, rail, bullet time, WebSocket relay, fork bomb, light trail, code-rain vision, root and sudo, spectate top, fork() shotgun, grep seeker, rm -rf cannon, cron mines, viewmodel, enemy art, arena art, enemy motion, graphics, daemon AI, ping, daemon variety, ICE, ICEbreaker, Black ICE, freeze ray, pipe chain, /dev/null, SIGHUP, unlocks, opener, opener real-data, opener fall, trailer, opener link, opener end, mission, ruins and mission 1 to 7 tests, and (step 63, C43) the audit visor test with the mission tests run again with the visor on, and (step 64, C44) the credits test, and (step 65, W1) the process hunt test, and (step 66, W2) the folder map test, and (step 67, W3) the theme shift test, and (step 68, W4) the keybind gunplay test, and (step 69, W5) the packet tracer test, and (step 70, W6) the split-screen co-op test, and (step 71, W7) the voice commands test (tests/movement_test.gd,
 # tests/cannon_test.gd, tests/derezz_test.gd, tests/code_rain_test.gd,
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd, tests/coop_test.gd) at a fixed frame rate. The
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd, tests/coop_test.gd, tests/voice_test.gd) at a fixed frame rate. The
 # visor test reads a fake process table it builds in its own folder under user:// (fake stat and status files beside
 # poisoned ones it must never open; removed at the end), never the machine's own. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
@@ -262,6 +262,36 @@ run_godot "packet tracer test" --fixed-fps 60 --script res://tests/packet_tracer
 # the partner standing close, a bleed-out, a wipe; a two-player run of every wave to the shared results card; the visor
 # in player 1's tile; each body seen only by the partner; the Esc menu's entry; leaving puts everything back.
 run_godot "split-screen co-op test" --fixed-fps 60 --script res://tests/coop_test.gd
+
+# 71. Voice commands (W7): the game's own demo feed and a fake feed the test serves itself on 127.0.0.1 only, never a real
+# transcript program. Commands from talk lines (loosely), the TV's lines skipped, no "Larry, tell" command and no such
+# line acted on; only loopback addresses accepted, an empty one making no request at all, and the real-data opt-in off
+# making none either; a feed down, hanging, junk, an error, a redirect or too big leaving voice off without stalling a
+# frame; the cover drone (voice and P); the demo; the menu and the settings; nothing in the game opening a microphone,
+# and no listening socket, program run, systemctl or compositor call in the voice code; the arena's keys unchanged, no
+# Ctrl+Alt combo. The fake feed's lines carry a canary phrase: the test looks for it in every label, node, file under
+# user:// and log line, and this step looks for it in the run's whole output too.
+voice_step() {
+	local label="voice commands test"
+	local out rc canary
+	canary=$(sed -n 's/^const CANARY := "\(.*\)"$/\1/p' "$root/tests/voice_test.gd")
+	if [ -z "$canary" ]; then
+		fail "$label: no canary phrase found in the test"
+		return
+	fi
+	out=$(nice -n 10 timeout 300 godot --headless --path "$root" --fixed-fps 60 --script res://tests/voice_test.gd 2>&1)
+	rc=$?
+	if [ "$rc" -ne 0 ] || grep -E -q "$ERROR_PATTERN" <<<"$out"; then
+		fail "$label: exit $rc or error lines"
+		grep -E "^FAIL|$ERROR_PATTERN" <<<"$out" | head -20 >&2
+		printf '%s\n' "$out" | tail -5 >&2
+	elif grep -F -q "$canary" <<<"$out"; then
+		fail "$label: the fake feed's canary phrase turned up in the output"
+	else
+		ok "$label: exit 0, no error lines, the canary phrase nowhere in the output"
+	fi
+}
+voice_step
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

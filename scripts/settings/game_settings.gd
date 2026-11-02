@@ -36,6 +36,7 @@ signal changed(section: String, key: String)
 const SettingsFile = preload("res://scripts/settings/settings_file.gd")
 const Controls = preload("res://scripts/controls.gd")
 const RelayWire = preload("res://scripts/net/relay_wire.gd")
+const VoiceFeed = preload("res://scripts/voice/voice_feed.gd")
 
 const BINDS := "binds"
 const NAME_LAST := 24
@@ -97,6 +98,9 @@ const SCHEMA := {
 		"net_stats": [TYPE_BOOL, false],
 		"light_trails": [TYPE_BOOL, false],
 		"mods": [TYPE_BOOL, true],
+	},
+	"voice": {
+		"feed_url": [TYPE_STRING, "", []],
 	},
 }
 ## The quality preset's name when the toggles match no preset.
@@ -274,6 +278,8 @@ static func checked(section: String, key: String, v: Variant) -> Variant:
 				return clean_name(v)
 			if key == "relay_url":
 				return v if RelayWire.url_ok(v) else null
+			if key == "feed_url":
+				return v if VoiceFeed.setting_ok(v) else null
 			return v if (spec[2] as Array).has(v) else null
 	return null
 

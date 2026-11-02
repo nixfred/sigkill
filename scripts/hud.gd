@@ -57,6 +57,7 @@ var _dev_null: DevNullHud
 var _sighup: SighupHud
 var _visor: VisorHud
 var _toast: UnlockToast
+var _voice: VoiceHud
 var _mission: MissionHud
 var _filter: CanvasLayer
 var _player: Node = null
@@ -190,6 +191,9 @@ func _ready() -> void:
 	_mission.name = "MissionHud"
 	_mission.guide = _guide
 	root.add_child(_mission)
+	# Voice commands (W7): the voice chip, the cover readout and the command toasts (scripts/voice/voice_hud.gd).
+	_voice = VoiceHud.new()
+	root.add_child(_voice)
 	# Unlocks (C33): "UNLOCKED: <name>" near the top the moment a skin or a mod is earned (over a mission's end).
 	_toast = UnlockToast.new()
 	_toast.name = "UnlockToast"
@@ -399,7 +403,7 @@ func set_coop(on: bool) -> void:
 	_coop = on
 	if on:
 		_coop_hidden.clear()
-		for part in [_crosshair, _hit_marker, _grep, _status, _hint, _engage, _guide, _round, _net, _combat, _weapons, _sudo, _top, _breakers, _ice, _black, _freeze, _pipe, _dev_null, _sighup, _mission]:
+		for part in [_crosshair, _hit_marker, _grep, _status, _hint, _engage, _guide, _round, _net, _combat, _weapons, _sudo, _top, _breakers, _ice, _black, _freeze, _pipe, _dev_null, _sighup, _mission, _voice]:
 			if part != null and is_instance_valid(part) and part.visible:
 				_coop_hidden.append(part)
 				part.visible = false
@@ -502,6 +506,16 @@ func note_kill() -> void:
 ## True while the guide HUD's ask box or the multiplayer panel's address box is open.
 func is_typing() -> bool:
 	return _guide.is_typing() or _net.is_typing()
+
+
+## Voice commands (W7) its HUD draws for; each command fired is toasted.
+func set_voice(voice: VoiceCommands) -> void:
+	_voice.voice = voice
+	voice.hud = _voice
+
+
+func voice_hud() -> VoiceHud:
+	return _voice
 
 
 ## The Audit Trail visor (C43) its HUD draws for.

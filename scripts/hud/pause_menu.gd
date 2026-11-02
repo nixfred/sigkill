@@ -117,6 +117,14 @@ const PACKET_TRACER_LEAVE := "Leave packet tracer"
 const COOP := "Split-screen co-op"
 const COOP_LEAVE := "Leave split-screen co-op"
 const COOP_TIP := "Two players on one machine, each in their own tile: player 1 on keyboard and mouse as ever, player 2 on a gamepad (or the number pad). Hunt the arena's daemons in waves together, and stand close to a downed partner to bring them back. Grow or shrink your tile (= and -, or RB and LB) and flip the split (0, or Back): a bigger tile sees more, a smaller one aims faster and steadier. Made-up daemons only; nothing of your machine is read."
+## Voice commands (W7): the arena with a made-up feed, so the commands can be seen with no transcript program; the entry
+## turns to its way out while it runs. A player's own feed is the Privacy and AI section's "voice feed".
+const VOICE := "Voice commands"
+const VOICE_LEAVE := "Leave voice commands"
+const VOICE_TIP := "Call out commands and your AI acts: \"Larry, cover me\", \"drop a breaker\", \"reload\", \"visor\", \"pause\", \"resume\". This plays the arena with a made-up feed of lines so you can watch it work. To use your own voice, point Settings > Privacy and AI > voice feed at your transcript feed (loopback only; with real-machine data and opener data on): SIGKILL never opens a microphone, it only reads lines your transcript program already wrote. Every command has a key too (P cover me, U, E, I, F)."
+## The voice feed row (W7): the player's own transcript feed's address, empty by default.
+const VOICE_FEED := "voice feed"
+const VOICE_FEED_HINT := "point it at your transcript feed"
 const PACKET_TRACER_TIP := "A traceroute you ride: machines float as islands in the void, joined by glowing links. Clear a machine's daemons and its route comes up; step onto the port and a packet carries you across (you can shoot as you ride). Links drop out under you: wait for a steady one, or press Space to burst through a tear. Every machine and address in it is made up; nothing of your network is read or touched."
 const MISSIONS := "Missions"
 const MISSIONS_ONLINE := "Solo only: not during a match."
@@ -204,6 +212,8 @@ var _theme_button: Button
 var _keys_button: Button
 var _net_button: Button
 var _coop_button: Button
+var _voice_button: Button
+var _voice_feed: LineEdit
 var _credits_roll: CreditsRoll = null
 var _missions_button: Button
 var _restart_button: Button
@@ -373,6 +383,7 @@ func toggle_proc_hunt() -> void:
 		KeybindGunplay.clear()
 		PacketTracer.clear()
 		CoopHunt.clear()
+		VoiceDemo.clear()
 		ProcHunt.queue()
 	_was_captured = true
 	close()
@@ -394,6 +405,7 @@ func toggle_folder_map() -> void:
 		KeybindGunplay.clear()
 		PacketTracer.clear()
 		CoopHunt.clear()
+		VoiceDemo.clear()
 		FolderMap.queue()
 	_was_captured = true
 	close()
@@ -420,6 +432,7 @@ func toggle_theme_shift() -> void:
 		KeybindGunplay.clear()
 		PacketTracer.clear()
 		CoopHunt.clear()
+		VoiceDemo.clear()
 		ThemeShift.queue()
 	_was_captured = true
 	close()
@@ -446,6 +459,7 @@ func toggle_keybind_gunplay() -> void:
 		ThemeShift.clear()
 		PacketTracer.clear()
 		CoopHunt.clear()
+		VoiceDemo.clear()
 		KeybindGunplay.queue()
 	_was_captured = true
 	close()
@@ -472,6 +486,7 @@ func toggle_packet_tracer() -> void:
 		ThemeShift.clear()
 		KeybindGunplay.clear()
 		CoopHunt.clear()
+		VoiceDemo.clear()
 		PacketTracer.queue()
 	_was_captured = true
 	close()
@@ -498,6 +513,7 @@ func toggle_coop() -> void:
 		ThemeShift.clear()
 		KeybindGunplay.clear()
 		PacketTracer.clear()
+		VoiceDemo.clear()
 		CoopHunt.queue()
 	_was_captured = true
 	close()
@@ -508,6 +524,38 @@ func toggle_coop() -> void:
 ## The Esc menu's split-screen co-op entry (the checks).
 func coop_button() -> Button:
 	return _coop_button
+
+
+## The voice demo (W7) on or off: the arena reloads with the made-up feed, or without it. Alone and outside a mission
+## only; the other world modes end as it begins (one world mode at a time).
+func toggle_voice() -> void:
+	if _online() or mission() != null:
+		_show_pause()
+		return
+	if VoiceDemo.queued:
+		VoiceDemo.clear()
+	else:
+		ProcHunt.clear()
+		FolderMap.clear()
+		ThemeShift.clear()
+		KeybindGunplay.clear()
+		PacketTracer.clear()
+		CoopHunt.clear()
+		VoiceDemo.queue()
+	_was_captured = true
+	close()
+	if is_inside_tree():
+		MissionRunner.reload_after_mount(get_tree(), VoiceDemo.RELOAD_LABEL if VoiceDemo.queued else "$ exit")
+
+
+## The Esc menu's voice commands entry (the checks).
+func voice_button() -> Button:
+	return _voice_button
+
+
+## The settings' voice feed box (the checks).
+func voice_feed_box() -> LineEdit:
+	return _voice_feed
 
 
 ## The Esc menu's process hunt entry (the checks).
@@ -853,6 +901,9 @@ func _show_pause() -> void:
 	_coop_button.text = COOP_LEAVE if CoopHunt.queued else COOP
 	_coop_button.disabled = _online() or running != null
 	_coop_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else COOP_TIP
+	_voice_button.text = VOICE_LEAVE if VoiceDemo.queued else VOICE
+	_voice_button.disabled = _online() or running != null
+	_voice_button.tooltip_text = PROC_HUNT_ONLINE if _online() else PROC_HUNT_MISSION if running != null else VOICE_TIP
 	_missions_button.visible = running == null
 	_missions_button.disabled = _online()
 	_missions_button.tooltip_text = MISSIONS_ONLINE if _online() else ""
@@ -949,6 +1000,8 @@ func _refresh() -> void:
 		_name.text = settings.value("multiplayer", "display_name")
 	if not _relay.has_focus():
 		_relay.text = settings.value("multiplayer", "relay_url")
+	if not _voice_feed.has_focus():
+		_voice_feed.text = settings.value("voice", "feed_url")
 	var clashes := settings.conflicts()
 	for action in _keys:
 		var parts: Dictionary = _keys[action]
@@ -1075,7 +1128,7 @@ func _build() -> void:
 	var stack := _vbox(_pause, 8)
 	_label(stack, TITLE, HEAD_FONT, Palette.TEAL)
 	_pause_note = _label(stack, RUNNING_SOLO, FONT, Palette.MINT)
-	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], [PACKET_TRACER, toggle_packet_tracer], [COOP, toggle_coop], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
+	for pair in [["Resume", close], [RESTART_MISSION, _on_restart_mission], [QUIT_MISSION, _on_quit_mission], [MISSIONS, open_missions], ["Loadout", open_loadout], [OPENER, open_opener], [CREDITS, open_credits], [PROC_HUNT, toggle_proc_hunt], [FOLDER_MAP, toggle_folder_map], [THEME_SHIFT, toggle_theme_shift], [KEYBIND_GUNPLAY, toggle_keybind_gunplay], [PACKET_TRACER, toggle_packet_tracer], [COOP, toggle_coop], [VOICE, toggle_voice], ["Settings", open_settings], ["Quit SIGKILL", _on_quit]]:
 		var button := _button(stack, pair[0], 0)
 		button.pressed.connect(pair[1])
 		if _resume == null:
@@ -1098,6 +1151,8 @@ func _build() -> void:
 				_net_button = button
 			COOP:
 				_coop_button = button
+			VOICE:
+				_voice_button = button
 			MISSIONS:
 				_missions_button = button
 			RESTART_MISSION:
@@ -1276,6 +1331,20 @@ func _build_privacy(col: VBoxContainer) -> void:
 	opener.add_child(_opener_data)
 	_opener_note = _label(opener, "", FONT - 2, Palette.TEAL)
 	_label(col, OPENER_DATA_NOTE, FONT - 2, Palette.TEAL)
+	# The voice feed (W7): the player's own transcript feed's address, empty by default; taken whole when the box is left.
+	# Its rules (loopback only, read only with the opt-in, no microphone) are its tooltip's, and the refusal says them: a
+	# line of its own would make the sheet too tall for 720 lines (Law 17).
+	var feed_row := _row(col, VOICE_FEED)
+	feed_row.tooltip_text = VOICE_TIP
+	feed_row.mouse_filter = Control.MOUSE_FILTER_PASS
+	_voice_feed = LineEdit.new()
+	_voice_feed.max_length = VoiceFeed.URL_LAST
+	_voice_feed.placeholder_text = VOICE_FEED_HINT
+	_voice_feed.custom_minimum_size.x = CONTROL_W
+	_voice_feed.tooltip_text = VOICE_TIP
+	_voice_feed.text_submitted.connect(func(text): _set_voice_feed(text))
+	_voice_feed.focus_exited.connect(func(): _set_voice_feed(_voice_feed.text))
+	feed_row.add_child(_voice_feed)
 
 
 func _build_multiplayer(col: VBoxContainer) -> void:
@@ -1326,6 +1395,21 @@ func _set_relay(text: String) -> void:
 		_say("Relay %s: it counts from your next host or join." % ("cleared" if url == "" else "set"))
 	else:
 		_say("A relay is udp://host, ws://host or wss://host (each with an optional :port), or empty for none.")
+	_refresh()
+
+
+## The voice feed's address as typed, trimmed; refused (and said why) unless empty or http on the loopback (W7).
+func _set_voice_feed(text: String) -> void:
+	var url := text.strip_edges()
+	if url == settings.value("voice", "feed_url"):
+		_refresh()
+		return
+	if settings.set_value("voice", "feed_url", url):
+		_dirty = true
+		_say("Voice feed %s." % ("cleared: voice commands off" if url == "" else "set: it is read only with real-machine data and opener data on"))
+	else:
+		var why: String = VoiceFeed.check(url)["why"]
+		_say(why if why != "" else VoiceFeed.REFUSED)
 	_refresh()
 
 

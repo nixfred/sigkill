@@ -144,7 +144,7 @@ func _rebind_checks() -> void:
 	var s := GameSettings.new()
 	s.path = path
 	var u := InputEventKey.new()
-	u.physical_keycode = KEY_P  # U before I2, now the ICEbreakers' run key
+	u.physical_keycode = KEY_F9  # U before I2 (now the ICEbreakers' run key), then P before W7 (now cover me)
 	var took := s.set_bind("sudo_overcharge", u)
 	var saved := s.save()
 	var back := GameSettings.new()
@@ -160,7 +160,7 @@ func _rebind_checks() -> void:
 	back.reset_binds()
 	Controls.apply_binds(back.binds())
 	var reset := InputMap.action_get_events("sudo_overcharge")
-	_check("acceptance: rebindable: moved to P (U before I2's breakers took it) it is saved, read back and taken by the input map, clashing with nothing; Ctrl+Alt+Z is refused; reset, it is Z again", took == "" and saved and how == "loaded" and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_P and not Controls.conflicts(back.binds()).has("sudo_overcharge") and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_Z, "%s %s %s" % [took, how, refused])
+	_check("acceptance: rebindable: moved to F9 (U before I2's breakers took it, P before W7's cover me) it is saved, read back and taken by the input map, clashing with nothing; Ctrl+Alt+Z is refused; reset, it is Z again", took == "" and saved and how == "loaded" and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_F9 and not Controls.conflicts(back.binds()).has("sudo_overcharge") and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_Z, "%s %s %s" % [took, how, refused])
 
 
 func _source_checks() -> void:

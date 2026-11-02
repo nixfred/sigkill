@@ -31,6 +31,8 @@ extends RefCounted
 ##
 ## Keybind gunplay (W4): the ` key (left of 1) stands in for Super while the mode runs, so it is a fixed key a bind is
 ## shown in conflict with (scripts/keys/key_book.gd STANDIN). Nothing else in the game uses it.
+## Voice commands (W7): P sends your AI's cover drone out ("cover me" by voice), rebindable as "cover me". P was free:
+## the rebind tests that moved sudo to it as a free key now use F9.
 ## Split-screen co-op (W6): player 1's tile keys (=, - and 0) and player 2's keypad keys are used only while the mode runs
 ## (scripts/coop/coop_input.gd, which makes them as it begins and takes them out as it ends), so a bind on one of them is
 ## shown in conflict too. None of them is in the input map outside the mode.
@@ -53,7 +55,7 @@ const REBINDABLE := [
 	["toggle_roast", "roast on/off"], ["net_menu", "multiplayer"], ["sigstop", "SIGSTOP"],
 	["throw_bomb", "Fork bomb"], ["code_rain_vision", "code-rain vision"], ["sudo_overcharge", "sudo"],
 	["show_top", "top"], ["run_breaker", "run breaker"], ["cycle_breaker", "next breaker"],
-	["weapon_bank", "weapon bank 2"], ["audit_visor", "audit visor"],
+	["weapon_bank", "weapon bank 2"], ["audit_visor", "audit visor"], ["cover_me", "cover me"],
 ]
 ## Fixed keys a bind is shown in conflict with: what else uses them. The keys a panel or a
 ## question reads only while it is up are not listed: they count only there.
@@ -111,6 +113,7 @@ static func ensure() -> void:
 	_key("cycle_breaker", [KEY_Y])
 	_key("weapon_bank", [KEY_SHIFT])
 	_key("audit_visor", [KEY_I])
+	_key("cover_me", [KEY_P])
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 	_axis("look_left", JOY_AXIS_RIGHT_X, -1.0)
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)

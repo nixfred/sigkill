@@ -85,6 +85,8 @@ func _ready() -> void:
 	var net_wanted := PacketTracer.prepare(launch_args, not alone)
 	# Split-screen co-op (W6): the regular arena, split in two tiles, when queued (alone, no mission).
 	CoopHunt.prepare(launch_args, not alone)
+	# Voice commands' demo (W7): the regular arena with a made-up feed, when queued (alone, no mission).
+	var voice_wanted := VoiceDemo.prepare(launch_args, not alone)
 	if alone:
 		ruins = RuinsStage.stage(self, RuinsStage.wanted())
 		if ruins == null and net_wanted:
@@ -241,6 +243,16 @@ func _ready() -> void:
 	director.coop = coop
 	_hud.set_coop_hunt(coop)
 	add_child(coop)
+	# Voice commands (W7): a transcript feed's lines as commands, and your AI's cover drone (P); the made-up feed when the
+	# voice demo is queued, the player's own only with an address set and the real-data opt-in on.
+	var voice := VoiceCommands.new()
+	voice.player = _player
+	voice.visor = visor
+	voice.breakers = breakers
+	voice.guide = _hud.guide()
+	voice.coop = coop
+	_hud.set_voice(voice)
+	add_child(voice)
 	GameSettings.current().changed.connect(_on_setting_changed)
 	apply_quality()
 	var dummies := get_tree().get_nodes_in_group("targets")
@@ -275,6 +287,7 @@ func _ready() -> void:
 			_hud.net_hud().open()
 		session.take_launch_flags(launch_args)  # --light-trails: this run's hosting plays by it (C20)
 		runner.session = session
+		voice.session = session
 	var rain := get_node_or_null("Arena/CodeRain")
 	if rain != null:
 		rain.viewer = _player
@@ -291,6 +304,10 @@ func _ready() -> void:
 		KeybindGunplay.clear()  # and keybind gunplay (W4)
 		PacketTracer.clear()  # and the packet tracer (W5)
 		CoopHunt.clear()  # and split-screen co-op (W6)
+		VoiceDemo.clear()  # and the voice demo (W7)
+	elif voice_wanted and (session == null or not session.is_online()):
+		_first_launch_taken = true
+		voice.begin_demo.call_deferred()
 	elif CoopHunt.queued and (session == null or not session.is_online()):
 		_first_launch_taken = true
 		coop.begin.call_deferred()
@@ -431,6 +448,9 @@ func _credit_kill(dummy: Node3D) -> void:
 			coop.player2.on_dummy_downed()
 		_hud.note_kill()
 		return
+	if dummy.get("killed_with") == CoverDrone.SOURCE:
+		_hud.note_kill()
+		return  # your AI's cover drone's kill (W7): on the screen, but no sudo charge or feat toward an unlock
 	if dummy.has_meta(&"world") and not ProcHunt.world_credit_ok():
 		_hud.note_kill()
 		return  # a world mode's kill past its share (W2): on the screen, but no sudo charge or feat toward an unlock

@@ -201,6 +201,9 @@ signal locked(what: String)
 ## I, the Audit Trail visor's key (C43): the arena's visor turns on or off (scripts/visor/audit_visor.gd). It reads
 ## nothing and is never gated by a mission: it only shows.
 signal visor_pressed
+## The cover key (P, W7): your AI's cover drone, sent out by scripts/voice/voice_commands.gd. Only where the player's
+## abilities are not gated (never in a mission or co-op).
+signal cover_pressed
 ## Emitted for each target a rail shot of this player derezzes (C17): a dummy here at once,
 ## another player once the host confirms the kill. `headshot` when the rail struck it in the
 ## head zone.
@@ -555,7 +558,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_weapon(1)
 	elif event.is_action_pressed(_act(&"weapon_prev")):
 		cycle_weapon(-1)
-	elif frozen_now() and (event.is_action_pressed(_act(&"sigstop")) or event.is_action_pressed(_act(&"sudo_overcharge")) or event.is_action_pressed(_act(&"run_breaker")) or event.is_action_pressed(_act(&"cycle_breaker"))):
+	elif frozen_now() and (event.is_action_pressed(_act(&"sigstop")) or event.is_action_pressed(_act(&"sudo_overcharge")) or event.is_action_pressed(_act(&"run_breaker")) or event.is_action_pressed(_act(&"cycle_breaker")) or event.is_action_pressed(_act(&"cover_me"))):
 		pass  # read-only while chmod 000 holds it (C29): no ability runs
 	elif event.is_action_pressed(_act(&"sigstop")):
 		if _ability_pressed("sigstop"):
@@ -580,6 +583,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			breakers.press_cycle()
 	elif event.is_action_pressed(_act(&"audit_visor")):
 		visor_pressed.emit()
+	elif event.is_action_pressed(_act(&"cover_me")):
+		if _ability_pressed("cover"):
+			cover_pressed.emit()
 	else:
 		for i in Controls.SLOT_KEYS.size():
 			if event.is_action_pressed(_act(StringName("weapon_%d" % (i + 1)))):
