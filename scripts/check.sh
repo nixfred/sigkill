@@ -251,7 +251,9 @@ run_godot "keybind gunplay test" --fixed-fps 60 --script res://tests/keybind_tes
 # fire free; a drop under the rider survivable (the fall, the retransmit, a little hurt) and dodgeable (a torn link
 # refused, a burst outrunning the tear); the route held by an island's fighters, a retransmit swarm sent again, a
 # man-in-the-middle holding a packet, a stale route sending it the wrong way; the SYN flood, the results card, Enter's
-# again; a fall off an island retransmitted; the visor's route; the Esc menu's entry; the arena's keys unchanged.
+# again; a fall off an island retransmitted; the visor's route; the Esc menu's entry; the arena's keys unchanged. P2: the
+# banners in one stack of plates at the top (INTERCEPTED first, two at most, never over each other or the crosshair) and
+# the panel's ride line fitting whole.
 run_godot "packet tracer test" --fixed-fps 60 --script res://tests/packet_tracer_test.gd
 
 # 70. Split-screen co-op (W6): the arena's own daemons only (no real layer in the mode); player 2 driven by simulated

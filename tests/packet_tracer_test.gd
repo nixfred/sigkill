@@ -298,6 +298,7 @@ func _run_checks() -> void:
 	_check("acceptance: a packet meeting the man in the middle is held before it, intercepted, while it lives", mode.phase == "ride" and bool(mode.ride["held"]) and held_u < float(tap[0]["u"]) and int(PacketTracer.stats["intercepted"]) == 1)
 	var thud = mode.get("_hud")
 	_check("fold-in (W5's known issue, folded in with W7): INTERCEPTED is said once, by the ride's own line while the packet is held, never by a banner over it too", thud != null and thud.banner_head() != "INTERCEPTED", str(thud.banner_head()) if thud != null else "no HUD")
+	await _stack_checks(thud)
 	await _kill(mode, func(e): return e["kind"] == "mitm")
 	await _until(func(): return mode.phase != "ride")
 	_check("the man in the middle down, the ride goes on and lands", mode.at_island == 3)
@@ -437,6 +438,32 @@ func _kill(mode: PacketTracer, which: Callable) -> void:
 func _hud(mode: PacketTracer) -> PacketTracerHud:
 	var found := mode.find_children("*", "PacketTracerHud", true, false)
 	return found[0] if not found.is_empty() else null
+
+
+## P2 (W5's man-in-the-middle banners): INTERCEPTED leads one stack of plates at the top of the screen; a banner that comes
+## while it is held goes under it on its own plate, two at most, never over each other and never over the crosshair; the
+## panel's ride line fits, held without saying INTERCEPTED a second time.
+func _stack_checks(thud: PacketTracerHud) -> void:
+	if thud == null:
+		_check("P2: the packet tracer's HUD is there for the banner stack", false)
+		return
+	var size := Vector2(1920, 1080)
+	var alone: Array = thud.layout(size, false)
+	_check("P2: held, the stack shows one plate, INTERCEPTED, at the top of the screen, clear of the crosshair", alone.size() == 1 and alone[0]["head"] == "INTERCEPTED" and (alone[0]["rect"] as Rect2).end.y < size.y * 0.4, str(thud.stack_heads()))
+	thud._banner = {"head": "HOP 3   edge-board", "sub": "a made-up address", "color": Color.WHITE, "t": 0.5}
+	var two: Array = thud.layout(size, false)
+	var apart := two.size() == 2 and not (two[0]["rect"] as Rect2).intersects(two[1]["rect"] as Rect2) and (two[1]["rect"] as Rect2).position.y >= (two[0]["rect"] as Rect2).end.y
+	var clear := two.all(func(e): return (e["rect"] as Rect2).end.y < size.y * 0.45)
+	_check("P2: a banner coming while it is held goes under it on its own plate: two at most, never over each other, nothing over the crosshair", apart and clear and two[0]["head"] == "INTERCEPTED", "%s" % [two.map(func(e): return e["head"])])
+	thud._banner = {"head": "INTERCEPTED", "sub": "", "color": Color.WHITE, "t": 0.5}
+	_check("P2: the same head is never stacked twice", thud.layout(size, false).size() == 1)
+	thud._banner = {}
+	var riding := ""
+	for l in thud.lines():
+		if l.begins_with("RIDING"):
+			riding = l
+	var fits := thud._fit(riding, PacketTracerHud.PANEL_W - 24.0, 13) >= PacketTracerHud.FIT_MOST and thud._font.get_string_size(riding, HORIZONTAL_ALIGNMENT_LEFT, -1, thud._fit(riding, PacketTracerHud.PANEL_W - 24.0, 13)).x <= PacketTracerHud.PANEL_W - 24.0
+	_check("P2: the panel's ride line says HELD (INTERCEPTED once, on the stack) and fits the panel whole (\"%s\")" % riding, riding.ends_with(" HELD") and not riding.contains("INTERCEPTED") and fits)
 
 
 ## W6's fold-ins of W5's known issues: a player backing onto a port mid-fight is not carried off; the man in the middle's

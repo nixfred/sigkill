@@ -4,7 +4,8 @@ extends CanvasLayer
 ## (the target, every hop reached and its time, a "* * *" for every packet lost on the way), then where the player is
 ## (the hop and its daemons, the route up, the ride and how far along), the link out and its state, the run's numbers and
 ## the last few events; a banner for each hop reached and for what goes wrong (a stale route's misroute, an intercept, a
-## packet lost, a retransmit); on a ride the screen's speed lines (shaders/net_speed.gdshader), and while the link under
+## packet lost, a retransmit), stacked under the ride's own state (INTERCEPTED, TIMEOUT, RST, BURST) at the top of the
+## screen, each on its own plate, two at most and never over each other or over the crosshair (P2); on a ride the screen's speed lines (shaders/net_speed.gdshader), and while the link under
 ## it goes bad a vignette and TIMEOUT with the burst's key; the results card at the end. Reads only the mode.
 
 const Palette = preload("res://scripts/palette.gd")
@@ -19,6 +20,11 @@ const CHIP := "invented network"
 const BANNER_S := 2.2
 const AMBER := Color(1.0, 0.62, 0.12)
 const RST := Color(1.0, 0.2, 0.25)
+## The banner stack (P2): its top, as a share of the screen's height; the gap between two plates; the smallest a line is
+## shrunk to so it fits its panel (never cut off).
+const STACK_AT := 0.16
+const STACK_GAP := 8.0
+const FIT_MOST := 10
 
 var mode: PacketTracer = null
 var _view: Control
@@ -147,7 +153,7 @@ func _where() -> String:
 			return "ROUTE UP   step onto the port to %s" % NetBook.LINKS[NetBook.forward_from(id)][1]
 		"ride":
 			var link: NetLink = mode.net.links[int(mode.ride["link"])]
-			var held := " INTERCEPTED" if bool(mode.ride["held"]) else ""
+			var held := "  HELD" if bool(mode.ride["held"]) else ""  # the stack's INTERCEPTED says why (P2: said once, and it fits)
 			return "RIDING  %s -> %s  %s  %d%%%s" % [mode.ride["from"], mode.ride["to"], NetBook.PROTOCOLS[link.proto]["label"], int(float(mode.ride["u"]) * 100.0), held]
 		"fall":
 			return "PACKET LOST   retransmitting"
@@ -196,8 +202,7 @@ func _draw_view() -> void:
 		_draw_results(v, compact)
 		return
 	_draw_panel(v, compact)
-	_draw_ride(v, compact)
-	_draw_banner(v, compact)
+	_draw_stack(v, compact)
 
 
 func _draw_panel(v: Control, compact: bool) -> void:
@@ -231,13 +236,13 @@ func _draw_panel(v: Control, compact: bool) -> void:
 		elif line.begins_with("HOP") or line.begins_with("RIDING") or line.begins_with("ROUTE UP") or line.begins_with("PACKET") or line.begins_with("TRACE"):
 			y += 4
 			colour = Palette.FLASH if not line.begins_with("PACKET") else RST
-			if line.contains("INTERCEPTED"):
+			if line.ends_with(" HELD"):
 				colour = Color(0.86, 0.45, 1.0)
 		elif line.begins_with("next:"):
 			colour = Palette.LIME if line.ends_with(" UP") else (AMBER if line.ends_with("TIMEOUT") or line.ends_with("SYN") else (RST if line.ends_with("DROPPED") or line.ends_with("NO ROUTE") else Palette.MINT))
 		elif line.begins_with("drops"):
 			colour = Color(Palette.MINT, 0.8)
-		v.draw_string(_font, Vector2(x, y), line, HORIZONTAL_ALIGNMENT_LEFT, w - 24, size, colour)
+		v.draw_string(_font, Vector2(x, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, _fit(line, w - 24, size), colour)
 		if line.begins_with("RIDING"):
 			var u := clampf(float(mode.ride["u"]), 0.0, 1.0)
 			v.draw_rect(Rect2(x, y + 5, (w - 28), 2), Color(accent, 0.25))
@@ -247,62 +252,92 @@ func _draw_panel(v: Control, compact: bool) -> void:
 	for e in notes:
 		y += LINE
 		var age: float = mode.clock() - float(e["t"])
-		v.draw_string(_font, Vector2(x, y), str(e["text"]), HORIZONTAL_ALIGNMENT_LEFT, w - 24, 12, Color(Palette.MINT, clampf(1.2 - age / 12.0, 0.4, 1.0)))
+		v.draw_string(_font, Vector2(x, y), str(e["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, _fit(str(e["text"]), w - 24, 12), Color(Palette.MINT, clampf(1.2 - age / 12.0, 0.4, 1.0)))
 
 
-## On a ride: the link's going bad, and the burst's key while it is still to spend; INTERCEPTED while it is held.
-func _draw_ride(v: Control, compact: bool) -> void:
-	if mode.ride.is_empty():
-		return
+## The font size `size` shrunk (to FIT_MOST at the least) until `text` fits `width`: a panel line is never cut off.
+func _fit(text: String, width: float, size: int) -> int:
+	var n := size
+	while n > FIT_MOST and _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, n).x > width:
+		n -= 1
+	return n
+
+
+## On a ride, its state now: INTERCEPTED while it is held, the link going bad (TIMEOUT, the burst's key while it is still
+## to spend), RST, BURST; else {}. Pulses while it lasts.
+func _ride_entry() -> Dictionary:
+	if mode == null or mode.ride.is_empty():
+		return {}
 	var link: NetLink = mode.net.links[int(mode.ride["link"])]
-	var big := 26 if compact else 38
-	var centre := Vector2(v.size.x * 0.5, v.size.y * 0.3)
-	var head := ""
-	var sub := ""
-	var colour := AMBER
 	if bool(mode.ride["held"]):
-		head = "INTERCEPTED"
-		sub = "shoot the man in the middle"
-		colour = Color(0.86, 0.3, 1.0)
-	elif link.state == NetLink.State.FLAKY:
-		head = "TIMEOUT %.1f" % maxf(NetLink.FLAKY_S - link.state_t, 0.0)
-		sub = "[Space] burst through" if int(mode.ride["bursts"]) == 0 else "bursting"
-	elif link.state == NetLink.State.DROPPED:
-		head = "RST"
-		sub = "the link is tearing"
-		colour = RST
-	elif float(mode.ride["burst"]) > 0.0:
-		head = "BURST"
-		colour = Palette.FLASH
-	if head == "":
-		return
-	var hw := _font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
-	var pulse := 0.75 + 0.25 * sin(mode.clock() * 14.0)
-	v.draw_string(_font, centre + Vector2(-hw * 0.5 + 3, 3), head, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(Palette.VOID, 0.8))
-	v.draw_string(_font, centre + Vector2(-hw * 0.5, 0), head, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(colour, pulse))
-	if sub != "":
-		var sw := _font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-		v.draw_string(_font, centre + Vector2(-sw * 0.5, 30), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(colour.lerp(Color.WHITE, 0.3), 0.95))
+		return {"head": "INTERCEPTED", "sub": "shoot the man in the middle", "color": Color(0.86, 0.3, 1.0), "alpha": 1.0, "pulse": true}
+	if link.state == NetLink.State.FLAKY:
+		var sub := "[Space] burst through" if int(mode.ride["bursts"]) == 0 else "bursting"
+		return {"head": "TIMEOUT %.1f" % maxf(NetLink.FLAKY_S - link.state_t, 0.0), "sub": sub, "color": AMBER, "alpha": 1.0, "pulse": true}
+	if link.state == NetLink.State.DROPPED:
+		return {"head": "RST", "sub": "the link is tearing", "color": RST, "alpha": 1.0, "pulse": true}
+	if float(mode.ride["burst"]) > 0.0:
+		return {"head": "BURST", "sub": "", "color": Palette.FLASH, "alpha": 1.0, "pulse": true}
+	return {}
 
 
-func _draw_banner(v: Control, compact: bool) -> void:
+## The event banner now (a hop, a misroute, a lost packet...), fading in and out over BANNER_S; else {}.
+func _event_entry() -> Dictionary:
 	if _banner.is_empty():
-		return
+		return {}
 	var t := float(_banner["t"])
-	var alpha := clampf(minf(t / 0.2, (BANNER_S - t) / 0.5), 0.0, 1.0)
-	var big := 26 if compact else 42
-	var head := str(_banner["head"])
-	var sub := str(_banner["sub"])
-	var accent: Color = _banner["color"]
-	var hw := _font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
-	var sw := _font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-	var box_w := maxf(hw, sw) + 56.0
-	var at := Vector2((v.size.x - box_w) * 0.5, v.size.y * 0.14)
-	v.draw_rect(Rect2(at, Vector2(box_w, big + 52)), Color(Palette.VOID, 0.62 * alpha))
-	v.draw_rect(Rect2(at, Vector2(box_w, 3)), Color(accent, alpha))
-	v.draw_string(_font, Vector2((v.size.x - hw) * 0.5 + 3, at.y + big + 9), head, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(Palette.VOID, 0.8 * alpha))
-	v.draw_string(_font, Vector2((v.size.x - hw) * 0.5, at.y + big + 6), head, HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(accent.lerp(Color.WHITE, 0.2), alpha))
-	v.draw_string(_font, Vector2((v.size.x - sw) * 0.5, at.y + big + 36), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(Palette.MINT, alpha))
+	return {"head": str(_banner["head"]), "sub": str(_banner["sub"]), "color": _banner["color"], "alpha": clampf(minf(t / 0.2, (BANNER_S - t) / 0.5), 0.0, 1.0), "pulse": false}
+
+
+## The banner stack on a screen of `size` (P2): the ride's state first, then the event banner, each on its own plate
+## under the last, two at most, so a man in the middle's INTERCEPTED and a hop's banner never pile over each other or
+## over the target. Each entry: head, sub, color, alpha, pulse, big (its head's size), rect (its plate).
+func layout(size: Vector2, compact: bool) -> Array:
+	var out: Array = []
+	var big := 26 if compact else 40
+	var y := size.y * STACK_AT
+	for e in [_ride_entry(), _event_entry()]:
+		if e.is_empty() or (not out.is_empty() and out[0]["head"] == e["head"]):
+			continue
+		var hw := _font.get_string_size(e["head"], HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
+		var sw := _font.get_string_size(e["sub"], HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x if e["sub"] != "" else 0.0
+		var w := maxf(hw, sw) + 56.0
+		var h := big + (52.0 if e["sub"] != "" else 22.0)
+		e["big"] = big
+		e["rect"] = Rect2(Vector2((size.x - w) * 0.5, y), Vector2(w, h))
+		out.append(e)
+		y += h + STACK_GAP
+		big = 24 if compact else 30  # the second plate a step smaller: the ride's state leads
+	return out
+
+
+## The heads the stack shows now, top first (the checks).
+func stack_heads() -> PackedStringArray:
+	var out := PackedStringArray()
+	if _view == null:
+		return out
+	for e in layout(_view.size, _view.size.x < COMPACT_W):
+		out.append(e["head"])
+	return out
+
+
+func _draw_stack(v: Control, compact: bool) -> void:
+	for e in layout(v.size, compact):
+		var rect: Rect2 = e["rect"]
+		var a := float(e["alpha"])
+		var accent: Color = e["color"]
+		var big := int(e["big"])
+		var glow := (0.75 + 0.25 * sin(mode.clock() * 14.0)) if bool(e["pulse"]) else 1.0
+		var hw := _font.get_string_size(e["head"], HORIZONTAL_ALIGNMENT_LEFT, -1, big).x
+		v.draw_rect(rect, Color(Palette.VOID, 0.72 * a))
+		v.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 3)), Color(accent, a))
+		var hx := rect.position.x + (rect.size.x - hw) * 0.5
+		var hy := rect.position.y + big + 6.0
+		v.draw_string(_font, Vector2(hx + 3, hy + 3), e["head"], HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(Palette.VOID, 0.8 * a))
+		v.draw_string(_font, Vector2(hx, hy), e["head"], HORIZONTAL_ALIGNMENT_LEFT, -1, big, Color(accent.lerp(Color.WHITE, 0.2), a * glow))
+		if e["sub"] != "":
+			var sw := _font.get_string_size(e["sub"], HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			v.draw_string(_font, Vector2(rect.position.x + (rect.size.x - sw) * 0.5, hy + 30.0), e["sub"], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(Palette.MINT.lerp(accent, 0.25), a))
 
 
 func _draw_results(v: Control, compact: bool) -> void:
