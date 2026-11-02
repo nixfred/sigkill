@@ -262,6 +262,7 @@ func _ready() -> void:
 		dummy.connect("downed", _on_target_downed)
 		dummy.connect("respawned", _on_target_respawned)
 	_player.shot_fired.connect(_on_shot_fired)
+	_player.shot_refused.connect(_hud.on_refused)
 	_hud.set_weapon_tuning(_player.weapon_tuning())
 	_hud.set_player(_player)
 	_hud.set_round_targets(dummies)

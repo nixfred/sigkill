@@ -182,6 +182,9 @@ const CHARGE_EPS := 0.000001
 
 ## Emitted after each shot. `hit_target` is true when the ray struck a target.
 signal shot_fired(hit_target: bool)
+## A shot met a target that refused it (P2: M7's shell, anything but kill -9): the HUD shows the blocked marker. At most
+## once a frame, however many pellets or links met it.
+signal shot_refused
 ## Emitted with each shot's origin, aim direction in world space and weapon id: the intent
 ## the host of a LAN session validates (C14, C16). The host draws a pellet weapon's pellets
 ## itself. Local effects never wait for it.
@@ -392,6 +395,8 @@ var _fire_held := false
 ## True from a fire press made while engaged until fire is let go: the beam never starts from the click
 ## that grabbed the mouse (C29).
 var _fire_down := false
+## The frame a refusal was last said (shot_refused, P2): once a frame.
+var _refused_frame := -1
 var _freeze_beam: Node3D
 var _beaming := 0.0
 ## pipe | (C30): chains run, the last one's links (PipeChain's dictionaries: who, where, how hard) and how
@@ -2338,7 +2343,11 @@ func _kick() -> void:
 func _strike(target: Object, amount: float, point: Vector3, dir: Vector3, source: String) -> bool:
 	if "struck_by" in target:
 		target.set("struck_by", self)
-	return target.call("hit", amount, point, dir, source) == true
+	var landed: bool = target.call("hit", amount, point, dir, source) == true
+	if not landed and target.has_method("refuses") and target.call("refuses", source) and Engine.get_process_frames() != _refused_frame:
+		_refused_frame = Engine.get_process_frames()
+		shot_refused.emit()  # P2: the blocked marker, not the hit marker
+	return landed
 
 
 ## Where world-space effects live: the running scene, or the player's parent in tests.

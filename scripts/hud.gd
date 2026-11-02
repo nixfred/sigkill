@@ -546,6 +546,13 @@ func on_shot(hit_target: bool) -> void:
 		_hit_marker.show_hit()
 
 
+## A shot met a target that refused it (P2, M7's shell): the blocked marker, never the hit marker. Solo only, as the hit
+## marker (a match has no refusing target).
+func on_refused() -> void:
+	if not _online():
+		_hit_marker.show_blocked()
+
+
 ## True while the session beside the arena is hosting or joined.
 func _online() -> bool:
 	var session = _net.session

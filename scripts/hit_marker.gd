@@ -11,6 +11,8 @@ var _tick := 0.0
 var _gap := 0.0
 var _thickness := 0.0
 var _left := 0.0
+## The last shot's marker was a refusal (P2): a steel hexagon round the crosshair, not the four ticks.
+var _blocked := false
 
 
 func _ready() -> void:
@@ -26,9 +28,24 @@ func configure(seconds: float, tick_px: float, gap_px: float, thickness_px: floa
 
 
 func show_hit() -> void:
+	_blocked = false
 	_left = _seconds
 	set_process(true)
 	queue_redraw()
+
+
+## A refused shot (P2): the shot met the target and took nothing off it, so it is not a hit: a steel hexagon, open at
+## its sides, round the crosshair instead of the ticks.
+func show_blocked() -> void:
+	_blocked = true
+	_left = _seconds
+	set_process(true)
+	queue_redraw()
+
+
+## True while the marker up is a refusal's (the checks).
+func blocked() -> bool:
+	return _blocked and alpha() > 0.0
 
 
 ## 1 right after a hit, falling to 0 as it fades.
@@ -50,6 +67,16 @@ func _draw() -> void:
 	if a <= 0.0:
 		return
 	var center := size * 0.5
+	if _blocked:
+		var steel := Color(Palette.STEEL, a)
+		var r := _gap + _tick * 0.6
+		for i in 6:
+			if i == 0 or i == 3:
+				continue  # open at its sides: a guard, not a target
+			var p0 := center + Vector2.from_angle(TAU * i / 6.0 - PI / 2.0) * r
+			var p1 := center + Vector2.from_angle(TAU * (i + 1) / 6.0 - PI / 2.0) * r
+			draw_line(p0, p1, steel, _thickness, true)
+		return
 	var col := Palette.FLASH
 	col.a = a
 	for d in DIAGONALS:

@@ -7,6 +7,9 @@ extends SceneTree
 ## - W3's Latte zombie: under a light theme every zombie the theme shift fights wears an outline (an inverted hull in a
 ##   red the grade takes to the theme's red), from its first frame; under a dark theme none does, and nothing but a
 ##   zombie ever does; a tear to a dark theme takes it off and a tear back puts it on.
+## - M7's refused hit and bolts: a hit the target refuses (M7's shell, anything but kill -9) is not a landed hit: nothing
+##   off it, no hot flash, a steel hexagon ripple where it met facing the shot, the blocked marker and never the hit
+##   marker, the shot not counted as landed; the shell's bolts in its own deep red, bigger and drawn out.
 ## Demo data only: every mode runs on its made-up layer (the real-data opt-in stays off), and nothing real is read.
 
 const MainScene = preload("res://scenes/main.tscn")
@@ -24,7 +27,7 @@ var _fails := 0
 var _abs := ""
 ## The sections that ran to their end: a script error mid-section stops that section, and the last check says so by name.
 var _done: Array = []
-const SECTIONS := ["latte"]
+const SECTIONS := ["latte", "refused"]
 
 
 func _initialize() -> void:
@@ -51,6 +54,7 @@ func _run() -> void:
 	Progress.current().clear()
 	AuditVisor.remembered = false
 	await _latte_checks()
+	await _refused_checks()
 	await _cleanup()
 	_check("every section ran to its end (%s)" % ", ".join(_done), _done == SECTIONS, "wanted %s" % ", ".join(SECTIONS))
 	print("POLISH2: %d checks" % _checks)
@@ -133,6 +137,77 @@ func _latte_checks() -> void:
 	await _frames(3)
 	ThemeShift.clear()
 	_done.append("latte")
+
+
+# --- M7: the refused hit and the shell's bolts. ---
+
+func _refused_checks() -> void:
+	var shell: Dictionary = GlitchBolt.look_for("shell")
+	var amber: Dictionary = GlitchBolt.look_for("zombie")
+	var core: Color = (shell["core"] as StandardMaterial3D).albedo_color
+	_check("the shell's bolts in its own red: a deep red core (g/r %.2f), never washed to white, 1.35 wide and twice as long as a zombie's" % (core.g / core.r), shell["tint"] == Palette.CRIMSON and core.g / core.r < 0.5 and (shell["scale"] as Vector3).z >= 2.0 and (shell["scale"] as Vector3).x > 1.2)
+	_check("every other thrower's bolt as it was: amber, its usual size", amber["tint"] == Palette.HOSTILE_AMBER and amber["scale"] == Vector3.ONE)
+	var marker = load("res://scripts/hit_marker.gd").new()
+	root.add_child(marker)
+	marker.configure(0.3, 8.0, 6.0, 2.0)
+	marker.show_blocked()
+	var blocked: bool = marker.blocked()
+	marker.show_hit()
+	_check("the hit marker has a refusal's own look (the blocked hexagon), and a hit after it is a hit again", blocked and not marker.blocked() and marker.alpha() > 0.0)
+	marker.free()
+	# In the arena: a daemon that takes only kill -9, the cannon fired at it.
+	GameSettings.current().set_value("gameplay", "practice", true)
+	var main := await _arena()
+	await _frames(30)
+	var player = main.get_node("Player")
+	var target: Node3D = null
+	var best := INF
+	for t in get_nodes_in_group("targets"):
+		if t is Node3D and t.has_method("refuses") and t.call("is_alive"):
+			var d: float = (t as Node3D).global_position.distance_to(player.global_position)
+			if d < best:
+				best = d
+				target = t
+	if target == null:
+		_check("a daemon to refuse the cannon", false, "none in the arena")
+		return
+	target.set("only_from", PackedStringArray(["sigkill_rail"]))
+	var health0: float = target.call("health")
+	var said := [0]
+	var landed := []
+	player.shot_refused.connect(func(): said[0] += 1)
+	player.shot_fired.connect(func(hit): landed.append(hit))
+	var struck := []
+	target.struck.connect(func(_d, source, was_landed): struck.append([source, was_landed]))
+	player.select_slot(int(player.inventory.slot_of("terminal_cannon")))
+	await _frames(40)
+	var marker2 = main.get_node("Hud").get("_hit_marker")
+	for i in 3:
+		_aim(player, target.threat_point())
+		player.drive_input(Vector2.ZERO, false, false, true)
+		await physics_frame
+	player.drive_input(Vector2.ZERO)
+	await _frames(2)
+	var ripples := get_nodes_in_group(RefusedFx.GROUP)
+	var faces := false
+	if not ripples.is_empty():
+		var to_shooter: Vector3 = (player.global_position - (ripples[0] as Node3D).global_position).normalized()
+		faces = (ripples[0] as Node3D).global_transform.basis.z.normalized().dot(to_shooter) > 0.5
+	_check("acceptance: a refused hit is not a landed one: nothing off it (%.0f of %.0f), the target says it struck and did not land, the shot not counted as landed" % [target.call("health"), health0], is_equal_approx(float(target.call("health")), health0) and struck.any(func(s): return s[0] == "terminal_cannon" and s[1] == false) and not landed.is_empty() and not landed.has(true))
+	_check("acceptance: a refused hit reads as one: a steel ripple where it met, facing the shot (%d), and the blocked marker up, never the hit marker (said %d)" % [ripples.size(), said[0]], ripples.size() >= 1 and faces and said[0] >= 1 and marker2 != null and marker2.blocked())
+	_check("kill -9 is still taken (refuses: sigterm yes, the rail no)", target.call("refuses", "sigterm") and not target.call("refuses", "sigkill_rail"))
+	await _frames(int(RefusedFx.LIFE_S * 60.0) + 10)
+	_check("the ripple frees itself after its life", get_nodes_in_group(RefusedFx.GROUP).is_empty())
+	target.set("only_from", PackedStringArray())
+	GameSettings.current().set_value("gameplay", "practice", false)
+	_done.append("refused")
+
+
+func _aim(player: Node, at: Vector3) -> void:
+	var cam: Camera3D = player.get_node("Head/Camera")
+	var to: Vector3 = at - cam.global_position
+	player.rotation.y = atan2(-to.x, -to.z)
+	player.get_node("Head").rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
 
 
 func _close(a: Color, b: Color, most: float) -> bool:

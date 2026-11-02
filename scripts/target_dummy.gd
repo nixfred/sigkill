@@ -205,6 +205,11 @@ func _ready() -> void:
 		_d = Derezz.new()
 
 
+## True when a hit of weapon `source` would be refused (M7: only_from names the weapons that land; P2).
+func refuses(source: String) -> bool:
+	return not only_from.is_empty() and not only_from.has(source)
+
+
 ## True only while the dummy is alive. Derezzing and respawning dummies ignore hits.
 func is_hittable() -> bool:
 	return state == State.ALIVE
@@ -312,11 +317,12 @@ func hit(damage: float, point: Vector3 = Vector3.INF, direction: Vector3 = Vecto
 	if state != State.ALIVE or _follows() or sealed:
 		return false
 	if not only_from.is_empty() and not only_from.has(source):
-		# Refused (M7): the shot met it, flashed it, and took nothing off it. Said, so its mission can count the signal
-		# sent and the HUD can say what became of it.
-		_art.flash()
+		# Refused (M7): the shot met it and took nothing off it. Said, so its mission can count the signal sent and the
+		# HUD can say what became of it. Not a landed hit (P2): no hot flash, no hit marker, no hit sound; a cold
+		# hexagon ripple where it met the cage instead, so a refusal never reads as a hit.
+		RefusedFx.spawn(self, point if point != Vector3.INF else threat_point(), direction)
 		struck.emit(self, source, false)
-		return true
+		return false
 	# An exploit breaker's bonus on a weak seam (I2): this machine's own shot, or the joiner's the host
 	# is judging.
 	var breakers := BreakerDirector.of(self)

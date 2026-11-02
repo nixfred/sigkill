@@ -304,7 +304,9 @@ run_godot "polish test" --fixed-fps 60 --script res://tests/polish_test.gd
 
 # 73. P2, the second polish pass: one section for each item it fixed, so none comes back. W3's Latte zombie: under a
 # light theme every zombie the theme shift fights wears an outline (an inverted hull in a red the grade takes to the
-# theme's red), under a dark theme none does, nothing but a zombie ever does. A section stopped by a script error fails
+# theme's red), under a dark theme none does, nothing but a zombie ever does. M7's refused hit: not a landed one (nothing
+# off it, no hit marker, the blocked marker and a steel ripple where it met instead); the shell's bolts in its own deep red,
+# bigger and drawn out. A section stopped by a script error fails
 # the test's last check by name. Demo data only.
 run_godot "second polish test" --fixed-fps 60 --script res://tests/polish2_test.gd
 

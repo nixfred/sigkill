@@ -379,7 +379,7 @@ func _on_progressed(_index: int) -> void:
 		_pop = 1.0
 
 
-## A shot the shell refused (M7): said under the crosshair, in its red, no oftener than REFUSE_GAP_S a weapon.
+## A shot the shell refused (M7): said under the crosshair, in a refusal's steel (P2), no oftener than REFUSE_GAP_S a weapon.
 func _on_refused(weapon: String) -> void:
 	if _age - float(_refused_at.get(weapon, -100.0)) < REFUSE_GAP_S:
 		return
@@ -723,7 +723,7 @@ func _draw_feed(at: Vector2) -> void:
 		y += 4.0
 
 
-## A refused shot's words (M7), under the crosshair in the shell's red, fading out.
+## A refused shot's words (M7), under the crosshair in a refusal's steel (P2; the shell's red was lost on its glow), fading out.
 func _draw_refused(view: Vector2) -> void:
 	var text := refused_text()
 	if text == "":
@@ -732,8 +732,9 @@ func _draw_refused(view: Vector2) -> void:
 	var w := _width(text, 13)
 	var at := Vector2((view.x - w) * 0.5, view.y * 0.5 + REFUSE_DROP)
 	var jitter := sin(_refuse_age * 60.0) * 2.0 * clampf(1.0 - _refuse_age / 0.3, 0.0, 1.0)
-	draw_rect(Rect2(at.x - 8.0 + jitter, at.y - 13.0, w + 16.0, 18.0), Color(Palette.VOID, 0.7 * a))
-	_text(Vector2(at.x + jitter, at.y), text, 13, Color(Palette.CRIMSON, a))
+	draw_rect(Rect2(at.x - 8.0 + jitter, at.y - 13.0, w + 16.0, 18.0), Color(Palette.VOID, 0.85 * a))
+	draw_rect(Rect2(at.x - 8.0 + jitter, at.y - 13.0, 2.0, 18.0), Color(Palette.STEEL, a))
+	_text(Vector2(at.x + jitter, at.y), text, 13, Color(Palette.STEEL.lerp(Palette.FLASH, 0.35), a))  # P2: a refusal's cold steel, readable on the shell's red
 
 
 ## The shell's bar (M7): `~` and its health as a bar of cells in its red over the bottom edge, flashing as a hit lands.

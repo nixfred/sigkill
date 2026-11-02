@@ -52,6 +52,7 @@ const GLITCH_SPLIT := Color(1.0, 0.168627451, 0.839215686)  # #ff2bd6 the far si
 # the runaway hot magenta (redder than the fork bomb's #ff4dff). Their armour (A5): near-black
 # gunmetal with a blue cast, catching the arena's light on its bevels.
 const CRIMSON := Color(1.0, 0.070588235, 0.188235294)  # #ff1230 rogue.d's seams, visor and stinger
+const STEEL := Color(0.619607843, 0.678431373, 0.749019608)  # #9eadbf a refused hit (P2): its ripple, the blocked marker, the readout
 const HOT_MAGENTA := Color(1.0, 0.105882353, 0.643137255)  # #ff1ba4 the runaway's drones, core and trails
 const VERMILION := Color(1.0, 0.235294118, 0.078431373)  # #ff3c14 live process swarms (W1): a nest and its drones, red-orange between rogue.d's crimson and rm -rf's ember
 const HEAT_HI := Color(1.0, 0.941176471, 0.784313725)  # #fff0c8 a pegged core's white heat (W1), what its crimson climbs to at a full core

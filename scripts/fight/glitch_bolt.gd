@@ -67,6 +67,8 @@ static var _tinted := {}
 ## This bolt's colour as thrown: its trail's and its impact's.
 var tint := Color(1.0, 0.690196078, 0.0)
 var _shell_mi: MeshInstance3D
+## Its size by its thrower (look_for(): a boss's bigger and drawn out, P2), the flicker on top of it.
+var _size := Vector3.ONE
 var _core_mi: MeshInstance3D
 
 
@@ -110,11 +112,13 @@ func launch(director: Node, owner_brain: DaemonBrain, from: Vector3, dir: Vector
 	live = true
 	visible = true
 	set_physics_process(true)
-	# The shell's own red (M7's leftover, C44), every other thrower's amber.
-	var red := owner_brain != null and (owner_brain.kind == "shell" or owner_brain.kind == "pegged")  # W1: a pegged core's too
-	_shell_mi.material_override = _shell_red if red else _shell_material
-	_core_mi.material_override = _core_red if red else _core_material
-	tint = Palette.CRIMSON if red else Palette.HOSTILE_AMBER
+	# The shell's own red (M7's leftover, C44), every other thrower's amber; a boss's bolt bigger and drawn out (P2).
+	var look := look_for(owner_brain.kind if owner_brain != null else "")
+	_shell_mi.material_override = look["shell"]
+	_core_mi.material_override = look["core"]
+	tint = look["tint"]
+	_size = look["scale"]
+	_look.scale = _size
 	# A thrower whose art names its own bolt colour (the man in the middle's violet, W5) throws in it.
 	var art = owner_brain.dummy.art_node() if owner_brain != null and is_instance_valid(owner_brain.dummy) and owner_brain.dummy.has_method("art_node") else null
 	var own = art.get("bolt_color") if art != null else null
@@ -229,13 +233,23 @@ func _glitch() -> void:
 		jump = Vector3(_roll(n, 2) - 0.5, _roll(n, 3) - 0.5, 0.0) * 2.0 * GLITCH_M
 	_look.position = jump
 	var flicker := 0.85 + 0.3 * _roll(int(floor(_age * 30.0)), 4)
-	_look.scale = Vector3(flicker, flicker, 1.0)
+	_look.scale = Vector3(flicker * _size.x, flicker * _size.y, _size.z)
 	if n != _glitch_n:
 		_glitch_n = n
 
 
 func _roll(a: int, b: int) -> float:
 	return float(hash(Vector3i(a, b, get_instance_id() & 0xffff)) & 0xffff) / 65535.0
+
+
+## A thrower's bolt by its kind (P2: M7's shell's read as pink-white blobs among its own glowing nodes): the shell's and
+## a pegged core's in their red, a deep red core instead of a near-white one, less bright so the bloom keeps the red, and
+## 1.35 times as wide and twice as long, a dart that shows its way; every other thrower's in amber at its usual size.
+static func look_for(kind: String) -> Dictionary:
+	_statics()
+	if kind == "shell" or kind == "pegged":  # W1: a pegged core's too
+		return {"shell": _shell_red, "core": _core_red, "tint": Palette.CRIMSON, "scale": Vector3(1.35, 1.35, 2.0)}
+	return {"shell": _shell_material, "core": _core_material, "tint": Palette.HOSTILE_AMBER, "scale": Vector3.ONE}
 
 
 static func _statics() -> void:
@@ -245,8 +259,8 @@ static func _statics() -> void:
 	_core_mesh = _crystal(LENGTH_M * CORE_SHARE, WIDTH_M * CORE_SHARE)
 	_shell_material = _glow(Palette.HOSTILE_AMBER, ENERGY, 0.85)
 	_core_material = _glow(Color(1.0, 0.95, 0.8), ENERGY * 1.4, 1.0)
-	_shell_red = _glow(Palette.CRIMSON, ENERGY, 0.85)
-	_core_red = _glow(Color(1.0, 0.82, 0.86), ENERGY * 1.4, 1.0)
+	_shell_red = _glow(Palette.CRIMSON, ENERGY * 0.75, 0.85)
+	_core_red = _glow(Color(1.0, 0.36, 0.42), ENERGY * 0.9, 1.0)  # P2: deep red, never washed to white
 
 
 ## A six-sided crystal along -Z, `length` long and `width` across, pointed at both ends, longer
