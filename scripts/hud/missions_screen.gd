@@ -58,6 +58,8 @@ var session: Node = null
 var player: Node = null
 ## The mission chosen, by its place in the list.
 var selected := 0
+## The left stick's last step up (-1) or down (1), 0 at rest: a held stick steps once, as a D-pad press does.
+var _stick := 0
 
 var _defs: Array = []
 var _font: Font
@@ -171,6 +173,27 @@ func texts() -> PackedStringArray:
 
 func _input(event: InputEvent) -> void:
 	if not visible:
+		return
+	# The left stick as the D-pad: up and down pick the mission.
+	var motion := event as InputEventJoypadMotion
+	if motion != null and motion.axis == JOY_AXIS_LEFT_Y:
+		get_viewport().set_input_as_handled()
+		var step := 1 if motion.is_action_pressed("ui_down") else -1 if motion.is_action_pressed("ui_up") else 0
+		if step != 0 and step != _stick:
+			select(posmod(selected + step, _defs.size()))
+		_stick = step
+		return
+	# A pad as the keys: B backs out as Esc does, the D-pad picks as the arrows do, A starts.
+	if event is InputEventJoypadButton and event.is_pressed():
+		if event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			close()
+		elif event.is_action_pressed("ui_up") or event.is_action_pressed("ui_down"):
+			get_viewport().set_input_as_handled()
+			select(posmod(selected + (1 if event.is_action_pressed("ui_down") else -1), _defs.size()))
+		elif event.is_action_pressed("ui_accept"):
+			get_viewport().set_input_as_handled()
+			start_selected()
 		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:

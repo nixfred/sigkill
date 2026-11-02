@@ -751,6 +751,12 @@ func _input(event: InputEvent) -> void:
 	if not _open or _loadout.is_open() or _missions.is_open() or showing_opener() or showing_card() or showing_credits():
 		return  # the loadout and Missions screens, the opener and the first-launch card take their own keys
 	if _capturing != "":
+		if event is InputEventJoypadButton and event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			_capturing = ""  # a bind is a key or a mouse button: B on a pad gives up waiting, as Esc does
+			_say("")
+			_refresh()
+			return
 		var button := event is InputEventKey or event is InputEventMouseButton
 		if button:
 			get_viewport().set_input_as_handled()
@@ -764,7 +770,7 @@ func _input(event: InputEvent) -> void:
 			_take_bind(action, event)
 		_refresh()
 		return
-	if _is_escape(event) and event.is_pressed() and not event.is_echo():
+	if (_is_escape(event) or _is_pad_back(event)) and event.is_pressed() and not event.is_echo():
 		get_viewport().set_input_as_handled()
 		if _sheet.visible:
 			_save_if_changed()
@@ -876,6 +882,12 @@ func _focused() -> bool:
 static func _is_escape(event: InputEvent) -> bool:
 	var key := event as InputEventKey
 	return key != null and (key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE)
+
+
+## A pad's Start or B (ui_cancel): Start closes the menu it opened, and B steps back as Esc does.
+static func _is_pad_back(event: InputEvent) -> bool:
+	var button := event as InputEventJoypadButton
+	return button != null and (button.button_index == JOY_BUTTON_START or event.is_action_pressed("ui_cancel"))
 
 
 static func _shown_name(action: String) -> String:
@@ -1131,6 +1143,7 @@ func _build_controls(col: VBoxContainer) -> void:
 	_label(keys_head, "KEYS", HEAD_FONT, Palette.TEAL).custom_minimum_size.x = KEY_NAME_W + KEY_BUTTON_W
 	_button(keys_head, "Reset keys", 0).pressed.connect(_on_reset_keys)
 	var box := ScrollContainer.new()
+	box.follow_focus = true  # the D-pad walking the key list scrolls it along
 	box.name = "KeyList"
 	box.custom_minimum_size = Vector2(COLUMN_W, KEYS_BOX_H)
 	box.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

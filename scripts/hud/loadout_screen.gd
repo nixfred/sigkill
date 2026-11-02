@@ -8,7 +8,9 @@ extends Control
 ## what it gains and what it costs. A card under the pointer lights the model in that skin at once, locked or
 ## not; a click wears a held skin or fits or takes off a held mod (saved at once, scripts/unlocks/progress.gd);
 ## a locked one says how it is earned and how far along this player is. Everything on one screen with no page
-## scroll (Law 17), shrunk whole to fit a small window (960x540 and up), mouse and keyboard only.
+## scroll (Law 17), shrunk whole to fit a small window (960x540 and up). On a pad the D-pad or left stick picks
+## a weapon, A goes into its kit (its skins, then its mod), A again wears or fits the one picked, and B comes
+## back out, then out of the screen.
 ##
 ## Alone, what the player wears changes as the screen closes (the Esc menu calls the player's wear()); in a
 ## match the look the host accepted holds until the match ends, and the screen says so.
@@ -63,6 +65,12 @@ var session: Node = null
 var progress: Progress = null
 ## The weapon on show (its slot), and the skin lighting the model now.
 var slot := 0
+## The left stick's last step up (-1) or down (1), 0 at rest: a held stick steps once, as a D-pad press does.
+var _stick := 0
+## The pad (pad_in_kit): false while the D-pad picks a weapon, true once A has gone into its kit, where the
+## D-pad walks its cards and A wears or fits the one picked (_kit_at: a skin's index, or the mod after them).
+var _in_kit := false
+var _kit_at := 0
 var stage: LoadoutStage
 
 var _defs: Array = []
@@ -120,6 +128,7 @@ func is_open() -> bool:
 func select(index: int) -> void:
 	slot = clampi(index, 0, _defs.size() - 1)
 	_hover = -1
+	_in_kit = false
 	stage.show_weapon(_worn(slot))
 	_refresh()
 
@@ -182,6 +191,15 @@ func panel_rect() -> Rect2:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
+	# The left stick as the D-pad: one step a push.
+	var motion := event as InputEventJoypadMotion
+	if motion != null and motion.axis == JOY_AXIS_LEFT_Y:
+		get_viewport().set_input_as_handled()
+		var step := 1 if motion.is_action_pressed("ui_down") else -1 if motion.is_action_pressed("ui_up") else 0
+		if step != 0 and step != _stick:
+			_pad_step(step)
+		_stick = step
+		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo:
 		if key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE:
@@ -190,6 +208,64 @@ func _input(event: InputEvent) -> void:
 		elif key.keycode == KEY_UP or key.keycode == KEY_DOWN:
 			get_viewport().set_input_as_handled()
 			select(posmod(slot + (1 if key.keycode == KEY_DOWN else -1), _defs.size()))
+	if event is InputEventJoypadButton and event.is_pressed():
+		get_viewport().set_input_as_handled()  # A is the menu's accept too: the Loadout button behind must not take it
+		if event.is_action_pressed("ui_cancel"):
+			_pad_back()
+		elif event.is_action_pressed("ui_up") or event.is_action_pressed("ui_down"):
+			_pad_step(1 if event.is_action_pressed("ui_down") else -1)
+		elif event.is_action_pressed("ui_accept"):
+			_pad_accept()
+
+
+## Whether the pad has gone into the shown weapon's kit, and which of its cards it has picked there.
+func pad_in_kit() -> bool:
+	return _in_kit
+
+
+func pad_card() -> int:
+	return _kit_at if _in_kit else -1
+
+
+## Out of the kit the D-pad walks the weapons; in it, the cards: the skins in order, then the mod.
+func _pad_step(step: int) -> void:
+	if not _in_kit:
+		select(posmod(slot + step, _defs.size()))
+		return
+	var kit := WeaponKit.of(_defs[slot].id)
+	_kit_at = posmod(_kit_at + step, _kit_cards())
+	preview(_kit_at if _kit_at < kit.skins.size() else -1)
+
+
+## A goes into the kit at the skin worn, then wears the skin picked or fits or takes off the mod.
+func _pad_accept() -> void:
+	var kit := WeaponKit.of(_defs[slot].id)
+	if not _in_kit:
+		if _kit_cards() == 0:
+			return
+		_in_kit = true
+		_kit_at = maxi(kit.skin_index(progress.skin_of(_defs[slot].id)), 0)
+		preview(_kit_at)
+	elif _kit_at < kit.skins.size():
+		wear_skin(_kit_at)
+	else:
+		toggle_mod()
+
+
+## B comes out of the kit to the weapons, or out of the screen.
+func _pad_back() -> void:
+	if not _in_kit:
+		close()
+		return
+	_in_kit = false
+	preview(-1)
+
+
+func _kit_cards() -> int:
+	var kit := WeaponKit.of(_defs[slot].id)
+	if kit == null:
+		return 0
+	return kit.skins.size() + (1 if kit.mod != null else 0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -322,7 +398,9 @@ func _restyle() -> void:
 		style.border_color = skin.body() if worn or i == _hover else Color(skin.body(), 0.35)
 		style.set_border_width_all(2 if worn or i == _hover else 1)
 	var mod_style := _mod_card.get_theme_stylebox("panel") as StyleBoxFlat
-	mod_style.border_color = Palette.skin_beam(shown) if progress.mod_on(_defs[slot].id) else Color(Palette.skin_body(shown), 0.35)
+	var picked := _in_kit and kit != null and _kit_at == kit.skins.size()
+	mod_style.border_color = Palette.skin_beam(shown) if progress.mod_on(_defs[slot].id) or picked else Color(Palette.skin_body(shown), 0.35)
+	mod_style.set_border_width_all(2 if picked else 1)
 
 
 # --- Building. ---

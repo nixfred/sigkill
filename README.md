@@ -2366,6 +2366,22 @@ Bindings are registered in code in `scripts/controls.gd`, with mouse look and th
 | H, J, L, in the multiplayer panel | Host on port 9009; join by the host's address (a one-line box: Enter joins, Esc cancels, the game takes no input while it is open); leave |
 | K, in the multiplayer panel | Join by a room code or a `sigkill://join/` link (the same kind of box), through the relay set in Settings, Multiplayer. With none set (the default) it answers "Online rooms aren't live yet. Use LAN join (address)." |
 
+A gamepad plays the same game, on Godot's standard layout (named here by the Xbox buttons). Its buttons are fixed, and each sits beside the action's key, so a rebind in Settings keeps them:
+
+| Gamepad | Action |
+|---|---|
+| Left stick / right stick | Move / look (invert Y flips the right stick) |
+| RT / LT | Fire / aim down the sights. A held trigger fires as a held click does |
+| A / B / X / Y | Jump / crouch / reload / sudo |
+| LB / RB | Previous / next weapon, through both banks |
+| Left stick click / right stick click | Slide / code-rain vision (hold) |
+| D-pad up / down / left / right | SIGSTOP / fork bomb / next ICEbreaker / run it |
+| Start / Back | The menu (Start or B backs out of it) / the Audit Trail visor |
+| In the menu | D-pad or left stick moves, A presses, B backs out (Start closes it) |
+| In Loadout | D-pad or left stick picks a weapon; A goes into its skins and mod, A again wears or fits the one picked, B comes back out |
+
+Top, the last weapon, respawn and the AI keys stay on the keyboard. A pad is ignored while the game's window is not focused.
+
 ### Settings
 
 Esc opens the menu; Settings shows every setting at once, in three columns, with nothing to scroll but the list of keys. Changes work at once and are saved when you leave the screen. The menu pauses nothing: it only stops your own input (the round clock waits too), so in a LAN match the other player, the host's simulation and the shots go on, and you can still be hit.

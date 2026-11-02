@@ -370,6 +370,8 @@ var _fire_held := false
 ## True from a fire press made while engaged until fire is let go: the beam never starts from the click
 ## that grabbed the mouse (C29).
 var _fire_down := false
+## Whether the fire trigger is past its dead zone, so a held trigger presses fire once.
+var _trigger_pulled := false
 var _freeze_beam: Node3D
 var _beaming := 0.0
 ## pipe | (C30): chains run, the last one's links (PipeChain's dictionaries: who, where, how hard) and how
@@ -502,6 +504,13 @@ func _notification(what: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if input_blocked:
 		return
+	# A trigger is an axis: every motion event past its dead zone reads as a press. Only the
+	# pull and the let go count, so a held trigger fires once, as a held click does.
+	if event is InputEventJoypadMotion and InputMap.event_is_action(event, "fire"):
+		var pulled := event.is_action_pressed("fire")
+		if pulled == _trigger_pulled:
+			return
+		_trigger_pulled = pulled
 	if event.is_action_released("code_rain_vision") and vision != null:
 		vision.hold(false)  # let go wherever the mouse is: vision never sticks on
 	if event.is_action_released("fire"):

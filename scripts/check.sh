@@ -11,7 +11,7 @@
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd) at a fixed frame rate. The
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd, tests/gamepad_test.gd) at a fixed frame rate. The
 # visor test reads a fake process table it builds in its own folder under user:// (fake stat and status files beside
 # poisoned ones it must never open; removed at the end), never the machine's own. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
@@ -253,6 +253,13 @@ run_godot "keybind gunplay test" --fixed-fps 60 --script res://tests/keybind_tes
 # man-in-the-middle holding a packet, a stale route sending it the wrong way; the SYN flood, the results card, Enter's
 # again; a fall off an island retransmitted; the visor's route; the Esc menu's entry; the arena's keys unchanged.
 run_godot "packet tracer test" --fixed-fps 60 --script res://tests/packet_tracer_test.gd
+
+# 70. Gamepad: every pad button and axis in the input map once, for any pad, behind each action's key or mouse button,
+# and kept through a rebind and a reset; pads ignored while the window is unfocused; then through real pad events into
+# the real player, the left stick moves, A jumps, RB draws the next weapon, a wavering held trigger fires as many shots
+# as a held click, and Start opens the menu and closes it; in the menu the D-pad and the left stick move focus, A presses, and B backs
+# out of Missions, a rebind's wait and the menu.
+run_godot "gamepad test" --fixed-fps 60 --script res://tests/gamepad_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

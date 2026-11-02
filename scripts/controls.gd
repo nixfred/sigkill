@@ -10,7 +10,7 @@ extends RefCounted
 ## the multiplayer panel (C13), whose own keys count only while it is open. Weapons (C16):
 ## 1 to 9 pick a slot, the mouse wheel cycles, Q swaps back to the last weapon, and E
 ## reloads, because R already resets the arena. Settings (C16b): Esc opens the menu, X
-## crouches, the right mouse button aims, a gamepad's right stick looks around, and the
+## crouches, the right mouse button aims, a gamepad plays the same actions (below), and the
 ## settings screen rebinds the actions in REBINDABLE to one key or mouse button each: never
 ## Esc, never a Ctrl, Alt or Super key or chord (Ctrl+Alt above all, the desktop's), and a
 ## bind that another action or a fixed key already uses is shown as a conflict. SIGSTOP
@@ -32,6 +32,16 @@ extends RefCounted
 ## Keybind gunplay (W4): the ` key (left of 1) stands in for Super while the mode runs, so it is a fixed key a bind is
 ## shown in conflict with (scripts/keys/key_book.gd STANDIN). Nothing else in the game uses it.
 ##
+## Gamepad: Godot's SDL layout, named here by the Xbox buttons. Left stick moves, right stick
+## looks. RT fires, LT aims. A jumps, B crouches, X reloads, Y is sudo. LB and RB cycle the
+## weapons, which walk every slot of both banks. Left stick click slides, right stick click
+## holds code-rain vision. D-pad: up SIGSTOP, down the fork bomb, left the next breaker, right
+## runs it. Start opens the menu, Back the audit visor, and the guide button is left free.
+## In a menu the D-pad moves, A presses and B backs out (PAD_UI).
+## Every pad event matches any pad (PAD), and none is a bind: each sits after the action's key
+## or mouse event, so a rebind keeps it the way it keeps the arrows. Top, the last weapon,
+## respawn and the AI keys stay on the keyboard.
+##
 ## TODO: once the project has been opened in the Godot editor, this can move to
 ## the Input Map in project settings.
 
@@ -41,7 +51,7 @@ const SLOT_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_
 ## The actions the settings screen rebinds, in the order it lists them, with their shown
 ## names. A bind is "key:<physical keycode>" or "mouse:<button>"; the default is the first
 ## event ensure() gives the action. Every other binding is fixed (FIXED_KEYS, the wheel,
-## the arrows beside the movement keys, the right stick).
+## the arrows beside the movement keys, the pad).
 const REBINDABLE := [
 	["move_forward", "move forward"], ["move_back", "move back"], ["move_left", "move left"],
 	["move_right", "move right"], ["jump", "jump"], ["slide", "slide"], ["crouch", "crouch"],
@@ -67,6 +77,27 @@ const KEY_PREFIX := "key:"
 const MOUSE_PREFIX := "mouse:"
 ## The right stick's dead zone: smaller than an action's default, so slow aiming works.
 const STICK_DEADZONE := 0.15
+## The device a pad event names to match every pad (Godot's all-devices id).
+const PAD := -1
+## The pad's buttons, as {action: button}, added after each action's own events.
+const PAD_BUTTONS := {
+	"jump": JOY_BUTTON_A, "crouch": JOY_BUTTON_B, "reload": JOY_BUTTON_X, "sudo_overcharge": JOY_BUTTON_Y,
+	"weapon_prev": JOY_BUTTON_LEFT_SHOULDER, "weapon_next": JOY_BUTTON_RIGHT_SHOULDER,
+	"slide": JOY_BUTTON_LEFT_STICK, "code_rain_vision": JOY_BUTTON_RIGHT_STICK,
+	"sigstop": JOY_BUTTON_DPAD_UP, "throw_bomb": JOY_BUTTON_DPAD_DOWN,
+	"cycle_breaker": JOY_BUTTON_DPAD_LEFT, "run_breaker": JOY_BUTTON_DPAD_RIGHT,
+	"release_mouse": JOY_BUTTON_START, "audit_visor": JOY_BUTTON_BACK,
+}
+## Godot's own menu actions on the pad: its defaults give the D-pad focus moves, but no
+## button to press a focused control or to back out.
+const PAD_UI := {"ui_accept": JOY_BUTTON_A, "ui_cancel": JOY_BUTTON_B}
+## The pad's axes, as [action, axis, direction]: the left stick and the triggers. The right
+## stick's look axes are their own actions, made by _axis().
+const PAD_AXES := [
+	["move_forward", JOY_AXIS_LEFT_Y, -1.0], ["move_back", JOY_AXIS_LEFT_Y, 1.0],
+	["move_left", JOY_AXIS_LEFT_X, -1.0], ["move_right", JOY_AXIS_LEFT_X, 1.0],
+	["fire", JOY_AXIS_TRIGGER_RIGHT, 1.0], ["aim", JOY_AXIS_TRIGGER_LEFT, 1.0],
+]
 const CTRL_ALT_REFUSED := "Ctrl+Alt belongs to the desktop: never bound in SIGKILL"
 const CHORD_REFUSED := "no Ctrl, Alt or Super keys or chords in SIGKILL"
 const ESC_REFUSED := "Esc is the menu's: pick another key"
@@ -113,6 +144,7 @@ static func ensure() -> void:
 	_axis("look_right", JOY_AXIS_RIGHT_X, 1.0)
 	_axis("look_up", JOY_AXIS_RIGHT_Y, -1.0)
 	_axis("look_down", JOY_AXIS_RIGHT_Y, 1.0)
+	_pad()
 	if _defaults.is_empty():
 		for pair in REBINDABLE:
 			var events := InputMap.action_get_events(pair[0])
@@ -272,10 +304,32 @@ static func _axis(action: StringName, axis: JoyAxis, direction: float) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action, STICK_DEADZONE)
+	InputMap.action_add_event(action, _motion(axis, direction))
+
+
+## Adds the pad's buttons and axes to their actions, once: a second call finds them there.
+static func _pad() -> void:
+	for table in [PAD_BUTTONS, PAD_UI]:
+		for action in table:
+			var button := InputEventJoypadButton.new()
+			button.device = PAD
+			button.button_index = table[action]
+			_add_once(action, button)
+	for row in PAD_AXES:
+		_add_once(row[0], _motion(row[1], row[2]))
+
+
+static func _add_once(action: StringName, event: InputEvent) -> void:
+	if InputMap.has_action(action) and not InputMap.action_has_event(action, event):
+		InputMap.action_add_event(action, event)
+
+
+static func _motion(axis: JoyAxis, direction: float) -> InputEventJoypadMotion:
 	var event := InputEventJoypadMotion.new()
+	event.device = PAD
 	event.axis = axis
 	event.axis_value = direction
-	InputMap.action_add_event(action, event)
+	return event
 
 
 static func _mouse(action: StringName, button: MouseButton) -> void:

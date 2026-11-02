@@ -139,7 +139,7 @@ func _rule_checks() -> void:
 
 func _rebind_checks() -> void:
 	var events := InputMap.action_get_events("sudo_overcharge")
-	_check("Z is sudo: a rebindable action shown as \"sudo\" in the settings' list, Z by default, clashing with nothing", Controls.rebindable("sudo_overcharge") and Controls.default_bind("sudo_overcharge") == "key:%d" % KEY_Z and _shown("sudo_overcharge") == "sudo" and not Controls.conflicts({}).has("sudo_overcharge") and events.size() == 1 and (events[0] as InputEventKey).physical_keycode == KEY_Z)
+	_check("Z is sudo: a rebindable action shown as \"sudo\" in the settings' list, Z by default, clashing with nothing", Controls.rebindable("sudo_overcharge") and Controls.default_bind("sudo_overcharge") == "key:%d" % KEY_Z and _shown("sudo_overcharge") == "sudo" and not Controls.conflicts({}).has("sudo_overcharge") and events.size() == 2 and events[1] is InputEventJoypadButton and (events[0] as InputEventKey).physical_keycode == KEY_Z)
 	var path := _tmp.path_join("rebind-settings.cfg")
 	var s := GameSettings.new()
 	s.path = path
@@ -160,7 +160,7 @@ func _rebind_checks() -> void:
 	back.reset_binds()
 	Controls.apply_binds(back.binds())
 	var reset := InputMap.action_get_events("sudo_overcharge")
-	_check("acceptance: rebindable: moved to P (U before I2's breakers took it) it is saved, read back and taken by the input map, clashing with nothing; Ctrl+Alt+Z is refused; reset, it is Z again", took == "" and saved and how == "loaded" and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_P and not Controls.conflicts(back.binds()).has("sudo_overcharge") and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_Z, "%s %s %s" % [took, how, refused])
+	_check("acceptance: rebindable: moved to P (U before I2's breakers took it) it is saved, read back and taken by the input map, clashing with nothing; Ctrl+Alt+Z is refused; reset, it is Z again", took == "" and saved and how == "loaded" and moved.size() == 2 and moved[1] is InputEventJoypadButton and (moved[0] as InputEventKey).physical_keycode == KEY_P and not Controls.conflicts(back.binds()).has("sudo_overcharge") and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 2 and reset[1] is InputEventJoypadButton and (reset[0] as InputEventKey).physical_keycode == KEY_Z, "%s %s %s" % [took, how, refused])
 
 
 func _source_checks() -> void:

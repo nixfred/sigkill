@@ -159,7 +159,7 @@ func _source_checks() -> void:
 
 func _rebind_checks() -> void:
 	var events := InputMap.action_get_events("throw_bomb")
-	_check("G is the fork bomb's quick throw: a rebindable action shown as \"Fork bomb\" in the settings' list, G by default, clashing with nothing", Controls.rebindable("throw_bomb") and Controls.default_bind("throw_bomb") == "key:%d" % KEY_G and _shown("throw_bomb") == "Fork bomb" and not Controls.conflicts({}).has("throw_bomb") and events.size() == 1 and (events[0] as InputEventKey).physical_keycode == KEY_G)
+	_check("G is the fork bomb's quick throw: a rebindable action shown as \"Fork bomb\" in the settings' list, G by default, clashing with nothing", Controls.rebindable("throw_bomb") and Controls.default_bind("throw_bomb") == "key:%d" % KEY_G and _shown("throw_bomb") == "Fork bomb" and not Controls.conflicts({}).has("throw_bomb") and events.size() == 2 and events[1] is InputEventJoypadButton and (events[0] as InputEventKey).physical_keycode == KEY_G)
 	var path := _tmp.path_join("rebind-settings.cfg")
 	var s := GameSettings.new()
 	s.path = path
@@ -172,7 +172,7 @@ func _rebind_checks() -> void:
 	var how := back.load_file()
 	Controls.apply_binds(back.binds())
 	var moved := InputMap.action_get_events("throw_bomb")
-	_check("acceptance: the G rebind saves and loads: the fork bomb moved to H is written to the settings file, read back from it, and the input map takes it", took == "" and saved and how == "loaded" and back.bind("throw_bomb") == "key:%d" % KEY_H and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_H and FileAccess.get_file_as_string(path).contains("throw_bomb"), "%s %s %s" % [took, how, back.bind("throw_bomb")])
+	_check("acceptance: the G rebind saves and loads: the fork bomb moved to H is written to the settings file, read back from it, and the input map takes it", took == "" and saved and how == "loaded" and back.bind("throw_bomb") == "key:%d" % KEY_H and moved.size() == 2 and moved[1] is InputEventJoypadButton and (moved[0] as InputEventKey).physical_keycode == KEY_H and FileAccess.get_file_as_string(path).contains("throw_bomb"), "%s %s %s" % [took, how, back.bind("throw_bomb")])
 	var chord := InputEventKey.new()
 	chord.physical_keycode = KEY_G
 	chord.ctrl_pressed = true
@@ -185,7 +185,7 @@ func _rebind_checks() -> void:
 	again.load_file()
 	Controls.apply_binds(again.binds())
 	var reset := InputMap.action_get_events("throw_bomb")
-	_check("Ctrl+Alt+G is refused, and resetting the keys puts the fork bomb back on G, saved and loaded the same way", refused == Controls.CTRL_ALT_REFUSED and again.bind("throw_bomb") == "key:%d" % KEY_G and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_G)
+	_check("Ctrl+Alt+G is refused, and resetting the keys puts the fork bomb back on G, saved and loaded the same way", refused == Controls.CTRL_ALT_REFUSED and again.bind("throw_bomb") == "key:%d" % KEY_G and reset.size() == 2 and reset[1] is InputEventJoypadButton and (reset[0] as InputEventKey).physical_keycode == KEY_G)
 
 
 # --- Solo. ---
