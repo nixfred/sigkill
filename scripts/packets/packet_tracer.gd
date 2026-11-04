@@ -125,6 +125,8 @@ var reached := {}
 var trace: Array = []
 ## Its enemies: {body, kind, island (an id, "" on a link), link (-1 on an island), u, dup}.
 var enemies: Array = []
+## True while _finish() reaps what still stands: those downs are no one's kill and send no retransmit again.
+var _reaping := false
 var events: Array = []
 ## The ride now: {link, from, to, dir, u, burst, bursts, held, warned, start}; empty when not riding.
 var ride := {}
@@ -765,6 +767,8 @@ func _seed_for(slot: String) -> int:
 
 
 func _on_downed(dummy: Node3D) -> void:
+	if _reaping:
+		return
 	stats["kills"] = int(stats["kills"]) + 1
 	for e in enemies:
 		if e["body"] != dummy:
@@ -974,10 +978,12 @@ func _check_fallen() -> void:
 
 
 func _finish() -> void:
+	_reaping = true
 	for e in enemies:
 		var body = e["body"]
 		if _alive(body) and body.has_method("reap"):
 			body.reap()
+	_reaping = false
 	_dups.clear()
 	_let_go()
 	_enter("done")

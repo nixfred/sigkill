@@ -149,7 +149,7 @@ func _source_checks() -> void:
 	_check("the game's WebSocket client: one link, to the relay URL the player set, made on its first request; its loopback sockets bound to 127.0.0.1 only; nothing run, read or looked up by itself", game_found.is_empty() and client.count("WebSocketPeer.new()") == 1 and client.count("connect_to_url(") == 2 and client.count("connect_to_url(_url") == 2 and client.count("PacketPeerUDP.new()") == 1 and client.contains("udp.bind(0, LOOPBACK)") and client.count(".bind(") == 1 and client.contains("const LOOPBACK := \"127.0.0.1\"") and _body(client, "_init").find("WebSocketPeer") < 0 and _body(client, "_init").find("PacketPeerUDP") < 0, ", ".join(game_found))
 	_check("a loopback socket takes datagrams from 127.0.0.1 only, and only from the first source it saw (the game's own ENet socket)", _body(client, "_drain").contains("if udp.get_packet_ip() != LOOPBACK:") and _body(client, "_drain").contains("elif from != known:"))
 	var session := _code("res://scripts/net/net_session.gd")
-	_check("the session's relay path is the C16c one: it only picks the client by scheme, pumps it once a frame and closes its tunnel with the peer", _body(session, "rendezvous_for").contains("if RelayWire.transport_of(url) == \"ws\":\n\t\treturn WsRendezvous.new(url)") and _body(session, "_physics_process").contains("_rv.pump()") and _body(session, "_shut_peer").contains("_rv.end_tunnel()") and not session.contains("WebSocket"))
+	_check("the session's relay path is the C16c one: it only picks the client by scheme, pumps it once a frame and closes its tunnel with the peer", _body(session, "rendezvous_for").contains("WsRendezvous.new(url) if RelayWire.transport_of(url) == \"ws\" else UdpRendezvous.new(url)") and _body(session, "_physics_process").contains("_rv.pump()") and _body(session, "_shut_peer").contains("_rv.end_tunnel()") and not session.contains("WebSocket"))
 
 
 # --- The scheme picks the transport. ---
@@ -170,6 +170,14 @@ func _scheme_checks() -> void:
 	_check("ws:// and wss:// take the WebSocket client, udp:// the C16c one; making one opens no link and sends nothing", ws.get_script() == WsRendezvous and wss.get_script() == WsRendezvous and udp.get_script() == UdpRendezvous and not ws.link_open() and not wss.link_open() and ws.requests() == 0 and wss.requests() == 0 and ws.tunnel_sockets().is_empty())
 	_check("wss:// takes the WebSocket path with TLS, to the web's port 443 (TLS the proxy in front of the relay terminates); ws:// is plain", wss.uses_tls() and wss.get("_url") == "wss://my-vm.exe.xyz:443/" and not ws.uses_tls() and ws.get("_url") == "ws://127.0.0.1:8000/")
 	_check("an unknown scheme is refused by the room tuning and gives no relay at all: NullRendezvous, no connection", unknown == [[1, NullRendezvous], [1, NullRendezvous], [1, NullRendezvous]], str(unknown))
+	# A bug hunt found the room tuning's request timeout never reached the client (each stayed at its own 4 s).
+	var slow := RoomTuningScript.new()
+	slow.request_timeout_ms = 9000
+	slow.relay_url = "wss://my-vm.exe.xyz"
+	var slow_ws = Session.rendezvous_for(slow)
+	slow.relay_url = "udp://127.0.0.1:9010"
+	var slow_udp = Session.rendezvous_for(slow)
+	_check("the room tuning's request timeout is each client's own (%d and %d ms for 9000 asked; 4000 shipped)" % [slow_ws.timeout_ms, slow_udp.timeout_ms], slow_ws.timeout_ms == 9000 and slow_udp.timeout_ms == 9000 and udp.timeout_ms == RoomTuningScript.new().request_timeout_ms)
 	# The settings box: an unknown scheme refused and said why; ws:// taken and saved.
 	var settings := GameSettings.current()
 	var host := _branch("Box", Vector3.ZERO)

@@ -38,7 +38,9 @@ static var made := 0
 ## The table's root (a test hands in a fake one under its own folder).
 var root := ROOT
 var budget_us := BUDGET_US
-## Every path this reader opened, in order, for the checks.
+## Every path this reader opened, in order, for the checks: the first OPENED_KEPT only, so a long session on the
+## real layer does not grow it without end; drop() lets them go with the rest.
+const OPENED_KEPT := 4096
 var opened := PackedStringArray()
 ## The last full scan: {pid: {"ppid", "comm", "state", "cpu", "mem_kb", "threads"}}.
 var snapshot := {}
@@ -87,6 +89,7 @@ func step(delta: float) -> bool:
 
 ## Every value let go.
 func drop() -> void:
+	opened.clear()
 	snapshot.clear()
 	_building.clear()
 	_queue.clear()
@@ -141,7 +144,8 @@ func _small(path: String) -> String:
 	if path.get_file() != STAT and path.get_file() != STATUS:
 		return ""  # nothing else, ever
 	reads += 1
-	opened.append(path)
+	if opened.size() < OPENED_KEPT:
+		opened.append(path)
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return ""

@@ -170,9 +170,17 @@ func _match_checks(config: Dictionary) -> void:
 	var before: Dictionary = _server.counters.duplicate()
 	var frames := 0
 	var slots: int = sides[0]["player"].inventory.slot_count()
+	var drawn := 0
 	for slot in slots:
+		# The daemons fight back, so a player can be down when its turn comes: it is waited for (those frames are the
+		# run's too), or its draw is skipped and the run carries less than it says (37 of 52 draws, the first count).
+		var waited := 0
+		while waited < 900 and not sides.all(func(s): return not is_instance_valid(s["player"]) or s["player"].alive):
+			waited += await _hold(sides, 1, false)
+		frames += waited
 		for s in sides:
-			s["player"].select_slot(slot)
+			if s["player"].select_slot(slot) or s["player"].inventory.current == slot:
+				drawn += 1
 		frames += await _hold(sides, 25, false)
 		frames += await _hold(sides, FIRE_FRAMES, true)
 	frames += await _hold(sides, 60, false)
@@ -191,6 +199,8 @@ func _match_checks(config: Dictionary) -> void:
 		looks_ok = looks_ok and cs.looks.size() == 4
 		staying = staying and cs.state == Session.State.JOINED and cs.players.size() == 4
 	staying = staying and hs.players.size() == 4
+	# A bug hunt found the thirteen never counted: a weapon skipped would still pass on lighter traffic.
+	_check("every player drew each of the thirteen weapons in turn (%d draws of %d slots)" % [drawn, slots], slots == 13 and drawn == slots * sides.size())
 	_check("acceptance: after every weapon from every player, everyone is still in the room (four on every screen)", staying)
 	_check("each joiner has the host's rules: the daemons fight back (protocol 10) and ICE is on (12)", rules_ok)
 	_check("each joiner keeps taking the host's ICE words (12) and breaker words (13) through the relay", ice_ok and breaker_ok, "ice %s breaker %s" % [str(sides.slice(1).map(func(s): return s["session"].ice_words)), str(sides.slice(1).map(func(s): return s["session"].breaker_words))])

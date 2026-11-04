@@ -445,6 +445,12 @@ func _run_checks() -> void:
 	player.global_position = shell_at
 	player.velocity = Vector3.ZERO
 	var dark_done := await _until(func(): return runner.index >= 5)
+	# A hangup at the shell a beat early (the stage's own burst handler, as a SIGHUP going off by the screen): ignored
+	# now, and it must not use up the hangup the end beat needs (a bug hunt found the mission softlocked after it).
+	var early: Dictionary = world.shell_screen()
+	stage._on_burst((early["at"] as Vector3) + Vector3(0, 2.2, 0))
+	await _frames(2)
+	var early_ignored: bool = runner.index == 5
 	var gone := came and await _until(func(): return not ice.black_out())
 	var recalled := _fired_has("black ICE recalled")
 	var back := await _until(func(): return not guide.link_cut())
@@ -453,7 +459,7 @@ func _run_checks() -> void:
 	var typing := await _until(func(): return stage.shell_typing())
 	var typed := await _until(func(): return stage.shell_text().to_lower().contains("log out") and not stage.shell_typing())
 	var listen_done := await _until(func(): return runner.index >= 6)
-	_check("acceptance (the link back, the shell): the oldest directory reached in the dark, Black ICE recalled by the Auditor and gone, the link back, \"%s\", the shell's screen waking and `~`'s line typing itself on it (\"%s\"), the beat done" % [STILL_HERE, stage.shell_text().replace("\n", " / ")], dark_done and gone and recalled and back and still_here and woke and typing and typed and _fired_has(LOG_OUT) and listen_done)
+	_check("acceptance (the link back, the shell): the oldest directory reached in the dark, Black ICE recalled by the Auditor and gone, the link back, \"%s\", the shell's screen waking and `~`'s line typing itself on it (\"%s\"), the beat done; a hangup thrown at it early ignored (%s)" % [STILL_HERE, stage.shell_text().replace("\n", " / "), early_ignored], early_ignored and dark_done and gone and recalled and back and still_here and woke and typing and typed and _fired_has(LOG_OUT) and listen_done)
 	# SIGHUP at the shell: counted, ignored, the floor opening a beat later, the fall into the core.
 	var screen: Dictionary = world.shell_screen()
 	player.global_position = shell_at

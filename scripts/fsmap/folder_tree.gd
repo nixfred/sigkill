@@ -79,6 +79,14 @@ static func find(root: Dictionary, path: PackedStringArray) -> Dictionary:
 	return at
 
 
+## How many nodes `n` is, itself and every folder under it that has a node.
+static func count(n: Dictionary) -> int:
+	var c := 1
+	for d in n.get("dirs", []):
+		c += count(d)
+	return c
+
+
 ## What most of a folder holds: its own files' commonest kind, else its subfolders' (summed one level down), else
 ## "empty".
 static func kind_of(n: Dictionary) -> String:

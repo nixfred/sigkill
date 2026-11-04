@@ -463,6 +463,9 @@ func _on_hunter_broke(_piece: Node3D) -> void:
 
 
 func _clear_pieces() -> void:
+	# A hunter freed mid-strike would keep its attacker slot for good (take_slot never prunes the dead), so it lets go first.
+	if hunter != null and is_instance_valid(hunter) and hunter.brain != null and daemons != null:
+		hunter.brain._release(daemons)
 	for piece in pieces():
 		piece.remove_from_group(PIECES)
 		piece.queue_free()

@@ -347,8 +347,20 @@ func _run_checks() -> void:
 	_check("the visor in the mode: the trace drawn hop to hop through walls, each machine's hop, name and address, each daemon's connection", visor.on and marks.size() >= NetBook.MACHINES.size() and marks.any(func(l): return (l.text as String).contains("hop 6  core-sink")))
 	_names_check(main, mode, "mid-run, the visor on")
 	visor.toggle()
+	var kills_before := int(mode.stats["kills"])
+	var sent_again: Array = []
+	var on_event := func(_kind: String, text: String) -> void:
+		if text == "retransmit: sent again":
+			sent_again.append(text)
+	mode.event.connect(on_event)
+	mode._flood_t = PacketTracer.FLOOD_EVERY_S  # a fresh throw, so retransmits stand when the flood goes down
+	await _until(func(): return mode.enemies.any(func(e): return e["kind"] == "retransmit" and PacketTracer._alive(e["body"])))
 	await _kill(mode, func(e): return e["kind"] == "flood")
+	var standing := mode.enemies.filter(func(e): return e["kind"] == "retransmit" and PacketTracer._alive(e["body"])).size()
 	await _until(func(): return mode.phase == "results")
+	mode.event.disconnect(on_event)
+	# A bug hunt found what still stands at the end (the flood's retransmits) reaped as the player's kills, each sent again.
+	_check("the end reaps what still stands (%d retransmits) as no one's kill: the card counts the flood alone (%d kills, %d before) and nothing is sent again (%d)" % [standing, int(mode.stats["kills"]), kills_before, sent_again.size()], standing >= 1 and int(mode.stats["kills"]) == kills_before + 1 and sent_again.is_empty() and mode._dups.is_empty())
 	var rows: PackedStringArray = _hud(mode).result_lines()
 	_check("acceptance: the run ends on its results card: the whole trace (%d hops, the lost packet's * * *), hops, drops dodged and taken, kills, time" % NetBook.hops(), mode.phase == "results" and Array(rows).any(func(r): return r == " 2  * * *") and rows.size() >= 10 and Array(rows).any(func(r): return r.begins_with(" 6  core-sink (%s)" % NetBook.address(NetBook.machine("core-sink")))) and Array(rows).any(func(r): return r.begins_with("hops 6 of 6")) and Array(rows).any(func(r): return r.begins_with("drops dodged") and r.contains("packets lost 1")) and Array(rows).any(func(r): return r.begins_with("kills") and r.contains("time ")), " / ".join(rows))
 	var ev := InputEventAction.new()

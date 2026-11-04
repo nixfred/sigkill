@@ -664,6 +664,9 @@ func _match_checks() -> void:
 	var src := FileAccess.get_file_as_string("res://scripts/net/net_session.gd")
 	var rpcs := src.count("@rpc(")
 	_check("acceptance: the wire: protocol 19 (16 since C30's pipe |, 17 at C31, 18 since C32's SIGHUP, 19 since C33's loadouts), no new message (28 RPCs): a throw is the usual _throw, the hole's opening, collapse and discards ride _blast, its root the seed's sign", joined and Session.PROTOCOL == 19 and rpcs == 28, "%d RPCs" % rpcs)
+	# A bug hunt's two: a reload frees a hole or a burst unfinished, its id then refusing the next match's throw; and the
+	# hole's daemon judge read a combat the match's end had let go.
+	_check("a match's end lets go of every hole and burst by id, and a hole's daemon judge stops with the match", _body(src, "_clear_players").contains("_holes = {}") and _body(src, "_clear_players").contains("_hups = {}") and _body(src, "_spawn_hole").contains("if state != State.HOSTING or combat == null:"))
 	for name in ["DummyA", "DummyB", "DummyC", "DummyD"]:
 		_park(_dummy(host["main"], name))
 		_park(_dummy(client["main"], name))

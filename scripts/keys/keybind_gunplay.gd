@@ -81,12 +81,17 @@ const MARK_ARM := 0.4
 ## numbers; the cards read. Kept across reloads, as the mode is.
 static var queued := false
 static var layer := "demo"
+## The layer last asked for: "real" stays asked while the player's binds read empty and the demo table plays (a bug
+## hunt: comparing the gate with the delivered layer re-read them from disk every gate tick, for the whole run).
+static var asked := "demo"
 static var table := {}
 static var stats := {}
 static var seen := {}
-## For the tests: the gate and a fake home; unset in the game. The clocks, shortened by a test.
+## For the tests: the gate and a fake home, and the bind files it reads (a test names only its own, so Omarchy's install
+## folders are never read); unset in the game. The clocks, shortened by a test.
 static var gate: Callable
 static var home_root := ""
+static var bind_files := PackedStringArray()
 static var drill_s := DRILL_S
 static var wave_s := WAVE_S
 ## The stand-in held now (one chord at a time, whatever arena): Tab held with it is SUPER + TAB, not the top table.
@@ -173,6 +178,7 @@ static func clear() -> void:
 	seen = {}
 	table = {}
 	layer = "demo"
+	asked = "demo"
 
 
 static func take_flag(args: PackedStringArray) -> void:
@@ -198,12 +204,14 @@ static func prepare(args: PackedStringArray, online: bool, real: bool) -> void:
 ## weapon kept on its built-in chord where their desktop has none for it and the key is free.
 static func ensure_table(real: bool) -> void:
 	var want := "real" if real else "demo"
-	if not table.is_empty() and layer == want:
+	if not table.is_empty() and asked == want:
 		return
+	asked = want
 	layer = want
 	table = KeyBook.resolve()
 	if real:
-		var binds := KeyReader.read(home_root if home_root != "" else OS.get_environment("HOME"))
+		var root := home_root if home_root != "" else OS.get_environment("HOME")
+		var binds := KeyReader.read(root, bind_files) if not bind_files.is_empty() else KeyReader.read(root)
 		if not binds.is_empty():
 			table = with_defaults(KeyBook.resolve(binds))
 		else:
@@ -746,6 +754,9 @@ func _start_wave() -> void:
 ## `roster` ([kind, count, awake] each) out of the floor: in front of the player for a drill, round the district for a
 ## wave (`away` metres from the player at least).
 func _spawn_roster(roster: Array, key: String, away: float = 0.0) -> void:
+	# The ones gone for good (derezzed, freed) leave the list first: counted against the cap, a drill downed some other way
+	# three times could never bring its daemons back again, nor be finished (a bug hunt's find).
+	enemies = enemies.filter(func(e): return is_instance_valid(e["body"]))
 	var spots := _spots_for(away)
 	var at := 0
 	for r in roster:
@@ -915,7 +926,7 @@ func _physics_process(delta: float) -> void:
 	_gate_wait -= delta
 	if _gate_wait <= 0.0:
 		_gate_wait = GATE_EVERY_S
-		if (layer == "real") != real_allowed() and not _going:
+		if (asked == "real") != real_allowed() and not _going:
 			table = {}
 			ensure_table(real_allowed())  # the answer changed: the table follows it
 	for id in cooling:

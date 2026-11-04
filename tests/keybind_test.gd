@@ -245,6 +245,23 @@ func _reader_checks() -> void:
 	var term := KeyBook.chord_for(table, "terminal")
 	var ok: bool = close == "SUPER + X" and full == "SUPER + H" and term == "SUPER + RETURN" and not table.has(KEY_W) and not table.has(KEY_F) and not table.has(KEY_Y) and not table.has(KEY_N)
 	_check("the player's own binds drive the drills: a later bind or an unbind wins (Close window moved to %s, Full screen to %s by an Omarchy 3 line), a nameless bind teaches nothing, a Ctrl+Alt one is never played" % [close, full], ok)
+	# Real asked, nothing read back (no bind files there): the built-in table plays and the binds are read once, not on
+	# every gate tick for the rest of the run (a bug hunt's find).
+	var empty := _abs.path_join("emptyhome")
+	DirAccess.make_dir_recursive_absolute(empty)
+	KeybindGunplay.clear()
+	KeybindGunplay.home_root = empty
+	KeybindGunplay.bind_files = PackedStringArray([".config/hypr/bindings.lua", ".config/hypr/bindings.conf"])  # its own folder only
+	var reads_empty := KeyReader.reads
+	KeybindGunplay.ensure_table(true)
+	KeybindGunplay.ensure_table(true)
+	KeybindGunplay.ensure_table(true)
+	var once: bool = KeyReader.reads == reads_empty + 1 and KeybindGunplay.layer == "demo" and KeybindGunplay.asked == "real" and KeybindGunplay.table.size() == KeyBook.DEFAULTS.size()
+	var once_detail := "layer %s asked %s table %d of %d" % [KeybindGunplay.layer, KeybindGunplay.asked, KeybindGunplay.table.size(), KeyBook.DEFAULTS.size()]
+	KeybindGunplay.home_root = ""
+	KeybindGunplay.bind_files = PackedStringArray()
+	KeybindGunplay.clear()
+	_check("a real layer that reads no binds plays the built-in table, read once however often it is asked for (%d reads)" % (KeyReader.reads - reads_empty), once, once_detail)
 	var card := KeyBook.card(table[KEY_X])
 	_check("and its card shows the player's own chord with Omarchy's meaning (\"%s  %s\")" % [card["combo"], card["meaning"]], card["combo"] == "SUPER + X" and card["meaning"] == "Close window" and card["played"] == "` + X")
 
@@ -548,6 +565,18 @@ func _wave_checks() -> void:
 	mode._unhandled_input(ev)
 	await _frames(3)
 	_check("Enter runs it again from its first drill", mode.phase == "drill" and mode.drill == 0 and str(KeybindGunplay.stats["terminal"]["drill"]) == "")
+	# Its daemons downed some other way four times over still come back each time (a bug hunt: the dead stayed in the
+	# list against its cap of nine, so from the fourth time the drill stood empty and could not be finished).
+	var back_each := 0
+	for i in 4:
+		if not await _until(func(): return mode.standing() == 3 and not mode.enemies.any(func(e): return is_instance_valid(e["body"]) and e["body"].climbing())):
+			break
+		for e in mode.enemies.duplicate():
+			if is_instance_valid(e["body"]) and e["body"].is_alive():
+				e["body"].hit(100000.0, e["body"].threat_point(), Vector3.FORWARD, "test")
+		back_each += 1
+	var back_again := await _until(func(): return mode.standing() == 3)
+	_check("a drill's daemons downed some other way come back every time (%d of 4 downings, then back again %s)" % [back_each, back_again], back_each == 4 and back_again and mode.phase == "drill" and mode.drill == 0)
 	KeybindGunplay.drill_s = KeybindGunplay.DRILL_S
 	KeybindGunplay.wave_s = KeybindGunplay.WAVE_S
 
@@ -631,6 +660,32 @@ func _foldin_checks() -> void:
 	open.call("_burst", point)
 	await _frames(2)
 	_check("fold-in (W4's known issue): a terminal's blast stops at the level: a daemon behind a wall at its edge is shielded, the same daemon in the open is hit", shielded and not second.is_alive())
+	# And a blast in flight bursts on the wall, never snapping through it to a daemon just behind (a bug hunt's find:
+	# the near-a-daemon test came before the wall's and saw through it).
+	if live.size() > 2:
+		var third: Node3D = live[2]
+		var t_at: Vector3 = third.threat_point()
+		var cover := StaticBody3D.new()
+		cover.collision_layer = 1
+		var cover_shape := CollisionShape3D.new()
+		var cover_box := BoxShape3D.new()
+		cover_box.size = Vector3(0.2, 4.0, 4.0)
+		cover_shape.shape = cover_box
+		cover.add_child(cover_shape)
+		main.add_child(cover)
+		cover.global_position = t_at + Vector3(0.5, 0.0, 0.0)
+		await _frames(3)
+		var hp_before: float = third.health()
+		var flying := KeyFx.TerminalBlast.new()
+		main.add_child(flying)
+		flying.start(t_at + Vector3(3.0, 0.0, 0.0), Vector3.LEFT, null)
+		await _frames(30)
+		var untouched: bool = third.is_alive() and third.health() == hp_before
+		cover.queue_free()
+		await _frames(3)
+		_check("a terminal's blast in flight toward a daemon 0.5 m behind a wall bursts on the wall: the daemon untouched (%.0f of %.0f)" % [third.health(), hp_before], untouched)
+	else:
+		_check("a third daemon stands for the blast-through-a-wall check", false, "%d alive" % live.size())
 	GameSettings.current().set_value("gameplay", "practice", false)
 
 

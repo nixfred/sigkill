@@ -364,7 +364,7 @@ func _word_checks() -> void:
 		if VoiceMatch.command_of(text) != said[text]:
 			wrong.append("%s -> %s" % [text, VoiceMatch.command_of(text)])
 	_check("acceptance: commands match loosely: case, punctuation, a wake word, filler, a word said twice and small mishearings (%d lines)" % said.size(), wrong.is_empty(), ", ".join(wrong))
-	var talk := ["I need to reload the page", "the visor on that helmet is great", "pause the music for a second", "can you cover the dish", "we should drop the breaker panel idea", "continue with the next slide when ready", "", "   ", "!!!", "reload " + "x".repeat(200)]
+	var talk := ["I need to reload the page", "the visor on that helmet is great", "pause the music for a second", "can you cover the dish", "we should drop the breaker panel idea", "continue with the next slide when ready", "Over.", "hover", "Cause!", "presume", "beaker", "vigor", "showtime", "", "   ", "!!!", "reload " + "x".repeat(200)]
 	var fired := PackedStringArray()
 	for text in talk:
 		if VoiceMatch.command_of(text) != &"":

@@ -199,6 +199,11 @@ visor_step() {
 		elif ! grep -E -q '^audit visor: on \(--visor\): most lines [1-9]' <<<"$out"; then
 			fail "$label: mission $n: the visor never drew"
 			bad=1
+		elif grep -E -q '^audit visor: on \(--visor\): most lines 0,' <<<"$out"; then
+			# Every arena the run loads prints its own line: the plain arena's daemons alone must not carry a district
+			# whose visor drew nothing (a bug hunt's find).
+			fail "$label: mission $n: an arena's visor drew nothing"
+			bad=1
 		fi
 	done
 	if [ "$bad" -eq 0 ]; then

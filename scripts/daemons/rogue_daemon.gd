@@ -29,6 +29,8 @@ extends DaemonArt
 ## its own clock. Its hit volume beyond the cylinder is the box round its body, head to tail
 ## (body_box()).
 
+## How fast the rear and the strike settle back to rest outside an act, a second (the old 0.08 a frame at 60 fps).
+const SETTLE_RATE := 4.8
 const LEGS := 6
 ## Each walking leg's hip on the thorax and its foot's home on the ground round the body (body
 ## space: +X right, -Z ahead, metres), and its tripod: legs of one tripod step together.
@@ -229,7 +231,7 @@ func _pose(t: float, delta: float) -> void:
 	if act == Act.IDLE and displays:
 		_display_now(t)
 	else:
-		_act_now()
+		_act_now(delta)
 	var rear := _rear
 	var strike := _strike
 	# Driven, it stops wandering and faces its prey (the daemon's own -Z), and stops gliding round
@@ -426,7 +428,7 @@ func _display_now(t: float) -> void:
 
 ## The rear and the strike from the brain's act (C27b): the tell rears it up and holds it there
 ## trembling, the strike lunges and slashes down, the recovery settles it.
-func _act_now() -> void:
+func _act_now(delta: float) -> void:
 	match act:
 		Act.TELL:
 			_rear = smoothstep(0.0, 0.7, act_u)
@@ -438,8 +440,9 @@ func _act_now() -> void:
 			_rear = 1.0 - smoothstep(0.0, 1.0, act_u)
 			_strike = 1.0 - smoothstep(0.0, 0.6, act_u)
 		_:
-			_rear = move_toward(_rear, 0.0, 0.08)
-			_strike = move_toward(_strike, 0.0, 0.08)
+			# Back to rest at 4.8 a second (0.08 a frame at 60 fps), the same at any frame rate.
+			_rear = move_toward(_rear, 0.0, SETTLE_RATE * delta)
+			_strike = move_toward(_strike, 0.0, SETTLE_RATE * delta)
 
 
 func _muzzle() -> Vector3:

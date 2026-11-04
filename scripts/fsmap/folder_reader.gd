@@ -156,6 +156,9 @@ func _open(rel: String, depth: int) -> void:
 	n["own_files"] = 0
 	n["own_size"] = 0
 	n["more"] = 0
+	# Its subfolders from the cut-off listing (and anything listed under them since) were counted as nodes: they leave the
+	# count with it, or each interrupted scan of this folder would eat into nodes_most for good.
+	_nodes = maxi(_nodes - (FolderTree.count(n) - 1), 1)
 	n["dirs"] = []
 	for k in FolderTree.KINDS:
 		n["kinds"][k] = 0

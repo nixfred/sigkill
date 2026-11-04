@@ -162,7 +162,6 @@ var _shell_queue: Array = []
 var _shell_text := ""
 var _shell_typed := 0.0
 var _shell_row := 0
-var _shell_hup_done := false
 var _bursts_seen := {}
 ## The shell's true body (M7): its dummy once it stands, its wave's data, the wait to its next shed, the children it shed,
 ## and the landing hits on each wave so far.
@@ -1086,10 +1085,11 @@ func _on_hup(what: Node, _at: Vector3) -> void:
 func _on_burst(at: Vector3) -> void:
 	if boss != null and is_instance_valid(boss) and boss.is_alive() and at.distance_to(boss.threat_point()) <= SHELL_HUP_M:
 		struck.emit(boss, "sighup", false)  # M7: a hangup at the shell's true body, ignored (nohup)
-	if _shell_hup_done or world == null or not is_instance_valid(world) or not world.has_shell():
+	# No latch here: the runner takes the hangup only on its own beat, so one thrown early (in the dark, while the shell
+	# listens) must not use it up and leave the beat with nothing to finish it (a bug hunt's softlock).
+	if world == null or not is_instance_valid(world) or not world.has_shell():
 		return
 	var screen: Dictionary = world.shell_screen()
 	var middle: Vector3 = (screen["at"] as Vector3) + Vector3(0, 2.2, 0)
 	if at.distance_to(middle) <= SHELL_HUP_M:
-		_shell_hup_done = true
 		shell_hung_up.emit()

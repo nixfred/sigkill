@@ -126,7 +126,8 @@ class TerminalBlast extends Node3D:
 				continue
 			var p: Vector3 = body.threat_point()
 			var d := Geometry3D.get_closest_point_to_segment(p, from, to).distance_to(p)
-			if d < best_d:
+			# Never through a wall: a daemon just behind one is the wall's to stop (a bug hunt saw the blast snap through).
+			if d < best_d and _clear_to(from, p):
 				best_d = d
 				best = body
 		return best

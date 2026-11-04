@@ -794,9 +794,12 @@ static func rendezvous_for(tuning: Resource) -> RefCounted:
 	var url := relay_url_for(tuning)
 	if url == "":
 		return NullRendezvous.new()
-	if RelayWire.transport_of(url) == "ws":
-		return WsRendezvous.new(url)
-	return UdpRendezvous.new(url)
+	var rv: RefCounted = WsRendezvous.new(url) if RelayWire.transport_of(url) == "ws" else UdpRendezvous.new(url)
+	# The room tuning's request timeout is the request's own too, not only the session's outer limit (it stayed 4 s).
+	var timeout = tuning.get("request_timeout_ms") if tuning != null else null
+	if timeout is int and timeout > 0:
+		rv.timeout_ms = timeout
+	return rv
 
 
 ## The relay URL in use: the player's, from the settings' Multiplayer section, or the room
@@ -1536,6 +1539,9 @@ func _clear_players() -> void:
 	_stop_word = []
 	_chains = {}
 	_volleys = {}
+	# A hole or a burst freed by a reload never says it finished: its id would refuse the next match's throw of that id.
+	_holes = {}
+	_hups = {}
 	for mine in _mines.values():
 		if is_instance_valid(mine):
 			mine.queue_free()  # the match is over: every job with it
@@ -2561,6 +2567,8 @@ func _spawn_hole(throw_id: int, thrower: int, weapon: String, seed: int, origin:
 		judge_daemon = _player.hole_judge(def)
 	elif deciding:
 		judge_daemon = func(node: Node, damage: float, point: Vector3, way: Vector3) -> bool:
+			if state != State.HOSTING or combat == null:
+				return false  # the match ended under the hole (left, or the session failed): nothing judges now
 			return _hit_daemon(node, thrower, damage * combat.damage_scale(thrower), point, way, def.id)
 	var moves: bool = own or (deciding and daemons_fight())
 	var judge_players := _judge_hole.bind(throw_id, thrower, weapon) if deciding else Callable()

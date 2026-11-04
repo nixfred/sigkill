@@ -447,6 +447,20 @@ func _reader_checks() -> void:
 		names[d["name"]] = true
 	var crowd2 := cut.node_at(PackedStringArray(["Crowd"]))
 	_check("a scan cut off mid-listing by another folder is listed afresh, never counted twice (home's folders once each, Crowd's 30 files 30)", not twice and names.has("Alpha") and int(crowd2.get("own_files", 0)) == 30 and int(cut.home["own_files"]) == 0, "%s, crowd %d" % [str(names.keys()), int(crowd2.get("own_files", -1))])
+	# And its node count (the nodes_most cap) holds only what is in the tree: a bug hunt found each cut-off listing's
+	# subfolders counted again on every relisting, so enough interrupted scans in one session ran the cap out.
+	var recut := FolderReader.new(home)
+	recut.budget_us = 1
+	recut.depth_most = 1
+	for r in 6:
+		recut.want(PackedStringArray())
+		for i in 3 + r:
+			recut.step(1.0 / 60.0)
+		recut.want(PackedStringArray(["Alpha"]))
+		recut.step(1.0 / 60.0)
+	_scan(recut, PackedStringArray())
+	_check("cut off six times over, the reader's node count is the tree's own (%d counted, %d in the tree)" % [recut._nodes, FolderTree.count(recut.home)], recut._nodes == FolderTree.count(recut.home) and recut.ready_for(PackedStringArray()))
+	recut.drop()
 	reader.drop()
 	_check("drop() lets every name and number go", reader.home["dirs"].is_empty() and not reader.ready_for(PackedStringArray()))
 

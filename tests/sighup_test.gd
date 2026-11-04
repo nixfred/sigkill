@@ -447,6 +447,23 @@ func _guard_checks() -> void:
 	var after := _spawn(main, p, Vector3(0.0, 0.2, 6.0))
 	await _wait(func(): return after.went() and after.wave_age > after.wave_s(), 90)
 	_check("acceptance: no chain-lock: a second burst while it is confused is refused (it does not start over: %d hangups), and for %.0f s after it is itself again (guard %.1f s) another is refused too; once the guard is over it takes one again (%s)" % [zombie.brain.hups, _t.immune_s, guard, zombie.brain.hup_name()], refused_confused and absf(guard - _t.immune_s) < 0.05 and refused_guard and after.caught_count == 1 and zombie.brain.hup == DaemonBrain.Hup.RELOAD and first_caught == 1)
+	# Its look lives under its art, so a new build (a respawn on a new seed, a joiner's first word of the host's
+	# seed) frees it while the daemon still holds it. A Codex hunt flagged that as a script error every frame; it is
+	# not one: a freed reference reads as null, so _show_hup() makes a new look under the new art. Pinned here.
+	var had_look: bool = zombie.hup_look() != null
+	var old_art: Node = zombie.brain.art
+	zombie._build_art((old_art.build_seed + 1) & DaemonArt.SEED_LAST)
+	await _frames(3)
+	var look_after = zombie.hup_look()
+	var cleared: bool = look_after == null or (is_instance_valid(look_after) and look_after.get_parent() == zombie.brain.art)
+	await _wait(func(): return zombie.brain.hup == DaemonBrain.Hup.NONE, int(_t.confused_s() * 60.0) + 30)
+	await _wait(func(): return zombie.brain.hup_guard <= 0.0, int(_t.immune_s * 60.0) + 30)
+	var rebuilt := _spawn(main, p, Vector3(0.0, 0.2, 6.0))
+	await _wait(func(): return rebuilt.went() and rebuilt.wave_age > rebuilt.wave_s(), 90)
+	await _frames(3)
+	var fresh = zombie.hup_look()
+	var fresh_ok: bool = fresh != null and is_instance_valid(fresh) and fresh.get_parent() == zombie.brain.art
+	_check("a new build of a daemon that was hung up lets its old look go with the old art (had one %s, held after the build %s), and the next hangup makes its look under the new art (%s)" % [had_look, "none" if look_after == null else ("valid" if is_instance_valid(look_after) else "FREED"), "ok" if fresh_ok else "missing or freed"], had_look and cleared and fresh_ok and rebuilt.caught_count == 1)
 	await _drop(main)
 
 

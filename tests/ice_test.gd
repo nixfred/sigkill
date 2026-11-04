@@ -389,6 +389,17 @@ func _hunter_checks() -> void:
 	var down := hunter.broken
 	var back := await _wait(func(): return ice.hunter != null and is_instance_valid(ice.hunter) and not ice.hunter.broken, int(_t.hunter_respawn_s * 60.0) + 30)
 	_check("a killed hunter is gone for its wait (%.0f s), then a new one comes from its post" % _t.hunter_respawn_s, down and back >= int(_t.hunter_respawn_s * 60.0) - 2 and ice.hunters_killed == 1 and ice.hunters_made == 2 and is_instance_valid(ice.hunter) and ice.hunter != hunter, "back after %d frames (seed %d, fixed by name: the same build %s)" % [back, first, ice.hunter.build_seed == first if ice.hunter != null else false])
+	# A new round mid-tell clears the hunter: a bug hunt found its attacker slot kept for good (two such rounds and
+	# nothing could attack the player again). Pinned: the cleared hunter's brain holds no slot after the rebuild.
+	var mid: Node3D = ice.hunter
+	var telling := await _wait(func(): return is_instance_valid(mid) and mid.brain.state == DaemonBrain.State.TELL and mid.brain.holds_slot, 900)
+	var old_brain: DaemonBrain = mid.brain
+	var prey := old_brain.prey
+	var held_before: bool = (ice.daemons._slots.get(prey, []) as Array).has(old_brain)
+	ice.start_round(ice.round_number + 1)
+	await _frames(2)
+	var held_after: bool = (ice.daemons._slots.get(prey, []) as Array).has(old_brain)
+	_check("a new round started while the hunter tells lets its attacker slot go with it (held %s before, %s after)" % [held_before, held_after], telling >= 0 and held_before and not held_after and ice.hunter != mid, "telling after %d frames" % telling)
 	await _drop(main)
 
 

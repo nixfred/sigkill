@@ -667,10 +667,12 @@ func _match_checks() -> void:
 	await _frames(int(_ft.player_freeze_s * 60.0) + int(_ft.player_guard_s * 60.0) + 30)
 	# Spawn protection holds.
 	hs.combat.states[cid]["protect_left"] = 10.0
+	var ticks_before: int = hp.beam_ticks
 	hp.hold_fire = true
 	await _frames(60)
 	hp.hold_fire = false
-	_check("acceptance: spawn protection holds: a protected joiner beamed for a second gains no meter", hs.combat.frost_of(cid).chill == 0.0 and not hs.combat.frozen(cid))
+	# Its positive control (a bug hunt: with no beam at all it passed the same): the beam did fire through that second.
+	_check("acceptance: spawn protection holds: a protected joiner beamed for a second (%d beam ticks) gains no meter" % (hp.beam_ticks - ticks_before), hp.beam_ticks > ticks_before and hs.combat.frost_of(cid).chill == 0.0 and not hs.combat.frozen(cid))
 	# A venting tank's tick is refused, whatever the joiner's screen says.
 	var tank: Coolant = hs.combat.coolant_of(cid)
 	cp.select_slot(SLOT)

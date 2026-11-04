@@ -29,6 +29,11 @@ const FILLER := ["please", "pls", "plz", "now", "quick", "quickly", "a", "an", "
 const BLOCKED := ["larry", "tell"]
 ## Mishearings no edit distance reaches, by what they stand for (joined words, no spaces).
 const ALIASES := {"visa": "visor", "vizor": "visor", "viser": "visor", "vyzor": "visor", "visors": "visor", "reloads": "reload", "realod": "reload", "paws": "pause", "breakers": "breaker", "braker": "breaker"}
+## Real words an edit away from a command phrase that mean something else (a whole line of "over" or "cause" fired cover
+## me or pause), found by running the matcher over a word list: never a command, whatever the distance says.
+const NOT_COMMANDS := ["over", "hover", "lover", "mover", "rover", "dover", "clover", "coder", "comer", "corer", "cove",
+	"coves", "coven", "covet", "covert", "cower", "beaker", "vigor", "cause", "parse", "passe", "showtime", "presume",
+	"continua", "continuo"]
 ## A line longer than this many words, or characters, is talk, never a command.
 const WORDS_LAST := 8
 const CHARS_LAST := 160
@@ -47,6 +52,8 @@ static func command_of(text: String) -> StringName:
 	var joined := "".join(words)
 	if ALIASES.has(joined):
 		joined = ALIASES[joined]
+	if NOT_COMMANDS.has(joined):
+		return &""
 	var best := &""
 	var best_d := 99
 	var tie := false
