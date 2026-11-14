@@ -11,7 +11,7 @@
 # tests/ai_detector_test.gd, tests/guide_adapter_test.gd, tests/boot_sequence_test.gd,
 # tests/guide_hud_test.gd, tests/model_load_test.gd, tests/round_test.gd,
 # tests/net_test.gd, tests/combat_test.gd, tests/room_test.gd, tests/weapon_test.gd,
-# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd, tests/coop_test.gd, tests/voice_test.gd, tests/polish_test.gd, tests/polish2_test.gd, tests/relay_match_test.gd) at a fixed frame rate. The
+# tests/settings_test.gd, tests/relay_test.gd, tests/rail_test.gd, tests/bullet_time_test.gd, tests/relay_ws_test.gd, tests/fork_bomb_test.gd, tests/light_trail_test.gd, tests/code_rain_vision_test.gd, tests/root_sudo_test.gd, tests/spectate_top_test.gd, tests/fork_shotgun_test.gd, tests/grep_seeker_test.gd, tests/rm_rf_cannon_test.gd, tests/cron_mines_test.gd, tests/viewmodel_test.gd, tests/enemy_art_test.gd, tests/arena_art_test.gd, tests/enemy_motion_test.gd, tests/graphics_test.gd, tests/daemon_ai_test.gd, tests/ping_test.gd, tests/daemon_variety_test.gd, tests/ice_test.gd, tests/breaker_test.gd, tests/black_ice_test.gd, tests/freeze_ray_test.gd, tests/pipe_chain_test.gd, tests/dev_null_test.gd, tests/sighup_test.gd, tests/unlocks_test.gd, tests/opener_test.gd, tests/opener_real_test.gd, tests/opener_fall_test.gd, tests/trailer_test.gd, tests/opener_link_test.gd, tests/opener_end_test.gd, tests/mission_test.gd, tests/ruins_test.gd, tests/mission1_test.gd, tests/mission2_test.gd, tests/mission3_test.gd, tests/mission4_test.gd, tests/mission5_test.gd, tests/mission6_test.gd, tests/mission7_test.gd, tests/visor_test.gd, tests/credits_test.gd, tests/proc_hunt_test.gd, tests/folder_map_test.gd, tests/theme_shift_test.gd, tests/keybind_test.gd, tests/packet_tracer_test.gd, tests/coop_test.gd, tests/voice_test.gd, tests/polish_test.gd, tests/polish2_test.gd, tests/relay_match_test.gd, tests/shader_warmup_test.gd) at a fixed frame rate. The
 # visor test reads a fake process table it builds in its own folder under user:// (fake stat and status files beside
 # poisoned ones it must never open; removed at the end), never the machine's own. The AI tests use fakes only: fixture files,
 # stub agent CLIs, the fakes in tests/support and fake model servers (a stateful fake
@@ -321,6 +321,14 @@ run_godot "second polish test" --fixed-fps 60 --script res://tests/polish2_test.
 # it: everyone stays, the host's words and every look arrive, the daemons agree, movement still crosses, nothing dropped,
 # the biggest datagram and a room's packets a second inside the relay's caps on the game's own clock.
 run_godot "relay match test" --fixed-fps 60 --script res://tests/relay_match_test.gd
+
+# 75. The combat shader warm-up (#1, TechLuddite): the arena compiles every shader a weapon, an ability or a hit draws only
+# once it is used, as it loads, so no first use stalls on a compile. Every such shader listed and spatial (a new weapon's
+# missing from the list fails), /dev/null's glass and core and the glitch bolt's materials the very ones every throw and
+# bolt wears, the red bolt's sharing the amber's compiled shader; the node drawing nothing headless, hanging its quads
+# under a camera and freeing itself, giving up when none comes; the arena making it and the two throws' sounds at load.
+# Demo data only; nothing is drawn on a screen.
+run_godot "shader warm-up test" --fixed-fps 60 --script res://tests/shader_warmup_test.gd
 
 if [ "$failures" -ne 0 ]; then
 	printf 'CHECK FAILED: %d problem(s)\n' "$failures" >&2

@@ -252,6 +252,15 @@ static func look_for(kind: String) -> Dictionary:
 	return {"shell": _shell_material, "core": _core_material, "tint": Palette.HOSTILE_AMBER, "scale": Vector3.ONE}
 
 
+## Its two amber materials, made now if they are not yet (the arena's warm-up draws them as it loads, so a zombie's first
+## bolt does not wait on their compile; scripts/fx/shader_warmup.gd). The red pair look_for gives a thrower's shell
+## and a pegged core is not listed: _glow gives all four the same features and only the colour differs, which is a
+## uniform, so the red pair draws with the shader these two have compiled (tests/shader_warmup_test.gd checks it).
+static func materials() -> Array[Material]:
+	_statics()
+	return [_shell_material, _core_material]
+
+
 static func _statics() -> void:
 	if _shell_mesh != null:
 		return

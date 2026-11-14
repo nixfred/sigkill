@@ -93,7 +93,10 @@ func _ready() -> void:
 			net = PacketNet.stage(self)
 	add_child(ParticleFx.new())
 	add_child(ScreenPost.new())
+	add_child(ShaderWarmup.new())  # the combat shaders compiled now, so no weapon's first use stalls on one
 	DaemonVoice.prewarm()  # the daemons' and ICE's sounds (C42), made once a run, here as the arena loads
+	DevNullHole.prewarm()  # /dev/null's and SIGHUP's sounds, made now rather than at their first throw
+	SighupBurst.prewarm()
 	# The daemons fight back (C27b): this player's health alone, and the director that steps
 	# every daemon's brain.
 	var life := SoloLife.new()
