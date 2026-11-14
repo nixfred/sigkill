@@ -4,21 +4,22 @@
 
 ```
 $ top -p sigkill --credits
-PID   USER            %CPU  COMMAND
-1     @NixFred        99.9  init: creator, director, kill -9 enthusiast
-2     Larry           88.4  writes every line of code (Claude Code)
-3     SIGKILL         71.2  producer, designer, daemon wrangler
-1337  @QuantaCortex   64.0  audit_trail --visor --trace-parents
-1338  @TimProvencio   57.3  ice --white --hunter --black --breakers
-1339  @cgranier       50.1  man sigkill; oom-killer --boss; uptime --score
-1340  @ocdjeremy      44.6  htop --visor; zoom --stepped; hitbox --real
-1341  @MindGamesLabs  38.2  sudo grenade --tries=3
-1342  @timsonner      31.9  fsmode --rooms; filehunt --beacon
+PID   USER             %CPU  COMMAND
+1     @NixFred         99.9  init: creator, director, kill -9 enthusiast
+2     Larry            88.4  writes every line of code (Claude Code)
+3     SIGKILL          71.2  producer, designer, daemon wrangler
+1337  @QuantaCortex    64.0  audit_trail --visor --trace-parents
+1338  @TimProvencio    57.3  ice --white --hunter --black --breakers
+1339  @cgranier        50.1  man sigkill; oom-killer --boss; uptime --score
+1340  @ocdjeremy       44.6  htop --visor; zoom --stepped; hitbox --real
+1341  @MindGamesLabs   38.2  sudo grenade --tries=3
+1342  @timsonner       31.9  fsmode --rooms; filehunt --beacon
+1343  @gh_TechLuddite  25.6  gamepad --all-screens; shaders --prewarm
 ```
 
 ## Community-built
 
-SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one prompt; if it makes it into the game, you go here, and in the in-game credits roll.
+SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one prompt; if it makes it into the game, you go here, and in the in-game credits roll. Code that lands through a pull request counts the same: everyone who touches the game goes here, and in the roll.
 
 | Contributor | Idea | In the game as |
 |---|---|---|
@@ -28,6 +29,7 @@ SIGKILL is built in public. Reply to [@NixFred](https://x.com/NixFred) with one 
 | Jeremy / [@ocdjeremy](https://x.com/ocdjeremy) | An htop-style visor overlay of in-game daemons, ICE and players only (never real processes), stepped zoom on scoped weapons with hold or toggle, real hitboxes (head and centre mass hardest, limbs least), each weapon balanced on its own strengths, and VR as a stretch | status: planned, post-1.0 |
 | MindGameLabs / [@MindGamesLabs](https://x.com/MindGamesLabs) | A sudo grenade that will not throw until you type a password (an in-game one shown on screen, never yours; nothing typed is kept, sent or checked), three wrong tries and it goes off in your hand; separate from the Z sudo overcharge | status: planned, post-1.0 |
 | Tim Sonner / [@timsonner](https://x.com/timsonner) | File mode: walk your folders as rooms and hunt files as monsters built from the existing daemon art; a file hunt (name the file you want and it carries a beacon through the maze); and a root mode, which becomes an opt-in, default-off sandbox that wrecks an in-memory decoy copy of the folder tree (names and sizes only), never real files. Killing a file monster is cosmetic and the real file is never touched; a kill shows the file's path on screen and in an end-of-run found list you open yourself, and nothing is ever opened for you | status: planned, post-1.0 |
+| TechLuddite / [@gh_TechLuddite](https://x.com/gh_TechLuddite) | Code, by pull request: [gamepad support](https://github.com/nixfred/sigkill/pull/2) for the whole game, and a [shader warm-up](https://github.com/nixfred/sigkill/pull/1) that ends the one-second freeze on a weapon's first use | Built and merged 2026-11-14: a gamepad plays the arena, the Esc menu, Missions and Loadout (sticks, triggers, face buttons, shoulders, D-pad; in split-screen co-op the pad is player 2's); the arena compiles every combat shader as it loads, so the first chmod 000 hit and the first /dev/null throw no longer stall |
 
 ## Names the skins borrow
 

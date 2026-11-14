@@ -2631,6 +2631,9 @@ SIGKILL is built in public, and the full list of who made what lives in [`CREDIT
   - A root mode, as an opt-in sandbox that is off by default. It wrecks an in-memory decoy copy of the folder tree (names and sizes only), never your real files.
   - Killing a file monster is cosmetic: the real file is never touched. A kill shows the file's path on screen and in a found list at the end of the run, for you to open yourself; the game never opens anything for you.
   - The filesystem maps built in W2 are the PRD's own feature, not this idea; none of this is in W2.
+- **The seventh: TechLuddite ([@gh_TechLuddite](https://x.com/gh_TechLuddite)).** ✅ Built and merged 2026-11-14, by pull request.
+  - Gamepad support for the whole game ([pull request 2](https://github.com/nixfred/sigkill/pull/2)): the sticks move and look, the triggers fire and aim, the face buttons and shoulders do the rest, and the Esc menu, Missions and Loadout work by pad alone. In split-screen co-op the pad is player 2's.
+  - A shader warm-up ([pull request 1](https://github.com/nixfred/sigkill/pull/1)): the arena compiles every combat shader as it loads, so the first chmod 000 hit and the first /dev/null throw no longer freeze the game for a second.
 
 **Names the skins borrow.** Two light skins (C33) take their names and colours from open terminal themes, Dracula and Catppuccin, with thanks; others only nod by name to old machines and tools (green phosphor, CGA, the Commodore 64, the VT220). A skin is two colours and a line of text: nothing of theirs is bundled. See [`CREDITS.md`](CREDITS.md).
 

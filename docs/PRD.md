@@ -437,7 +437,7 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
 - CREDITS.md in the repo lists every contributor: name as they present it publicly, handle, the idea, and where it lives in the game.
 - In-game credits: the end-credits roll is a live `top`-style process table on the Tron grid. Every contributor is a process: PID, USER (their handle), %CPU climbing as their row arrives, COMMAND (their idea). Rows type in with code-rain, the table scrolls, Fred is PID 1 (init). The final line is the player's own kill -9 on the credits process, which derezzes the whole table into voxels, then "SIGKILL" and the hexagon.
 - Features born from a community prompt carry a small in-game tag, e.g. the Audit Trail visor HUD shows "visor design: @QuantaCortex".
-- Credits never include anyone who didn't contribute publicly, and nobody's handle goes in without their own public reply.
+- Credits never include anyone who didn't contribute publicly, and nobody's handle goes in without their own public reply. Code that lands through a pull request counts the same (Fred, 2026-11-14: credit everyone who touches it): the handle is the X account their own GitHub profile declares.
 - **Credited so far:**
   - Albert, @QuantaCortex: the Audit Trail visor, built in C43 (its HUD says "visor design: @QuantaCortex"), the first.
   - Tim Provencio, @TimProvencio: ICE and ICEbreakers, built in I1 to I3, the second.
@@ -445,10 +445,11 @@ SIGKILL is built in public; anyone can reply to Fred's X posts with a prompt. Th
   - Jeremy, @ocdjeremy, the fourth.
   - MindGameLabs, @MindGamesLabs, the fifth.
   - Tim Sonner, @timsonner, the sixth (2026-11-01).
+  - TechLuddite, @gh_TechLuddite, the seventh (2026-11-14): code, by pull request, built and merged: gamepad support and the first-use shader warm-up.
   - The last four are post-1.0 ideas (5.10).
   - Built features carry their tag, such as "ICE design: @TimProvencio" on ICE's HUD (I1).
 - **The C44 credits roll (planned as below; built 2026-11-01):**
-  - Contributors appear as processes: PID 1 @NixFred (init), Larry, the SIGKILL producer, then every community contributor, with their public handle as USER and their idea as COMMAND. That means @QuantaCortex, @TimProvencio, Carlos Granier @cgranier, Jeremy @ocdjeremy, MindGameLabs @MindGamesLabs and Tim Sonner @timsonner, and everyone credited after them.
+  - Contributors appear as processes: PID 1 @NixFred (init), Larry, the SIGKILL producer, then every community contributor, with their public handle as USER and their idea as COMMAND. That means @QuantaCortex, @TimProvencio, Carlos Granier @cgranier, Jeremy @ocdjeremy, MindGameLabs @MindGamesLabs, Tim Sonner @timsonner and TechLuddite @gh_TechLuddite, and everyone credited after them.
   - The last row stays `6666  ~  ...  thanks for running me` (STORY.md, pick 6). The final `kill -9` on the credits process takes it with the rest. Then come the derezz, "SIGKILL" and the hexagon.
   - Captures of the roll use demo data. CREDITS.md mirrors the roll.
   - **As built (C44):**

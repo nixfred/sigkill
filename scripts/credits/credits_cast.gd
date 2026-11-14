@@ -22,6 +22,7 @@ const CAST := [
 	[1340, "@ocdjeremy", 44.6, "htop --visor; zoom --stepped; hitbox --real", "Jeremy", "for after 1.0: an htop visor, stepped zoom, real hitboxes", "tron"],
 	[1341, "@MindGamesLabs", 38.2, "sudo grenade --tries=3", "MindGameLabs", "for after 1.0: the sudo grenade, three tries", "matrix"],
 	[1342, "@timsonner", 31.9, "fsmode --rooms; filehunt --beacon", "Tim Sonner", "for after 1.0: folders as rooms, files to hunt", "cyberpunk"],
+	[1343, "@gh_TechLuddite", 25.6, "gamepad --all-screens; shaders --prewarm", "TechLuddite", "pull requests: a gamepad for the whole game, and no stall on a weapon's first use", "tron"],
 ]
 ## [pid, command]: root's threads, every one idle.
 const THANKS := [
@@ -45,7 +46,7 @@ const LAST := [6666, "~", "", "thanks for running me"]
 const TOP := "top"
 ## The columns' widths, in characters: PID, USER, %CPU (COMMAND takes the rest).
 const PID_W := 5
-const USER_W := 14
+const USER_W := 15  # one wider for "@gh_TechLuddite" (a GitHub-declared X handle is 15 characters)
 const CPU_W := 5
 ## How many characters of COMMAND the table's window holds (W2, C44's leftover): a longer one is cut there and marked
 ## with a "+", as top marks a field cut to its column; the hero card shows it whole.

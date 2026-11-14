@@ -18,21 +18,21 @@ extends OpenerScore
 
 const CREDIT_PARTS := ["roll", "wait", "kill"]
 const CREDIT_LOUDNESS := {"roll": 0.085, "wait": 0.08, "kill": 0.13}
-## The roll's length in bars: the prompt waits from its end. Two bars a cast row (W2: nine rows, so 30; the credits
+## The roll's length in bars: the prompt waits from its end. Two bars a cast row (W2: nine rows, so 30; ten with TechLuddite, so 32; the credits
 ## test holds THANKS_BAR to CAST_BAR + CAST_EVERY a row, so a new contributor cannot land under the threads).
-const ROLL_BARS := 30
+const ROLL_BARS := 32
 ## The bars the roll's beats land on (scripts/credits/credits_roll.gd keeps its clock by them).
 const TITLE_BAR := 2
 const CAST_BAR := 4
 const CAST_EVERY := 2
-const THANKS_BAR := 22
-const QUIET_BAR := 26
-const LAST_BAR := 28
+const THANKS_BAR := 24
+const QUIET_BAR := 28
+const LAST_BAR := 30
 ## The kill: the slam this many beats after the shot, the riff two bars, the chord ringing out to its end.
 const KILL_SLAM_BEATS := 8.0
 const KILL_S := 9.6
 ## The bell each cast row lands on, rising.
-const ROW_BELLS := [64, 67, 71, 74, 76, 79, 83, 88, 91]
+const ROW_BELLS := [64, 67, 71, 74, 76, 79, 83, 88, 91, 93]
 ## The threads' bells, a beat each.
 const THREAD_BELLS := [76, 79, 81, 83, 86, 88, 91, 93]
 

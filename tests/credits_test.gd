@@ -24,8 +24,8 @@ const Link = preload("res://scripts/guide/guide_link.gd")
 const Controls = preload("res://scripts/controls.gd")
 const SettingsApply = preload("res://scripts/settings/settings_apply.gd")
 
-## Every community contributor, in the order they were credited (PRD 5.8; W2 adds the sixth, Tim Sonner).
-const CONTRIBUTORS := ["@QuantaCortex", "@TimProvencio", "@cgranier", "@ocdjeremy", "@MindGamesLabs", "@timsonner"]
+## Every community contributor, in the order they were credited (PRD 5.8; W2 adds the sixth, Tim Sonner; the seventh, TechLuddite, came by pull request).
+const CONTRIBUTORS := ["@QuantaCortex", "@TimProvencio", "@cgranier", "@ocdjeremy", "@MindGamesLabs", "@timsonner", "@gh_TechLuddite"]
 const LAST_ROW := "6666 ~ thanks for running me"
 const CREDITS_CODE := ["res://scripts/credits/credits_roll.gd", "res://scripts/credits/credits_cast.gd", "res://scripts/credits/credits_score.gd", "res://scripts/hud/credits_handoff.gd"]
 const NEVER := ["OS.execute", "create_process", "OS.kill", "shell_open", "HTTPRequest", "HTTPClient", "PacketPeer", "StreamPeer", "TCPServer", "UDPServer", "WebSocket", "FileAccess", "get_file_as_string", "DirAccess", "OS.get_environment", "get_user_data_dir", "get_system_dir", "get_executable_path", "OpenerData", "RealData", "OS.get_name", "get_unique_id"]
@@ -142,12 +142,13 @@ func _cast_checks() -> void:
 	for p in people:
 		handles.append(p[1])
 	_check("every community contributor in CREDITS.md's table is a row of the roll, name and handle as CREDITS.md gives them (%d: %s)" % [people.size(), ", ".join(handles)], people.size() >= CONTRIBUTORS.size() and missing.is_empty(), ", ".join(missing))
-	# The community contributors as rows, in the order they were credited (W2 adds the sixth, Tim Sonner), all before 6666.
+	# The community contributors as rows, in the order they were credited (W2 adds the sixth, Tim Sonner; TechLuddite the seventh), all before 6666.
 	var order := PackedStringArray()
 	for i in range(3, CreditsCast.CAST.size()):
 		order.append(str(CreditsCast.CAST[i][1]))
-	var sixth := CreditsCast.CAST[CreditsCast.CAST.size() - 1] as Array
-	_check("the community contributors are rows in the order they were credited (%s), the sixth \"Tim Sonner (@timsonner)\" after MindGameLabs and before the last row" % ", ".join(order), order == PackedStringArray(CONTRIBUTORS) and str(sixth[4]) == "Tim Sonner" and str(sixth[1]) == "@timsonner", ", ".join(order))
+	var sixth := CreditsCast.CAST[CreditsCast.CAST.size() - 2] as Array
+	var seventh := CreditsCast.CAST[CreditsCast.CAST.size() - 1] as Array
+	_check("the community contributors are rows in the order they were credited (%s), the sixth \"Tim Sonner (@timsonner)\" after MindGameLabs, the seventh \"TechLuddite (@gh_TechLuddite)\" after him and before the last row" % ", ".join(order), order == PackedStringArray(CONTRIBUTORS) and str(sixth[4]) == "Tim Sonner" and str(sixth[1]) == "@timsonner" and str(seventh[4]) == "TechLuddite" and str(seventh[1]) == "@gh_TechLuddite", ", ".join(order))
 	_check("the score keeps two bars a cast row before the threads (THANKS_BAR %d = CAST_BAR %d + CAST_EVERY %d x %d rows), a bell for every row" % [CreditsScore.THANKS_BAR, CreditsScore.CAST_BAR, CreditsScore.CAST_EVERY, CreditsCast.CAST.size()], CreditsScore.THANKS_BAR == CreditsScore.CAST_BAR + CreditsScore.CAST_EVERY * CreditsCast.CAST.size() and CreditsScore.ROW_BELLS.size() >= CreditsCast.CAST.size() and CreditsScore.LAST_BAR > CreditsScore.QUIET_BAR and CreditsScore.ROLL_BARS > CreditsScore.LAST_BAR)
 	# Long commands (W2, C44's leftover): the table cuts one at its window, marked "+", and the hero card shows it whole.
 	var fits := true
