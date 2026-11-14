@@ -1595,6 +1595,8 @@ sigkill/
 ├── README.md                   This page
 ├── .gitignore                  Keeps Godot's cache and build output out of git
 ├── CREDITS.md                  Contributors and community prompts
+├── CHANGE.log                  A running log of each change, newest first, naming its contributors with GitHub and X profiles
+├── X-POSTS.html                Drafts of the posts that announce changes, and which have gone out
 ├── LICENSE                     The MIT license
 ├── project.godot               Godot 4.7 project: main scene, version (0.33.0-prealpha), icon, physics layer names, Forward+, black clear colour, the daemons' shader clock
 ├── export_presets.cfg          The one export preset, "Linux x86_64": one binary with the pack inside; tests, tools, docs and the relay left out
@@ -2341,6 +2343,8 @@ flowchart LR
 - [`docs/STORY.md`](docs/STORY.md): the story bible (C34), locked by Fred on 2026-10-30
 - [`docs/TRAILER.md`](docs/TRAILER.md): the teaser footage (T1): how to re-render it, what it needs, demo data only
 - [`CREDITS.md`](CREDITS.md): who made what, including community prompts
+- [`CHANGE.log`](CHANGE.log): each change, newest first, with its contributors' GitHub and X profiles
+- [`X-POSTS.html`](X-POSTS.html): drafts of the posts that announce changes
 
 ## Install and play
 

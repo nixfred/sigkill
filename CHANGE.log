@@ -1,0 +1,25 @@
+CHANGE.log: a running log of the changes to SIGKILL, newest first.
+
+Every entry names each contributor with their GitHub login and a linkable X profile, and says how the X handle was checked.
+A handle is never guessed; where none can be verified the entry says so. Drafts of the posts that announce changes are in
+X-POSTS.html. Contributors from before this log began, and what each made, are in CREDITS.md.
+
+2026-11-14  Merge #1: combat shaders compile as the arena loads (2231d13)
+  What: the arena compiles every shader a weapon, an ability or a hit draws only once it is used, as it loads, so the first
+        chmod 000 hit and the first /dev/null throw no longer freeze the game for about 1.8 s on a cold start. A cold first
+        launch draws its first frame up to 1.6 s later. The fork() shotgun's first long flight can still stall about a second
+        (a pipeline the driver builds, not a shader; a separate effort). Check step 75.
+  Who:  TechLuddite, https://github.com/TechLuddite, X https://x.com/gh_TechLuddite
+        X checked 2026-11-14: his GitHub profile declares it (twitter_username). Plain @TechLuddite is a different account.
+  PR:   https://github.com/nixfred/sigkill/pull/1
+
+2026-11-14  Merge #2: gamepad support (5fae38b)
+  What: a gamepad plays the arena, the Esc menu, Missions and Loadout: sticks, triggers, face buttons, bumpers and D-pad.
+        In split-screen co-op the pad is player 2's alone and player 1 plays on keyboard and mouse (the merge fixed a collision
+        in which one pad drove both players). Check step 76.
+  Who:  TechLuddite, https://github.com/TechLuddite, X https://x.com/gh_TechLuddite (checked as above)
+  PR:   https://github.com/nixfred/sigkill/pull/2
+
+2026-11-14  Credits (016f2f8)
+  What: TechLuddite is the seventh contributor in CREDITS.md and in the in-game credits roll, as every contributor who touches
+        the code is.
