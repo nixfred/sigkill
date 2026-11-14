@@ -184,7 +184,7 @@ func _source_checks() -> void:
 
 func _rebind_checks() -> void:
 	var events := InputMap.action_get_events("sigstop")
-	_check("F is SIGSTOP's key: a rebindable action shown as 'SIGSTOP' in the settings' list, F by default, clashing with nothing", Controls.rebindable("sigstop") and Controls.default_bind("sigstop") == "key:%d" % KEY_F and _shown("sigstop") == "SIGSTOP" and not Controls.conflicts({}).has("sigstop") and events.size() == 1 and (events[0] as InputEventKey).physical_keycode == KEY_F)
+	_check("F is SIGSTOP's key: a rebindable action shown as 'SIGSTOP' in the settings' list, F by default, clashing with nothing", Controls.rebindable("sigstop") and Controls.default_bind("sigstop") == "key:%d" % KEY_F and _shown("sigstop") == "SIGSTOP" and not Controls.conflicts({}).has("sigstop") and events.size() == 2 and events[1] is InputEventJoypadButton and (events[0] as InputEventKey).physical_keycode == KEY_F)
 	var path := _tmp.path_join("rebind-settings.cfg")
 	var s := GameSettings.new()
 	s.path = path
@@ -197,7 +197,7 @@ func _rebind_checks() -> void:
 	var how := back.load_file()
 	Controls.apply_binds(back.binds())
 	var moved := InputMap.action_get_events("sigstop")
-	_check("acceptance: the F rebind saves and loads: SIGSTOP moved to G is written to the settings file, read back from it, and the input map takes it", took == "" and saved and how == "loaded" and back.bind("sigstop") == "key:%d" % KEY_G and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_G and FileAccess.get_file_as_string(path).contains("sigstop"), "%s %s %s %s" % [took, saved, how, back.bind("sigstop")])
+	_check("acceptance: the F rebind saves and loads: SIGSTOP moved to G is written to the settings file, read back from it, and the input map takes it", took == "" and saved and how == "loaded" and back.bind("sigstop") == "key:%d" % KEY_G and moved.size() == 2 and moved[1] is InputEventJoypadButton and (moved[0] as InputEventKey).physical_keycode == KEY_G and FileAccess.get_file_as_string(path).contains("sigstop"), "%s %s %s %s" % [took, saved, how, back.bind("sigstop")])
 	var chord := InputEventKey.new()
 	chord.physical_keycode = KEY_F
 	chord.ctrl_pressed = true
@@ -210,7 +210,7 @@ func _rebind_checks() -> void:
 	again.load_file()
 	Controls.apply_binds(again.binds())
 	var reset := InputMap.action_get_events("sigstop")
-	_check("Ctrl+Alt+F is refused, and resetting the keys puts SIGSTOP back on F, saved and loaded the same way", refused == Controls.CTRL_ALT_REFUSED and again.bind("sigstop") == "key:%d" % KEY_F and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_F)
+	_check("Ctrl+Alt+F is refused, and resetting the keys puts SIGSTOP back on F, saved and loaded the same way", refused == Controls.CTRL_ALT_REFUSED and again.bind("sigstop") == "key:%d" % KEY_F and reset.size() == 2 and reset[1] is InputEventJoypadButton and (reset[0] as InputEventKey).physical_keycode == KEY_F)
 
 
 # --- Solo. ---

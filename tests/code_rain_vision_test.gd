@@ -133,7 +133,7 @@ func _meter_checks() -> void:
 
 func _rebind_checks() -> void:
 	var events := InputMap.action_get_events("code_rain_vision")
-	_check("V is code-rain vision: a rebindable action shown as \"code-rain vision\" in the settings' list, V by default, clashing with nothing", Controls.rebindable("code_rain_vision") and Controls.default_bind("code_rain_vision") == "key:%d" % KEY_V and _shown("code_rain_vision") == "code-rain vision" and not Controls.conflicts({}).has("code_rain_vision") and events.size() == 1 and (events[0] as InputEventKey).physical_keycode == KEY_V)
+	_check("V is code-rain vision: a rebindable action shown as \"code-rain vision\" in the settings' list, V by default, clashing with nothing", Controls.rebindable("code_rain_vision") and Controls.default_bind("code_rain_vision") == "key:%d" % KEY_V and _shown("code_rain_vision") == "code-rain vision" and not Controls.conflicts({}).has("code_rain_vision") and events.size() == 2 and events[1] is InputEventJoypadButton and (events[0] as InputEventKey).physical_keycode == KEY_V)
 	var path := _tmp.path_join("rebind-settings.cfg")
 	var s := GameSettings.new()
 	s.path = path
@@ -154,7 +154,7 @@ func _rebind_checks() -> void:
 	back.reset_binds()
 	Controls.apply_binds(back.binds())
 	var reset := InputMap.action_get_events("code_rain_vision")
-	_check("acceptance: rebindable: moved to Z it is saved, read back and taken by the input map; Ctrl+Alt+V is refused; reset, it is V again", took == "" and saved and how == "loaded" and moved.size() == 1 and (moved[0] as InputEventKey).physical_keycode == KEY_Z and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 1 and (reset[0] as InputEventKey).physical_keycode == KEY_V, "%s %s %s" % [took, how, refused])
+	_check("acceptance: rebindable: moved to Z it is saved, read back and taken by the input map; Ctrl+Alt+V is refused; reset, it is V again", took == "" and saved and how == "loaded" and moved.size() == 2 and moved[1] is InputEventJoypadButton and (moved[0] as InputEventKey).physical_keycode == KEY_Z and refused == Controls.CTRL_ALT_REFUSED and reset.size() == 2 and reset[1] is InputEventJoypadButton and (reset[0] as InputEventKey).physical_keycode == KEY_V, "%s %s %s" % [took, how, refused])
 
 
 func _source_checks() -> void:

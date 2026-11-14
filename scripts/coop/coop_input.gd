@@ -3,12 +3,16 @@ extends RefCounted
 ## Split-screen co-op's input (W6, PRD 5.5): player 2's actions and both players' tile keys, made in the input map as the
 ## mode begins and taken out as it ends, so outside the mode the map is exactly the game's own.
 ##
-## Player 1 plays as ever, keyboard and mouse, every key the game's own; only the right stick is off for it while the mode
-## runs (player.gd stick_look), because the pad is player 2's. Player 2 has a gamepad (any pad; the tests drive it with
+## Player 1 plays as ever, keyboard and mouse, every key the game's own; its gamepad is off while the mode runs, because the
+## pad is player 2's: ensure() takes the pad's bindings off player 1's actions (Controls.withdraw_pad()) and remove() puts
+## them back, and player.gd stick_look keeps its right stick off. Player 2 has a gamepad (any pad; the tests drive it with
 ## simulated events and never need one) and a keyboard fallback on the numeric keypad, keys the game binds to nothing.
 ## Each player has three tile keys: grow their tile, shrink it, and flip the split (side by side, or stacked). Player 1's
 ## are `=`, `-` and `0` on the number row (the game binds none of them; Omarchy's own resize keys are SUPER with `=` and
 ## `-`, so they read as a resize). No Ctrl, Alt or Super anywhere, and no key or button belongs to two players.
+
+## The game's own input table: the gamepad bindings it gives player 1 are taken off for the mode and put back after it.
+const Controls = preload("res://scripts/controls.gd")
 
 ## Player 2's own actions, by the game action they stand for. Every one is made with player 2's events below.
 const P2 := {
@@ -73,9 +77,10 @@ static func ensure() -> void:
 			InputMap.add_action(action, DEADZONE)
 			for spec in table[action]:
 				InputMap.action_add_event(action, event_of(spec))
+	Controls.withdraw_pad()  # the gamepad bindings (scripts/controls.gd) are player 2's alone while the mode runs
 
 
-## Every action the mode added, out of the map again.
+## Every action the mode added, out of the map again, and the pad back on player 1's actions.
 static func remove() -> void:
 	for table in [P2_EVENTS, P1_EVENTS]:
 		for action in table:
@@ -83,6 +88,7 @@ static func remove() -> void:
 				InputMap.erase_action(action)
 	if InputMap.has_action(NONE):
 		InputMap.erase_action(NONE)
+	Controls.return_pad()
 
 
 ## What uses keyboard key `code` in the mode ("grow tile (co-op)", "player 2 (co-op)"), or "": the settings screen shows

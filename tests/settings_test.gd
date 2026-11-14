@@ -165,7 +165,7 @@ func _bind_checks() -> void:
 	var slide := InputMap.action_get_events("slide")
 	var crouch := InputMap.action_get_events("crouch")
 	var forward := InputMap.action_get_events("move_forward")
-	_check("binds reach the input map; a refused or broken bind falls back to its default; the arrows stay beside the movement keys", jump.size() == 1 and (jump[0] as InputEventKey).physical_keycode == KEY_V and fire.size() == 1 and (fire[0] as InputEventMouseButton).button_index == MOUSE_BUTTON_XBUTTON1 and (slide[0] as InputEventKey).physical_keycode == KEY_C and (crouch[0] as InputEventKey).physical_keycode == KEY_X and forward.size() == 2 and (forward[1] as InputEventKey).physical_keycode == KEY_UP)
+	_check("binds reach the input map; a refused or broken bind falls back to its default; the arrows stay beside the movement keys", jump.size() == 2 and jump[1] is InputEventJoypadButton and (jump[0] as InputEventKey).physical_keycode == KEY_V and fire.size() == 2 and fire[1] is InputEventJoypadMotion and (fire[0] as InputEventMouseButton).button_index == MOUSE_BUTTON_XBUTTON1 and (slide[0] as InputEventKey).physical_keycode == KEY_C and (crouch[0] as InputEventKey).physical_keycode == KEY_X and forward.size() == 3 and (forward[1] as InputEventKey).physical_keycode == KEY_UP and forward[2] is InputEventJoypadMotion)
 	Controls.apply_binds({})
 	_check("no binds: the shipped map again", (InputMap.action_get_events("jump")[0] as InputEventKey).physical_keycode == KEY_SPACE and (InputMap.action_get_events("fire")[0] as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT)
 	var chorded := PackedStringArray()

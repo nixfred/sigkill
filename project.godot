@@ -24,6 +24,10 @@ config/icon="res://packaging/linux/sigkill.svg"
 window/size/viewport_width=1280
 window/size/viewport_height=720
 
+[input_devices]
+
+joypads/ignore_joypad_on_unfocused_application=true
+
 [layer_names]
 
 3d_physics/layer_1="world"

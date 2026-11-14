@@ -320,8 +320,9 @@ func _key_checks() -> void:
 		var events := InputMap.action_get_events("weapon_%d" % (i + 1))
 		if events.size() != 1 or (events[0] as InputEventKey).physical_keycode != Controls.SLOT_KEYS[i]:
 			changed.append("weapon_%d" % (i + 1))
-	var fire := InputMap.action_get_events("fire")
-	var aim := InputMap.action_get_events("aim")
+	# The keys and mouse buttons are what W7 promised unchanged: the gamepad's triggers (scripts/controls.gd) sit after them.
+	var fire := InputMap.action_get_events("fire").filter(func(e): return not e is InputEventJoypadMotion and not e is InputEventJoypadButton)
+	var aim := InputMap.action_get_events("aim").filter(func(e): return not e is InputEventJoypadMotion and not e is InputEventJoypadButton)
 	if fire.size() != 1 or (fire[0] as InputEventMouseButton).button_index != MOUSE_BUTTON_LEFT or aim.size() != 1 or (aim[0] as InputEventMouseButton).button_index != MOUSE_BUTTON_RIGHT:
 		changed.append("fire/aim")
 	_check("acceptance: the regular arena's keys are unchanged: every action's key as before W7 (%d actions, the slots, fire and aim)" % KEYS_BEFORE.size(), changed.is_empty(), ", ".join(changed))
